@@ -1,0 +1,2 @@
+# YOURTRIP_BE
+YOURTIP 백엔드 리포지토리
