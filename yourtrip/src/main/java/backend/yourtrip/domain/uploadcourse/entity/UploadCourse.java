@@ -11,8 +11,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToOne;
+import org.hibernate.annotations.SQLRestriction;
 
 @Entity
+@SQLRestriction("deleted = false")
 public class UploadCourse extends BaseEntity {
 
     @Id
@@ -28,6 +30,7 @@ public class UploadCourse extends BaseEntity {
     @JoinColumn(name = "user_id")
     private User user;
 
+    @Column(columnDefinition = "TEXT")
     private String introduction;
 
     private int commentCount;

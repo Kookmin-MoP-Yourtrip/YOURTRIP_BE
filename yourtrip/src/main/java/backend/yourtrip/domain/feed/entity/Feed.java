@@ -10,8 +10,10 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import org.hibernate.annotations.SQLRestriction;
 
 @Entity
+@SQLRestriction("deleted = false")
 public class Feed extends BaseEntity {
 
     @Id
@@ -36,7 +38,7 @@ public class Feed extends BaseEntity {
     private boolean deleted;
 
     @ManyToOne
-    @JoinColumn(name = "course_id")
+    @JoinColumn(name = "upload_course_id")
     private UploadCourse tagCourse;
 
 }
