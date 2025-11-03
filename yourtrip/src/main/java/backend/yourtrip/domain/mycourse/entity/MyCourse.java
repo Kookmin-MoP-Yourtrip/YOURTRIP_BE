@@ -9,10 +9,16 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import java.time.LocalDate;
+import lombok.AccessLevel;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.SQLRestriction;
 
 @Entity
+@Getter
 @SQLRestriction("deleted = false")
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class MyCourse extends BaseEntity {
 
     @Id
@@ -39,8 +45,21 @@ public class MyCourse extends BaseEntity {
     private LocalDate endDay;
 
     @Enumerated(EnumType.STRING)
-    private MyCourseType type=MyCourseType.DIRECT;
+    private MyCourseType type;
 
     private boolean deleted;
+
+    @Builder
+    public MyCourse(String title, String location, int nights, int days, LocalDate startDay,
+        LocalDate endDay) {
+        this.title = title;
+        this.location = location;
+        this.nights = nights;
+        this.days = days;
+        this.startDay = startDay;
+        this.endDay = endDay;
+        memberCount = 1;
+        type = MyCourseType.DIRECT;
+    }
 
 }
