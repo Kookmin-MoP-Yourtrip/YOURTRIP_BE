@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import lombok.AccessLevel;
+import lombok.Builder;
 import lombok.NoArgsConstructor;
 
 @Entity
@@ -26,4 +27,10 @@ public class DaySchedule extends BaseEntity {
     private MyCourse course;
 
     private int day;
+
+    @Builder
+    public DaySchedule(MyCourse course, int day) {
+        this.course = course;
+        this.day = day;
+    }
 }
