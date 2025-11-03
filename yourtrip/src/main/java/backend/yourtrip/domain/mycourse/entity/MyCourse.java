@@ -1,5 +1,6 @@
 package backend.yourtrip.domain.mycourse.entity;
 
+import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.global.common.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -8,7 +9,11 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -49,6 +54,10 @@ public class MyCourse extends BaseEntity {
 
     private boolean deleted;
 
+    @OneToMany(mappedBy = "course")
+    @OrderBy("day ASC")
+    private List<DaySchedule> daySchedules;
+
     @Builder
     public MyCourse(String title, String location, int nights, int days, LocalDate startDay,
         LocalDate endDay) {
@@ -60,6 +69,7 @@ public class MyCourse extends BaseEntity {
         this.endDay = endDay;
         memberCount = 1;
         type = MyCourseType.DIRECT;
+        daySchedules = new ArrayList<>();
     }
 
     public void updateBudget(int budget) {

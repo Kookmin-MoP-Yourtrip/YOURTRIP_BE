@@ -2,6 +2,7 @@ package backend.yourtrip.domain.mycourse.service;
 
 import backend.yourtrip.domain.mycourse.dto.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.MyCourseCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.MyCourseDetailResponse;
 import backend.yourtrip.domain.mycourse.dto.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.PlaceCreateResponse;
 import backend.yourtrip.domain.mycourse.entity.MyCourse;
@@ -23,7 +24,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Transactional(readOnly = true)
 @RequiredArgsConstructor
 public class MyCourseService {
 
@@ -33,7 +33,6 @@ public class MyCourseService {
     private final PlaceRepository placeRepository;
     private final UserService userService;
 
-    //TODO: 코스 생성 시 daySchedule 생성
     //코스 생성
     @Transactional
     public MyCourseCreateResponse saveCourse(MyCourseCreateRequest request, Long userId) {
@@ -57,12 +56,13 @@ public class MyCourseService {
         return new MyCourseCreateResponse(savedCourse.getId(), "코스 등록 완료");
     }
 
-    //장소 추가
+    //장소 생성
     @Transactional
     public PlaceCreateResponse savePlace(Long courseId, int day, PlaceCreateRequest request,
         Long userId) {
         User user = userService.getUser(userId);
         MyCourse course = getCourseById(courseId);
+        //TODO: 유저가 가진 코스인지 검증 필요
 
         course.updateBudget(request.budget()); //총예산 업데이트
 
@@ -74,7 +74,17 @@ public class MyCourseService {
         return new PlaceCreateResponse(savedPlace.getId(), "장소 등록 완료");
     }
 
-    public MyCourse getCourseById(Long courseId) {
+    @Transactional(readOnly = true)
+    public MyCourseDetailResponse getMyCourseDetail(Long courseId, Long userId) {
+        userService.getUser(userId);
+        //TODO: 유저가 가진 코스인지 검증 필요
+        MyCourse myCourse = myCourseRepository.findByIdWithSchedulesAndPlaces(courseId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
+
+        return MyCourseMapper.toDetailResponse(myCourse);
+    }
+
+    private MyCourse getCourseById(Long courseId) {
         return myCourseRepository.findById(courseId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
     }

@@ -1,6 +1,7 @@
 package backend.yourtrip.domain.mycourse.mapper;
 
 import backend.yourtrip.domain.mycourse.dto.PlaceCreateRequest;
+import backend.yourtrip.domain.mycourse.dto.PlaceListResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.Place;
 import lombok.AccessLevel;
@@ -19,6 +20,19 @@ public class PlaceMapper {
             .longitude(request.longitude())
             .placeUrl(request.placeUrl())
             .daySchedule(daySchedule)
+            .build();
+    }
+
+    public static PlaceListResponse toListResponse(Place place) {
+        return PlaceListResponse.builder()
+            .placeId(place.getId())
+            .placeName(place.getName())
+            .starTime(place.getStartTime())
+            .memo(place.getMemo())
+            .budget(place.getBudget())
+            .latitude(place.getLatitude())
+            .longitude(place.getLongitude())
+            .placeUrl(place.getPlaceUrl())
             .build();
     }
 
