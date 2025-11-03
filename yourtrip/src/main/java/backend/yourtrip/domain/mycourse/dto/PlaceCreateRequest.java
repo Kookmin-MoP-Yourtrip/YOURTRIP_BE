@@ -4,7 +4,6 @@ import java.time.LocalTime;
 
 public record PlaceCreateRequest(
     String placeName,
-    int day,
     LocalTime startTime,
     String memo,
     int budget,

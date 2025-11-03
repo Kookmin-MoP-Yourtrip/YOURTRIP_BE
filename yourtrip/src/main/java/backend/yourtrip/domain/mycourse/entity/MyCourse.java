@@ -62,4 +62,7 @@ public class MyCourse extends BaseEntity {
         type = MyCourseType.DIRECT;
     }
 
+    public void updateBudget(int budget) {
+        this.totalBudget += budget;
+    }
 }

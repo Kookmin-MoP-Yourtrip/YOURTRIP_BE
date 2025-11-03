@@ -6,14 +6,18 @@ import backend.yourtrip.domain.mycourse.dto.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.PlaceCreateResponse;
 import backend.yourtrip.domain.mycourse.entity.MyCourse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
+import backend.yourtrip.domain.mycourse.entity.dayschedule.Place;
 import backend.yourtrip.domain.mycourse.mapper.CourseParticipantMapper;
 import backend.yourtrip.domain.mycourse.mapper.MyCourseMapper;
+import backend.yourtrip.domain.mycourse.mapper.PlaceMapper;
 import backend.yourtrip.domain.mycourse.repository.CourseParticipantRepository;
 import backend.yourtrip.domain.mycourse.repository.DayScheduleRepository;
 import backend.yourtrip.domain.mycourse.repository.MyCourseRepository;
 import backend.yourtrip.domain.mycourse.repository.PlaceRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
+import backend.yourtrip.global.exception.errorCode.BusinessException;
+import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,12 +59,24 @@ public class MyCourseService {
 
     //장소 추가
     @Transactional
-    public PlaceCreateResponse savePlace(PlaceCreateRequest request, Long userId) {
+    public PlaceCreateResponse savePlace(Long courseId, int day, PlaceCreateRequest request,
+        Long userId) {
         User user = userService.getUser(userId);
-        dayScheduleRepository.findByDay(request.day())
-            .orElseThrow()
-        //장소 생성
+        MyCourse course = getCourseById(courseId);
 
+        course.updateBudget(request.budget()); //총예산 업데이트
+
+        DaySchedule daySchedule = dayScheduleRepository.findByCourseAndDay(course, day)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.PLACE_NOT_FOUND));
+
+        Place savedPlace = placeRepository.save(PlaceMapper.toEntity(request, daySchedule));
+
+        return new PlaceCreateResponse(savedPlace.getId(), "장소 등록 완료");
+    }
+
+    public MyCourse getCourseById(Long courseId) {
+        return myCourseRepository.findById(courseId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
     }
 
 }
