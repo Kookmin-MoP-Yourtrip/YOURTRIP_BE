@@ -8,3 +8,28 @@ spring:
   jpa:
     hibernate:
       ddl-auto: ${DB_DDL_AUTO}
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+
+jwt:
+  secret: ${JWT_SECRET}
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.springdoc: debug
+    org.springframework.web: info
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    operationsSorter: method
+    displayRequestDuration: true
+    persistAuthorization: true
+  override-with-generic-response: false
