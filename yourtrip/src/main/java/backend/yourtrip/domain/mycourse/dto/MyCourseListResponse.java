@@ -3,7 +3,7 @@ package backend.yourtrip.domain.mycourse.dto;
 import java.util.List;
 
 public record MyCourseListResponse(
-    List<MyCourseSummary> myCourses
+    List<MyCourseListItemResponse> myCourses
 ) {
 
 }

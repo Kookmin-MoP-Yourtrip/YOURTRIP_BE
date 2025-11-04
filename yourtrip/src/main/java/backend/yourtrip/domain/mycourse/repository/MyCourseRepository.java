@@ -9,10 +9,14 @@ import org.springframework.data.repository.query.Param;
 public interface MyCourseRepository extends JpaRepository<MyCourse, Long> {
 
     @Query("""
-        SELECT mc FROM MyCourse mc
-        JOIN FETCH mc.daySchedules ds
-        JOIN FETCH ds.places
-        WHERE mc.id = :courseId
+        SELECT DISTINCT c
+        FROM MyCourse c
+        JOIN c.participants p
+        LEFT JOIN FETCH c.daySchedules ds
+        LEFT JOIN FETCH ds.places
+        WHERE c.id = :courseId
+            AND p.user.id = :userId
         """)
-    Optional<MyCourse> findByIdWithSchedulesAndPlaces(@Param("courseId") Long courseId);
+    Optional<MyCourse> findOwnedDetail(@Param("courseId") Long courseId,
+        @Param("userId") Long suerId);
 }

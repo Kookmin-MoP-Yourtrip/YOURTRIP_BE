@@ -8,8 +8,8 @@ import org.springframework.http.HttpStatus;
 @AllArgsConstructor
 public enum MyCourseErrorCode implements ErrorCode {
 
-    PLACE_NOT_FOUND("장소를 찾을 수 없습니다.", HttpStatus.BAD_REQUEST),
-    COURSE_NOT_FOUND("코스를 찾을 수 없습니다.", HttpStatus.BAD_REQUEST);
+    PLACE_NOT_FOUND("장소를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    COURSE_NOT_FOUND("코스를 찾을 수 없습니다.", HttpStatus.NOT_FOUND);
 
     private final String message;
     private final HttpStatus status;

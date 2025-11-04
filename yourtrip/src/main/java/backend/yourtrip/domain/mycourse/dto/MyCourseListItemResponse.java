@@ -4,7 +4,7 @@ import java.time.LocalDate;
 import lombok.Builder;
 
 @Builder
-public record MyCourseSummary(
+public record MyCourseListItemResponse(
     String title,
     String location,
     String thumbnailImage,

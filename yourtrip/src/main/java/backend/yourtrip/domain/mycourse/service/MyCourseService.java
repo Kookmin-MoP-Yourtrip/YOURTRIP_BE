@@ -3,6 +3,7 @@ package backend.yourtrip.domain.mycourse.service;
 import backend.yourtrip.domain.mycourse.dto.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.MyCourseDetailResponse;
+import backend.yourtrip.domain.mycourse.dto.MyCourseListItemResponse;
 import backend.yourtrip.domain.mycourse.dto.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.PlaceCreateResponse;
@@ -63,13 +64,10 @@ public class MyCourseService {
     @Transactional
     public PlaceCreateResponse savePlace(Long courseId, int day, PlaceCreateRequest request,
         Long userId) {
-        User user = userService.getUser(userId);
-        MyCourse course = getCourseById(courseId);
-        //TODO: 유저가 가진 코스인지 검증 필요
-
 //        course.updateBudget(request.budget()); //총예산 업데이트 (추후 확장)
 
-        DaySchedule daySchedule = dayScheduleRepository.findByCourseAndDay(course, day)
+        DaySchedule daySchedule = dayScheduleRepository.findOwnedByCourseIdAndDay(courseId, userId,
+                day)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.PLACE_NOT_FOUND));
 
         Place savedPlace = placeRepository.save(PlaceMapper.toEntity(request, daySchedule));
@@ -80,11 +78,7 @@ public class MyCourseService {
     // 코스 상세 조회
     @Transactional(readOnly = true)
     public MyCourseDetailResponse getMyCourseDetail(Long courseId, Long userId) {
-        //TODO: user 검증이 꼭 필요할까?
-        userService.getUser(userId);
-
-        //TODO: 유저가 가진 코스인지 검증 필요
-        MyCourse myCourse = myCourseRepository.findByIdWithSchedulesAndPlaces(courseId)
+        MyCourse myCourse = myCourseRepository.findOwnedDetail(courseId, userId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
 
         return MyCourseMapper.toDetailResponse(myCourse);
@@ -97,16 +91,12 @@ public class MyCourseService {
         List<CourseParticipant> courseParticipants = courseParticipantRepository.findByUserOrderByCourseUpdatedAtDesc(
             userService.getUser(userId));
 
-        courseParticipants.stream()
+        List<MyCourseListItemResponse> listItems = courseParticipants.stream()
             .map(CourseParticipant::getCourse)
-            .map(MyCourseMapper::)
+            .map(MyCourseMapper::toListItemResponse)
+            .toList();
 
-
-    }
-
-    private MyCourse getCourseById(Long courseId) {
-        return myCourseRepository.findById(courseId)
-            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
+        return new MyCourseListResponse(listItems);
     }
 
 }

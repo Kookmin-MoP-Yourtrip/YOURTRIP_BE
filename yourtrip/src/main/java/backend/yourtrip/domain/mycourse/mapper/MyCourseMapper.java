@@ -2,6 +2,7 @@ package backend.yourtrip.domain.mycourse.mapper;
 
 import backend.yourtrip.domain.mycourse.dto.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.MyCourseDetailResponse;
+import backend.yourtrip.domain.mycourse.dto.MyCourseListItemResponse;
 import backend.yourtrip.domain.mycourse.entity.MyCourse;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -36,7 +37,18 @@ public class MyCourseMapper {
             .daySchedules(DayScheduleMapper.toListResponse(
                 course.getDaySchedules()))
             .build();
+    }
 
-
+    public static MyCourseListItemResponse toListItemResponse(MyCourse course) {
+        return MyCourseListItemResponse.builder()
+            .title(course.getTitle())
+            .location(course.getTitle())
+            .thumbnailImage(course.getThumbnailImageUrl())
+            .nights(course.getNights())
+            .days(course.getDays())
+            .startDay(course.getStartDay())
+            .endDay(course.getEndDay())
+            .memberCount(course.getMemberCount())
+            .build();
     }
 }

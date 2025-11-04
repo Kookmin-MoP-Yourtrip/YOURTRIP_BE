@@ -58,6 +58,9 @@ public class MyCourse extends BaseEntity {
     @OrderBy("day ASC")
     private List<DaySchedule> daySchedules;
 
+    @OneToMany(mappedBy = "course")
+    private List<CourseParticipant> participants;
+
     @Builder
     public MyCourse(String title, String location, int nights, int days, LocalDate startDay,
         LocalDate endDay) {
@@ -70,9 +73,10 @@ public class MyCourse extends BaseEntity {
         memberCount = 1;
         type = MyCourseType.DIRECT;
         daySchedules = new ArrayList<>();
+        participants = new ArrayList<>();
     }
 
-    public void updateBudget(int budget) {
-        this.totalBudget += budget;
-    }
+//    public void updateBudget(int budget) {
+//        this.totalBudget += budget;
+//    }
 }
