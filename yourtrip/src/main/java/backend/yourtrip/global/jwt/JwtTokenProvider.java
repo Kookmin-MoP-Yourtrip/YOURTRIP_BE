@@ -14,19 +14,28 @@ public class JwtTokenProvider {
 
     private final Key key;
     private final long ACCESS_TOKEN_VALIDITY = 1000L * 60 * 60;
+    private final long REFRESH_TOKEN_VALIDITY = 1000L * 60 * 60 * 24 * 14;
 
     public JwtTokenProvider(@Value("${jwt.secret}") String secretKey) {
         this.key = Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
     }
 
     public String createAccessToken(Long userId, String email) {
+        return generateToken(userId, email, ACCESS_TOKEN_VALIDITY, "access");
+    }
+
+    public String createRefreshToken(Long userId, String email) {
+        return generateToken(userId, email, REFRESH_TOKEN_VALIDITY, "refresh");
+    }
+
+    public String generateToken(Long userId, String email, long validity, String type) {
         Date now = new Date();
-        Date expiry = new Date(now.getTime() + ACCESS_TOKEN_VALIDITY);
+        Date expiry = new Date(now.getTime() + validity);
 
         return Jwts.builder()
                 .setSubject(String.valueOf(userId))
                 .claim("email", email)
-                .claim("typ", "access")
+                .claim("typ", type)
                 .setIssuedAt(now)
                 .setExpiration(expiry)
                 .signWith(key, SignatureAlgorithm.HS256)

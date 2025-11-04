@@ -6,4 +6,5 @@ import backend.yourtrip.domain.user.dto.response.*;
 public interface UserService {
     UserSignupResponse signup(UserSignupRequest request);
     UserLoginResponse login(UserLoginRequest request);
+    UserLoginResponse refresh(String refreshToken);
 }

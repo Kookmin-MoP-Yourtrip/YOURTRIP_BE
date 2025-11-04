@@ -9,11 +9,12 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.SQLRestriction;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 @Getter
-@Setter
+@Builder(toBuilder = true)
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor
 @Entity
 @Table(name = "users")
 @SQLRestriction("deleted = false")
@@ -33,4 +34,6 @@ public class User extends BaseEntity {
     private String profileImageUrl;
 
     private boolean deleted;
+
+    private String refreshToken;
 }
