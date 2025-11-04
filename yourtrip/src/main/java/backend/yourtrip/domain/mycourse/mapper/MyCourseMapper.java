@@ -25,7 +25,7 @@ public class MyCourseMapper {
             .courseId(course.getId())
             .title(course.getTitle())
             .location(course.getLocation())
-            .totalBudget(course.getTotalBudget())
+//            .totalBudget(course.getTotalBudget())
             .memberCount(course.getMemberCount())
             .thumbnailImageUrl(course.getThumbnailImageUrl())
             .days(course.getDays())

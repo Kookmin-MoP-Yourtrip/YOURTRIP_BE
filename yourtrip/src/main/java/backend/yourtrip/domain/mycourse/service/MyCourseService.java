@@ -3,8 +3,10 @@ package backend.yourtrip.domain.mycourse.service;
 import backend.yourtrip.domain.mycourse.dto.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.MyCourseDetailResponse;
+import backend.yourtrip.domain.mycourse.dto.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.PlaceCreateResponse;
+import backend.yourtrip.domain.mycourse.entity.CourseParticipant;
 import backend.yourtrip.domain.mycourse.entity.MyCourse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.Place;
@@ -19,6 +21,7 @@ import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.errorCode.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,7 +67,7 @@ public class MyCourseService {
         MyCourse course = getCourseById(courseId);
         //TODO: 유저가 가진 코스인지 검증 필요
 
-        course.updateBudget(request.budget()); //총예산 업데이트
+//        course.updateBudget(request.budget()); //총예산 업데이트 (추후 확장)
 
         DaySchedule daySchedule = dayScheduleRepository.findByCourseAndDay(course, day)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.PLACE_NOT_FOUND));
@@ -74,14 +77,31 @@ public class MyCourseService {
         return new PlaceCreateResponse(savedPlace.getId(), "장소 등록 완료");
     }
 
+    // 코스 상세 조회
     @Transactional(readOnly = true)
     public MyCourseDetailResponse getMyCourseDetail(Long courseId, Long userId) {
+        //TODO: user 검증이 꼭 필요할까?
         userService.getUser(userId);
+
         //TODO: 유저가 가진 코스인지 검증 필요
         MyCourse myCourse = myCourseRepository.findByIdWithSchedulesAndPlaces(courseId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
 
         return MyCourseMapper.toDetailResponse(myCourse);
+    }
+
+    // 코스 목록 조회
+    @Transactional(readOnly = true)
+    public MyCourseListResponse getMyCourseList(Long userId) {
+        // 해당 유저가 참여 중인 CourseParticipant 목록 조회 (course updatedAt 순)
+        List<CourseParticipant> courseParticipants = courseParticipantRepository.findByUserOrderByCourseUpdatedAtDesc(
+            userService.getUser(userId));
+
+        courseParticipants.stream()
+            .map(CourseParticipant::getCourse)
+            .map(MyCourseMapper::)
+
+
     }
 
     private MyCourse getCourseById(Long courseId) {

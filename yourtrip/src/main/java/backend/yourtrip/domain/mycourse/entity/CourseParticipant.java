@@ -13,9 +13,11 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import lombok.AccessLevel;
 import lombok.Builder;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
+@Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class CourseParticipant extends BaseEntity {
 
@@ -36,9 +38,9 @@ public class CourseParticipant extends BaseEntity {
     private CourseRole role;
 
     @Builder
-    public CourseParticipant(User user, MyCourse course, CourseRole role){
-        this.user=user;
-        this.course=course;
-        this.role=role;
+    public CourseParticipant(User user, MyCourse course, CourseRole role) {
+        this.user = user;
+        this.course = course;
+        this.role = role;
     }
 }

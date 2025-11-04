@@ -9,7 +9,7 @@ public record PlaceListResponse(
     String placeName,
     LocalTime starTime,
     String memo,
-    int budget,
+//    int budget,
     double latitude,
     double longitude,
     String placeUrl

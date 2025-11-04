@@ -6,7 +6,7 @@ public record PlaceCreateRequest(
     String placeName,
     LocalTime startTime,
     String memo,
-    int budget,
+//    int budget,
     double latitude,
     double longitude,
     String placeUrl

@@ -10,7 +10,7 @@ public record MyCourseDetailResponse(
     Long courseId,
     String title,
     String location,
-    int totalBudget,
+//    int totalBudget,
     int memberCount,
     String thumbnailImageUrl,
     int nights,
