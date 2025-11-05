@@ -1,4 +1,4 @@
-package backend.yourtrip.domain.mycourse.dto;
+package backend.yourtrip.domain.mycourse.dto.request;
 
 import java.time.LocalDate;
 
@@ -10,4 +10,5 @@ public record MyCourseCreateRequest(
     LocalDate startDay,
     LocalDate endDay
 ) {
+
 }

@@ -1,8 +1,8 @@
 package backend.yourtrip.domain.mycourse.mapper;
 
-import backend.yourtrip.domain.mycourse.dto.MyCourseCreateRequest;
-import backend.yourtrip.domain.mycourse.dto.MyCourseDetailResponse;
-import backend.yourtrip.domain.mycourse.dto.MyCourseListItemResponse;
+import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
+import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
+import backend.yourtrip.domain.mycourse.dto.response.MyCourseListItemResponse;
 import backend.yourtrip.domain.mycourse.entity.MyCourse;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;

@@ -1,4 +1,4 @@
-package backend.yourtrip.domain.mycourse.dto;
+package backend.yourtrip.domain.mycourse.dto.response;
 
 import java.time.LocalTime;
 import lombok.Builder;

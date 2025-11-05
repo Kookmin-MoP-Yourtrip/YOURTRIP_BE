@@ -1,6 +1,6 @@
 package backend.yourtrip.domain.mycourse.mapper;
 
-import backend.yourtrip.domain.mycourse.dto.DayScheduleListResponse;
+import backend.yourtrip.domain.mycourse.dto.response.DayScheduleListResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import java.util.List;
 import lombok.AccessLevel;

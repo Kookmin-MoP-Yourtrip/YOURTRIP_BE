@@ -1,5 +1,9 @@
-package backend.yourtrip.global.exception.errorCode;
+package backend.yourtrip.global.exception;
 
+import backend.yourtrip.global.exception.errorCode.ErrorCode;
+import lombok.Getter;
+
+@Getter
 public class BusinessException extends RuntimeException {
 
     private final ErrorCode errorCode;
