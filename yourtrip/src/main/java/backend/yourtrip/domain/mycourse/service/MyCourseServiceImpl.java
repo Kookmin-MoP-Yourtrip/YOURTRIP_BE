@@ -37,7 +37,6 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final PlaceRepository placeRepository;
     private final UserService userService;
 
-    //코스 생성
     @Override
     @Transactional
     public MyCourseCreateResponse saveCourse(MyCourseCreateRequest request) {
@@ -58,11 +57,9 @@ public class MyCourseServiceImpl implements MyCourseService {
         );
         MyCourse savedCourse = myCourseRepository.save(myCourse);
 
-        //TODO: 이거 ID 잘 반환되나??
         return new MyCourseCreateResponse(savedCourse.getId(), "코스 등록 완료");
     }
 
-    //장소 생성
     @Override
     @Transactional
     public PlaceCreateResponse savePlace(Long courseId, int day, PlaceCreateRequest request) {
@@ -71,14 +68,13 @@ public class MyCourseServiceImpl implements MyCourseService {
 
         DaySchedule daySchedule = dayScheduleRepository.findOwnedByCourseIdAndDay(courseId, userId,
                 day)
-            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.PLACE_NOT_FOUND));
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_OR_DAY_NOT_FOUND));
 
         Place savedPlace = placeRepository.save(PlaceMapper.toEntity(request, daySchedule));
 
         return new PlaceCreateResponse(savedPlace.getId(), "장소 등록 완료");
     }
 
-    // 코스 상세 조회
     @Override
     @Transactional(readOnly = true)
     public MyCourseDetailResponse getMyCourseDetail(Long courseId) {
@@ -89,7 +85,6 @@ public class MyCourseServiceImpl implements MyCourseService {
         return MyCourseMapper.toDetailResponse(myCourse);
     }
 
-    // 코스 목록 조회
     @Override
     @Transactional(readOnly = true)
     public MyCourseListResponse getMyCourseList() {
