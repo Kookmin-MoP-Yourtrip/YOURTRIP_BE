@@ -32,13 +32,6 @@ public class UserServiceImpl implements UserService {
 
         user = userRepository.save(user);
 
-        String refreshToken = jwtTokenProvider.createRefreshToken(user.getId(), user.getEmail());
-
-        user = user.toBuilder()
-            .refreshToken(refreshToken)
-            .build();
-        userRepository.save(user);
-
         return UserMapper.toSignupResponse(user);
     }
 
@@ -74,6 +67,10 @@ public class UserServiceImpl implements UserService {
         Long userId = jwtTokenProvider.getUserId(refreshToken);
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new CustomException("사용자를 찾을 수 없습니다."));
+
+        if (user.getRefreshToken() == null || !user.getRefreshToken().equals(refreshToken)) {
+            throw new CustomException("리프레시 토큰이 일치하지 않습니다.");
+        }
 
         String newAccessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail());
 

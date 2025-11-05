@@ -6,6 +6,7 @@ import backend.yourtrip.domain.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 @RequiredArgsConstructor
@@ -17,6 +18,7 @@ public class UserController {
     private final UserService userService;
 
     @Operation(summary = "회원가입 API")
+    @ResponseStatus(HttpStatus.CREATED)
     @PostMapping("/signup")
     public UserSignupResponse signup(@RequestBody UserSignupRequest request) {
         return userService.signup(request);
