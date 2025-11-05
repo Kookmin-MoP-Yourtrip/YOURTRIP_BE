@@ -1,21 +1,10 @@
 package backend.yourtrip.domain.user.service;
 
-import backend.yourtrip.domain.user.entity.User;
-import backend.yourtrip.domain.user.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import backend.yourtrip.domain.user.dto.request.*;
+import backend.yourtrip.domain.user.dto.response.*;
 
-@Service
-@Transactional
-@RequiredArgsConstructor
-public class UserService {
-
-    private final UserRepository userRepository;
-
-    public User getUser(Long userId) {
-        return userRepository.findById(userId)
-            .orElseThrow(() -> new RuntimeException());
-    }
-
+public interface UserService {
+    UserSignupResponse signup(UserSignupRequest request);
+    UserLoginResponse login(UserLoginRequest request);
+    UserLoginResponse refresh(String refreshToken);
 }
