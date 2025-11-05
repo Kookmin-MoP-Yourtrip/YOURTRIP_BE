@@ -4,6 +4,7 @@ import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
+import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
 import backend.yourtrip.domain.mycourse.service.MyCourseService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,6 +41,12 @@ public class MyCourseController {
         @PathVariable @Schema(example = "1") Long courseId,
         @PathVariable @Schema(example = "1") int day) {
         return myCourseService.savePlace(courseId, day, request);
+    }
+
+    @GetMapping
+    @Operation(summary = "나의 코스 목록 조회")
+    public MyCourseListResponse getMyCourses() {
+        return myCourseService.getMyCourseList();
     }
 
     @GetMapping("{courseId}")
