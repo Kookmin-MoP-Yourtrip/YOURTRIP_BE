@@ -18,6 +18,8 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 
 @Entity
 @Getter
@@ -37,6 +39,7 @@ public class DaySchedule extends BaseEntity {
 
     @OneToMany(mappedBy = "daySchedule")
     @OrderBy("startTime ASC")
+    @Fetch(FetchMode.SUBSELECT)
     private List<Place> places;
 
     @Builder

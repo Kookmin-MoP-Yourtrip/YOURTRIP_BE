@@ -7,7 +7,7 @@ public record PlaceCreateRequest(
     @Schema(example = "황리단길")
     String placeName,
 
-    @Schema(example = "10:30")
+    @Schema(example = "10:30", description = "HH:mm 형식 (시와 분은 반드시 2자리로)")
     LocalTime startTime,
 
     @Schema(example = "황남시장에 짐보관")

@@ -13,7 +13,6 @@ public interface MyCourseRepository extends JpaRepository<MyCourse, Long> {
         FROM MyCourse c
         JOIN c.participants p
         LEFT JOIN FETCH c.daySchedules ds
-        LEFT JOIN FETCH ds.places
         WHERE c.id = :courseId
             AND p.user.id = :userId
         """)
