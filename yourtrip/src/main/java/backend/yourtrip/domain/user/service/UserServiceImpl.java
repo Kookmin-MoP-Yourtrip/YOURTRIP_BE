@@ -1,20 +1,23 @@
 package backend.yourtrip.domain.user.service;
 
-import backend.yourtrip.domain.user.dto.request.*;
-import backend.yourtrip.domain.user.dto.response.*;
+import backend.yourtrip.domain.user.dto.request.UserLoginRequest;
+import backend.yourtrip.domain.user.dto.request.UserSignupRequest;
+import backend.yourtrip.domain.user.dto.response.UserLoginResponse;
+import backend.yourtrip.domain.user.dto.response.UserSignupResponse;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.mapper.UserMapper;
 import backend.yourtrip.domain.user.repository.UserRepository;
-import backend.yourtrip.global.exception.CustomException;
+import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.UserErrorCode;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @RequiredArgsConstructor
 @Service
-@Transactional(readOnly = true)
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
@@ -25,7 +28,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public UserSignupResponse signup(UserSignupRequest request) {
         if (userRepository.findByEmail(request.email()).isPresent()) {
-            throw new CustomException("이미 가입된 이메일입니다.");
+            throw new BusinessException(UserErrorCode.EMAIL_ALREADY_EXIST);
         }
 
         User user = UserMapper.toEntity(request, passwordEncoder);
@@ -39,10 +42,10 @@ public class UserServiceImpl implements UserService {
     @Override
     public UserLoginResponse login(UserLoginRequest request) {
         User user = userRepository.findByEmail(request.email())
-                .orElseThrow(() -> new CustomException("존재하지 않는 이메일입니다."));
+            .orElseThrow(() -> new BusinessException(UserErrorCode.EMAIL_NOT_FOUND));
 
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
-            throw new CustomException("비밀번호가 일치하지 않습니다.");
+            throw new BusinessException(UserErrorCode.NOT_MATCH_PASSWORD);
         }
 
         String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail());
@@ -61,19 +64,37 @@ public class UserServiceImpl implements UserService {
     @Override
     public UserLoginResponse refresh(String refreshToken) {
         if (!jwtTokenProvider.validateToken(refreshToken)) {
-            throw new CustomException("유효하지 않은 리프레시 토큰입니다.");
+            throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
         }
 
         Long userId = jwtTokenProvider.getUserId(refreshToken);
-        User user = userRepository.findById(userId)
-            .orElseThrow(() -> new CustomException("사용자를 찾을 수 없습니다."));
+        User user = getUser(userId);
 
         if (user.getRefreshToken() == null || !user.getRefreshToken().equals(refreshToken)) {
-            throw new CustomException("리프레시 토큰이 일치하지 않습니다.");
+            throw new BusinessException(UserErrorCode.NOT_MATCH_REFRESH_TOKEN);
         }
 
         String newAccessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail());
 
         return new UserLoginResponse(user.getId(), user.getNickname(), newAccessToken);
+    }
+
+    @Transactional(readOnly = true)
+    public User getUser(Long userId) {
+        return userRepository.findById(userId)
+            .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
+    }
+
+    @Override
+    public Long getCurrentUserId() {
+        Object principal = SecurityContextHolder.getContext()
+            .getAuthentication()
+            .getPrincipal();
+
+        if (principal instanceof Long userId) {
+            return userId;
+        }
+
+        throw new BusinessException(UserErrorCode.USER_NOT_FOUND);
     }
 }
