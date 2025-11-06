@@ -3,17 +3,20 @@ package backend.yourtrip.domain.feed.entity;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.global.common.BaseEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
+import jakarta.persistence.*;
+import lombok.AccessLevel;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.SQLRestriction;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
+@Getter
 @SQLRestriction("deleted = false")
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Feed extends BaseEntity {
 
     @Id
@@ -21,7 +24,7 @@ public class Feed extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User user;
 
@@ -31,14 +34,28 @@ public class Feed extends BaseEntity {
 
     private String contentUrl;
 
+    @OneToMany(mappedBy = "feed")
+    private List<Hashtag> hashtags;
+
     private int commentCount;
 
     private int heartCount;
 
     private boolean deleted;
 
-    @ManyToOne
+    @OneToOne
     @JoinColumn(name = "upload_course_id")
     private UploadCourse tagCourse;
 
+    @Builder
+    public Feed (User user, String title, String location, String contentUrl, UploadCourse tagCourse) {
+        this.user = user;
+        this.title = title;
+        this.location = location;
+        this.contentUrl = contentUrl;
+        hashtags = new ArrayList<>();
+        commentCount = 0;
+        heartCount = 0;
+        this.tagCourse = tagCourse;
+    }
 }
