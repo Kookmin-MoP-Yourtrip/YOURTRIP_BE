@@ -27,7 +27,7 @@ public class PlaceMapper {
         return PlaceListResponse.builder()
             .placeId(place.getId())
             .placeName(place.getName())
-            .starTime(place.getStartTime())
+            .startTime(place.getStartTime())
             .memo(place.getMemo())
 //            .budget(place.getBudget())
             .latitude(place.getLatitude())

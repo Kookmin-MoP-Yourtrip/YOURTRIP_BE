@@ -7,7 +7,7 @@ import lombok.Builder;
 public record PlaceListResponse(
     Long placeId,
     String placeName,
-    LocalTime starTime,
+    LocalTime startTime,
     String memo,
 //    int budget,
     double latitude,

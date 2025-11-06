@@ -17,5 +17,5 @@ public interface MyCourseRepository extends JpaRepository<MyCourse, Long> {
             AND p.user.id = :userId
         """)
     Optional<MyCourse> findOwnedDetail(@Param("courseId") Long courseId,
-        @Param("userId") Long suerId);
+        @Param("userId") Long userId);
 }

@@ -10,6 +10,7 @@ import backend.yourtrip.domain.mycourse.service.MyCourseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,13 +32,14 @@ public class MyCourseController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "나의 코스 생성 API")
-    public MyCourseCreateResponse createMyCourse(@RequestBody MyCourseCreateRequest request) {
+    public MyCourseCreateResponse createMyCourse(
+        @Valid @RequestBody MyCourseCreateRequest request) {
         return myCourseService.saveCourse(request);
     }
 
     @PostMapping("{courseId}/{day}/places")
     @Operation(summary = "나의 코스에 장소 추가 API")
-    public PlaceCreateResponse createPlace(@RequestBody PlaceCreateRequest request,
+    public PlaceCreateResponse createPlace(@Valid @RequestBody PlaceCreateRequest request,
         @PathVariable @Schema(example = "1") Long courseId,
         @PathVariable @Schema(example = "1") int day) {
         return myCourseService.savePlace(courseId, day, request);

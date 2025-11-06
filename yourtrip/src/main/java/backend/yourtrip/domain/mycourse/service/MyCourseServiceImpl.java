@@ -45,17 +45,17 @@ public class MyCourseServiceImpl implements MyCourseService {
 
         //코스 생성
         MyCourse myCourse = MyCourseMapper.toEntity(request);
-
-        //일차 생성
-        for (int i = 1; i <= request.days(); i++) {
-            dayScheduleRepository.save(new DaySchedule(myCourse, i));
-        }
+        MyCourse savedCourse = myCourseRepository.save(myCourse);
 
         //코스 참여자 생성
         courseParticipantRepository.save(
             CourseParticipantMapper.toEntityWithOwner(user, myCourse)
         );
-        MyCourse savedCourse = myCourseRepository.save(myCourse);
+
+        //일차 생성
+        for (int i = 1; i <= request.days(); i++) {
+            dayScheduleRepository.save(new DaySchedule(myCourse, i));
+        }
 
         return new MyCourseCreateResponse(savedCourse.getId(), "코스 등록 완료");
     }

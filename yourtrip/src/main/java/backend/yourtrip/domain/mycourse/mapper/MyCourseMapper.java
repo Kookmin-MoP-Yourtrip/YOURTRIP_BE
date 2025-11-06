@@ -42,7 +42,7 @@ public class MyCourseMapper {
     public static MyCourseListItemResponse toListItemResponse(MyCourse course) {
         return MyCourseListItemResponse.builder()
             .title(course.getTitle())
-            .location(course.getTitle())
+            .location(course.getLocation())
             .thumbnailImage(course.getThumbnailImageUrl())
             .nights(course.getNights())
             .days(course.getDays())
