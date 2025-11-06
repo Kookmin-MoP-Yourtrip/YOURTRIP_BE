@@ -4,6 +4,7 @@ import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListItemResponse;
 import backend.yourtrip.domain.mycourse.entity.MyCourse;
+import backend.yourtrip.domain.mycourse.entity.enums.CourseRole;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -21,7 +22,7 @@ public class MyCourseMapper {
             .build();
     }
 
-    public static MyCourseDetailResponse toDetailResponse(MyCourse course) {
+    public static MyCourseDetailResponse toDetailResponse(MyCourse course, CourseRole role) {
         return MyCourseDetailResponse.builder()
             .courseId(course.getId())
             .title(course.getTitle())
@@ -33,6 +34,7 @@ public class MyCourseMapper {
             .nights(course.getNights())
             .startDay(course.getStartDay())
             .endDay(course.getEndDay())
+            .role(role)
             .updatedAt(course.getUpdatedAt())
             .daySchedules(DayScheduleMapper.toListResponse(
                 course.getDaySchedules()))

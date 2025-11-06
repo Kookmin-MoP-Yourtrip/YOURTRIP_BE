@@ -1,5 +1,6 @@
 package backend.yourtrip.global.exception;
 
+import backend.yourtrip.global.exception.errorCode.ErrorCode;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -16,11 +17,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<Map<String, Object>> handleBusinessException(BusinessException e) {
         log.warn("BusinessException 발생: {}", e.getErrorCode());
+
+        ErrorCode errorCode = e.getErrorCode();
+
+        String code = (errorCode instanceof Enum)
+            ? ((Enum<?>) errorCode).name()
+            : errorCode.getClass().getSimpleName();
+
         return ResponseEntity
             .status(e.getErrorCode().getStatus())
             .body(Map.of(
                 "timestamp", LocalDateTime.now(),
-                "code", e.getErrorCode().getStatus().name(),
+                "code", code,
                 "message", e.getMessage()
             ));
     }

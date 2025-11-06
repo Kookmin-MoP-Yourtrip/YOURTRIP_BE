@@ -1,5 +1,6 @@
 package backend.yourtrip.domain.mycourse.dto.response;
 
+import backend.yourtrip.domain.mycourse.entity.enums.CourseRole;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -17,6 +18,7 @@ public record MyCourseDetailResponse(
     int days,
     LocalDate startDay,
     LocalDate endDay,
+    CourseRole role,
     LocalDateTime updatedAt,
     List<DayScheduleListResponse> daySchedules
 ) {

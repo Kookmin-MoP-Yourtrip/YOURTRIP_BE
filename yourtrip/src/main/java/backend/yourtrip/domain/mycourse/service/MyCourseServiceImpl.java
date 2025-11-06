@@ -11,6 +11,7 @@ import backend.yourtrip.domain.mycourse.entity.CourseParticipant;
 import backend.yourtrip.domain.mycourse.entity.MyCourse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.Place;
+import backend.yourtrip.domain.mycourse.entity.enums.CourseRole;
 import backend.yourtrip.domain.mycourse.mapper.CourseParticipantMapper;
 import backend.yourtrip.domain.mycourse.mapper.MyCourseMapper;
 import backend.yourtrip.domain.mycourse.mapper.PlaceMapper;
@@ -79,10 +80,15 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Transactional(readOnly = true)
     public MyCourseDetailResponse getMyCourseDetail(Long courseId) {
         Long userId = userService.getCurrentUserId();
-        MyCourse myCourse = myCourseRepository.findOwnedDetail(courseId, userId)
+
+        CourseRole role = courseParticipantRepository.findRole(userId,
+                courseId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.ROLE_NOT_SPECIFY));
+
+        MyCourse myCourse = myCourseRepository.findCourseWithDaySchedule(courseId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
 
-        return MyCourseMapper.toDetailResponse(myCourse);
+        return MyCourseMapper.toDetailResponse(myCourse, role);
     }
 
     @Override
