@@ -33,6 +33,8 @@ public class UploadCourse extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String introduction;
 
+    private String thumbnailImageUrl;
+    
     private int commentCount;
 
     private int heartCount;
