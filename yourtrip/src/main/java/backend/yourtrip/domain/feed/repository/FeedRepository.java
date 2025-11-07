@@ -13,7 +13,7 @@ public interface FeedRepository extends JpaRepository<Feed, Long> {
         SELECT DISTINCT f
         FROM Feed f
         LEFT JOIN FETCH f.hashtags ht
-        WHERE ht.tag_name = :tag_name
+        WHERE f.id = :feedId
         """)
-    Feed findFeedWithHashtag(@Param("id") Long feedId);
+    Optional<Feed> findFeedWithHashtag(@Param("feedId") Long feedId);
 }

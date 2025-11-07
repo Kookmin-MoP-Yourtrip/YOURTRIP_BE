@@ -12,6 +12,8 @@ import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.repository.UserRepository;
 import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.ErrorCode;
+import backend.yourtrip.global.exception.errorCode.FeedErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,8 +48,8 @@ public class FeedServiceImpl implements FeedService{
 
     @Override
     public FeedDetailResponse getFeedById(Long feedId) {
-        Feed feed = feedRepository.findFeedWithHashtag(feedId);
-
+        Feed feed = feedRepository.findFeedWithHashtag(feedId)
+                .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
         return FeedMapper.toDetailResponse(feed);
     }
 //
