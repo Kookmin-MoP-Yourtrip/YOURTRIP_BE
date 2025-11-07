@@ -19,7 +19,7 @@ public class Hashtag extends BaseEntity {
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "user_id")
+    @JoinColumn(name = "feed_id")
     private Feed feed;
 
     private String tag_name;

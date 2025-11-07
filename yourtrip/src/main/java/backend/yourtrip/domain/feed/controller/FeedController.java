@@ -3,10 +3,12 @@ package backend.yourtrip.domain.feed.controller;
 
 import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
 import backend.yourtrip.domain.feed.dto.response.FeedCreateResponse;
+import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
 import backend.yourtrip.domain.feed.service.FeedService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -22,4 +24,12 @@ public class FeedController {
             @Valid @RequestBody FeedCreateRequest request) {
         return feedService.saveFeed(request);
     }
+
+    @GetMapping("{feedId}")
+    public FeedDetailResponse getFeedDetail(
+            @PathVariable Long feedId
+    ) {
+        return feedService.getFeedById(feedId);
+    }
 }
+
