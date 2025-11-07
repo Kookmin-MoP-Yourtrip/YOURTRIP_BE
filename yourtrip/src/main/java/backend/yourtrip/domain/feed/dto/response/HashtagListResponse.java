@@ -1,6 +1,6 @@
 package backend.yourtrip.domain.feed.dto.response;
 
-public record FeedHashtagListResponse(
+public record HashtagListResponse(
         String hashtag
 ) {
 }
