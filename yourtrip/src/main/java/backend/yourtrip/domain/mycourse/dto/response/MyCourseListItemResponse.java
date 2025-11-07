@@ -7,7 +7,6 @@ import lombok.Builder;
 public record MyCourseListItemResponse(
     String title,
     String location,
-    String thumbnailImage,
     int nights,
     int days,
     LocalDate startDay,

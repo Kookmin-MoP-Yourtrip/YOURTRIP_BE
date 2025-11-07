@@ -13,7 +13,6 @@ public record MyCourseDetailResponse(
     String location,
 //    int totalBudget,
     int memberCount,
-    String thumbnailImageUrl,
     int nights,
     int days,
     LocalDate startDay,

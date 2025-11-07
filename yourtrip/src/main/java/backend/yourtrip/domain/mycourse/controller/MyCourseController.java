@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/my-course")
+@RequestMapping("/api/my-courses")
 @Tag(name = "MyCourse API", description = "나의 코스 관련 API")
 public class MyCourseController {
 

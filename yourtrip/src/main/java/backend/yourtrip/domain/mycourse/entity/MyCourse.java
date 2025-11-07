@@ -39,9 +39,7 @@ public class MyCourse extends BaseEntity {
     private int totalBudget;
 
     private int memberCount;
-
-    private String thumbnailImageUrl;
-
+    
     private int nights;
 
     private int days;
