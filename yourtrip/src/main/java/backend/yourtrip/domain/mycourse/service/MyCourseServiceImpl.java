@@ -109,4 +109,11 @@ public class MyCourseServiceImpl implements MyCourseService {
         return new MyCourseListResponse(listItems);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public MyCourse getMyCourseById(Long courseId) {
+        return myCourseRepository.findById(courseId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
+    }
+
 }

@@ -11,8 +11,11 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 
 @Entity
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class CourseKeyword {
 
     @Id
@@ -25,6 +28,12 @@ public class CourseKeyword {
     private UploadCourse uploadCourse;
 
     @Enumerated(EnumType.STRING)
-    private KeywordType keywordTypes;
+    private KeywordType keywordType;
+
+    public CourseKeyword(UploadCourse uploadCourse, KeywordType keywordType) {
+        this.uploadCourse = uploadCourse;
+        this.keywordType = keywordType;
+
+    }
 
 }
