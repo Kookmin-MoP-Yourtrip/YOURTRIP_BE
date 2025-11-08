@@ -27,7 +27,6 @@ public class FeedServiceImpl implements FeedService{
 
     private final FeedRepository feedRepository;
     private final HashtagRepository hashtagRepository;
-    private final UserRepository userRepository;
     private final UserService userService;
 
     @Override
@@ -47,14 +46,14 @@ public class FeedServiceImpl implements FeedService{
     }
 
     @Override
-    public FeedDetailResponse getFeedById(Long feedId) {
+    @Transactional(readOnly = true)
+    public FeedDetailResponse getFeedByFeedId(Long feedId) {
         Feed feed = feedRepository.findFeedWithHashtag(feedId)
                 .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
         return FeedMapper.toDetailResponse(feed);
     }
-//
-//    @Override
-//    public FeedListResponse getAllFeeds() {
-//
-//    }
+
+    //TODO: 피드 전체 조회 기능
+
+    //TODO: 피드 유저별 조회 기능
 }

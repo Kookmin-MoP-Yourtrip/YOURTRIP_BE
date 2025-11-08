@@ -34,7 +34,7 @@ public class Feed extends BaseEntity {
 
     private String contentUrl;
 
-    @OneToMany(mappedBy = "feed")
+    @OneToMany(mappedBy = "feed", cascade = CascadeType.PERSIST)
     private List<Hashtag> hashtags;
 
     private int commentCount;
@@ -43,7 +43,7 @@ public class Feed extends BaseEntity {
 
     private boolean deleted;
 
-    @OneToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "upload_course_id")
     private UploadCourse tagCourse;
 

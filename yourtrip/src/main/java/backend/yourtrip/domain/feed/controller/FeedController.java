@@ -8,12 +8,11 @@ import backend.yourtrip.domain.feed.service.FeedService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("api/feed")
+@RequestMapping("api/feeds")
 public class FeedController {
 
     private final FeedService feedService;
@@ -29,7 +28,7 @@ public class FeedController {
     public FeedDetailResponse getFeedDetail(
             @PathVariable Long feedId
     ) {
-        return feedService.getFeedById(feedId);
+        return feedService.getFeedByFeedId(feedId);
     }
 }
 

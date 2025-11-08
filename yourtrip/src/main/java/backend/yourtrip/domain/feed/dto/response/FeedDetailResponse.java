@@ -13,7 +13,7 @@ public record FeedDetailResponse(
         String title,
         String location,
         String contentUrl,
-        List<HashtagListResponse> hashtags,
+        List<String> hashtags,
         int commentCount,
         int heartCount,
         Long uploadCourseId

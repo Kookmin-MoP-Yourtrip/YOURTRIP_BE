@@ -5,7 +5,7 @@ import java.util.List;
 public record FeedCreateRequest(
         String title,
         String location,
-        String contendUrl,
+        String contentUrl,
         List<String> hashtags,
         Long uploadCourseId
 ) {

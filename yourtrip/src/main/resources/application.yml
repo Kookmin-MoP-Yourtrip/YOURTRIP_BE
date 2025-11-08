@@ -15,8 +15,7 @@ spring:
     show-sql: true
 
 jwt:
-  secret: "EYhilljVPivKEEo7rlKJrnM1ggPc74rYkQWuHWLsJNQ5fKWeHV/SFSn4+UBXtFyC
-  Ht25uUnNA93Yjq6Ee0Q9kg=="
+  secret: ${JWT_SECRET}
 
 logging:
   level:

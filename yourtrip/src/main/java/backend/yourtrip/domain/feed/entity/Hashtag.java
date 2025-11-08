@@ -8,6 +8,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -22,11 +24,11 @@ public class Hashtag extends BaseEntity {
     @JoinColumn(name = "feed_id")
     private Feed feed;
 
-    private String tag_name;
+    private String tagName;
 
     @Builder
-    public Hashtag (Feed feed, String tag_name) {
+    public Hashtag (Feed feed, String tagName) {
         this.feed = feed;
-        this.tag_name = tag_name;
+        this.tagName = tagName;
     }
 }
