@@ -34,7 +34,11 @@ public class FeedServiceImpl implements FeedService{
         Feed savedFeed = feedRepository.save(feed);
 
         for (String hashtag : request.hashtags()) {
-            hashtagRepository.save(new Hashtag(feed, hashtag));
+            Hashtag tagName = Hashtag.builder()
+                    .feed(feed)
+                    .tagName(hashtag)
+                    .build();
+            feed.getHashtags().add(tagName);
         }
 
         return new FeedCreateResponse(savedFeed.getId(), "피드 등록 완료");
