@@ -6,6 +6,7 @@ import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateRespo
 import backend.yourtrip.domain.uploadcourse.service.UploadCourseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,7 +34,8 @@ public class UploadCourseController {
     @PostMapping
     @Operation(summary = "코스 업로드")
     @ResponseStatus(HttpStatus.CREATED)
-    public UploadCourseCreateResponse courseUpload(@RequestBody UploadCourseCreateRequest request) {
+    public UploadCourseCreateResponse courseUpload(
+        @Valid @RequestBody UploadCourseCreateRequest request) {
         return uploadCourseService.createUploadCourse(request);
     }
 
