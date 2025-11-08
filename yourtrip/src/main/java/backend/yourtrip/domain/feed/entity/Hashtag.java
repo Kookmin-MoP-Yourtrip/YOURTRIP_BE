@@ -1,14 +1,11 @@
 package backend.yourtrip.domain.feed.entity;
 
-import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.global.common.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-
-import java.util.List;
 
 @Entity
 @Getter

@@ -1,7 +1,6 @@
 package backend.yourtrip.domain.feed.repository;
 
 import backend.yourtrip.domain.feed.entity.Feed;
-import backend.yourtrip.domain.mycourse.entity.MyCourse;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
