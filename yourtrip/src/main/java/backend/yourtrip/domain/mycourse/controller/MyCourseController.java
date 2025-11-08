@@ -38,6 +38,7 @@ public class MyCourseController {
     }
 
     @PostMapping("{courseId}/{day}/places")
+    @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "나의 코스에 장소 추가 API")
     public PlaceCreateResponse createPlace(@Valid @RequestBody PlaceCreateRequest request,
         @PathVariable @Schema(example = "1") Long courseId,
