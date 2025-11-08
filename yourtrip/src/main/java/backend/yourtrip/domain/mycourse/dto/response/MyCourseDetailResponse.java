@@ -13,10 +13,8 @@ public record MyCourseDetailResponse(
     String location,
 //    int totalBudget,
     int memberCount,
-    int nights,
-    int days,
-    LocalDate startDay,
-    LocalDate endDay,
+    LocalDate startDate,
+    LocalDate endDate,
     CourseRole role,
     LocalDateTime updatedAt,
     List<DayScheduleListResponse> daySchedules

@@ -23,6 +23,7 @@ import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
+import java.time.Period;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -54,7 +55,8 @@ public class MyCourseServiceImpl implements MyCourseService {
         );
 
         //일차 생성
-        for (int i = 1; i <= request.days(); i++) {
+        int days = Period.between(request.startDate(), request.endDate()).getDays() + 1;
+        for (int i = 1; i <= days; i++) {
             dayScheduleRepository.save(new DaySchedule(myCourse, i));
         }
 

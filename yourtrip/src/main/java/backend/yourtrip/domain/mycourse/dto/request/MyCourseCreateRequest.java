@@ -14,19 +14,13 @@ public record MyCourseCreateRequest(
     @NotBlank(message = "여행지는 필수 입력 항목입니다.")
     String location,
 
-    @Schema(example = "2")
-    @NotNull(message = "여행 기간은 필수 입력 항목입니다.")
-    int nights,
-
-    @Schema(example = "3")
-    @NotNull(message = "여행 기간은 필수 입력 항목입니다.")
-    int days,
-
     @Schema(example = "2025-10-31")
-    LocalDate startDay,
+    @NotNull(message = "여행 기간은 필수 입력 항목입니다.")
+    LocalDate startDate,
 
     @Schema(example = "2025-11-02")
-    LocalDate endDay
+    @NotNull(message = "여행 기간은 필수 입력 항목입니다.")
+    LocalDate endDate
 ) {
 
 }

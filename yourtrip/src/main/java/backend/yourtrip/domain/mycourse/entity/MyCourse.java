@@ -39,14 +39,10 @@ public class MyCourse extends BaseEntity {
     private int totalBudget;
 
     private int memberCount;
-    
-    private int nights;
 
-    private int days;
+    private LocalDate startDate;
 
-    private LocalDate startDay;
-
-    private LocalDate endDay;
+    private LocalDate endDate;
 
     @Enumerated(EnumType.STRING)
     private MyCourseType type;
@@ -61,14 +57,12 @@ public class MyCourse extends BaseEntity {
     private List<CourseParticipant> participants;
 
     @Builder
-    public MyCourse(String title, String location, int nights, int days, LocalDate startDay,
-        LocalDate endDay) {
+    public MyCourse(String title, String location, LocalDate startDate,
+        LocalDate endDate) {
         this.title = title;
         this.location = location;
-        this.nights = nights;
-        this.days = days;
-        this.startDay = startDay;
-        this.endDay = endDay;
+        this.startDate = startDate;
+        this.endDate = endDate;
         memberCount = 1;
         type = MyCourseType.DIRECT;
         daySchedules = new ArrayList<>();
