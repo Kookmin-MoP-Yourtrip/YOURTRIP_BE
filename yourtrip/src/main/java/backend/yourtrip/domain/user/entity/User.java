@@ -36,4 +36,6 @@ public class User extends BaseEntity {
     private boolean deleted;
 
     private String refreshToken;
+
+    private String kakaoId;
 }

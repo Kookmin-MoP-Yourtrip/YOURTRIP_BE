@@ -97,4 +97,23 @@ public class UserServiceImpl implements UserService {
 
         throw new BusinessException(UserErrorCode.USER_NOT_FOUND);
     }
+
+    @Transactional
+    @Override
+    public UserLoginResponse kakaoLoginOrSignup(String kakaoId, String email, String nickname, String profileImageUrl) {
+        User user = userRepository.findByEmail(email).orElse(null);
+
+        if (user == null) {
+            user = UserMapper.toKakaoEntity(kakaoId, email, nickname, profileImageUrl);
+            user = userRepository.save(user);
+        }
+
+        String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail());
+        String refreshToken = jwtTokenProvider.createRefreshToken(user.getId(), user.getEmail());
+
+        user = user.toBuilder().refreshToken(refreshToken).build();
+        userRepository.save(user);
+
+        return new UserLoginResponse(user.getId(), user.getNickname(), accessToken);
+    }
 }

@@ -33,3 +33,8 @@ springdoc:
     displayRequestDuration: true
     persistAuthorization: true
   override-with-generic-response: false
+
+kakao:
+  auth:
+    client-id: ${KAKAO_CLIENT_ID}
+    redirect-uri: http://localhost:8080/api/users/login/kakao

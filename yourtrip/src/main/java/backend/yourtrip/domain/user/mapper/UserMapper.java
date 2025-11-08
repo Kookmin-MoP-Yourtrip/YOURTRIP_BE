@@ -19,6 +19,16 @@ public class UserMapper {
             .build();
     }
 
+    public static User toKakaoEntity(String kakaoId, String email, String nickname, String profileImageUrl) {
+        return User.builder()
+            .kakaoId(kakaoId)
+            .email(email)
+            .nickname(nickname)
+            .profileImageUrl(profileImageUrl)
+            .deleted(false)
+            .build();
+    }
+
     public static UserSignupResponse toSignupResponse(User user) {
         return new UserSignupResponse(
             user.getId(),

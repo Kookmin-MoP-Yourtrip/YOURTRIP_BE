@@ -14,6 +14,8 @@ public interface UserService {
 
     UserLoginResponse refresh(String refreshToken);
 
+    UserLoginResponse kakaoLoginOrSignup(String kakaoId, String email, String nickname, String profileImageUrl);
+
     User getUser(Long userId);
 
     Long getCurrentUserId();
