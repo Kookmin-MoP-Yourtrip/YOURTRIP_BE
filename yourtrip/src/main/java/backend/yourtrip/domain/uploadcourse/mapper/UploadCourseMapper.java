@@ -6,6 +6,7 @@ import backend.yourtrip.domain.mycourse.mapper.DayScheduleMapper;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
+import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListItemResponse;
 import backend.yourtrip.domain.uploadcourse.entity.CourseKeyword;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
@@ -59,6 +60,22 @@ public class UploadCourseMapper {
             .writerNickname(uploadCourse.getUser().getNickname())
             .writerProfileUrl(uploadCourse.getUser().getProfileImageUrl())
             .daySchedules(DayScheduleMapper.toListResponse(daySchedules))
+            .build();
+    }
+
+    public static UploadCourseListItemResponse toListItemResponse(UploadCourse uploadCourse) {
+        return UploadCourseListItemResponse.builder()
+            .uploadCourseId(uploadCourse.getId())
+            .title(uploadCourse.getTitle())
+            .location(uploadCourse.getLocation())
+            .thumbnailImageUrl(uploadCourse.getThumbnailImageUrl())
+            .heartCount(uploadCourse.getHeartCount())
+            .commentCount(uploadCourse.getCommentCount())
+            .viewCount(uploadCourse.getViewCount())
+            .writerId(uploadCourse.getUser().getId())
+            .writerNickname(uploadCourse.getUser().getNickname())
+            .writerProfileUrl(uploadCourse.getUser().getProfileImageUrl())
+            .createdAt(uploadCourse.getCreatedAt())
             .build();
     }
 }
