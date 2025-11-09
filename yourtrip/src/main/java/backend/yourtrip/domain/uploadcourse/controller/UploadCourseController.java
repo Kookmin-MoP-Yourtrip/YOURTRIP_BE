@@ -45,7 +45,6 @@ public class UploadCourseController {
         return uploadCourseService.createUploadCourse(request);
     }
 
-    //TODO: securityFilterChain 경로 열어놔야함
     @GetMapping("/{uploadCourseId}")
     @Operation(summary = "업로드 코스 상세 조회")
     public UploadCourseDetailResponse getUploadCourseDetail(
@@ -53,7 +52,6 @@ public class UploadCourseController {
         return uploadCourseService.getDetail(uploadCourseId);
     }
 
-    //TODO: securityFilterChain 경로 열어놔야함
     @GetMapping
     @Operation(summary = "업로드 코스 전체 조회(인기순 or 최신순 정렬)", description = "인기순으로 정렬 시 쿼리 파라미터(sortType)으로 POPULAR를 넘겨주고, 최신 순으로 정렬 시 NEW를 넘겨줍니다 (디폴트는 인기순입니다)")
     public UploadCourseListResponse getAllUploadCourses(
