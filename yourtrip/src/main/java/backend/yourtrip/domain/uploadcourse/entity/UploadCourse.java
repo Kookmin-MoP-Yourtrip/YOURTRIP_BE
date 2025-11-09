@@ -58,14 +58,17 @@ public class UploadCourse extends BaseEntity {
     @OneToMany(mappedBy = "uploadCourse", cascade = CascadeType.PERSIST)
     private List<CourseKeyword> keywords;
 
+    private String location;
+
     @Builder
     public UploadCourse(String title, String introduction, String thumbnailImageUrl,
-        MyCourse myCourse, User user) {
+        MyCourse myCourse, User user, String location) {
         this.title = title;
         this.introduction = introduction;
         this.thumbnailImageUrl = thumbnailImageUrl;
         this.myCourse = myCourse;
         this.user = user;
+        this.location = location;
         keywords = new ArrayList<>();
     }
 

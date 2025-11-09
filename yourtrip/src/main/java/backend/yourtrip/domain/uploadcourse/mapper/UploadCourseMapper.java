@@ -33,6 +33,7 @@ public class UploadCourseMapper {
             .title(request.title())
             .introduction(request.introduction())
             .thumbnailImageUrl(request.thumbnailImage())
+            .location(myCourse.getLocation())
             .myCourse(myCourse)
             .user(user)
             .build();
@@ -49,7 +50,7 @@ public class UploadCourseMapper {
                 .map(CourseKeyword::getKeywordType)
                 .toList()
             )
-            .location(uploadCourse.getMyCourse().getLocation())
+            .location(uploadCourse.getLocation())
             .heartCount(uploadCourse.getHeartCount())
             .commentCount(uploadCourse.getCommentCount())
             .viewCount(uploadCourse.getViewCount())
