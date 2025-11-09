@@ -116,4 +116,10 @@ public class MyCourseServiceImpl implements MyCourseService {
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<DaySchedule> getDaySchedulesWithPlaces(Long courseId) {
+        return dayScheduleRepository.findDaySchedulesWithPlaces(courseId);
+    }
+
 }

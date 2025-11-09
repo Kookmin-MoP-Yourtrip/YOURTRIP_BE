@@ -3,13 +3,16 @@ package backend.yourtrip.domain.uploadcourse.controller;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
+import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
 import backend.yourtrip.domain.uploadcourse.service.UploadCourseService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,6 +40,14 @@ public class UploadCourseController {
     public UploadCourseCreateResponse courseUpload(
         @Valid @RequestBody UploadCourseCreateRequest request) {
         return uploadCourseService.createUploadCourse(request);
+    }
+
+    //TODO: securityFilterChain 경로 열어놔야함
+    @GetMapping("/{uploadCourseId}")
+    @Operation(summary = "업로드 코스 상세 조회")
+    public UploadCourseDetailResponse getUploadCourseDetail(
+        @PathVariable @Schema(example = "1") Long uploadCourseId) {
+        return uploadCourseService.getDetail(uploadCourseId);
     }
 
 
