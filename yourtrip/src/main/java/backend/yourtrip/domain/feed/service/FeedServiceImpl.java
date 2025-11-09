@@ -3,11 +3,11 @@ package backend.yourtrip.domain.feed.service;
 import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
 import backend.yourtrip.domain.feed.dto.response.FeedCreateResponse;
 import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
+import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
 import backend.yourtrip.domain.feed.entity.Feed;
 import backend.yourtrip.domain.feed.entity.Hashtag;
 import backend.yourtrip.domain.feed.mapper.FeedMapper;
 import backend.yourtrip.domain.feed.repository.FeedRepository;
-import backend.yourtrip.domain.feed.repository.HashtagRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.BusinessException;
@@ -16,12 +16,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class FeedServiceImpl implements FeedService{
 
     private final FeedRepository feedRepository;
-    private final HashtagRepository hashtagRepository;
     private final UserService userService;
 
     @Override
@@ -52,7 +53,28 @@ public class FeedServiceImpl implements FeedService{
         return FeedMapper.toDetailResponse(feed);
     }
 
-    //TODO: 피드 전체 조회 기능
+    @Override
+    @Transactional(readOnly = true)
+    public FeedListResponse getFeedAll() {
+        List<Feed> feeds = feedRepository.findAllFeedWithHashtag();
 
-    //TODO: 피드 유저별 조회 기능
+        return FeedMapper.toListResponse(feeds);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public FeedListResponse getFeedByUserId(Long userId) {
+        userService.getUser(userId);
+        List<Feed> feeds = feedRepository.findFeedByUserIdWithHashtag(userId);
+
+        return FeedMapper.toListResponse(feeds);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public FeedListResponse getFeedByKeyword(String keyword) {
+        List<Feed> feeds = feedRepository.findFeedByKeywordWithHashtag(keyword);
+
+        return FeedMapper.toListResponse(feeds);
+    }
 }

@@ -2,6 +2,7 @@ package backend.yourtrip.domain.feed.mapper;
 
 import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
 import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
+import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
 import backend.yourtrip.domain.feed.entity.Feed;
 import backend.yourtrip.domain.user.entity.User;
 import lombok.AccessLevel;
@@ -42,5 +43,13 @@ public class FeedMapper {
                 .heartCount(feed.getHeartCount())
                 //TODO: 업로드 코스 내용 필요
                 .build();
+    }
+
+    public static FeedListResponse toListResponse(List<Feed> feeds) {
+        List<FeedDetailResponse> responses = feeds.stream()
+                .map(feed -> toDetailResponse(feed))
+                .toList();
+
+        return new FeedListResponse(responses);
     }
 }
