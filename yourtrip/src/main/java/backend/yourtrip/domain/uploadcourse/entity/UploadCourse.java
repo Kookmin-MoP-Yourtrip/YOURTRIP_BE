@@ -69,4 +69,8 @@ public class UploadCourse extends BaseEntity {
         keywords = new ArrayList<>();
     }
 
+    public void increaseViewCount() {
+        this.viewCount += 1;
+    }
+
 }

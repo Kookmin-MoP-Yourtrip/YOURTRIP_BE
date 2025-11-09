@@ -62,6 +62,8 @@ public class UploadCourseService {
         List<DaySchedule> daySchedules = myCourseService.getDaySchedulesWithPlaces(
             uploadCourse.getMyCourse().getId());
 
+        uploadCourse.increaseViewCount(); //조회 수 증가
+
         return UploadCourseMapper.toDetailResponse(uploadCourse, daySchedules);
     }
 
