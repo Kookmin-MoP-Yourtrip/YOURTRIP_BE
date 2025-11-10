@@ -1,8 +1,6 @@
-package backend.yourtrip.domain.mycourse.entity;
+package backend.yourtrip.domain.uploadcourse.entity;
 
-import backend.yourtrip.domain.mycourse.entity.enums.CourseRole;
-import backend.yourtrip.domain.user.entity.User;
-import backend.yourtrip.global.common.BaseEntity;
+import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -14,35 +12,30 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import lombok.AccessLevel;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class CourseParticipant extends BaseEntity {
+public class CourseKeyword {
 
     @Id
-    @Column(name = "course_participant_id")
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "course_keyword_id")
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
-    private User user;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "course_id")
-    private MyCourse course;
+    @JoinColumn(name = "upload_course_id")
+    private UploadCourse uploadCourse;
 
     @Enumerated(EnumType.STRING)
-    private CourseRole role;
+    private KeywordType keywordType;
 
-    @Builder
-    public CourseParticipant(User user, MyCourse course, CourseRole role) {
-        this.user = user;
-        this.course = course;
-        this.role = role;
+    public CourseKeyword(UploadCourse uploadCourse, KeywordType keywordType) {
+        this.uploadCourse = uploadCourse;
+        this.keywordType = keywordType;
+
     }
+
 }

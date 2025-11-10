@@ -23,6 +23,7 @@ import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
+import java.time.Period;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -54,11 +55,12 @@ public class MyCourseServiceImpl implements MyCourseService {
         );
 
         //일차 생성
-        for (int i = 1; i <= request.days(); i++) {
+        int days = Period.between(request.startDate(), request.endDate()).getDays() + 1;
+        for (int i = 1; i <= days; i++) {
             dayScheduleRepository.save(new DaySchedule(myCourse, i));
         }
 
-        return new MyCourseCreateResponse(savedCourse.getId(), "코스 등록 완료");
+        return new MyCourseCreateResponse(savedCourse.getId(), "코스 생성 완료");
     }
 
     @Override
@@ -80,13 +82,13 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Transactional(readOnly = true)
     public MyCourseDetailResponse getMyCourseDetail(Long courseId) {
         Long userId = userService.getCurrentUserId();
+        
+        MyCourse myCourse = myCourseRepository.findCourseWithDaySchedule(courseId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
 
         CourseRole role = courseParticipantRepository.findRole(userId,
                 courseId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.ROLE_NOT_SPECIFY));
-
-        MyCourse myCourse = myCourseRepository.findCourseWithDaySchedule(courseId)
-            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
 
         return MyCourseMapper.toDetailResponse(myCourse, role);
     }
@@ -105,6 +107,19 @@ public class MyCourseServiceImpl implements MyCourseService {
             .toList();
 
         return new MyCourseListResponse(listItems);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MyCourse getMyCourseById(Long courseId) {
+        return myCourseRepository.findById(courseId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DaySchedule> getDaySchedulesWithPlaces(Long courseId) {
+        return dayScheduleRepository.findDaySchedulesWithPlaces(courseId);
     }
 
 }
