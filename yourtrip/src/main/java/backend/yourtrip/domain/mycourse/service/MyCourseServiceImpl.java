@@ -60,7 +60,7 @@ public class MyCourseServiceImpl implements MyCourseService {
             dayScheduleRepository.save(new DaySchedule(myCourse, i));
         }
 
-        return new MyCourseCreateResponse(savedCourse.getId(), "코스 등록 완료");
+        return new MyCourseCreateResponse(savedCourse.getId(), "코스 생성 완료");
     }
 
     @Override
