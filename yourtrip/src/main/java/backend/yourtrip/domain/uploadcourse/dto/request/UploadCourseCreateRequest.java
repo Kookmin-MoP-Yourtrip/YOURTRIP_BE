@@ -20,7 +20,7 @@ public record UploadCourseCreateRequest(
     @Schema(example = "술과 음식을 좋아하는 분들 안성맞춤 코스")
     String introduction,
 
-    @Schema(example = "multipart data")
+    @Schema(example = "example.png", description = ".jpg/.png 타입만 허용")
     String thumbnailImage, //TODO: 멀티파트 데이터 입력으로 변경
 
     @ArraySchema(
@@ -30,6 +30,7 @@ public record UploadCourseCreateRequest(
         ),
         arraySchema = @Schema(example = "[\"WALK\", \"FOOD\", \"HEALING\"]")
     )
+    @NotNull(message = "키워드 목록은 필수 입력값입니다. 선택된 키워드가 없을 시 빈 배열을 반환해주세요")
     List<KeywordType> keywords
 ) {
 

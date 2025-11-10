@@ -31,7 +31,7 @@ public class UploadCourseController {
     private final UploadCourseService uploadCourseService;
 
     @GetMapping("/keywords")
-    @Operation(summary = "코스 키워드 목록 조회 (코스 업로드 시 선택할 수 있는 키워드 보여주는 용도")
+    @Operation(summary = "코스 키워드 목록 조회 (코스 업로드 시 선택할 수 있는 키워드 보여주는 용도)")
     public CourseKeywordListResponse getCourseKeywordList() {
         return uploadCourseService.getCourseKeywordList();
     }
