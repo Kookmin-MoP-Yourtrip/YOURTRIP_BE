@@ -2,6 +2,7 @@ package backend.yourtrip.domain.user.mapper;
 
 import backend.yourtrip.domain.user.dto.request.UserSignupRequest;
 import backend.yourtrip.domain.user.dto.response.UserSignupResponse;
+import backend.yourtrip.domain.user.dto.response.UserLoginResponse;
 import backend.yourtrip.domain.user.entity.User;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -23,8 +24,8 @@ public class UserMapper {
         return User.builder()
             .kakaoId(kakaoId)
             .email(email)
-            .nickname(nickname)
-            .profileImageUrl(profileImageUrl)
+            .nickname(null)
+            .profileImageUrl(null)
             .deleted(false)
             .build();
     }
@@ -36,5 +37,9 @@ public class UserMapper {
             user.getNickname(),
             user.getCreatedAt().toString()
         );
+    }
+
+    public static UserLoginResponse toLoginResponse(User user, String accessToken) {
+        return new UserLoginResponse(user.getId(), user.getNickname(), accessToken);
     }
 }

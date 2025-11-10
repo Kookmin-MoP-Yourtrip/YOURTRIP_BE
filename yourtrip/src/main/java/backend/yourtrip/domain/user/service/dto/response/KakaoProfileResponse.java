@@ -1,4 +1,4 @@
-package backend.yourtrip.domain.user.dto.response;
+package backend.yourtrip.domain.user.service.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -6,9 +6,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record KakaoProfileResponse(
     Long id,
-
-    @JsonProperty("kakao_account")
-    KakaoAccount kakaoAccount
+    @JsonProperty("kakao_account") KakaoAccount kakaoAccount
 ) {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record KakaoAccount(
@@ -19,11 +17,7 @@ public record KakaoProfileResponse(
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Profile(
         String nickname,
-
-        @JsonProperty("thumbnail_image_url")
-        String thumbnailImageUrl,
-
-        @JsonProperty("profile_image_url")
-        String profileImageUrl
+        @JsonProperty("thumbnail_image_url") String thumbnailImageUrl,
+        @JsonProperty("profile_image_url") String profileImageUrl
     ) {}
 }

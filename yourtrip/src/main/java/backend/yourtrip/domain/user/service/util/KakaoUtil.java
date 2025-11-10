@@ -1,7 +1,7 @@
 package backend.yourtrip.domain.user.service.util;
 
-import backend.yourtrip.domain.user.dto.response.KakaoTokenResponse;
-import backend.yourtrip.domain.user.dto.response.KakaoProfileResponse;
+import backend.yourtrip.domain.user.service.dto.response.KakaoProfileResponse;
+import backend.yourtrip.domain.user.service.dto.response.KakaoTokenResponse;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.KakaoErrorCode;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -22,6 +22,9 @@ public class KakaoUtil {
     @Value("${kakao.auth.client-id}")
     private String clientId;
 
+    @Value("${kakao.auth.client-secret}")
+    private String clientSecret;
+
     @Value("${kakao.auth.redirect-uri}")
     private String redirectUri;
 
@@ -36,6 +39,7 @@ public class KakaoUtil {
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
         params.add("grant_type", "authorization_code");
         params.add("client_id", clientId);
+        params.add("client_secret", clientSecret);
         params.add("redirect_uri", redirectUri);
         params.add("code", code);
 
@@ -43,13 +47,30 @@ public class KakaoUtil {
         HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(params, headers);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(reqUrl, HttpMethod.POST, entity, String.class);
+            ResponseEntity<String> response =
+                restTemplate.exchange(reqUrl, HttpMethod.POST, entity, String.class);
+
+            log.info("[KakaoUtil] 토큰 요청 성공: {}", response.getBody());
             return objectMapper.readValue(response.getBody(), KakaoTokenResponse.class);
 
         } catch (HttpClientErrorException e) {
-            throw new BusinessException(KakaoErrorCode.TOKEN_REQUEST_FAILED);
+            // invalid_grant 등 카카오 서버 반환 시
+            String body = e.getResponseBodyAsString();
+            log.error("[KakaoUtil] 토큰 요청 실패: {}", body);
+
+            // invalid_grant, invalid_client 구분
+            if (body.contains("invalid_grant")) {
+                throw new BusinessException(KakaoErrorCode.INVALID_AUTH_CODE);
+            } else if (body.contains("invalid_client")) {
+                throw new BusinessException(KakaoErrorCode.INVALID_CLIENT);
+            } else {
+                throw new BusinessException(KakaoErrorCode.TOKEN_REQUEST_FAILED);
+            }
+
         } catch (JsonProcessingException e) {
-            throw new BusinessException(KakaoErrorCode.TOKEN_REQUEST_FAILED);
+            // JSON 필드 파싱 실패 (id_token 등)
+            log.error("[KakaoUtil] JSON 파싱 실패: {}", e.getMessage());
+            throw new BusinessException(KakaoErrorCode.RESPONSE_PARSE_FAILED);
         }
     }
 
@@ -64,12 +85,17 @@ public class KakaoUtil {
         HttpEntity<String> entity = new HttpEntity<>(headers);
 
         try {
-            ResponseEntity<String> response = restTemplate.exchange(reqUrl, HttpMethod.POST, entity, String.class);
+            ResponseEntity<String> response =
+                restTemplate.exchange(reqUrl, HttpMethod.POST, entity, String.class);
+
+            log.info("[KakaoUtil] 프로필 요청 성공: {}", response.getBody());
             return objectMapper.readValue(response.getBody(), KakaoProfileResponse.class);
 
         } catch (HttpClientErrorException e) {
+            log.error("[KakaoUtil] 프로필 요청 실패: {}", e.getResponseBodyAsString());
             throw new BusinessException(KakaoErrorCode.USERINFO_REQUEST_FAILED);
         } catch (JsonProcessingException e) {
+            log.error("[KakaoUtil] JSON 파싱 실패: {}", e.getMessage());
             throw new BusinessException(KakaoErrorCode.USERINFO_REQUEST_FAILED);
         }
     }

@@ -1,4 +1,4 @@
-package backend.yourtrip.domain.user.dto.request;
+package backend.yourtrip.domain.user.service.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
