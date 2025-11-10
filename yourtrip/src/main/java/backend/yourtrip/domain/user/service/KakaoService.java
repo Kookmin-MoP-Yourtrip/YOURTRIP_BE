@@ -7,6 +7,8 @@ import backend.yourtrip.domain.user.repository.UserRepository;
 import backend.yourtrip.domain.user.service.dto.response.KakaoProfileResponse;
 import backend.yourtrip.domain.user.service.dto.response.KakaoTokenResponse;
 import backend.yourtrip.domain.user.service.util.KakaoUtil;
+import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.UserErrorCode;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,17 +23,16 @@ public class KakaoService {
     private final JwtTokenProvider jwtTokenProvider;
 
     @Transactional
-    public UserLoginResponse kakaoLogin(String code) {
+    public UserLoginResponse kakaoLogin(String code, String nickname) {
         KakaoTokenResponse tokenResponse = kakaoUtil.requestToken(code);
         KakaoProfileResponse profile = kakaoUtil.requestProfile(tokenResponse.accessToken());
 
         String kakaoId = String.valueOf(profile.id());
         String email = profile.kakaoAccount().email();
 
-        // 닉네임/프로필은 null로 시작(마이페이지에서 설정)
         User user = userRepository.findByEmail(email)
             .orElseGet(() -> userRepository.save(
-                UserMapper.toKakaoEntity(kakaoId, email, null, null)
+                UserMapper.toKakaoEntity(kakaoId, email, nickname, profile.kakaoAccount().profile().profileImageUrl())
             ));
 
         String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail());

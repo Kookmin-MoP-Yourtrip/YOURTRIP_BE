@@ -7,6 +7,7 @@ import backend.yourtrip.domain.user.dto.response.UserSignupResponse;
 import backend.yourtrip.domain.user.service.KakaoService;
 import backend.yourtrip.domain.user.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
+
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
@@ -42,7 +43,7 @@ public class UserController {
         - 비밀번호: 최소 8자 이상, 공백 불가 (영문/숫자/특수문자 조합 권장)
         - 닉네임: 최소 1자, 최대 20자
         
-        ### ⚠예외상황
+        ### 예외상황
         - `EMAIL_ALREADY_EXIST(400)`: 이미 가입된 이메일
         - `INVALID_REQUEST_FIELD(400)`: 필드 유효성 오류(빈 값, 포맷 불일치 등)
         
@@ -94,7 +95,7 @@ public class UserController {
         ### 제약조건
         - 이메일 / 비밀번호 모두 필수 입력값
         
-        ### ⚠예외상황
+        ### 예외상황
         - `EMAIL_NOT_FOUND(400)`: 가입되지 않은 이메일
         - `NOT_MATCH_PASSWORD(400)`: 비밀번호 불일치
         
@@ -161,7 +162,7 @@ public class UserController {
         - Swagger / Postman에서는 실제 로그인 테스트가 불가능합니다.
           (인가코드 발급 리다이렉트 과정이 지원되지 않기 때문)
         
-        ### 🧪 테스트 방법
+        ### 테스트 방법
         1️. 브라우저에서 직접 접속:
         ```
         https://kauth.kakao.com/oauth/authorize?client_id=4fda49c30ce665f38143fa332b69ac34&redirect_uri=http://localhost:8080/api/users/login/kakao&response_type=code
@@ -173,7 +174,7 @@ public class UserController {
         ```
         첫 호출만 200 OK (JWT 반환), 이후 재사용 시 502 TOKEN_REQUEST_FAILED
         
-        ### 🚫 Swagger/Postman 제한
+        ### Swagger/Postman 제한
         - Swagger에서는 카카오 로그인 창을 띄울 수 없으므로 실행 테스트 불가
         - 단, Swagger에서는 성공/오류 응답 스펙 및 제약조건 문서 확인만 가능
         """
@@ -217,7 +218,10 @@ public class UserController {
                 """)))
     })
     @GetMapping("/login/kakao")
-    public UserLoginResponse kakaoLogin(@RequestParam("code") @NotBlank String code) {
-        return kakaoService.kakaoLogin(code);
+    public UserLoginResponse kakaoLogin(
+        @RequestParam("code") @NotBlank String code,
+        @RequestParam(value = "nickname", required = false) String nickname
+    ) {
+        return kakaoService.kakaoLogin(code, nickname);
     }
 }

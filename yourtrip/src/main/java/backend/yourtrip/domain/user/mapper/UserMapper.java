@@ -24,7 +24,7 @@ public class UserMapper {
         return User.builder()
             .kakaoId(kakaoId)
             .email(email)
-            .nickname(null)
+            .nickname(nickname)
             .profileImageUrl(null)
             .deleted(false)
             .build();
