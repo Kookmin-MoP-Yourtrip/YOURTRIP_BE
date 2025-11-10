@@ -2,6 +2,7 @@ package backend.yourtrip.domain.uploadcourse.dto.response;
 
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleListResponse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.Builder;
@@ -10,6 +11,7 @@ import lombok.Builder;
 public record UploadCourseDetailResponse(
     Long uploadCourseId,
     String title,
+    @Schema(description = "여행지")
     String location,
     String introduction,
     String thumbnailImageUrl,

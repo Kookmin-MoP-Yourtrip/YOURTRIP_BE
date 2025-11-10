@@ -26,7 +26,7 @@ public record UploadCourseCreateRequest(
     @ArraySchema(
         schema = @Schema(
             implementation = KeywordType.class,
-            description = "코스의 키워드 코드 목록"
+            description = "업로드 코스의 선택된 키워드 목록으로 키워드 목록 조회 시 응답받은 키워드의 code값을 넘겨주세요. 선택된 키워드가 없을 시 빈 배열을 반환해주세요"
         ),
         arraySchema = @Schema(example = "[\"WALK\", \"FOOD\", \"HEALING\"]")
     )

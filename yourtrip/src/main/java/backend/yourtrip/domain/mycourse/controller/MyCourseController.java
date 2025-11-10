@@ -42,7 +42,7 @@ public class MyCourseController {
     @Operation(summary = "나의 코스에 장소 추가 API")
     public PlaceCreateResponse createPlace(@Valid @RequestBody PlaceCreateRequest request,
         @PathVariable @Schema(example = "1") Long courseId,
-        @PathVariable @Schema(example = "1") int day) {
+        @PathVariable @Schema(example = "1", description = "일차 수로 3일짜리 여행일정이라면 1~3 사이의 값만 허용") int day) {
         return myCourseService.savePlace(courseId, day, request);
     }
 
