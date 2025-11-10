@@ -233,7 +233,7 @@ public class MyCourseController {
             responseCode = "200",
             description = "나의 코스 목록 조회 성공",
             content = @Content(
-                schema = @Schema(implementation = PlaceCreateResponse.class),
+                schema = @Schema(implementation = MyCourseListResponse.class),
                 examples = @ExampleObject(
                     value = """
                         {
@@ -273,6 +273,9 @@ public class MyCourseController {
             ### 제약조건
             - 경로 변수
                 - 코스 ID(courseId): 존재하는 코스여야 함
+            ### 예외 상황
+            - `COURSE_NOT_FOUND(404)`: 코스가 존재하지 않는 경우 (잘못된 courseId가 주어진 경우)
+                        
             ### 참고사항
             - 응답 값
                 - memberCount: 코스 편집 인원 수 (공동 편집이 아니라면 디폴트값 1)
@@ -283,7 +286,7 @@ public class MyCourseController {
             responseCode = "200",
             description = "나의 코스 상세 조회 성공",
             content = @Content(
-                schema = @Schema(implementation = PlaceCreateResponse.class),
+                schema = @Schema(implementation = MyCourseDetailResponse.class),
                 examples = @ExampleObject(
                     value = """
                         {

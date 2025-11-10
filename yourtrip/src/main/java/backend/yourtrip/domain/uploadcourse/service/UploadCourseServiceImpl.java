@@ -83,7 +83,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         List<UploadCourse> uploadCourses = switch (sortType) {
             case NEW -> uploadCourseRepository.findAllWithUserOrerByCreatedAtDesc();
             case POPULAR -> uploadCourseRepository.findAllWithUserOrderByViewCountDesc();
-            default -> throw new BusinessException(UploadCourseErrorCode.INVALID_SORT_TYPE);
+//            default -> throw new BusinessException(UploadCourseErrorCode.INVALID_SORT_TYPE);
         };
 
         return new UploadCourseListResponse(uploadCourses.stream()
