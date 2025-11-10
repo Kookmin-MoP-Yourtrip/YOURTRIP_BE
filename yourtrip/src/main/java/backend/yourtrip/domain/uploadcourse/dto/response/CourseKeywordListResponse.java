@@ -6,28 +6,6 @@ import java.util.List;
 import lombok.Builder;
 
 @Builder
-@Schema(
-    description = "여행 키워드 목록 응답",
-    example = """
-        {
-          "travelMode": [
-            { "label": "뚜벅이", "code": "WALK" }
-          ],
-          "companionType": [
-            { "label": "혼자", "code": "SOLO" }
-          ],
-          "mood": [
-            { "label": "힐링", "code": "HEALING" }
-          ],
-          "duration": [
-            { "label": "하루", "code": "ONE_DAY" }
-          ],
-          "budget": [
-            { "label": "가성비", "code": "COST_EFFECTIVE" }
-          ]
-        }
-        """
-)
 public record CourseKeywordListResponse(
     @Schema(description = "이동수단")
     List<KeywordType> travelMode,

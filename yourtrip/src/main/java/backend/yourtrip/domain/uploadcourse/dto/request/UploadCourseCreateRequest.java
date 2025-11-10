@@ -3,6 +3,7 @@ package backend.yourtrip.domain.uploadcourse.dto.request;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
 import lombok.Builder;
@@ -14,7 +15,7 @@ public record UploadCourseCreateRequest(
     Long myCourseId,
 
     @Schema(example = "개쩌는 경주 여행기")
-    @NotNull(message = "코스 업로드 시 제목은 필수 입력입니다.")
+    @NotBlank(message = "코스 업로드 시 제목은 필수 입력입니다.")
     String title,
 
     @Schema(example = "술과 음식을 좋아하는 분들 안성맞춤 코스")

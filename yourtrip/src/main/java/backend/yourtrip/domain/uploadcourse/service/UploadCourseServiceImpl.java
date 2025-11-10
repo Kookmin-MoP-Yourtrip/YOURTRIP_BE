@@ -41,6 +41,13 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     @Transactional
     public UploadCourseCreateResponse createUploadCourse(UploadCourseCreateRequest request) {
         MyCourse myCourse = myCourseService.getMyCourseById(request.myCourseId());
+
+        // 연동되 나의 코스가 이미 업로드됐을 때 예외 throw
+        uploadCourseRepository.findByMyCourse(myCourse)
+            .ifPresent(existing -> {
+                throw new BusinessException(UploadCourseErrorCode.COURSE_ALREADY_UPLOAD);
+            });
+
         User user = userService.getUser(userService.getCurrentUserId());
 
         UploadCourse savedUploadCourse = uploadCourseRepository.save(

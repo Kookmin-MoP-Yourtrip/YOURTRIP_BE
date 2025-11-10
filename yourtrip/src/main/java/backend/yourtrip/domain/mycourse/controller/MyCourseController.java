@@ -204,7 +204,6 @@ public class MyCourseController {
             content = @Content(
                 mediaType = "application/json",
                 examples = @ExampleObject(
-                    name = "올바르지 않은 day 혹은 courseId",
                     value = """
                         {
                           "timestamp": "2025-11-10T11:00:00",
@@ -224,6 +223,9 @@ public class MyCourseController {
         return myCourseService.savePlace(courseId, day, request);
     }
 
+    // ==========================
+    //  3. 나의 코스 목록 조회
+    // ==========================
     @GetMapping
     @Operation(summary = "나의 코스 목록 조회")
     @ApiResponses({
@@ -261,6 +263,9 @@ public class MyCourseController {
     }
 
 
+    // ==========================
+    //  4. 나의 코스 상세 조회
+    // ==========================
     @GetMapping("/{courseId}")
     @Operation(
         summary = "나의 코스 상세 조회",
@@ -324,11 +329,10 @@ public class MyCourseController {
         ),
         @ApiResponse(
             responseCode = "404",
-            description = "경로변수로 courseId가 주어졌을 때",
+            description = "존재하지 않는 courseId가 경로변수로 주어졌을 때",
             content = @Content(
                 mediaType = "application/json",
                 examples = @ExampleObject(
-                    name = "올바르지 않은 courseId",
                     value = """
                         {
                           "code": "COURSE_NOT_FOUND",
