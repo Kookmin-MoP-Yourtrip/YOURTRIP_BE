@@ -243,7 +243,7 @@ public class UploadCourseController {
                               "title": "개쩌는 경주 여행기",
                               "location": "경주",
                               "introduction": "술과 음식을 좋아하는 분들 안성맞춤 코스",
-                              "thumbnailImageUrl": "example.png",
+                              "thumbnailImageUrl": "http://example.com",
                               "keywords": [
                                 {
                                   "label": "뚜벅이",
@@ -340,7 +340,7 @@ public class UploadCourseController {
                               "uploadCourseId": 2,
                               "title": "개쩌는 경주 여행기",
                               "location": "경주",
-                              "thumbnailImageUrl": "example.png",
+                              "thumbnailImageUrl": "http://example.com",
                               "heartCount": 0,
                               "commentCount": 0,
                               "viewCount": 0,
@@ -351,9 +351,9 @@ public class UploadCourseController {
                             },
                             {
                               "uploadCourseId": 1,
-                              "title": "개쩌는 경주 여행기",
-                              "location": "경주",
-                              "thumbnailImageUrl": "example.png",
+                              "title": "개쩌는 호주 여행기",
+                              "location": "호주",
+                              "thumbnailImageUrl": "http://example.com",
                               "heartCount": 0,
                               "commentCount": 0,
                               "viewCount": 1,
