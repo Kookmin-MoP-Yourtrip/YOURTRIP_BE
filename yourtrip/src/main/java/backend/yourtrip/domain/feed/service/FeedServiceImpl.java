@@ -12,7 +12,10 @@ import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.FeedErrorCode;
+import backend.yourtrip.global.exception.errorCode.FeedResponseCode;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,7 +45,7 @@ public class FeedServiceImpl implements FeedService{
             feed.getHashtags().add(tagName);
         }
 
-        return new FeedCreateResponse(savedFeed.getId(), "피드 등록 완료");
+        return new FeedCreateResponse(savedFeed.getId(), FeedResponseCode.FEED_CREATED.getMessage());
     }
 
     @Override
@@ -55,26 +58,26 @@ public class FeedServiceImpl implements FeedService{
 
     @Override
     @Transactional(readOnly = true)
-    public FeedListResponse getFeedAll() {
-        List<Feed> feeds = feedRepository.findAllFeedWithHashtag();
+    public FeedListResponse getFeedAll(Pageable pageable) {
+        Page<Feed> feedPage = feedRepository.findAll(pageable);
 
-        return FeedMapper.toListResponse(feeds);
+        return FeedMapper.toListResponse(feedPage);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public FeedListResponse getFeedByUserId(Long userId) {
+    public FeedListResponse getFeedByUserId(Long userId, Pageable pageable) {
         userService.getUser(userId);
-        List<Feed> feeds = feedRepository.findFeedByUserIdWithHashtag(userId);
+        Page<Feed> feedPage = feedRepository.findByUser_Id(userId, pageable);
 
-        return FeedMapper.toListResponse(feeds);
+        return FeedMapper.toListResponse(feedPage);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public FeedListResponse getFeedByKeyword(String keyword) {
-        List<Feed> feeds = feedRepository.findFeedByKeywordWithHashtag(keyword);
+    public FeedListResponse getFeedByKeyword(String keyword, Pageable pageable) {
+        Page<Feed> feedPage = feedRepository.findByKeyword(keyword, pageable);
 
-        return FeedMapper.toListResponse(feeds);
+        return FeedMapper.toListResponse(feedPage);
     }
 }

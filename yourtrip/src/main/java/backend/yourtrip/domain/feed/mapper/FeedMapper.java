@@ -4,9 +4,11 @@ import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
 import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
 import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
 import backend.yourtrip.domain.feed.entity.Feed;
+import backend.yourtrip.domain.feed.entity.Hashtag;
 import backend.yourtrip.domain.user.entity.User;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
+import org.springframework.data.domain.Page;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -26,15 +28,22 @@ public class FeedMapper {
 
     public static FeedDetailResponse toDetailResponse(Feed feed) {
 
-        List<String> hashtagNames = feed.getHashtags().stream()
-                .map(hashtag -> hashtag.getTagName())
-                .collect(Collectors.toList());
+        if(feed == null) {
+            throw new IllegalArgumentException("피드가 없습니다.");
+        }
+        List<String> hashtagNames = feed.getHashtags() != null
+                ? feed.getHashtags().stream()
+                    .map(Hashtag::getTagName)
+                    .collect(Collectors.toList())
+                :List.of();
+
+        User user = feed.getUser();
 
         return FeedDetailResponse.builder()
                 .feedId(feed.getId())
-                .userId(feed.getUser().getId())
-                .nickname(feed.getUser().getNickname())
-                .profileImageUrl(feed.getUser().getProfileImageUrl())
+                .userId(user != null ? user.getId() : null)
+                .nickname(user != null ? user.getNickname() : null)
+                .profileImageUrl(user != null ? user.getProfileImageUrl() : null)
                 .title(feed.getTitle())
                 .hashtags(hashtagNames)
                 .location(feed.getLocation())
@@ -45,11 +54,18 @@ public class FeedMapper {
                 .build();
     }
 
-    public static FeedListResponse toListResponse(List<Feed> feeds) {
-        List<FeedDetailResponse> responses = feeds.stream()
-                .map(feed -> toDetailResponse(feed))
+    public static FeedListResponse toListResponse(Page<Feed> feedPage) {
+        List<FeedDetailResponse> responses = feedPage.getContent().stream()
+                .map(FeedMapper::toDetailResponse)
                 .toList();
 
-        return new FeedListResponse(responses);
+        return new FeedListResponse(
+                responses,
+                feedPage.getNumber(),
+                feedPage.getTotalPages(),
+                feedPage.getTotalElements(),
+                feedPage.hasNext(),
+                feedPage.hasPrevious()
+                );
     }
 }
