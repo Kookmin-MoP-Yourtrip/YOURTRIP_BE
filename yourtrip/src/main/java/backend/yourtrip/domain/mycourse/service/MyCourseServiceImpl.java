@@ -82,13 +82,13 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Transactional(readOnly = true)
     public MyCourseDetailResponse getMyCourseDetail(Long courseId) {
         Long userId = userService.getCurrentUserId();
+        
+        MyCourse myCourse = myCourseRepository.findCourseWithDaySchedule(courseId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
 
         CourseRole role = courseParticipantRepository.findRole(userId,
                 courseId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.ROLE_NOT_SPECIFY));
-
-        MyCourse myCourse = myCourseRepository.findCourseWithDaySchedule(courseId)
-            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
 
         return MyCourseMapper.toDetailResponse(myCourse, role);
     }

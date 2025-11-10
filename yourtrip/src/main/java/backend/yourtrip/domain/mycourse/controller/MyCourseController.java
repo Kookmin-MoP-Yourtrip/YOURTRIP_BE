@@ -162,16 +162,8 @@ public class MyCourseController {
                 examples = @ExampleObject(
                     value = """
                         {
-                          "placeId": 10,
-                          "courseId": 1,
-                          "day": 1,
-                          "placeName": "황리단길",
-                          "startTime": "10:30",
-                          "memo": "황남시장에 짐보관",
-                          "latitude": 35.884,
-                          "longitude": 129.8341,
-                          "placeUrl": "http://place.map.kakao.com/26338954",
-                          "createdAt": "2025-11-10T11:00:00"
+                          "placeId": 1,
+                          "message": "장소 등록 완료"
                         }
                         """
                 )
@@ -234,12 +226,120 @@ public class MyCourseController {
 
     @GetMapping
     @Operation(summary = "나의 코스 목록 조회")
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "나의 코스 목록 조회 성공",
+            content = @Content(
+                schema = @Schema(implementation = PlaceCreateResponse.class),
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "myCourses": [
+                            {
+                              "title": "개쩌는 호주 여행기",
+                              "location": "호주",
+                              "startDate": "2025-10-31",
+                              "endDate": "2025-11-02",
+                              "memberCount": 1
+                            },
+                            {
+                              "title": "개쩌는 경주 여행기",
+                              "location": "경주",
+                              "startDate": "2025-10-31",
+                              "endDate": "2025-11-02",
+                              "memberCount": 1
+                            }
+                          ]
+                        """
+                )
+            )
+        )
+    })
     public MyCourseListResponse getMyCourses() {
         return myCourseService.getMyCourseList();
     }
 
+
     @GetMapping("/{courseId}")
-    @Operation(summary = "나의 코스 상세 조회 API")
+    @Operation(
+        summary = "나의 코스 상세 조회",
+        description = """
+            ### 제약조건
+            - 경로 변수
+                - 코스 ID(courseId): 존재하는 코스여야 함
+            ### 참고사항
+            - 응답 값
+                - memberCount: 코스 편집 인원 수 (공동 편집이 아니라면 디폴트값 1)
+                - role: 코스 최초 생성자는 OWNER, 초대받은 참여자는 PARTICIPANT, OWNER인 사람만 코스 초대 버튼과 업로드 버튼이 보여야함
+            """)
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "나의 코스 상세 조회 성공",
+            content = @Content(
+                schema = @Schema(implementation = PlaceCreateResponse.class),
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "courseId": 1,
+                          "title": "개쩌는 경주 여행기",
+                          "location": "경주",
+                          "memberCount": 1,
+                          "startDate": "2025-10-31",
+                          "endDate": "2025-11-02",
+                          "role": "OWNER",
+                          "updatedAt": "2025-11-10T23:53:31.560798",
+                          "daySchedules": [
+                            {
+                              "dayScheduleId": 1,
+                              "day": 1,
+                              "places": [
+                                {
+                                  "placeId": 1,
+                                  "placeName": "황리단길",
+                                  "startTime": "10:30:00",
+                                  "memo": "황남시장에 짐보관",
+                                  "latitude": 35.884,
+                                  "longitude": 129.8341,
+                                  "placeUrl": "http://place.map.kakao.com/26338954"
+                                }
+                              ]
+                            },
+                            {
+                              "dayScheduleId": 2,
+                              "day": 2,
+                              "places": []
+                            },
+                            {
+                              "dayScheduleId": 3,
+                              "day": 3,
+                              "places": []
+                            }
+                          ]
+                        }
+                        """
+                )
+            )
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "경로변수로 courseId가 주어졌을 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    name = "올바르지 않은 courseId",
+                    value = """
+                        {
+                          "code": "COURSE_NOT_FOUND",
+                          "timestamp": "2025-11-11T00:00:44.7553392",
+                          "message": "코스를 찾을 수 없습니다."
+                        }
+                        """
+                )
+            )
+        )
+    })
     public MyCourseDetailResponse getMyCourseDetail(
         @PathVariable @Schema(example = "1") Long courseId) {
         return myCourseService.getMyCourseDetail(courseId);
