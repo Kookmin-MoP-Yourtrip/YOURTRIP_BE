@@ -28,23 +28,27 @@ public class JwtTokenProvider {
         return generateToken(userId, email, REFRESH_TOKEN_VALIDITY, "refresh");
     }
 
-    public String generateToken(Long userId, String email, long validity, String type) {
+    private String generateToken(Long userId, String email, long validity, String type) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + validity);
 
         return Jwts.builder()
-                .setSubject(String.valueOf(userId))
-                .claim("email", email)
-                .claim("typ", type)
-                .setIssuedAt(now)
-                .setExpiration(expiry)
-                .signWith(key, SignatureAlgorithm.HS256)
-                .compact();
+            .setSubject(String.valueOf(userId))
+            .claim("email", email)
+            .claim("typ", type)
+            .setIssuedAt(now)
+            .setExpiration(expiry)
+            .signWith(key, SignatureAlgorithm.HS256)
+            .compact();
     }
 
     public Long getUserId(String token) {
-        Claims claims = parseClaims(token);
-        return Long.parseLong(claims.getSubject());
+        return Long.parseLong(parseClaims(token).getSubject());
+    }
+
+    public String getTokenType(String token) {
+        Object typ = parseClaims(token).get("typ");
+        return typ != null ? typ.toString() : "";
     }
 
     public boolean validateToken(String token) {
@@ -58,9 +62,9 @@ public class JwtTokenProvider {
 
     private Claims parseClaims(String token) {
         return Jwts.parserBuilder()
-                .setSigningKey(key)
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
+            .setSigningKey(key)
+            .build()
+            .parseClaimsJws(token)
+            .getBody();
     }
 }

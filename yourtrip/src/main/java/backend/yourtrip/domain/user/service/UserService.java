@@ -1,14 +1,18 @@
 package backend.yourtrip.domain.user.service;
 
-import backend.yourtrip.domain.user.dto.request.UserLoginRequest;
-import backend.yourtrip.domain.user.dto.request.UserSignupRequest;
-import backend.yourtrip.domain.user.dto.response.UserLoginResponse;
-import backend.yourtrip.domain.user.dto.response.UserSignupResponse;
+import backend.yourtrip.domain.user.dto.request.*;
+import backend.yourtrip.domain.user.dto.response.*;
 import backend.yourtrip.domain.user.entity.User;
 
 public interface UserService {
 
-    UserSignupResponse signup(UserSignupRequest request);
+    void sendVerificationCode(String email);
+
+    void verifyCode(String email, String code);
+
+    void setPassword(String email, String password);
+
+    UserSignupResponse completeSignup(ProfileCreateRequest request);
 
     UserLoginResponse login(UserLoginRequest request);
 
