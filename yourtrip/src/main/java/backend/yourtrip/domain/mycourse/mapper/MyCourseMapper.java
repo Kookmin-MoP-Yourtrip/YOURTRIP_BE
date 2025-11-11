@@ -15,10 +15,8 @@ public class MyCourseMapper {
         return MyCourse.builder()
             .title(request.title())
             .location(request.location())
-            .nights(request.nights())
-            .days(request.days())
-            .startDay(request.startDay())
-            .endDay(request.endDay())
+            .startDate(request.startDate())
+            .endDate(request.endDate())
             .build();
     }
 
@@ -29,11 +27,8 @@ public class MyCourseMapper {
             .location(course.getLocation())
 //            .totalBudget(course.getTotalBudget())
             .memberCount(course.getMemberCount())
-            .thumbnailImageUrl(course.getThumbnailImageUrl())
-            .days(course.getDays())
-            .nights(course.getNights())
-            .startDay(course.getStartDay())
-            .endDay(course.getEndDay())
+            .startDate(course.getStartDate())
+            .endDate(course.getEndDate())
             .role(role)
             .updatedAt(course.getUpdatedAt())
             .daySchedules(DayScheduleMapper.toListResponse(
@@ -45,11 +40,8 @@ public class MyCourseMapper {
         return MyCourseListItemResponse.builder()
             .title(course.getTitle())
             .location(course.getLocation())
-            .thumbnailImage(course.getThumbnailImageUrl())
-            .nights(course.getNights())
-            .days(course.getDays())
-            .startDay(course.getStartDay())
-            .endDay(course.getEndDay())
+            .startDate(course.getStartDate())
+            .endDate(course.getEndDate())
             .memberCount(course.getMemberCount())
             .build();
     }

@@ -6,6 +6,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -17,7 +18,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import jakarta.servlet.http.HttpServletRequest;
 
 @Configuration
 @EnableWebSecurity
@@ -35,26 +35,25 @@ public class SecurityConfig {
                 session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
-                    "/api/users/signup",
+                    "/api/users/email/send",
+                    "/api/users/email/verify",
+                    "/api/users/password",
+                    "/api/users/profile",
                     "/api/users/login",
-                    "/api/users/login/kakao",
-                    "/api/users/signup/kakao",
+                    "/api/users/refresh",
                     "/swagger-ui/**",
                     "/v3/api-docs/**"
                 ).permitAll()
+                .requestMatchers(
+                    HttpMethod.GET, "/api/upload-courses/**"
+                ).permitAll()
+                .requestMatchers(
+                    HttpMethod.GET, "/api/upload-courses/keywords"
+                ).permitAll()
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider) {
-                @Override
-                protected boolean shouldNotFilter(HttpServletRequest request) {
-                    String path = request.getRequestURI();
-                    return path.startsWith("/api/users/login/kakao")
-                        || path.startsWith("/api/users/login")
-                        || path.startsWith("/api/users/signup")
-                        || path.startsWith("/swagger-ui")
-                        || path.startsWith("/v3/api-docs");
-                }
-            }, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider),
+                UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -62,7 +61,6 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration cfg = new CorsConfiguration();
-        cfg.setAllowedOrigins(List.of("http://localhost:8080", "http://localhost:3000"));
         cfg.addExposedHeader("Authorization");
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         cfg.setAllowedHeaders(List.of("Authorization", "Content-Type"));

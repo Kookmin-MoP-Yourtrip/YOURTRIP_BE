@@ -37,5 +37,5 @@ public class User extends BaseEntity {
 
     private String refreshToken;
 
-    private String kakaoId;
+    private boolean emailVerified;
 }
