@@ -25,8 +25,9 @@ public record MyCourseCreateRequest(
 ) {
 
     // 날짜 유효성 검사 (startDate ≤ endDate)
+    @Schema(hidden = true)
     @AssertTrue(message = "startDate는 endDate보다 이후일 수 없습니다.")
-    public boolean checkValidDateRange() {
+    public boolean getValidDateRange() {
         // null 체크 (다른 필드 유효성 검사보다 먼저 호출될 수 있으므로)
         if (startDate == null || endDate == null) {
             return true; // @NotNull 검증에 맡김

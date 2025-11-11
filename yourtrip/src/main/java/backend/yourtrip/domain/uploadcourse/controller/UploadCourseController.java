@@ -293,7 +293,7 @@ public class UploadCourseController {
             content = @Content(
                 mediaType = "application/json",
                 examples = @ExampleObject(
-                    value = """
+                    value = """ 
                         {
                           "code": "UPLOAD_COURSE_NOT_FOUND",
                           "timestamp": "2025-11-11T00:00:44.7553392",
