@@ -6,6 +6,9 @@ import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
+import backend.yourtrip.domain.mycourse.entity.MyCourse;
+import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
+import java.util.List;
 
 public interface MyCourseService {
 
@@ -16,4 +19,8 @@ public interface MyCourseService {
     MyCourseDetailResponse getMyCourseDetail(Long courseId);
 
     MyCourseListResponse getMyCourseList();
+
+    MyCourse getMyCourseById(Long courseId);
+
+    List<DaySchedule> getDaySchedulesWithPlaces(Long courseId);
 }
