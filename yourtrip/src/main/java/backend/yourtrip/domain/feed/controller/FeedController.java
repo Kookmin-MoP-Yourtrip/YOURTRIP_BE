@@ -5,6 +5,7 @@ import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
 import backend.yourtrip.domain.feed.dto.response.FeedCreateResponse;
 import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
 import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
+import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
 import backend.yourtrip.domain.feed.service.FeedService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -38,10 +39,11 @@ public class FeedController {
 
     @GetMapping
     public FeedListResponse getAllFeed(
+            @RequestParam(defaultValue = "NEW") FeedSortType sortType,
             @ParameterObject
-            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+            @PageableDefault(size = 10) Pageable pageable
             ) {
-        return feedService.getFeedAll(pageable);
+        return feedService.getFeedAll(pageable, sortType);
     }
 
     @GetMapping("/users/{userId}")

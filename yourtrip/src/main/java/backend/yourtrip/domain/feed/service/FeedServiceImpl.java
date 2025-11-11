@@ -6,6 +6,7 @@ import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
 import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
 import backend.yourtrip.domain.feed.entity.Feed;
 import backend.yourtrip.domain.feed.entity.Hashtag;
+import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
 import backend.yourtrip.domain.feed.mapper.FeedMapper;
 import backend.yourtrip.domain.feed.repository.FeedRepository;
 import backend.yourtrip.domain.user.entity.User;
@@ -15,7 +16,9 @@ import backend.yourtrip.global.exception.errorCode.FeedErrorCode;
 import backend.yourtrip.global.exception.errorCode.FeedResponseCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,10 +61,26 @@ public class FeedServiceImpl implements FeedService{
 
     @Override
     @Transactional(readOnly = true)
-    public FeedListResponse getFeedAll(Pageable pageable) {
-        Page<Feed> feedPage = feedRepository.findAll(pageable);
+    public FeedListResponse getFeedAll(Pageable pageable, FeedSortType sortType) {
+        Sort sort = createSort(sortType);
 
+        Pageable sortedPageable = PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                sort
+        );
+
+
+
+        Page<Feed> feedPage = feedRepository.findAll(sortedPageable);
         return FeedMapper.toListResponse(feedPage);
+    }
+
+    private Sort createSort(FeedSortType sortType) {
+        return switch (sortType) {
+            case NEW -> Sort.by(Sort.Direction.DESC, "createdAt");
+            case POPULAR -> Sort.by(Sort.Direction.DESC, "viewCount");
+        };
     }
 
     @Override

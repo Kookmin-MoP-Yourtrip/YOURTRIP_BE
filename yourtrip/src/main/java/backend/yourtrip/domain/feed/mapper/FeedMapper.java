@@ -50,6 +50,7 @@ public class FeedMapper {
                 .contentUrl(feed.getContentUrl())
                 .commentCount(feed.getCommentCount())
                 .heartCount(feed.getHeartCount())
+                .viewCount(feed.getViewCount())
                 //TODO: 업로드 코스 내용 필요
                 .build();
     }
