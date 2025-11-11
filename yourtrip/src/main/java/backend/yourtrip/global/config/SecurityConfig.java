@@ -47,6 +47,9 @@ public class SecurityConfig {
                 .requestMatchers(
                     HttpMethod.GET, "/api/upload-courses/**"
                 ).permitAll()
+                .requestMatchers(
+                    HttpMethod.GET, "/api/upload-courses/keywords"
+                ).permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider),
