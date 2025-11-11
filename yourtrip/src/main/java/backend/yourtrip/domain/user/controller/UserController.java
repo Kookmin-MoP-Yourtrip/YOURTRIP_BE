@@ -1,13 +1,17 @@
 package backend.yourtrip.domain.user.controller;
 import backend.yourtrip.domain.user.dto.request.*;
 import backend.yourtrip.domain.user.dto.response.*;
+import backend.yourtrip.domain.user.service.dto.request.*;
+import backend.yourtrip.domain.user.service.dto.response.*;
 import backend.yourtrip.domain.user.service.UserService;
+import backend.yourtrip.domain.user.service.KakaoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -26,6 +30,8 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final UserService userService;
+    private final KakaoService kakaoService;
+
     // =========================================================
     // 1. 이메일 인증번호 발송
     // =========================================================
@@ -337,5 +343,127 @@ public class UserController {
     @PostMapping("/refresh")
     public UserLoginResponse refresh(@RequestHeader("Authorization") String refreshToken) {
         return userService.refresh(refreshToken);
+    }
+
+    // =========================================================
+    // [카카오 로그인]
+    // =========================================================
+
+    @Operation(
+        summary = "카카오 OAuth2 콜백 (로그인 진입점)",
+        description = """
+        카카오에서 리다이렉트되는 **로그인 콜백 엔드포인트**입니다.  
+        서버가 인가코드를 받아 바로 토큰 교환 + 사용자 프로필 조회를 수행합니다.  
+
+        ### 동작 흐름
+        1. 사용자가 카카오 로그인 버튼 클릭  
+        2. 카카오 로그인 성공 → 서버의 `/login/kakao/callback?code=...` 으로 리다이렉트  
+        3. 서버가 카카오 API로 프로필을 요청하고, 서비스 가입 상태에 따라 아래 두 가지 중 하나를 반환
+
+        ### 응답 케이스
+        - **EXISTING**: 이미 가입된 유저 → 바로 로그인 완료 + AccessToken 반환  
+        - **NEED_PROFILE**: TEMP(임시) 유저 -> kakaoId, suggestedNickname 반환 -> 이후 `/login/kakao/complete` 호출 필요
+
+        ### 테스트 방법 (Swagger에서는 직접 호출 불가)
+        1. 브라우저 주소창에 아래 주소 입력  
+        ```
+        https://kauth.kakao.com/oauth/authorize?client_id=4fda49c30ce665f38143fa332b69ac34&redirect_uri=http://localhost:8080/api/users/login/kakao/callback&response_type=code
+        ```
+        2. 로그인 → 리다이렉트 결과 확인  
+        3. NEED_PROFILE이면 다음 API(`/login/kakao/complete`) 진행
+        """
+    )
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "성공적으로 로그인 처리",
+            content = @Content(mediaType = "application/json", examples = {
+                @ExampleObject(name = "기존 유저(EXISTING)", value = """
+                {
+                  "status": "EXISTING",
+                  "kakaoId": "4534750367",
+                  "email": "th2194@naver.com",
+                  "suggestedNickname": "여행러버",
+                  "profileImageUrl": "http://k.kakaocdn.net/...",
+                  "login": {
+                    "userId": 1,
+                    "nickname": "여행러버",
+                    "accessToken": "eyJhbGciOiJIUzI1NiJ9..."
+                  }
+                }
+                """),
+                @ExampleObject(name = "임시 유저(NEED_PROFILE)", value = """
+                {
+                  "status": "NEED_PROFILE",
+                  "kakaoId": "4534750367",
+                  "email": "th2194@naver.com",
+                  "suggestedNickname": "김태환",
+                  "profileImageUrl": "http://k.kakaocdn.net/...",
+                  "login": null
+                }
+                """)
+            })
+        ),
+        @ApiResponse(responseCode = "400", description = "잘못된 인가코드 / 만료됨",
+            content = @Content(mediaType = "application/json", examples = {
+                @ExampleObject(value = """
+                { "code":"INVALID_AUTH_CODE", "message":"유효하지 않은 인가코드입니다." }
+                """)
+            }))
+    })
+    @GetMapping("/login/kakao/callback")
+    public KakaoLoginInitResponse kakaoCallback(@RequestParam("code") String code) {
+        return kakaoService.init(code);
+    }
+
+    @Operation(
+        summary = "카카오 닉네임 등록 (TEMP -> USER 전환)",
+        description = """
+        카카오 TEMP 유저를 정식 USER로 전환합니다.  
+        `/login/kakao/callback` 결과가 `NEED_PROFILE`일 때만 호출하세요.
+
+        ### 요청
+        ```json
+        {
+          "kakaoId": "4534750367",
+          "nickname": "여행러버"
+        }
+        ```
+
+        ### 응답
+        ```json
+        {
+          "userId": 1,
+          "nickname": "여행러버",
+          "accessToken": "eyJhbGciOiJIUzI1NiJ9..."
+        }
+        ```
+
+        ### 테스트 절차
+        1. 브라우저에서 콜백 URL로 로그인 (카카오 로그인 성공 후 redirect)
+        ```
+        http://localhost:8080/api/users/login/kakao/callback?code={인가코드}
+        ```
+        2. 응답의 `status`가 NEED_PROFILE -> `kakaoId` 확인
+        3. Swagger에서 `/api/users/login/kakao/complete` 실행  
+           아래 JSON 예시로 입력:
+        ```json
+        { "kakaoId": "4534750367", "nickname": "여행러버" }
+        ```
+        4. 응답으로 AccessToken 확인 -> 로그인 완료 
+        """
+    )
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "정식 USER 전환 완료 + AccessToken 발급",
+            content = @Content(schema = @Schema(implementation = UserLoginResponse.class),
+                examples = @ExampleObject(value = """
+                {
+                  "userId": 1,
+                  "nickname": "여행러버",
+                  "accessToken": "eyJhbGciOiJIUzI1NiJ9..."
+                }
+                """)))
+    })
+    @PostMapping("/login/kakao/complete")
+    public UserLoginResponse kakaoComplete(@Valid @RequestBody KakaoCompleteRequest request) {
+        return kakaoService.complete(request.kakaoId(), request.nickname());
     }
 }

@@ -51,4 +51,4 @@ kakao:
   auth:
     client-id: ${KAKAO_CLIENT_ID}
     client-secret: ${KAKAO_CLIENT_SECRET}
-    redirect-uri: http://localhost:8080/api/users/login/kakao
+    redirect-uri: http://localhost:8080/api/users/login/kakao/callback

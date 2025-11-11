@@ -41,6 +41,9 @@ public class SecurityConfig {
                     "/api/users/profile",
                     "/api/users/login",
                     "/api/users/refresh",
+                    "/api/users/login/kakao/init",
+                    "/api/users/login/kakao/complete",
+                    "/api/users/login/kakao/callback",
                     "/swagger-ui/**",
                     "/v3/api-docs/**"
                 ).permitAll()

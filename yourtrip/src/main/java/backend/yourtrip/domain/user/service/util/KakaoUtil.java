@@ -14,6 +14,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
+import java.util.List;
 
 @Slf4j
 @Component
@@ -35,6 +36,7 @@ public class KakaoUtil {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON)); // (추가) 응답 JSON 명시
 
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
         params.add("grant_type", "authorization_code");
@@ -54,12 +56,11 @@ public class KakaoUtil {
             return objectMapper.readValue(response.getBody(), KakaoTokenResponse.class);
 
         } catch (HttpClientErrorException e) {
-            // invalid_grant 등 카카오 서버 반환 시
             String body = e.getResponseBodyAsString();
             log.error("[KakaoUtil] 토큰 요청 실패: {}", body);
 
-            // invalid_grant, invalid_client 구분
-            if (body.contains("invalid_grant")) {
+            if (body.contains("invalid_grant") || body.contains("KOE320")) {
+                // 우리 서비스 에러코드 매핑
                 throw new BusinessException(KakaoErrorCode.INVALID_AUTH_CODE);
             } else if (body.contains("invalid_client")) {
                 throw new BusinessException(KakaoErrorCode.INVALID_CLIENT);
@@ -68,7 +69,6 @@ public class KakaoUtil {
             }
 
         } catch (JsonProcessingException e) {
-            // JSON 필드 파싱 실패 (id_token 등)
             log.error("[KakaoUtil] JSON 파싱 실패: {}", e.getMessage());
             throw new BusinessException(KakaoErrorCode.RESPONSE_PARSE_FAILED);
         }
@@ -78,11 +78,12 @@ public class KakaoUtil {
         String reqUrl = "https://kapi.kakao.com/v2/user/me";
 
         HttpHeaders headers = new HttpHeaders();
-        headers.add("Authorization", "Bearer " + accessToken);
-        headers.add("Content-type", "application/x-www-form-urlencoded;charset=utf-8");
+        headers.setBearerAuth(accessToken);
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
 
         RestTemplate restTemplate = new RestTemplate();
-        HttpEntity<String> entity = new HttpEntity<>(headers);
+        HttpEntity<?> entity = new HttpEntity<>(null, headers);
 
         try {
             ResponseEntity<String> response =
