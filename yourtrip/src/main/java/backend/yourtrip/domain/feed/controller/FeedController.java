@@ -7,12 +7,9 @@ import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
 import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
 import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
 import backend.yourtrip.domain.feed.service.FeedService;
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springdoc.core.annotations.ParameterObject;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,12 +22,14 @@ public class FeedController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "피드 생성")
     public FeedCreateResponse createFeed(
             @Valid @RequestBody FeedCreateRequest request) {
         return feedService.saveFeed(request);
     }
 
     @GetMapping("{feedId}")
+    @Operation(summary = "피드 단건 조회")
     public FeedDetailResponse getFeedDetail(
             @PathVariable Long feedId
     ) {
@@ -38,6 +37,7 @@ public class FeedController {
     }
 
     @GetMapping
+    @Operation(summary = "피드 전체 조회")
     public FeedListResponse getAllFeed(
             @RequestParam(defaultValue = "NEW") FeedSortType sortType,
             @RequestParam(defaultValue = "0") int page,
@@ -47,6 +47,7 @@ public class FeedController {
     }
 
     @GetMapping("/users/{userId}")
+    @Operation(summary = "유저 별 피드 조회")
     public FeedListResponse getUserFeed(
             @PathVariable Long userId,
             @RequestParam(defaultValue = "0") int page,
@@ -56,6 +57,7 @@ public class FeedController {
     }
 
     @GetMapping("/search")
+    @Operation(summary = "키워드 별 피드 조회")
     public FeedListResponse getKeywordFeed(
             @RequestParam String keyword,
             @RequestParam(defaultValue = "0") int page,
