@@ -2,7 +2,7 @@ package backend.yourtrip.domain.user.service;
 
 import backend.yourtrip.domain.user.dto.request.*;
 import backend.yourtrip.domain.user.dto.response.*;
-import backend.yourtrip.domain.user.entity.User;
+import backend.yourtrip.domain.user.entity.*;
 import backend.yourtrip.domain.user.mapper.UserMapper;
 import backend.yourtrip.domain.user.repository.UserRepository;
 import backend.yourtrip.global.exception.BusinessException;
@@ -186,5 +186,28 @@ public class UserServiceImpl implements UserService {
 
         if (principal instanceof Long id) return id;
         throw new BusinessException(UserErrorCode.USER_NOT_FOUND);
+    }
+
+    @Transactional
+    @Override
+    public UserLoginResponse kakaoLoginOrSignup(String kakaoId, String email, String nickname, String profileImageUrl) {
+        User user = userRepository.findByEmail(email).orElse(null);
+
+        if (user == null) {
+            user = UserMapper.toKakaoTemp(kakaoId, email, profileImageUrl)
+                .toBuilder()
+                .nickname(nickname)
+                .role(UserRole.USER)
+                .build();
+            user = userRepository.save(user);
+        }
+
+        String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail());
+        String refreshToken = jwtTokenProvider.createRefreshToken(user.getId(), user.getEmail());
+
+        user = user.toBuilder().refreshToken(refreshToken).build();
+        userRepository.save(user);
+
+        return new UserLoginResponse(user.getId(), user.getNickname(), accessToken);
     }
 }

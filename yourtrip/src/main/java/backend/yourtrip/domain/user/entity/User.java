@@ -1,12 +1,7 @@
 package backend.yourtrip.domain.user.entity;
 
 import backend.yourtrip.global.common.BaseEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import org.hibernate.annotations.SQLRestriction;
 
 import lombok.*;
@@ -38,4 +33,17 @@ public class User extends BaseEntity {
     private String refreshToken;
 
     private boolean emailVerified;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private UserRole role = UserRole.USER;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private AuthProvider provider = AuthProvider.LOCAL;
+
+    @Column(unique = true)
+    private String socialId;
 }
