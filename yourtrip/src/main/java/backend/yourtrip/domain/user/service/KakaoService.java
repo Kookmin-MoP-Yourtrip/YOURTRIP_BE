@@ -32,30 +32,33 @@ public class KakaoService {
 
         String kakaoId = String.valueOf(profile.id());
         String email = profile.kakaoAccount().email();
-        String image = profile.kakaoAccount().profile() != null
-            ? profile.kakaoAccount().profile().profileImageUrl()
-            : null;
-
         String safeEmail = (email != null && !email.isBlank())
             ? email
             : kakaoId + "@kakao-temp.local";
 
+        String image = null;
+
         User existing = userRepository.findBySocialId(kakaoId)
             .or(() -> userRepository.findByEmail(safeEmail))
+            .filter(u -> u.getRole() == UserRole.USER)
             .orElse(null);
 
-        if (existing != null && existing.getRole() == UserRole.USER) {
+        if (existing != null) {
             String at = jwtTokenProvider.createAccessToken(existing.getId(), existing.getEmail());
-            return new KakaoLoginInitResponse("EXISTING", kakaoId, safeEmail, existing.getNickname(), image,
-                new UserLoginResponse(existing.getId(), existing.getNickname(), at));
+            return new KakaoLoginInitResponse(
+                "EXISTING",
+                kakaoId,
+                safeEmail,
+                existing.getNickname(),
+                image,
+                new UserLoginResponse(existing.getId(), existing.getNickname(), at)
+            );
         }
 
-        User temp = userRepository.findBySocialId(kakaoId)
+        userRepository.findBySocialId(kakaoId)
             .orElseGet(() -> userRepository.save(UserMapper.toKakaoTemp(kakaoId, safeEmail, image)));
 
-        String suggested = profile.kakaoAccount().profile() != null
-            ? profile.kakaoAccount().profile().nickname()
-            : (safeEmail != null ? safeEmail.split("@")[0] : "user");
+        String suggested = null;
 
         return new KakaoLoginInitResponse("NEED_PROFILE", kakaoId, safeEmail, suggested, image, null);
     }

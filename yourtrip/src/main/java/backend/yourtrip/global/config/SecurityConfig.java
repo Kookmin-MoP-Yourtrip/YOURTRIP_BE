@@ -35,17 +35,21 @@ public class SecurityConfig {
                 session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(
+                    "/", "/index.html", "/error",
+                    "/favicon.ico", "/css/**", "/js/**", "/images/**",
+                    "/swagger-ui/**",
+                    "/v3/api-docs/**",
+                    "/swagger-resources/**",
+                    "/swagger-resources",
+                    "/webjars/**"
+                ).permitAll()
+                .requestMatchers(
                     "/api/users/email/send",
                     "/api/users/email/verify",
                     "/api/users/password",
                     "/api/users/profile",
                     "/api/users/login",
-                    "/api/users/refresh",
-                    "/api/users/login/kakao/init",
-                    "/api/users/login/kakao/complete",
-                    "/api/users/login/kakao/callback",
-                    "/swagger-ui/**",
-                    "/v3/api-docs/**"
+                    "/api/users/refresh"
                 ).permitAll()
                 .requestMatchers(
                     HttpMethod.GET, "/api/upload-courses/**"
