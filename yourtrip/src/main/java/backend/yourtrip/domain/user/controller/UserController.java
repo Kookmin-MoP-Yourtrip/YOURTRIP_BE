@@ -1,15 +1,17 @@
 package backend.yourtrip.domain.user.controller;
-
 import backend.yourtrip.domain.user.dto.request.*;
 import backend.yourtrip.domain.user.dto.response.*;
+import backend.yourtrip.domain.user.service.dto.request.*;
+import backend.yourtrip.domain.user.service.dto.response.*;
 import backend.yourtrip.domain.user.service.UserService;
+import backend.yourtrip.domain.user.service.KakaoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -25,10 +27,10 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 @RestController
 @RequestMapping("/api/users")
-@Tag(name = "User API", description = "회원가입 단계/로그인/토큰 재발급 API")
 public class UserController {
 
     private final UserService userService;
+    private final KakaoService kakaoService;
 
     // =========================================================
     // 1. 이메일 인증번호 발송
@@ -37,14 +39,12 @@ public class UserController {
         summary = "이메일 인증번호 발송",
         description = """
         ### 제약조건
-        - 이메일은 **RFC 5322** 형식이어야 하며, **이미 가입된 이메일에는 발송 불가**합니다.
+        - 이메일은 **이미 가입된 이메일에는 발송 불가**합니다.
         - 동일 이메일로 재요청 시 **가장 마지막으로 발급된 인증번호**만 유효합니다.
         - 인증번호는 6자리 숫자, 유효시간 기본 **5분**
-
         ### 예외상황 / 에러코드
         - `EMAIL_ALREADY_EXIST(400)`: 이미 가입된 이메일로 요청.
         - `INVALID_REQUEST_FIELD(400)`: 이메일 형식 불일치 또는 빈 값.
-
         ### 테스트 방법
         1. Swagger에서 **POST** `/api/users/email/send` 실행
         2. 요청 예시:
@@ -83,12 +83,10 @@ public class UserController {
         ### 제약조건
         - 요청 본문에 **email**과 **code(6자리)** 모두 필수입니다.
         - 올바른 코드라도 유효시간이 지나면 실패합니다.
-
         ### 예외상황 / 에러코드
         - `INVALID_VERIFICATION_CODE(400)`: 코드 불일치.
         - `VERIFICATION_CODE_EXPIRED(400)`: 코드 만료 또는 미발급.
         - `INVALID_REQUEST_FIELD(400)`: 필드 누락/형식 오류.
-
         ### 테스트 방법
         1. 이메일로 수신한 인증번호를 입력해 **POST** `/api/users/email/verify` 요청
         2. 요청 예시:
@@ -136,11 +134,9 @@ public class UserController {
           - 최소 **8자 이상**
           - 공백 불가
           - 영문/숫자/특수문자 조합 권장
-
         ### 예외상황 / 에러코드
         - `EMAIL_NOT_VERIFIED(400)`: 이메일 인증 미완료 상태에서 요청.
         - `INVALID_REQUEST_FIELD(400)`: 비밀번호 형식 위반/필드 누락.
-
         ### 테스트 방법
         1. **POST** `/api/users/password`
         2. 요청 예시:
@@ -178,13 +174,11 @@ public class UserController {
         - 닉네임: **1~20자**
         - 프로필 이미지는 선택값(`profileImageUrl`), 미지정 시 서버 기본값 사용 가능(정책에 따름).
         - 비밀번호가 **사전 설정(3단계)** 되어 있어야 최종 회원 생성이 됩니다.
-
         ### 예외상황 / 에러코드
         - `EMAIL_NOT_VERIFIED(400)`: 이메일 인증 미완료.
         - `INVALID_REQUEST_FIELD(400)`: 닉네임 규칙 위반/필드 누락.
         - `USER_NOT_FOUND(404)`: 내부 임시 정보 미존재 등으로 가입 완료 불가.
         - `EMAIL_ALREADY_EXIST(400)`: 경합 상황에서 동일 이메일이 이미 가입 완료된 경우.
-
         ### 테스트 방법
         1. **POST** `/api/users/profile`
         2. 요청 예시:
@@ -251,11 +245,9 @@ public class UserController {
         description = """
         ### 제약조건
         - **email**/**password** 모두 필수입니다.
-
         ### 예외상황 / 에러코드
         - `EMAIL_NOT_FOUND(400)`: 가입되지 않은 이메일.
         - `NOT_MATCH_PASSWORD(400)`: 비밀번호 불일치.
-
         ### 테스트 방법
         1. **POST** `/api/users/login`
         2. 요청 예시:
@@ -299,7 +291,6 @@ public class UserController {
     public UserLoginResponse login(@RequestBody UserLoginRequest request) {
         return userService.login(request);
     }
-
     // =========================================================
     // 6. Access Token 재발급
     // =========================================================
@@ -310,11 +301,9 @@ public class UserController {
         - **Authorization 헤더**로 **Refresh Token(원문 그대로)** 을 전달합니다.
           - 예) `Authorization: {refreshToken}`
           - (주의) `Bearer ` 접두어 **붙이지 않습니다**. 서버 구현이 원문 토큰을 기대합니다.
-
         ### 예외상황 / 에러코드
         - `INVALID_REFRESH_TOKEN(400)`: 위변조/만료 등으로 토큰이 유효하지 않음.
         - `NOT_MATCH_REFRESH_TOKEN(400)`: 서버에 저장된 Refresh Token과 불일치.
-
         ### 테스트 방법
         1. 로그인 성공 시 응답 본문에 포함된 **refreshToken**(서버 내부 저장)을 사용.
            - 현재 API는 새 Access Token만 응답합니다.
@@ -354,5 +343,195 @@ public class UserController {
     @PostMapping("/refresh")
     public UserLoginResponse refresh(@RequestHeader("Authorization") String refreshToken) {
         return userService.refresh(refreshToken);
+    }
+
+    // =========================================================
+    // [카카오 로그인]
+    // =========================================================
+
+    @Operation(
+        summary = "카카오 OAuth2 콜백 (로그인 진입점)",
+        description = """
+    카카오에서 리다이렉트되는 **로그인 콜백 엔드포인트**입니다.  
+    - 서버가 인가코드를 받아 **바로** [토큰 교환 → 사용자 ID/이메일 조회]를 수행합니다.  
+    - 이 시점에는 닉네임 추천/프로필 이미지를 주지 않습니다(피그마 통일).  
+    - 결과에 따라 두 케이스 중 하나를 응답합니다.
+    
+    ### 응답 케이스
+    - **EXISTING**: 이미 정식 가입된 유저 → AccessToken 즉시 발급  
+    - **NEED_PROFILE**: 임시(TEMP) 유저 -> `kakaoId`, `email`만 내려주고, **프론트에서 프로필/닉네임 입력 화면으로 전환**해야 합니다.
+    
+    ### 테스트 방법
+    1) 브라우저 주소창에 아래 주소 입력  
+       ```
+       https://kauth.kakao.com/oauth/authorize?client_id={REST_API_KEY}&redirect_uri=http://localhost:8080/api/users/login/kakao/callback&response_type=code
+       ```
+    2) 카카오 로그인 성공 -> 브라우저가 `.../callback?code=...`로 자동 리다이렉트  
+    3) JSON 결과(EXISTING 또는 NEED_PROFILE) 확인  
+    4) **NEED_PROFILE**인 경우, Swagger에서 `/api/users/login/kakao/complete`로 마무리  
+       (콜백 URL을 **다시 호출**하면 카카오에서 `invalid_grant`로 간주하여 `INVALID_AUTH_CODE` 오류가 발생합니다. 인가코드는 1회용입니다.)
+    """
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "성공적으로 로그인 처리",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "기존 유저(EXISTING)",
+                        value = """
+                    {
+                      "status": "EXISTING",
+                      "kakaoId": "4534750367",
+                      "email": "user@kakao.com",
+                      "profileImageUrl": null,
+                      "login": {
+                        "userId": 1,
+                        "nickname": "여행러버",
+                        "accessToken": "eyJhbGciOiJIUzI1NiJ9.existing..."
+                      }
+                    }
+                    """
+                    ),
+                    @ExampleObject(
+                        name = "임시 유저(NEED_PROFILE)",
+                        value = """
+                    {
+                      "status": "NEED_PROFILE",
+                      "kakaoId": "9876543210",
+                      "email": "9876543210@kakao-temp.local",
+                      "profileImageUrl": null,
+                      "login": null
+                    }
+                    """
+                    )
+                }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "400",
+            description = "잘못된 인가코드/토큰 교환 실패/프로필 조회 실패",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "INVALID_AUTH_CODE",
+                        value = """
+                    { "code": "INVALID_AUTH_CODE", "message": "유효하지 않은 인가코드입니다." }
+                    """
+                    ),
+                    @ExampleObject(
+                        name = "TOKEN_REQUEST_FAILED",
+                        value = """
+                    { "code": "TOKEN_REQUEST_FAILED", "message": "카카오 토큰 발급에 실패했습니다." }
+                    """
+                    ),
+                    @ExampleObject(
+                        name = "USERINFO_REQUEST_FAILED",
+                        value = """
+                    { "code": "USERINFO_REQUEST_FAILED", "message": "카카오 사용자 정보 조회에 실패했습니다." }
+                    """
+                    ),
+                    @ExampleObject(
+                        name = "INVALID_CLIENT",
+                        value = """
+                    { "code": "INVALID_CLIENT", "message": "카카오 클라이언트 정보가 잘못되었습니다." }
+                    """
+                    ),
+                    @ExampleObject(
+                        name = "RESPONSE_PARSE_FAILED",
+                        value = """
+                    { "code": "RESPONSE_PARSE_FAILED", "message": "카카오 응답 파싱에 실패했습니다." }
+                    """
+                    )
+                }
+            )
+        )
+    })
+    @GetMapping("/login/kakao/callback")
+    public KakaoLoginInitResponse kakaoCallback(@RequestParam("code") String code) {
+        return kakaoService.init(code);
+    }
+
+    @Operation(
+        summary = "카카오 닉네임/프로필 입력 완료 (TEMP → USER 전환)",
+        description = """
+        카카오 TEMP 유저를 **정식 USER**로 전환합니다.  
+        - `/login/kakao/callback` 응답이 `NEED_PROFILE`일 때만 호출하세요.
+        - 프론트에서 **닉네임**과 **프로필 이미지 URL**을 함께 보내주세요.  
+            (이미지 URL이 null/빈 값이면 서버에서 **기본 이미지**로 대체합니다.)
+    
+        ### 요청 바디 예시
+        ```json
+        {
+        "kakaoId": "9876543210",
+        "nickname": "여행러버",
+        "profileImageUrl": null
+        }
+        ```
+    
+        ### 응답 예시
+        ```json
+        {
+        "userId": 7,
+        "nickname": "여행러버",
+        "accessToken": "eyJhbGciOiJIUzI1NiJ9.new..."
+        }
+        ```
+        """
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "정식 USER 전환 완료 + AccessToken 발급",
+            content = @Content(
+                schema = @Schema(implementation = UserLoginResponse.class),
+                examples = @ExampleObject(
+                    value = """
+                {
+                  "userId": 7,
+                  "nickname": "여행러버",
+                  "accessToken": "eyJhbGciOiJIUzI1NiJ9.new..."
+                }
+                """
+                )
+            )
+        ),
+        @ApiResponse(
+            responseCode = "400",
+            description = "유효하지 않은 요청(필드 오류 등)",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "INVALID_REQUEST_FIELD",
+                        value = """
+                    { "code": "INVALID_REQUEST_FIELD", "message": "요청 필드가 유효하지 않습니다." }
+                    """
+                    )
+                }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "TEMP 유저 없음",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "USER_NOT_FOUND",
+                        value = """
+                    { "code": "USER_NOT_FOUND", "message": "사용자를 찾을 수 없습니다." }
+                    """
+                    )
+                }
+            )
+        )
+    })
+    @PostMapping("/login/kakao/complete")
+    public UserLoginResponse kakaoComplete(@Valid @RequestBody KakaoCompleteRequest request) {
+        return kakaoService.complete(request.kakaoId(), request.nickname(), request.profileImageUrl());
     }
 }
