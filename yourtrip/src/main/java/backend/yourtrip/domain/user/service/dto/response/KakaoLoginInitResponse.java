@@ -14,10 +14,7 @@ public record KakaoLoginInitResponse(
     @Schema(description = "이메일", example = "user@kakao.com")
     String email,
 
-    @Schema(description = "추천 닉네임", example = "여행러버")
-    String suggestedNickname,
-
-    @Schema(description = "프로필 이미지 URL", example = "https://kakao.com/profile.jpg")
+    @Schema(description = "프로필 이미지 URL", example = "https://k.kakaocdn.net/.../profile.jpg")
     String profileImageUrl,
 
     @Schema(description = "기존 유저일 경우 로그인 정보")

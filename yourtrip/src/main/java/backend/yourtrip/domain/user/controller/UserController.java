@@ -352,62 +352,103 @@ public class UserController {
     @Operation(
         summary = "카카오 OAuth2 콜백 (로그인 진입점)",
         description = """
-        카카오에서 리다이렉트되는 **로그인 콜백 엔드포인트**입니다.  
-        서버가 인가코드를 받아 바로 토큰 교환 + 사용자 프로필 조회를 수행합니다.  
-
-        ### 동작 흐름
-        1. 사용자가 카카오 로그인 버튼 클릭  
-        2. 카카오 로그인 성공 → 서버의 `/login/kakao/callback?code=...` 으로 리다이렉트  
-        3. 서버가 카카오 API로 프로필을 요청하고, 서비스 가입 상태에 따라 아래 두 가지 중 하나를 반환
-
-        ### 응답 케이스
-        - **EXISTING**: 이미 가입된 유저 → 바로 로그인 완료 + AccessToken 반환  
-        - **NEED_PROFILE**: TEMP(임시) 유저 -> kakaoId, suggestedNickname 반환 -> 이후 `/login/kakao/complete` 호출 필요
-
-        ### 테스트 방법 (Swagger에서는 직접 호출 불가)
-        1. 브라우저 주소창에 아래 주소 입력  
-        ```
-        https://kauth.kakao.com/oauth/authorize?client_id=4fda49c30ce665f38143fa332b69ac34&redirect_uri=http://localhost:8080/api/users/login/kakao/callback&response_type=code
-        ```
-        2. 로그인 → 리다이렉트 결과 확인  
-        3. NEED_PROFILE이면 다음 API(`/login/kakao/complete`) 진행
-        """
+    카카오에서 리다이렉트되는 **로그인 콜백 엔드포인트**입니다.  
+    - 서버가 인가코드를 받아 **바로** [토큰 교환 → 사용자 ID/이메일 조회]를 수행합니다.  
+    - 이 시점에는 닉네임 추천/프로필 이미지를 주지 않습니다(피그마 통일).  
+    - 결과에 따라 두 케이스 중 하나를 응답합니다.
+    
+    ### 응답 케이스
+    - **EXISTING**: 이미 정식 가입된 유저 → AccessToken 즉시 발급  
+    - **NEED_PROFILE**: 임시(TEMP) 유저 -> `kakaoId`, `email`만 내려주고, **프론트에서 프로필/닉네임 입력 화면으로 전환**해야 합니다.
+    
+    ### 테스트 방법
+    1) 브라우저 주소창에 아래 주소 입력  
+       ```
+       https://kauth.kakao.com/oauth/authorize?client_id={REST_API_KEY}&redirect_uri=http://localhost:8080/api/users/login/kakao/callback&response_type=code
+       ```
+    2) 카카오 로그인 성공 -> 브라우저가 `.../callback?code=...`로 자동 리다이렉트  
+    3) JSON 결과(EXISTING 또는 NEED_PROFILE) 확인  
+    4) **NEED_PROFILE**인 경우, Swagger에서 `/api/users/login/kakao/complete`로 마무리  
+       (콜백 URL을 **다시 호출**하면 카카오에서 `invalid_grant`로 간주하여 `INVALID_AUTH_CODE` 오류가 발생합니다. 인가코드는 1회용입니다.)
+    """
     )
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "성공적으로 로그인 처리",
-            content = @Content(mediaType = "application/json", examples = {
-                @ExampleObject(name = "기존 유저(EXISTING)", value = """
-                {
-                  "status": "EXISTING",
-                  "kakaoId": "4534750367",
-                  "email": "th2194@naver.com",
-                  "suggestedNickname": "여행러버",
-                  "profileImageUrl": "http://k.kakaocdn.net/...",
-                  "login": {
-                    "userId": 1,
-                    "nickname": "여행러버",
-                    "accessToken": "eyJhbGciOiJIUzI1NiJ9..."
-                  }
+        @ApiResponse(
+            responseCode = "200",
+            description = "성공적으로 로그인 처리",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "기존 유저(EXISTING)",
+                        value = """
+                    {
+                      "status": "EXISTING",
+                      "kakaoId": "4534750367",
+                      "email": "user@kakao.com",
+                      "profileImageUrl": null,
+                      "login": {
+                        "userId": 1,
+                        "nickname": "여행러버",
+                        "accessToken": "eyJhbGciOiJIUzI1NiJ9.existing..."
+                      }
+                    }
+                    """
+                    ),
+                    @ExampleObject(
+                        name = "임시 유저(NEED_PROFILE)",
+                        value = """
+                    {
+                      "status": "NEED_PROFILE",
+                      "kakaoId": "9876543210",
+                      "email": "9876543210@kakao-temp.local",
+                      "profileImageUrl": null,
+                      "login": null
+                    }
+                    """
+                    )
                 }
-                """),
-                @ExampleObject(name = "임시 유저(NEED_PROFILE)", value = """
-                {
-                  "status": "NEED_PROFILE",
-                  "kakaoId": "4534750367",
-                  "email": "th2194@naver.com",
-                  "suggestedNickname": "김태환",
-                  "profileImageUrl": "http://k.kakaocdn.net/...",
-                  "login": null
-                }
-                """)
-            })
+            )
         ),
-        @ApiResponse(responseCode = "400", description = "잘못된 인가코드 / 만료됨",
-            content = @Content(mediaType = "application/json", examples = {
-                @ExampleObject(value = """
-                { "code":"INVALID_AUTH_CODE", "message":"유효하지 않은 인가코드입니다." }
-                """)
-            }))
+        @ApiResponse(
+            responseCode = "400",
+            description = "잘못된 인가코드/토큰 교환 실패/프로필 조회 실패",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "INVALID_AUTH_CODE",
+                        value = """
+                    { "code": "INVALID_AUTH_CODE", "message": "유효하지 않은 인가코드입니다." }
+                    """
+                    ),
+                    @ExampleObject(
+                        name = "TOKEN_REQUEST_FAILED",
+                        value = """
+                    { "code": "TOKEN_REQUEST_FAILED", "message": "카카오 토큰 발급에 실패했습니다." }
+                    """
+                    ),
+                    @ExampleObject(
+                        name = "USERINFO_REQUEST_FAILED",
+                        value = """
+                    { "code": "USERINFO_REQUEST_FAILED", "message": "카카오 사용자 정보 조회에 실패했습니다." }
+                    """
+                    ),
+                    @ExampleObject(
+                        name = "INVALID_CLIENT",
+                        value = """
+                    { "code": "INVALID_CLIENT", "message": "카카오 클라이언트 정보가 잘못되었습니다." }
+                    """
+                    ),
+                    @ExampleObject(
+                        name = "RESPONSE_PARSE_FAILED",
+                        value = """
+                    { "code": "RESPONSE_PARSE_FAILED", "message": "카카오 응답 파싱에 실패했습니다." }
+                    """
+                    )
+                }
+            )
+        )
     })
     @GetMapping("/login/kakao/callback")
     public KakaoLoginInitResponse kakaoCallback(@RequestParam("code") String code) {
@@ -415,55 +456,82 @@ public class UserController {
     }
 
     @Operation(
-        summary = "카카오 닉네임 등록 (TEMP -> USER 전환)",
+        summary = "카카오 닉네임/프로필 입력 완료 (TEMP → USER 전환)",
         description = """
-        카카오 TEMP 유저를 정식 USER로 전환합니다.  
-        `/login/kakao/callback` 결과가 `NEED_PROFILE`일 때만 호출하세요.
-
-        ### 요청
+        카카오 TEMP 유저를 **정식 USER**로 전환합니다.  
+        - `/login/kakao/callback` 응답이 `NEED_PROFILE`일 때만 호출하세요.
+        - 프론트에서 **닉네임**과 **프로필 이미지 URL**을 함께 보내주세요.  
+            (이미지 URL이 null/빈 값이면 서버에서 **기본 이미지**로 대체합니다.)
+    
+        ### 요청 바디 예시
         ```json
         {
-          "kakaoId": "4534750367",
-          "nickname": "여행러버"
+        "kakaoId": "9876543210",
+        "nickname": "여행러버",
+        "profileImageUrl": null
         }
         ```
-
-        ### 응답
+    
+        ### 응답 예시
         ```json
         {
-          "userId": 1,
-          "nickname": "여행러버",
-          "accessToken": "eyJhbGciOiJIUzI1NiJ9..."
+        "userId": 7,
+        "nickname": "여행러버",
+        "accessToken": "eyJhbGciOiJIUzI1NiJ9.new..."
         }
         ```
-
-        ### 테스트 절차
-        1. 브라우저에서 콜백 URL로 로그인 (카카오 로그인 성공 후 redirect)
-        ```
-        http://localhost:8080/api/users/login/kakao/callback?code={인가코드}
-        ```
-        2. 응답의 `status`가 NEED_PROFILE -> `kakaoId` 확인
-        3. Swagger에서 `/api/users/login/kakao/complete` 실행  
-           아래 JSON 예시로 입력:
-        ```json
-        { "kakaoId": "4534750367", "nickname": "여행러버" }
-        ```
-        4. 응답으로 AccessToken 확인 -> 로그인 완료 
         """
     )
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "정식 USER 전환 완료 + AccessToken 발급",
-            content = @Content(schema = @Schema(implementation = UserLoginResponse.class),
-                examples = @ExampleObject(value = """
+        @ApiResponse(
+            responseCode = "200",
+            description = "정식 USER 전환 완료 + AccessToken 발급",
+            content = @Content(
+                schema = @Schema(implementation = UserLoginResponse.class),
+                examples = @ExampleObject(
+                    value = """
                 {
-                  "userId": 1,
+                  "userId": 7,
                   "nickname": "여행러버",
-                  "accessToken": "eyJhbGciOiJIUzI1NiJ9..."
+                  "accessToken": "eyJhbGciOiJIUzI1NiJ9.new..."
                 }
-                """)))
+                """
+                )
+            )
+        ),
+        @ApiResponse(
+            responseCode = "400",
+            description = "유효하지 않은 요청(필드 오류 등)",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "INVALID_REQUEST_FIELD",
+                        value = """
+                    { "code": "INVALID_REQUEST_FIELD", "message": "요청 필드가 유효하지 않습니다." }
+                    """
+                    )
+                }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "TEMP 유저 없음",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "USER_NOT_FOUND",
+                        value = """
+                    { "code": "USER_NOT_FOUND", "message": "사용자를 찾을 수 없습니다." }
+                    """
+                    )
+                }
+            )
+        )
     })
     @PostMapping("/login/kakao/complete")
     public UserLoginResponse kakaoComplete(@Valid @RequestBody KakaoCompleteRequest request) {
-        return kakaoService.complete(request.kakaoId(), request.nickname());
+        return kakaoService.complete(request.kakaoId(), request.nickname(), request.profileImageUrl());
     }
 }

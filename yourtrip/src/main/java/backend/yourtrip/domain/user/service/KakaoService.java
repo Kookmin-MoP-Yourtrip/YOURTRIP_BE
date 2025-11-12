@@ -36,7 +36,9 @@ public class KakaoService {
             ? email
             : kakaoId + "@kakao-temp.local";
 
-        String image = null;
+        String image = profile.kakaoAccount().profile() != null
+            ? profile.kakaoAccount().profile().profileImageUrl()
+            : null;
 
         User existing = userRepository.findBySocialId(kakaoId)
             .or(() -> userRepository.findByEmail(safeEmail))
@@ -49,7 +51,6 @@ public class KakaoService {
                 "EXISTING",
                 kakaoId,
                 safeEmail,
-                existing.getNickname(),
                 image,
                 new UserLoginResponse(existing.getId(), existing.getNickname(), at)
             );
@@ -58,18 +59,17 @@ public class KakaoService {
         userRepository.findBySocialId(kakaoId)
             .orElseGet(() -> userRepository.save(UserMapper.toKakaoTemp(kakaoId, safeEmail, image)));
 
-        String suggested = null;
-
-        return new KakaoLoginInitResponse("NEED_PROFILE", kakaoId, safeEmail, suggested, image, null);
+        return new KakaoLoginInitResponse("NEED_PROFILE", kakaoId, safeEmail, image, null);
     }
 
     @Transactional
-    public UserLoginResponse complete(String kakaoId, String nickname) {
+    public UserLoginResponse complete(String kakaoId, String nickname, String profileImageUrl) {
         User temp = userRepository.findBySocialId(kakaoId)
             .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
 
         temp = temp.toBuilder()
             .nickname(nickname)
+            .profileImageUrl(profileImageUrl)
             .role(UserRole.USER)
             .build();
         temp = userRepository.save(temp);
