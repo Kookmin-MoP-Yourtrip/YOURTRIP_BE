@@ -55,10 +55,10 @@ kakao:
 
 
 server:
-  port: 443
+  port: 8080
   address: 0.0.0.0
   ssl:
-    enabled: true
-    key-store: ${KEY_STORE}
-    key-store-type: ${KEY_TYPE}
-    key-store-password: ${KEY_PASS}
+    enabled: false
+    # key-store: ${KEY_STORE}
+    # key-store-type: ${KEY_TYPE}
+    # key-store-password: ${KEY_PASS}
