@@ -26,6 +26,11 @@ spring:
           starttls:
             enable: true
 
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
 jwt:
   secret: ${JWT_SECRET}
 
@@ -62,3 +67,13 @@ server:
     # key-store: ${KEY_STORE}
     # key-store-type: ${KEY_TYPE}
     # key-store-password: ${KEY_PASS}
+
+
+s3:
+  bucket: ${S3_BUCKET}
+  region: ap-northeast-2
+  allowed-content-types: image/png,image/jpeg,image/webp
+  max-size-bytes: 10485760 # 10MB
+
+  access-key: ${AWS_ACCESS_KEY}
+  secret-key: ${AWS_SECRET_KEY}
