@@ -61,4 +61,8 @@ public class Feed extends BaseEntity {
         viewCount = 0;
         this.tagCourse = tagCourse;
     }
+
+    public void increaseViewCount() {
+        this.viewCount += 1;
+    }
 }

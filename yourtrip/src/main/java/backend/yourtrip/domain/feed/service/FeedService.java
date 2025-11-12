@@ -12,7 +12,7 @@ public interface FeedService {
     FeedCreateResponse saveFeed(FeedCreateRequest request);
     FeedDetailResponse getFeedByFeedId(Long id);
 
-    FeedListResponse getFeedAll(Pageable pageable, FeedSortType sortType);
-    FeedListResponse getFeedByUserId(Long id, Pageable pageable);
-    FeedListResponse getFeedByKeyword(String keyword, Pageable pageable);
+    FeedListResponse getFeedAll(int page, int size, FeedSortType sortType);
+    FeedListResponse getFeedByUserId(Long id, int page, int size);
+    FeedListResponse getFeedByKeyword(String keyword, int page, int size);
 }

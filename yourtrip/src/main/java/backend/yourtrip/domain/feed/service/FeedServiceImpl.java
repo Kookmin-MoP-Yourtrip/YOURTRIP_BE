@@ -52,27 +52,23 @@ public class FeedServiceImpl implements FeedService{
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public FeedDetailResponse getFeedByFeedId(Long feedId) {
         Feed feed = feedRepository.findFeedWithHashtag(feedId)
                 .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
+
+        feed.increaseViewCount();
+
         return FeedMapper.toDetailResponse(feed);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public FeedListResponse getFeedAll(Pageable pageable, FeedSortType sortType) {
+    public FeedListResponse getFeedAll(int page, int size, FeedSortType sortType) {
         Sort sort = createSort(sortType);
+        Pageable pageable = PageRequest.of(page, size, sort);
 
-        Pageable sortedPageable = PageRequest.of(
-                pageable.getPageNumber(),
-                pageable.getPageSize(),
-                sort
-        );
-
-
-
-        Page<Feed> feedPage = feedRepository.findAll(sortedPageable);
+        Page<Feed> feedPage = feedRepository.findAll(pageable);
         return FeedMapper.toListResponse(feedPage);
     }
 
@@ -85,8 +81,9 @@ public class FeedServiceImpl implements FeedService{
 
     @Override
     @Transactional(readOnly = true)
-    public FeedListResponse getFeedByUserId(Long userId, Pageable pageable) {
+    public FeedListResponse getFeedByUserId(Long userId, int page, int size) {
         userService.getUser(userId);
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<Feed> feedPage = feedRepository.findByUser_Id(userId, pageable);
 
         return FeedMapper.toListResponse(feedPage);
@@ -94,7 +91,8 @@ public class FeedServiceImpl implements FeedService{
 
     @Override
     @Transactional(readOnly = true)
-    public FeedListResponse getFeedByKeyword(String keyword, Pageable pageable) {
+    public FeedListResponse getFeedByKeyword(String keyword, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<Feed> feedPage = feedRepository.findByKeyword(keyword, pageable);
 
         return FeedMapper.toListResponse(feedPage);

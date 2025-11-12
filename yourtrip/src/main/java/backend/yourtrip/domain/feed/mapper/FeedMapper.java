@@ -6,6 +6,8 @@ import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
 import backend.yourtrip.domain.feed.entity.Feed;
 import backend.yourtrip.domain.feed.entity.Hashtag;
 import backend.yourtrip.domain.user.entity.User;
+import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.FeedErrorCode;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -29,7 +31,7 @@ public class FeedMapper {
     public static FeedDetailResponse toDetailResponse(Feed feed) {
 
         if(feed == null) {
-            throw new IllegalArgumentException("피드가 없습니다.");
+            throw new BusinessException(FeedErrorCode.FEED_NOT_FOUND);
         }
         List<String> hashtagNames = feed.getHashtags() != null
                 ? feed.getHashtags().stream()

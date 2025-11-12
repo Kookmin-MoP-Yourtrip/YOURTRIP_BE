@@ -40,28 +40,28 @@ public class FeedController {
     @GetMapping
     public FeedListResponse getAllFeed(
             @RequestParam(defaultValue = "NEW") FeedSortType sortType,
-            @ParameterObject
-            @PageableDefault(size = 10) Pageable pageable
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
             ) {
-        return feedService.getFeedAll(pageable, sortType);
+        return feedService.getFeedAll(page, size, sortType);
     }
 
     @GetMapping("/users/{userId}")
     public FeedListResponse getUserFeed(
             @PathVariable Long userId,
-            @ParameterObject
-            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
     ) {
-        return feedService.getFeedByUserId(userId, pageable);
+        return feedService.getFeedByUserId(userId, page, size);
     }
 
     @GetMapping("/search")
     public FeedListResponse getKeywordFeed(
             @RequestParam String keyword,
-            @ParameterObject
-            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
     ) {
-        return feedService.getFeedByKeyword(keyword, pageable);
+        return feedService.getFeedByKeyword(keyword, page, size);
     }
 }
 
