@@ -5,6 +5,7 @@ import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
 import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
 import backend.yourtrip.domain.feed.entity.Feed;
 import backend.yourtrip.domain.feed.entity.Hashtag;
+import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.FeedErrorCode;
@@ -18,13 +19,13 @@ import java.util.stream.Collectors;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class FeedMapper {
 
-    public static Feed toEntity(User user, FeedCreateRequest request) {
+    public static Feed toEntity(User user, FeedCreateRequest request, UploadCourse uploadCourse) {
         return Feed.builder()
                 .user(user)
                 .title(request.title())
                 .location(request.location())
-                .contentUrl(request.contentUrl())
-                //TODO: 업로드 코스 내용 필요
+                .content(request.content())
+                .tagCourse(uploadCourse)
                 .build();
     }
 
@@ -40,6 +41,7 @@ public class FeedMapper {
                 :List.of();
 
         User user = feed.getUser();
+        UploadCourse uploadCourse = feed.getTagCourse();
 
         return FeedDetailResponse.builder()
                 .feedId(feed.getId())
@@ -53,7 +55,7 @@ public class FeedMapper {
                 .commentCount(feed.getCommentCount())
                 .heartCount(feed.getHeartCount())
                 .viewCount(feed.getViewCount())
-                //TODO: 업로드 코스 내용 필요
+                .uploadCourseId(uploadCourse != null ? uploadCourse.getId() : null)
                 .build();
     }
 

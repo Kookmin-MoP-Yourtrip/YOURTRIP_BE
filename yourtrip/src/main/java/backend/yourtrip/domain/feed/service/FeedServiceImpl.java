@@ -9,6 +9,8 @@ import backend.yourtrip.domain.feed.entity.Hashtag;
 import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
 import backend.yourtrip.domain.feed.mapper.FeedMapper;
 import backend.yourtrip.domain.feed.repository.FeedRepository;
+import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
+import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.BusinessException;
@@ -30,14 +32,32 @@ public class FeedServiceImpl implements FeedService{
 
     private final FeedRepository feedRepository;
     private final UserService userService;
+    private final UploadCourseRepository uploadCourseRepository;
 
     @Override
     @Transactional
     public FeedCreateResponse saveFeed(FeedCreateRequest request) {
+        if (request.title() == null || request.title().trim().isEmpty()) {
+            throw new BusinessException(FeedErrorCode.FEED_TITLE_REQUIRED);
+        }
+        if (request.content() == null || request.content().trim().isEmpty()) {
+            throw new BusinessException(FeedErrorCode.FEED_CONTENT_REQUIRED);
+        }
+
         Long userId = userService.getCurrentUserId();
         User user = userService.getUser(userId);
 
-        Feed feed = FeedMapper.toEntity(user, request);
+        UploadCourse uploadCourse = null;
+        if (request.uploadCourseId() != null) {
+            uploadCourse = uploadCourseRepository.findById(request.uploadCourseId())
+                    .orElseThrow(() -> new BusinessException(FeedErrorCode.UPLOAD_COURSE_NOT_FOUND));
+
+            if (!uploadCourse.getUser().getId().equals(userId)) {
+                throw new BusinessException(FeedErrorCode.UPLOAD_COURSE_FORBIDDEN);
+            }
+        }
+
+        Feed feed = FeedMapper.toEntity(user, request, uploadCourse);
         Feed savedFeed = feedRepository.save(feed);
 
         for (String hashtag : request.hashtags()) {

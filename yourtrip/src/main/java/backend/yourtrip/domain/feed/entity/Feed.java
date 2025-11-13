@@ -50,16 +50,20 @@ public class Feed extends BaseEntity {
     private UploadCourse tagCourse;
 
     @Builder
-    public Feed (User user, String title, String location, String contentUrl, UploadCourse tagCourse) {
+    public Feed (User user, String title, String location, String content, UploadCourse tagCourse) {
         this.user = user;
         this.title = title;
         this.location = location;
-        this.contentUrl = contentUrl;
+        this.contentUrl = content;
         hashtags = new ArrayList<>();
         commentCount = 0;
         heartCount = 0;
         viewCount = 0;
         this.tagCourse = tagCourse;
+    }
+
+    public void updateFeed(String title, String location, String content, UploadCourse tagCourse) {
+
     }
 
     public void increaseViewCount() {

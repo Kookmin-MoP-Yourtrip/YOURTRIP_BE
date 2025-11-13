@@ -15,17 +15,19 @@ public interface FeedRepository extends JpaRepository<Feed, Long> {
         SELECT DISTINCT f
         FROM Feed f
         LEFT JOIN FETCH f.hashtags ht
+        LEFT JOIN FETCH f.user u
+        LEFT JOIN FETCH f.tagCourse tc
         WHERE f.id = :feedId
         """)
     Optional<Feed> findFeedWithHashtag(@Param("feedId") Long feedId);
 
-    @EntityGraph(attributePaths = {"hashtags", "user"})
+    @EntityGraph(attributePaths = {"hashtags", "user", "tagCourse"})
     Page<Feed> findAll(Pageable pageable);
 
-    @EntityGraph(attributePaths = {"hashtags", "user"})
+    @EntityGraph(attributePaths = {"hashtags", "user", "tagCourse"})
     Page<Feed> findByUser_Id(@Param("userId") Long userId, Pageable pageable);
 
-    @EntityGraph(attributePaths = {"hashtags", "user"})
+    @EntityGraph(attributePaths = {"hashtags", "user", "tagCourse"})
     @Query("""
         SELECT DISTINCT f
         FROM Feed f
