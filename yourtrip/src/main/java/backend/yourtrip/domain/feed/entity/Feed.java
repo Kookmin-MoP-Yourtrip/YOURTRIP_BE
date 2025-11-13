@@ -32,9 +32,9 @@ public class Feed extends BaseEntity {
 
     private String location;
 
-    private String contentUrl;
+    private String content;
 
-    @OneToMany(mappedBy = "feed", cascade = CascadeType.PERSIST)
+    @OneToMany(mappedBy = "feed", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Hashtag> hashtags;
 
     private int commentCount;
@@ -54,7 +54,7 @@ public class Feed extends BaseEntity {
         this.user = user;
         this.title = title;
         this.location = location;
-        this.contentUrl = content;
+        this.content = content;
         hashtags = new ArrayList<>();
         commentCount = 0;
         heartCount = 0;
@@ -63,7 +63,24 @@ public class Feed extends BaseEntity {
     }
 
     public void updateFeed(String title, String location, String content, UploadCourse tagCourse) {
+        if (title != null && !title.trim().isEmpty()) {
+            this.title = title;
+        }
+        if (location != null && !location.trim().isEmpty()) {
+            this.location = location;
+        }
+        if (content != null && !content.trim().isEmpty()) {
+            this.content = content;
+        }
+        if (tagCourse != null) {
+            this.tagCourse = tagCourse;
+        }
 
+    }
+
+    public void updateHashtags(List<Hashtag> newHashtags) {
+        this.hashtags.clear();
+        this.hashtags.addAll(newHashtags);
     }
 
     public void increaseViewCount() {

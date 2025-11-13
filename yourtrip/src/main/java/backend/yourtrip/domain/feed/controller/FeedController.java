@@ -2,9 +2,11 @@ package backend.yourtrip.domain.feed.controller;
 
 
 import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
+import backend.yourtrip.domain.feed.dto.request.FeedUpdateRequest;
 import backend.yourtrip.domain.feed.dto.response.FeedCreateResponse;
 import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
 import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
+import backend.yourtrip.domain.feed.dto.response.FeedUpdateResponse;
 import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
 import backend.yourtrip.domain.feed.service.FeedService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -66,6 +68,15 @@ public class FeedController {
             @RequestParam(defaultValue = "10") int size
     ) {
         return feedService.getFeedByKeyword(keyword, page, size);
+    }
+
+    @PatchMapping("/{feedId}")
+    @Operation(summary = "피드 수정")
+    public FeedUpdateResponse updateFeed(
+            @PathVariable Long feedId,
+            @Valid @RequestBody FeedUpdateRequest request
+            ) {
+        return feedService.updateFeed(feedId, request);
     }
 }
 
