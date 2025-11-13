@@ -2,10 +2,7 @@ package backend.yourtrip.domain.feed.service;
 
 import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
 import backend.yourtrip.domain.feed.dto.request.FeedUpdateRequest;
-import backend.yourtrip.domain.feed.dto.response.FeedCreateResponse;
-import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
-import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
-import backend.yourtrip.domain.feed.dto.response.FeedUpdateResponse;
+import backend.yourtrip.domain.feed.dto.response.*;
 import backend.yourtrip.domain.feed.entity.Feed;
 import backend.yourtrip.domain.feed.entity.Hashtag;
 import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
@@ -157,5 +154,21 @@ public class FeedServiceImpl implements FeedService {
             }
         }
         return new FeedUpdateResponse(feed.getId(), FeedResponseCode.FEED_UPDATED.getMessage());
+    }
+
+    @Override
+    @Transactional
+    public FeedDeleteResponse deleteFeed(Long feedId) {
+        Feed feed = feedRepository.findById(feedId)
+                .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
+
+        Long currentUserId = userService.getCurrentUserId();
+        if (!feed.getUser().getId().equals(currentUserId)) {
+            throw new BusinessException(FeedErrorCode.FEED_DELETE_NOT_AUTHORIZED);
+        }
+
+        feed.delete();
+
+        return new FeedDeleteResponse(feed.getId(), FeedResponseCode.FEED_DELETED.getMessage());
     }
 }

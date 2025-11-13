@@ -3,10 +3,7 @@ package backend.yourtrip.domain.feed.controller;
 
 import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
 import backend.yourtrip.domain.feed.dto.request.FeedUpdateRequest;
-import backend.yourtrip.domain.feed.dto.response.FeedCreateResponse;
-import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
-import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
-import backend.yourtrip.domain.feed.dto.response.FeedUpdateResponse;
+import backend.yourtrip.domain.feed.dto.response.*;
 import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
 import backend.yourtrip.domain.feed.service.FeedService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -77,6 +74,14 @@ public class FeedController {
             @Valid @RequestBody FeedUpdateRequest request
             ) {
         return feedService.updateFeed(feedId, request);
+    }
+
+    @DeleteMapping("/{feedId}")
+    @Operation(summary = "피드 삭제")
+    public FeedDeleteResponse deleteFeed(
+            @PathVariable Long feedId
+    ) {
+        return feedService.deleteFeed(feedId);
     }
 }
 

@@ -3,6 +3,8 @@ package backend.yourtrip.domain.feed.entity;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.global.common.BaseEntity;
+import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.FeedErrorCode;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -81,6 +83,13 @@ public class Feed extends BaseEntity {
     public void updateHashtags(List<Hashtag> newHashtags) {
         this.hashtags.clear();
         this.hashtags.addAll(newHashtags);
+    }
+
+    public void delete() {
+        if (this.deleted) {
+            throw new BusinessException(FeedErrorCode.FEED_ALREADY_DELETED);
+        }
+        this.deleted = true;
     }
 
     public void increaseViewCount() {
