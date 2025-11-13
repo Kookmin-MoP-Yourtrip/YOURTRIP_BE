@@ -1,23 +1,33 @@
 package backend.yourtrip.domain.user.service;
 
-import backend.yourtrip.domain.user.dto.request.*;
-import backend.yourtrip.domain.user.dto.response.*;
-import backend.yourtrip.domain.user.entity.*;
+import backend.yourtrip.domain.user.dto.request.ProfileCreateRequest;
+import backend.yourtrip.domain.user.dto.request.UserLoginRequest;
+import backend.yourtrip.domain.user.dto.response.UserLoginResponse;
+import backend.yourtrip.domain.user.dto.response.UserSignupResponse;
+import backend.yourtrip.domain.user.entity.User;
+import backend.yourtrip.domain.user.entity.UserRole;
 import backend.yourtrip.domain.user.mapper.UserMapper;
 import backend.yourtrip.domain.user.repository.UserRepository;
 import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UserErrorCode;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
 import backend.yourtrip.global.mail.service.MailService;
+import backend.yourtrip.global.s3.service.S3ImageUploadService;
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.web.multipart.MultipartFile;
 
 @RequiredArgsConstructor
 @Service
@@ -37,6 +47,8 @@ public class UserServiceImpl implements UserService {
     private static final int CODE_EXPIRY_MINUTES = 5;
     private static final String DEFAULT_PROFILE_IMAGE =
         "https://yourtrip.s3.ap-northeast-2.amazonaws.com/default_profile.png";
+
+    private final S3ImageUploadService uploadService;
 
     @Override
     public void sendVerificationCode(String email) {
@@ -90,7 +102,8 @@ public class UserServiceImpl implements UserService {
 
     @Transactional
     @Override
-    public UserSignupResponse completeSignup(ProfileCreateRequest request) {
+    public UserSignupResponse completeSignup(ProfileCreateRequest request,
+        MultipartFile profileImage) {
         String email = request.email();
 
         if (!verifiedEmails.contains(email)) {
@@ -104,16 +117,25 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(UserErrorCode.EMAIL_ALREADY_EXIST);
         }
 
-        String imageUrl = (request.profileImageUrl() != null && !request.profileImageUrl().isBlank())
-            ? request.profileImageUrl()
-            : DEFAULT_PROFILE_IMAGE;
+//        String imageUrl =
+//            (request.profileImageUrl() != null && !request.profileImageUrl().isBlank())
+//                ? request.profileImageUrl()
+//                : DEFAULT_PROFILE_IMAGE;
+
+        String profileImageUrl;
+        try {
+            profileImageUrl = uploadService.uploadImage(profileImage).url();
+        } catch (IOException e) {
+            throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+        }
 
         User user = User.builder()
             .email(email)
             .password(encodedPw)
             .nickname(request.nickname())
-            .profileImageUrl(imageUrl)
+//            .profileImageUrl(imageUrl)
             .emailVerified(true)
+            .profileImageUrl(profileImageUrl)
             .deleted(false)
             .build();
 
@@ -184,13 +206,16 @@ public class UserServiceImpl implements UserService {
             ? SecurityContextHolder.getContext().getAuthentication().getPrincipal()
             : null;
 
-        if (principal instanceof Long id) return id;
+        if (principal instanceof Long id) {
+            return id;
+        }
         throw new BusinessException(UserErrorCode.USER_NOT_FOUND);
     }
 
     @Transactional
     @Override
-    public UserLoginResponse kakaoLoginOrSignup(String kakaoId, String email, String nickname, String profileImageUrl) {
+    public UserLoginResponse kakaoLoginOrSignup(String kakaoId, String email, String nickname,
+        String profileImageUrl) {
         User user = userRepository.findByEmail(email).orElse(null);
 
         if (user == null) {
