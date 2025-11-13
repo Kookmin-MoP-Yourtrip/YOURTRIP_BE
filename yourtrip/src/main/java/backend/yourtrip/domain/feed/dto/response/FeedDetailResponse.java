@@ -16,6 +16,7 @@ public record FeedDetailResponse(
         List<String> hashtags,
         int commentCount,
         int heartCount,
+        int viewCount,
         Long uploadCourseId
 ) {
 }

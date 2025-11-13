@@ -3,11 +3,16 @@ package backend.yourtrip.domain.feed.service;
 import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
 import backend.yourtrip.domain.feed.dto.response.FeedCreateResponse;
 import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
+import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
+import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
+import org.springframework.data.domain.Pageable;
 
 
 public interface FeedService {
     FeedCreateResponse saveFeed(FeedCreateRequest request);
     FeedDetailResponse getFeedByFeedId(Long id);
-    //TODO: 피드 전체 조회 기능
-    //TODO: 피드 유저별 조회 기능
+
+    FeedListResponse getFeedAll(int page, int size, FeedSortType sortType);
+    FeedListResponse getFeedByUserId(Long id, int page, int size);
+    FeedListResponse getFeedByKeyword(String keyword, int page, int size);
 }
