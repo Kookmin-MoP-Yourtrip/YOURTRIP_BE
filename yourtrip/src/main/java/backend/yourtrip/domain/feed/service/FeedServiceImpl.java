@@ -23,8 +23,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-
 @Service
 @RequiredArgsConstructor
 public class FeedServiceImpl implements FeedService {
@@ -158,7 +156,7 @@ public class FeedServiceImpl implements FeedService {
 
     @Override
     @Transactional
-    public FeedDeleteResponse deleteFeed(Long feedId) {
+    public void deleteFeed(Long feedId) {
         Feed feed = feedRepository.findById(feedId)
                 .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
 
@@ -166,9 +164,6 @@ public class FeedServiceImpl implements FeedService {
         if (!feed.getUser().getId().equals(currentUserId)) {
             throw new BusinessException(FeedErrorCode.FEED_DELETE_NOT_AUTHORIZED);
         }
-
         feed.delete();
-
-        return new FeedDeleteResponse(feed.getId(), FeedResponseCode.FEED_DELETED.getMessage());
     }
 }

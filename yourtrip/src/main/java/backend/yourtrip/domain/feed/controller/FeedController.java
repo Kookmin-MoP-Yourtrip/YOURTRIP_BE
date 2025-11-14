@@ -67,7 +67,7 @@ public class FeedController {
         return feedService.getFeedByKeyword(keyword, page, size);
     }
 
-    @PatchMapping("/{feedId}")
+    @PutMapping("/{feedId}")
     @Operation(summary = "피드 수정")
     public FeedUpdateResponse updateFeed(
             @PathVariable Long feedId,
@@ -77,11 +77,12 @@ public class FeedController {
     }
 
     @DeleteMapping("/{feedId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "피드 삭제")
-    public FeedDeleteResponse deleteFeed(
+    public void deleteFeed(
             @PathVariable Long feedId
     ) {
-        return feedService.deleteFeed(feedId);
+        feedService.deleteFeed(feedId);
     }
 }
 

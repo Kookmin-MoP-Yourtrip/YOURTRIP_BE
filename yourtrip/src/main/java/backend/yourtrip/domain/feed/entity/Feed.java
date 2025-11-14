@@ -27,24 +27,31 @@ public class Feed extends BaseEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @Column(name = "title", nullable = false, length = 100)
     private String title;
 
+    @Column(name = "location", nullable = false, length = 50)
     private String location;
 
+    @Column(name = "content", nullable = false, length = 1000)
     private String content;
 
     @OneToMany(mappedBy = "feed", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Hashtag> hashtags;
 
+    @Column(name = "commentCount", nullable = false, columnDefinition = "int default 0")
     private int commentCount;
 
+    @Column(name = "heartCount", nullable = false, columnDefinition = "int default 0")
     private int heartCount;
 
+    @Column(name = "viewCount", nullable = false, columnDefinition = "int default 0")
     private int viewCount;
 
+    @Column(name = "deleted", nullable = false, columnDefinition = "boolean default false")
     private boolean deleted;
 
     @ManyToOne(fetch = FetchType.LAZY)

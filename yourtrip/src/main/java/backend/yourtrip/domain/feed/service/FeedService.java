@@ -4,7 +4,6 @@ import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
 import backend.yourtrip.domain.feed.dto.request.FeedUpdateRequest;
 import backend.yourtrip.domain.feed.dto.response.*;
 import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
-import org.springframework.data.domain.Pageable;
 
 
 public interface FeedService {
@@ -17,5 +16,5 @@ public interface FeedService {
 
     FeedUpdateResponse updateFeed(Long feedId, FeedUpdateRequest request);
 
-    FeedDeleteResponse deleteFeed(Long feedId);
+    void deleteFeed(Long feedId);
 }
