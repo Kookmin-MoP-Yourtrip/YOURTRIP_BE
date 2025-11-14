@@ -120,13 +120,13 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
     private getThumbnailAndProfileUrl getGetThumbnailAndProfileUrl(UploadCourse uploadCourse) {
         String thumbnailUrl = null;
-        if (!uploadCourse.getThumbnailImageS3Key().isEmpty()) {
+        if (uploadCourse.getThumbnailImageS3Key()!=null) {
             thumbnailUrl = s3Service.getPresignedUrl(
                 uploadCourse.getThumbnailImageS3Key());//썸네일 프리사인드 URL 생성
         }
 
         String profileUrl = null;
-        if (!uploadCourse.getUser().getProfileImageS3Key().isEmpty()) {
+        if (uploadCourse.getUser().getProfileImageS3Key() != null) {
             profileUrl = s3Service.getPresignedUrl(
                 uploadCourse.getUser().getProfileImageS3Key());
         }
