@@ -113,7 +113,8 @@ public class UploadCourseController {
             - myCourseId: 필수, 존재하는 '나의 코스'와 연동
             - title: 공백 불가
             - keywords: 필수(빈 배열 허용). **키워드 목록 조회 API**로 받은 `code` 값만 배열에 담아 전송 (예: `"WALK"`, `"FOOD"`), 선택된 키워드가 없다면 빈 배열 반환
-            - thumbnailImage: 선택, `.jpg/.png`만 허용 — *추후 multipart 예정*
+            - thumbnailImage: multipart/form-data 타입으로 썸네일 이미지를 업로드합니다 (선택)
+              png, jpeg, jpg, webp, mp4, quicktime, webm 타입만 업로드 가능합니다.
 
             ### ⚠ 예외상황
             - `INVALID_REQUEST_FIELD(400)`: 필드 유효성 실패(빈 값, 포맷 불일치, 잘못된 키워드 코드 등)
@@ -236,6 +237,9 @@ public class UploadCourseController {
                 - 업로드 코스 ID(uploadCourseId): 존재하는 코스여야 함
             ### 에외 상황
             - `UPLOAD_COURSE_NOT_FOUND(404)`: 업로드 코스가 존재하지 않는 경우 (잘못된 uploadCourseId가 주어진 경우)
+                        
+            - 반환받는 image url들은 임시 url로 15분간만 유효합니다(보안상 문제), 로드한 이미지가 15분 뒤에 사라지는게 아니라 발급받은 url로 15분이 지난 후 로드를 시도하면 유효하지 않다는 뜻입니다.
+
             """)
     @ApiResponses({
         @ApiResponse(
@@ -332,6 +336,7 @@ public class UploadCourseController {
                 아무 파라미터를 넘겨주지 않으면 인기순으로 정렬됩니다.
             ### 에외 상황
             - `INVALID_REQUEST_FIELD(400)`: 잘못된 정렬 기준이 주어진 경우(POPULAR, NEW 외의 값)
+            - 반환받는 image url들은 임시 url로 15분간만 유효합니다(보안상 문제), 로드한 이미지가 15분 뒤에 사라지는게 아니라 발급받은 url로 15분이 지난 후 로드를 시도하면 유효하지 않다는 뜻입니다.
             """)
     @ApiResponses({
         @ApiResponse(

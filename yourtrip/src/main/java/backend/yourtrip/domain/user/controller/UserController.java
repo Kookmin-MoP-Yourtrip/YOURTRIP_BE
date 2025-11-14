@@ -188,7 +188,9 @@ public class UserController {
         description = """
             ### 제약조건
             - 닉네임: **1~20자**
-            - 프로필 이미지는 선택값(`profileImageUrl`), 미지정 시 서버 기본값 사용 가능(정책에 따름).
+            - multipart/form-data 타입으로 프로필 이미지 업로드합니다, 미선택 시 서버에 저장한 기본 프사 이미지가 지정됨
+            - 반환받는 image url은 임시 url로 15분간만 유효합니다(보안상 문제), 로드한 이미지가 15분 뒤에 사라지는게 아니라 발급받은 url로 15분이 지난 후 로드를 시도하면 유효하지 않다는 뜻입니다.
+            - png, jpeg, jpg, webp, mp4, quicktime, webm 타입만 업로드 가능합니다.
             - 비밀번호가 **사전 설정(3단계)** 되어 있어야 최종 회원 생성이 됩니다.
             ### 예외상황 / 에러코드
             - `EMAIL_NOT_VERIFIED(400)`: 이메일 인증 미완료.
@@ -483,8 +485,10 @@ public class UserController {
         description = """
             카카오 TEMP 유저를 **정식 USER**로 전환합니다.  
             - `/login/kakao/callback` 응답이 `NEED_PROFILE`일 때만 호출하세요.
-            - 프론트에서 **닉네임**과 **프로필 이미지 URL**을 함께 보내주세요.  
-                (이미지 URL이 null/빈 값이면 서버에서 **기본 이미지**로 대체합니다.)
+            - 프론트에서 **닉네임**과 **프로필 이미지**를 보내주세요.
+            - multipart/form-data 타입으로 프로필 이미지 업로드합니다, 미선택 시 서버에 저장한 기본 프사 이미지가 지정됨
+            - 반환받는 image url은 임시 url로 15분간만 유효합니다(보안상 문제), 로드한 이미지가 15분 뒤에 사라지는게 아니라 발급받은 url로 15분이 지난 후 로드를 시도하면 유효하지 않다는 뜻입니다.
+            - png, jpeg, jpg, webp, mp4, quicktime, webm 타입만 업로드 가능합니다.
                 
             ### 요청 바디 예시
             ```json

@@ -36,7 +36,6 @@ public class User extends BaseEntity {
 
     private String nickname;
 
-    @Builder.Default
     private String profileImageS3Key;
 
     private boolean deleted;
