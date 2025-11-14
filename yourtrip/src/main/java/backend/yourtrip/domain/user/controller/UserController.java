@@ -364,7 +364,7 @@ public class UserController {
     ### 테스트 방법
     1) 브라우저 주소창에 아래 주소 입력  
        ```
-       https://kauth.kakao.com/oauth/authorize?client_id={REST_API_KEY}&redirect_uri=http://localhost:8080/api/users/login/kakao/callback&response_type=code
+       https://kauth.kakao.com/oauth/authorize?client_id=4fda49c30ce665f38143fa332b69ac34&redirect_uri=https://yourtrip.site/api/users/login/kakao/callback&response_type=code
        ```
     2) 카카오 로그인 성공 -> 브라우저가 `.../callback?code=...`로 자동 리다이렉트  
     3) JSON 결과(EXISTING 또는 NEED_PROFILE) 확인  
