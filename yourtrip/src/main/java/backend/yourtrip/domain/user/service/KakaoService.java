@@ -1,7 +1,8 @@
 package backend.yourtrip.domain.user.service;
 
 import backend.yourtrip.domain.user.dto.response.UserLoginResponse;
-import backend.yourtrip.domain.user.entity.*;
+import backend.yourtrip.domain.user.entity.User;
+import backend.yourtrip.domain.user.entity.UserRole;
 import backend.yourtrip.domain.user.mapper.UserMapper;
 import backend.yourtrip.domain.user.repository.UserRepository;
 import backend.yourtrip.domain.user.service.dto.response.KakaoLoginInitResponse;
@@ -57,7 +58,8 @@ public class KakaoService {
         }
 
         userRepository.findBySocialId(kakaoId)
-            .orElseGet(() -> userRepository.save(UserMapper.toKakaoTemp(kakaoId, safeEmail, image)));
+            .orElseGet(
+                () -> userRepository.save(UserMapper.toKakaoTemp(kakaoId, safeEmail, image)));
 
         return new KakaoLoginInitResponse("NEED_PROFILE", kakaoId, safeEmail, image, null);
     }
@@ -69,7 +71,7 @@ public class KakaoService {
 
         temp = temp.toBuilder()
             .nickname(nickname)
-            .profileImageUrl(profileImageUrl)
+            .profileImageS3Key(profileImageUrl)
             .role(UserRole.USER)
             .build();
         temp = userRepository.save(temp);

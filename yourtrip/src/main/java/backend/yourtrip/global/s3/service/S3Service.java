@@ -4,6 +4,7 @@ import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Set;
 import java.util.UUID;
@@ -16,10 +17,13 @@ import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
 @Service
 @RequiredArgsConstructor
-public class S3ImageUploadService {
+public class S3Service {
 
     private final S3Client s3Client;
     @Value("${s3.max-size-bytes}")
@@ -30,6 +34,8 @@ public class S3ImageUploadService {
     private String bucket;
     @Value("${s3.region}")
     private String region;
+
+    private final S3Presigner presigner;
 
     //허용 타입을 set으로 변환
     private Set<String> allowedContentTypeSet() {
@@ -114,4 +120,19 @@ public class S3ImageUploadService {
                                long size) {
 
     }
+
+    public String getPresignedUrl(String key) {
+        // 1) 프리사인 요청 객체 생성
+        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+            .signatureDuration(Duration.ofMinutes(15))  // URL 유효 시간
+            .getObjectRequest(r -> r.bucket(bucket).key(key))
+            .build();
+
+        // 2) presigner로 프리사인 URL 생성
+        PresignedGetObjectRequest presignedRequest = presigner.presignGetObject(presignRequest);
+
+        // 3) URL 반환
+        return presignedRequest.url().toString();
+    }
+
 }

@@ -13,7 +13,7 @@ import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UserErrorCode;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
 import backend.yourtrip.global.mail.service.MailService;
-import backend.yourtrip.global.s3.service.S3ImageUploadService;
+import backend.yourtrip.global.s3.service.S3Service;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -48,7 +48,7 @@ public class UserServiceImpl implements UserService {
     private static final String DEFAULT_PROFILE_IMAGE =
         "https://yourtrip.s3.ap-northeast-2.amazonaws.com/default_profile.png";
 
-    private final S3ImageUploadService uploadService;
+    private final S3Service s3Service;
 
     @Override
     public void sendVerificationCode(String email) {
@@ -63,6 +63,9 @@ public class UserServiceImpl implements UserService {
         mailService.sendVerificationMail(email, code);
 
         System.out.println("[인증번호 전송 완료] " + email);
+//        verificationCodes.put(email, "123");
+//        codeExpiry.put(email, LocalDateTime.now().plusMinutes(CODE_EXPIRY_MINUTES));
+
     }
 
     @Override
@@ -122,9 +125,9 @@ public class UserServiceImpl implements UserService {
 //                ? request.profileImageUrl()
 //                : DEFAULT_PROFILE_IMAGE;
 
-        String profileImageUrl;
+        String profileImageS3Key;
         try {
-            profileImageUrl = uploadService.uploadImage(profileImage).url();
+            profileImageS3Key = s3Service.uploadImage(profileImage).key();
         } catch (IOException e) {
             throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
         }
@@ -135,7 +138,7 @@ public class UserServiceImpl implements UserService {
             .nickname(request.nickname())
 //            .profileImageUrl(imageUrl)
             .emailVerified(true)
-            .profileImageUrl(profileImageUrl)
+            .profileImageS3Key(profileImageS3Key)
             .deleted(false)
             .build();
 
@@ -148,7 +151,8 @@ public class UserServiceImpl implements UserService {
 
         System.out.println("[회원가입 완료] " + user.getEmail());
 
-        return UserMapper.toSignupResponse(user);
+        String imageUrl = s3Service.getPresignedUrl(user.getProfileImageS3Key());
+        return UserMapper.toSignupResponse(user, imageUrl);
     }
 
     @Transactional

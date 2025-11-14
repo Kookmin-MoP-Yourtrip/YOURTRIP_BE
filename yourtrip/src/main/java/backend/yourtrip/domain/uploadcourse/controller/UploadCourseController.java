@@ -8,6 +8,7 @@ import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListRespons
 import backend.yourtrip.domain.uploadcourse.entity.enums.UploadCourseSortType;
 import backend.yourtrip.domain.uploadcourse.service.UploadCourseService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -17,14 +18,16 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequiredArgsConstructor
@@ -100,12 +103,9 @@ public class UploadCourseController {
         return uploadCourseService.getCourseKeywordList();
     }
 
-    // TODO: 멀티파트 데이터 입력으로 변경 (썸네일 이미지 고려)
     // ==========================
     //  2. 코스 업로드
     // ==========================
-    @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
     @Operation(
         summary = "코스 업로드",
         description = """
@@ -212,9 +212,16 @@ public class UploadCourseController {
             )
         )
     })
+    @PostMapping(value = "/", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
     public UploadCourseCreateResponse courseUpload(
-        @Valid @RequestBody UploadCourseCreateRequest request) {
-        return uploadCourseService.createUploadCourse(request);
+        @RequestPart(value = "thumbnailImage", required = false) MultipartFile thumbnailImage,
+        @Parameter(content = @Content(
+            mediaType = MediaType.APPLICATION_JSON_VALUE,
+            schema = @Schema(implementation = UploadCourseCreateRequest.class)
+        ))
+        @Valid @RequestPart(value = "request") UploadCourseCreateRequest request) {
+        return uploadCourseService.createUploadCourse(request, thumbnailImage);
     }
 
     // ==========================

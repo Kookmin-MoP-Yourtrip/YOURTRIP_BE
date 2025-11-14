@@ -17,11 +17,15 @@ import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
+import backend.yourtrip.global.s3.service.S3Service;
+import java.io.IOException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @RequiredArgsConstructor
@@ -30,6 +34,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private final UploadCourseRepository uploadCourseRepository;
     private final MyCourseService myCourseService;
     private final UserService userService;
+    private final S3Service s3Service;
 
     @Override
     @Transactional(readOnly = true)
@@ -39,7 +44,8 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
     @Override
     @Transactional
-    public UploadCourseCreateResponse createUploadCourse(UploadCourseCreateRequest request) {
+    public UploadCourseCreateResponse createUploadCourse(UploadCourseCreateRequest request,
+        MultipartFile thumbnailImage) {
         MyCourse myCourse = myCourseService.getMyCourseById(request.myCourseId());
 
         // 연동되 나의 코스가 이미 업로드됐을 때 예외 throw
@@ -50,8 +56,15 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
         User user = userService.getUser(userService.getCurrentUserId());
 
+        String thumbnailS3Key;
+        try {
+            thumbnailS3Key = s3Service.uploadImage(thumbnailImage).key();
+        } catch (IOException e) {
+            throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+        }
+
         UploadCourse savedUploadCourse = uploadCourseRepository.save(
-            UploadCourseMapper.toEntity(request, myCourse, user));
+            UploadCourseMapper.toEntity(request, myCourse, user, thumbnailS3Key));
 
         //업로드 코스에 키워드 연동
         for (KeywordType keyword : request.keywords()) {
@@ -74,7 +87,10 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
         uploadCourse.increaseViewCount(); //조회 수 증가
 
-        return UploadCourseMapper.toDetailResponse(uploadCourse, daySchedules);
+        String presignedUrl = s3Service.getPresignedUrl(
+            uploadCourse.getThumbnailImageS3Key());//썸네일 프리사인드 URL 생성
+
+        return UploadCourseMapper.toDetailResponse(uploadCourse, daySchedules, presignedUrl);
     }
 
     @Override
