@@ -41,6 +41,8 @@ public class Feed extends BaseEntity {
 
     private int heartCount;
 
+    private int viewCount;
+
     private boolean deleted;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -56,6 +58,11 @@ public class Feed extends BaseEntity {
         hashtags = new ArrayList<>();
         commentCount = 0;
         heartCount = 0;
+        viewCount = 0;
         this.tagCourse = tagCourse;
+    }
+
+    public void increaseViewCount() {
+        this.viewCount += 1;
     }
 }
