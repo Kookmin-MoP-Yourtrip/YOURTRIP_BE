@@ -117,23 +117,21 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(UserErrorCode.EMAIL_ALREADY_EXIST);
         }
 
-//        String imageUrl =
-//            (request.profileImageUrl() != null && !request.profileImageUrl().isBlank())
-//                ? request.profileImageUrl()
-//                : DEFAULT_PROFILE_IMAGE;
-
         String profileImageS3Key;
-        try {
-            profileImageS3Key = s3Service.uploadImage(profileImage).key();
-        } catch (IOException e) {
-            throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+        if (profileImage != null) {
+            try {
+                profileImageS3Key = s3Service.uploadImage(profileImage).key();
+            } catch (IOException e) {
+                throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+            }
+        } else {
+            profileImageS3Key = "default-profile.png";
         }
 
         User user = User.builder()
             .email(email)
             .password(encodedPw)
             .nickname(request.nickname())
-//            .profileImageUrl(imageUrl)
             .emailVerified(true)
             .profileImageS3Key(profileImageS3Key)
             .deleted(false)
@@ -148,8 +146,8 @@ public class UserServiceImpl implements UserService {
 
         System.out.println("[회원가입 완료] " + user.getEmail());
 
-        String imageUrl = s3Service.getPresignedUrl(user.getProfileImageS3Key());
-        return UserMapper.toSignupResponse(user, imageUrl);
+        String profileUrl = s3Service.getPresignedUrl(user.getProfileImageS3Key());
+        return UserMapper.toSignupResponse(user, profileUrl);
     }
 
     @Transactional
