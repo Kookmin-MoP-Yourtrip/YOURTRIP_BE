@@ -553,9 +553,15 @@ public class UserController {
             )
         )
     })
-    @PostMapping("/login/kakao/complete")
-    public UserLoginResponse kakaoComplete(@Valid @RequestBody KakaoCompleteRequest request) {
+    @PostMapping(value = "/login/kakao/complete", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public UserLoginResponse kakaoComplete(
+        @RequestPart(value = "profileImage", required = false) MultipartFile profileImage,
+        @Parameter(content = @Content(
+            mediaType = MediaType.APPLICATION_JSON_VALUE,
+            schema = @Schema(implementation = KakaoCompleteRequest.class)
+        ))
+        @Valid @RequestPart("request") KakaoCompleteRequest request) {
         return kakaoService.complete(request.kakaoId(), request.nickname(),
-            request.profileImageUrl());
+            profileImage);
     }
 }

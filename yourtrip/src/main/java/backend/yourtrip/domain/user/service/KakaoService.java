@@ -10,12 +10,16 @@ import backend.yourtrip.domain.user.service.dto.response.KakaoProfileResponse;
 import backend.yourtrip.domain.user.service.dto.response.KakaoTokenResponse;
 import backend.yourtrip.domain.user.service.util.KakaoUtil;
 import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UserErrorCode;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
+import backend.yourtrip.global.s3.service.S3Service;
+import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
 @Service
@@ -25,6 +29,7 @@ public class KakaoService {
     private final KakaoUtil kakaoUtil;
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
+    private final S3Service s3Service;
 
     @Transactional
     public KakaoLoginInitResponse init(String code) {
@@ -65,13 +70,22 @@ public class KakaoService {
     }
 
     @Transactional
-    public UserLoginResponse complete(String kakaoId, String nickname, String profileImageUrl) {
+    public UserLoginResponse complete(String kakaoId, String nickname,
+        MultipartFile profileImage) {
+
+        String profileImageS3Key;
+        try {
+            profileImageS3Key = s3Service.uploadImage(profileImage).key();
+        } catch (IOException e) {
+            throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+        }
+
         User temp = userRepository.findBySocialId(kakaoId)
             .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
 
         temp = temp.toBuilder()
             .nickname(nickname)
-            .profileImageS3Key(profileImageUrl)
+            .profileImageS3Key(profileImageS3Key)
             .role(UserRole.USER)
             .build();
         temp = userRepository.save(temp);

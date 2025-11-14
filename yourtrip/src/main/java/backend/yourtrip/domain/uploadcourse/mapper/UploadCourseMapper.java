@@ -41,7 +41,7 @@ public class UploadCourseMapper {
     }
 
     public static UploadCourseDetailResponse toDetailResponse(UploadCourse uploadCourse,
-        List<DaySchedule> daySchedules, String presignedUrl) {
+        List<DaySchedule> daySchedules, String presignedUrl, String profileUrl) {
         return UploadCourseDetailResponse.builder()
             .uploadCourseId(uploadCourse.getId())
             .title(uploadCourse.getTitle())
@@ -58,23 +58,24 @@ public class UploadCourseMapper {
             .createdAt(uploadCourse.getCreatedAt())
             .writerId(uploadCourse.getUser().getId())
             .writerNickname(uploadCourse.getUser().getNickname())
-            .writerProfileUrl(uploadCourse.getUser().getProfileImageS3Key())
+            .writerProfileUrl(profileUrl)
             .daySchedules(DayScheduleMapper.toListResponse(daySchedules))
             .build();
     }
 
-    public static UploadCourseListItemResponse toListItemResponse(UploadCourse uploadCourse) {
+    public static UploadCourseListItemResponse toListItemResponse(UploadCourse uploadCourse,
+        String thumbnailUrl, String profileUrl) {
         return UploadCourseListItemResponse.builder()
             .uploadCourseId(uploadCourse.getId())
             .title(uploadCourse.getTitle())
             .location(uploadCourse.getLocation())
-            .thumbnailImageUrl(uploadCourse.getThumbnailImageS3Key())
+            .thumbnailImageUrl(thumbnailUrl)
             .heartCount(uploadCourse.getHeartCount())
             .commentCount(uploadCourse.getCommentCount())
             .viewCount(uploadCourse.getViewCount())
             .writerId(uploadCourse.getUser().getId())
             .writerNickname(uploadCourse.getUser().getNickname())
-            .writerProfileUrl(uploadCourse.getUser().getProfileImageS3Key())
+            .writerProfileUrl(profileUrl)
             .createdAt(uploadCourse.getCreatedAt())
             .build();
     }

@@ -45,9 +45,6 @@ public class UserServiceImpl implements UserService {
     private final Map<String, String> tempPasswords = new ConcurrentHashMap<>();
 
     private static final int CODE_EXPIRY_MINUTES = 5;
-    private static final String DEFAULT_PROFILE_IMAGE =
-        "https://yourtrip.s3.ap-northeast-2.amazonaws.com/default_profile.png";
-
     private final S3Service s3Service;
 
     @Override

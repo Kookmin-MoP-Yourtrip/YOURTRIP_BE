@@ -87,10 +87,11 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
         uploadCourse.increaseViewCount(); //조회 수 증가
 
-        String presignedUrl = s3Service.getPresignedUrl(
-            uploadCourse.getThumbnailImageS3Key());//썸네일 프리사인드 URL 생성
+        getThumbnailAndProfileUrl urls = getGetThumbnailAndProfileUrl(
+            uploadCourse);
 
-        return UploadCourseMapper.toDetailResponse(uploadCourse, daySchedules, presignedUrl);
+        return UploadCourseMapper.toDetailResponse(uploadCourse, daySchedules, urls.thumbnailUrl,
+            urls.profileUrl);
     }
 
     @Override
@@ -103,9 +104,34 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         };
 
         return new UploadCourseListResponse(uploadCourses.stream()
-            .map(UploadCourseMapper::toListItemResponse)
+            .map(uploadCourse -> {
+                getThumbnailAndProfileUrl urls = getGetThumbnailAndProfileUrl(uploadCourse);
+
+                return UploadCourseMapper.toListItemResponse(uploadCourse, urls.thumbnailUrl,
+                    urls.profileUrl);
+            })
             .toList()
         );
+    }
+
+    private record getThumbnailAndProfileUrl(String thumbnailUrl, String profileUrl) {
+
+    }
+
+    private getThumbnailAndProfileUrl getGetThumbnailAndProfileUrl(UploadCourse uploadCourse) {
+        String thumbnailUrl = null;
+        if (!uploadCourse.getThumbnailImageS3Key().isEmpty()) {
+            thumbnailUrl = s3Service.getPresignedUrl(
+                uploadCourse.getThumbnailImageS3Key());//썸네일 프리사인드 URL 생성
+        }
+
+        String profileUrl = null;
+        if (!uploadCourse.getUser().getProfileImageS3Key().isEmpty()) {
+            profileUrl = s3Service.getPresignedUrl(
+                uploadCourse.getUser().getProfileImageS3Key());
+        }
+
+        return new getThumbnailAndProfileUrl(thumbnailUrl, profileUrl);
     }
 
 }
