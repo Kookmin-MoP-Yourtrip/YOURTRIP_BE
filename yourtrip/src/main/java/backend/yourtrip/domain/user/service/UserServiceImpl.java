@@ -5,7 +5,6 @@ import backend.yourtrip.domain.user.dto.request.UserLoginRequest;
 import backend.yourtrip.domain.user.dto.response.UserLoginResponse;
 import backend.yourtrip.domain.user.dto.response.UserSignupResponse;
 import backend.yourtrip.domain.user.entity.User;
-import backend.yourtrip.domain.user.entity.UserRole;
 import backend.yourtrip.domain.user.mapper.UserMapper;
 import backend.yourtrip.domain.user.repository.UserRepository;
 import backend.yourtrip.global.exception.BusinessException;
@@ -120,7 +119,7 @@ public class UserServiceImpl implements UserService {
         String profileImageS3Key;
         if (profileImage != null) {
             try {
-                profileImageS3Key = s3Service.uploadImage(profileImage).key();
+                profileImageS3Key = s3Service.uploadFile(profileImage).key();
             } catch (IOException e) {
                 throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
             }
@@ -209,29 +208,5 @@ public class UserServiceImpl implements UserService {
             return id;
         }
         throw new BusinessException(UserErrorCode.USER_NOT_FOUND);
-    }
-
-    @Transactional
-    @Override
-    public UserLoginResponse kakaoLoginOrSignup(String kakaoId, String email, String nickname,
-        String profileImageUrl) {
-        User user = userRepository.findByEmail(email).orElse(null);
-
-        if (user == null) {
-            user = UserMapper.toKakaoTemp(kakaoId, email, profileImageUrl)
-                .toBuilder()
-                .nickname(nickname)
-                .role(UserRole.USER)
-                .build();
-            user = userRepository.save(user);
-        }
-
-        String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail());
-        String refreshToken = jwtTokenProvider.createRefreshToken(user.getId(), user.getEmail());
-
-        user = user.toBuilder().refreshToken(refreshToken).build();
-        userRepository.save(user);
-
-        return new UserLoginResponse(user.getId(), user.getNickname(), accessToken);
     }
 }

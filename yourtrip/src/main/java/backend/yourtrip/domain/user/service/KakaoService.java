@@ -42,10 +42,6 @@ public class KakaoService {
             ? email
             : kakaoId + "@kakao-temp.local";
 
-        String image = profile.kakaoAccount().profile() != null
-            ? profile.kakaoAccount().profile().profileImageUrl()
-            : null;
-
         User existing = userRepository.findBySocialId(kakaoId)
             .or(() -> userRepository.findByEmail(safeEmail))
             .filter(u -> u.getRole() == UserRole.USER)
@@ -57,16 +53,15 @@ public class KakaoService {
                 "EXISTING",
                 kakaoId,
                 safeEmail,
-                image,
                 new UserLoginResponse(existing.getId(), existing.getNickname(), at)
             );
         }
 
         userRepository.findBySocialId(kakaoId)
             .orElseGet(
-                () -> userRepository.save(UserMapper.toKakaoTemp(kakaoId, safeEmail, image)));
+                () -> userRepository.save(UserMapper.toKakaoTemp(kakaoId, safeEmail)));
 
-        return new KakaoLoginInitResponse("NEED_PROFILE", kakaoId, safeEmail, image, null);
+        return new KakaoLoginInitResponse("NEED_PROFILE", kakaoId, safeEmail, null);
     }
 
     @Transactional
@@ -75,7 +70,7 @@ public class KakaoService {
 
         String profileImageS3Key;
         try {
-            profileImageS3Key = s3Service.uploadImage(profileImage).key();
+            profileImageS3Key = s3Service.uploadFile(profileImage).key();
         } catch (IOException e) {
             throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
         }

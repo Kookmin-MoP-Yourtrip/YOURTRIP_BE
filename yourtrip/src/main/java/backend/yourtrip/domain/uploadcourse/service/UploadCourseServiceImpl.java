@@ -58,7 +58,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
         String thumbnailS3Key;
         try {
-            thumbnailS3Key = s3Service.uploadImage(thumbnailImage).key();
+            thumbnailS3Key = s3Service.uploadFile(thumbnailImage).key();
         } catch (IOException e) {
             throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
         }

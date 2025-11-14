@@ -43,7 +43,7 @@ public class S3Service {
             .map(String::trim).collect(Collectors.toSet());
     }
 
-    public UploadResult uploadImage(MultipartFile file) throws IOException {
+    public UploadResult uploadFile(MultipartFile file) throws IOException {
         // 기본 검증
         if (file == null || file.isEmpty()) {
             throw new BusinessException(S3ErrorCode.EMPTY_FILE);

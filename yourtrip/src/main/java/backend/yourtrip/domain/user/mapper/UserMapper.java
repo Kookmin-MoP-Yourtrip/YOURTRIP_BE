@@ -25,12 +25,11 @@ public class UserMapper {
         return new UserLoginResponse(user.getId(), user.getNickname(), accessToken);
     }
 
-    public static User toKakaoTemp(String kakaoId, String email, String profileImageUrl) {
+    public static User toKakaoTemp(String kakaoId, String email) {
         return User.builder()
             .email(email)
             .password(null)
             .nickname(null)
-            .profileImageS3Key(profileImageUrl)
             .emailVerified(true)
             .deleted(false)
             .role(UserRole.TEMP)
