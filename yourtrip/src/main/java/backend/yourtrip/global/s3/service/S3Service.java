@@ -65,9 +65,12 @@ public class S3Service {
             case "image/png" -> ".png";
             case "image/jpeg" -> ".jpg";
             case "image/webp" -> ".webp";
+            case "video/mp4" -> ".mp4";
+            case "video/quicktime" -> ".mov";
+            case "video/webm" -> ".webm";
             default -> ".bin";
         };
-        String key = "uploads/images/" + LocalDate.now() + "/" + UUID.randomUUID() + ext;
+        String key = "uploads/" + LocalDate.now() + "/" + UUID.randomUUID() + ext;
 
         // 업로드
         PutObjectRequest put = PutObjectRequest.builder()
