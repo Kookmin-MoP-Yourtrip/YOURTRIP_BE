@@ -25,7 +25,6 @@ public class TestUserInitializer implements ApplicationRunner {
             .password(passwordEncoder.encode("12345678"))
             .nickname("남지은")
             .emailVerified(true)
-            .deleted(false)
             .build();
 
         userRepository.save(testUser1);
@@ -34,12 +33,32 @@ public class TestUserInitializer implements ApplicationRunner {
         User testUser2 = User.builder()
             .email("naver@naver.com")
             .password(passwordEncoder.encode("12345678"))
-            .nickname("남지은")
+            .nickname("이다은")
             .emailVerified(true)
-            .deleted(false)
             .build();
 
         userRepository.save(testUser2);
+
+        //태환
+        User testUser3 = User.builder()
+            .email("th2194@naver.com")
+            .password(passwordEncoder.encode("12345678"))
+            .nickname("김태환")
+            .emailVerified(true)
+            .build();
+
+        userRepository.save(testUser3);
+
+        //서구
+        User testUser4 = User.builder()
+            .email("s2000ten@naver.com")
+            .password(passwordEncoder.encode("12345678"))
+            .nickname("최서구")
+            .emailVerified(true)
+            .build();
+
+        userRepository.save(testUser4);
+
     }
 
 }
