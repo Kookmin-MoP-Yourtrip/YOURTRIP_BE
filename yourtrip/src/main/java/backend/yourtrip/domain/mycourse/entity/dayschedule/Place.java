@@ -44,9 +44,11 @@ public class Place extends BaseEntity {
 
     private String placeUrl;
 
+    private String placeLocation;
+
     @Builder
     public Place(DaySchedule daySchedule, String name, LocalTime startTime, String memo, int budget,
-        double latitude, double longitude, String placeUrl) {
+        double latitude, double longitude, String placeUrl, String placeLocation) {
         this.daySchedule = daySchedule;
         this.name = name;
         this.startTime = startTime;
@@ -55,5 +57,6 @@ public class Place extends BaseEntity {
         this.latitude = latitude;
         this.longitude = longitude;
         this.placeUrl = placeUrl;
+        this.placeLocation = placeLocation;
     }
 }

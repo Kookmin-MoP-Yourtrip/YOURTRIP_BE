@@ -28,7 +28,9 @@ public record PlaceCreateRequest(
     double longitude,
 
     @Schema(example = "http://place.map.kakao.com/26338954")
-    String placeUrl
+    String placeUrl,
+
+    String placeLocation
 ) {
 
 }

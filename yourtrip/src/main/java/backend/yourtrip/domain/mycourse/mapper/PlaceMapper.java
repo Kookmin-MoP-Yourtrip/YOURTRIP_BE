@@ -19,6 +19,7 @@ public class PlaceMapper {
             .latitude(request.latitude())
             .longitude(request.longitude())
             .placeUrl(request.placeUrl())
+            .placeLocation(request.placeLocation())
             .daySchedule(daySchedule)
             .build();
     }
