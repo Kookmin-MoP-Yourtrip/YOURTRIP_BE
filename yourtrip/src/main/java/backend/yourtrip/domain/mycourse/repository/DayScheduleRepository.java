@@ -30,4 +30,14 @@ public interface DayScheduleRepository extends JpaRepository<DaySchedule, Long> 
     )
     List<DaySchedule> findDaySchedulesWithPlaces(Long courseId);
 
+    @Query("""
+        select distinct ds
+        from DaySchedule ds
+        left join fetch ds.places p
+        where ds.course.id = :courseId
+            and ds.day = :day
+        """)
+    Optional<DaySchedule> findByCourseIdAndDayWithPlaces(@Param("courseId") Long courseId,
+        @Param("day") int day);
+
 }

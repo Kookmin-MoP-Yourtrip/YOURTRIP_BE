@@ -2,6 +2,7 @@ package backend.yourtrip.domain.mycourse.service;
 
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
+import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListItemResponse;
@@ -82,7 +83,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Transactional(readOnly = true)
     public MyCourseDetailResponse getMyCourseDetail(Long courseId) {
         Long userId = userService.getCurrentUserId();
-        
+
         MyCourse myCourse = myCourseRepository.findCourseWithDaySchedule(courseId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
 
@@ -120,6 +121,20 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Transactional(readOnly = true)
     public List<DaySchedule> getDaySchedulesWithPlaces(Long courseId) {
         return dayScheduleRepository.findDaySchedulesWithPlaces(courseId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DayScheduleResponse getPlaceListByDay(Long courseId, int day) {
+        if (!myCourseRepository.existsById(courseId)) {
+            throw new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND);
+        }
+
+        DaySchedule daySchedule = dayScheduleRepository.findByCourseIdAndDayWithPlaces(courseId,
+                day)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.DAY_SCHEDULE_NOT_FOUND));
+
+        return PlaceMapper.toDayScheduleListResponse(daySchedule);
     }
 
 }

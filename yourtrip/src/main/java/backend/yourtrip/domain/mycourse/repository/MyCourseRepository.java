@@ -15,4 +15,6 @@ public interface MyCourseRepository extends JpaRepository<MyCourse, Long> {
         WHERE c.id = :courseId
         """)
     Optional<MyCourse> findCourseWithDaySchedule(@Param("courseId") Long courseId);
+
+    boolean existsById(Long courseId);
 }

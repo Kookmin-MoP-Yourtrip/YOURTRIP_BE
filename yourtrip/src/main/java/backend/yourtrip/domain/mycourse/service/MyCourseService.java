@@ -2,6 +2,7 @@ package backend.yourtrip.domain.mycourse.service;
 
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
+import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
@@ -23,4 +24,6 @@ public interface MyCourseService {
     MyCourse getMyCourseById(Long courseId);
 
     List<DaySchedule> getDaySchedulesWithPlaces(Long courseId);
+
+    DayScheduleResponse getPlaceListByDay(Long courseId, int day);
 }

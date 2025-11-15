@@ -12,7 +12,8 @@ public record PlaceListResponse(
 //    int budget,
     double latitude,
     double longitude,
-    String placeUrl
+    String placeUrl,
+    String placeLocation
 ) {
 
 }

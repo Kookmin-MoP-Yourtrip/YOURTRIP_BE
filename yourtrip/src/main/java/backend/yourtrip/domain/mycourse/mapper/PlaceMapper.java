@@ -34,6 +34,7 @@ public class PlaceMapper {
             .latitude(place.getLatitude())
             .longitude(place.getLongitude())
             .placeUrl(place.getPlaceUrl())
+            .placeLocation(place.getPlaceLocation())
             .build();
     }
 

@@ -2,6 +2,7 @@ package backend.yourtrip.domain.mycourse.controller;
 
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
+import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
@@ -221,6 +222,16 @@ public class MyCourseController {
         @PathVariable @Schema(example = "1") Long courseId,
         @PathVariable @Schema(example = "1") int day) {
         return myCourseService.savePlace(courseId, day, request);
+    }
+
+    // ==========================
+    //  일차별 장소 리스트 조회
+    // ==========================
+    @GetMapping("/{courseId}/{day}")
+    public DayScheduleResponse getDaySchedule(
+        @PathVariable @Schema(example = "1") Long courseId,
+        @PathVariable @Schema(example = "1") int day) {
+        return myCourseService.getPlaceListByDay(courseId, day);
     }
 
     // ==========================

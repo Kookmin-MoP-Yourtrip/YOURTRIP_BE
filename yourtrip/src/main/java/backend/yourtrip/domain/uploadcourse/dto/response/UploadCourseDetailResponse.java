@@ -1,6 +1,6 @@
 package backend.yourtrip.domain.uploadcourse.dto.response;
 
-import backend.yourtrip.domain.mycourse.dto.response.DayScheduleListResponse;
+import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDateTime;
@@ -25,7 +25,7 @@ public record UploadCourseDetailResponse(
     String writerNickname,
     String writerProfileUrl,
 
-    List<DayScheduleListResponse> daySchedules
+    List<DayScheduleResponse> daySchedules
 ) {
 
 }

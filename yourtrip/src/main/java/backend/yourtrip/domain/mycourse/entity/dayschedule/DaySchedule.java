@@ -11,7 +11,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
-import jakarta.persistence.OrderBy;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AccessLevel;
@@ -38,7 +37,6 @@ public class DaySchedule extends BaseEntity {
     private int day;
 
     @OneToMany(mappedBy = "daySchedule")
-    @OrderBy("startTime ASC")
     @Fetch(FetchMode.SUBSELECT)
     private List<Place> places;
 

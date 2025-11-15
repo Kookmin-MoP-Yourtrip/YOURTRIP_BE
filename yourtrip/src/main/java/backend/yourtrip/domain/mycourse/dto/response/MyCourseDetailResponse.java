@@ -23,7 +23,7 @@ public record MyCourseDetailResponse(
     @Schema(description = "코스 최초 생성자는 OWNER, 초대받은 참여자는 PARTICIPANT, OWNER인 사람만 코스 초대 버튼과 업로드 버튼이 보여야함")
     CourseRole role,
     LocalDateTime updatedAt,
-    List<DayScheduleListResponse> daySchedules
+    List<DayScheduleResponse> daySchedules
 ) {
 
 }
