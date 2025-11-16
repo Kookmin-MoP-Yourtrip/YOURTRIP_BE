@@ -14,8 +14,6 @@ public class PlaceMapper {
     public static Place toEntity(PlaceCreateRequest request, DaySchedule daySchedule) {
         return Place.builder()
             .name(request.placeName())
-            .startTime(request.startTime())
-            .memo(request.memo())
             .latitude(request.latitude())
             .longitude(request.longitude())
             .placeUrl(request.placeUrl())
