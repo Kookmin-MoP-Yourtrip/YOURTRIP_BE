@@ -36,6 +36,7 @@ public interface DayScheduleRepository extends JpaRepository<DaySchedule, Long> 
         left join fetch ds.places p
         where ds.course.id = :courseId
             and ds.day = :day
+        order by p.id asc
         """)
     Optional<DaySchedule> findByCourseIdAndDayWithPlaces(@Param("courseId") Long courseId,
         @Param("day") int day);

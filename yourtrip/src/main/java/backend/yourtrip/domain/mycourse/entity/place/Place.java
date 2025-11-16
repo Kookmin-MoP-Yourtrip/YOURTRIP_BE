@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -67,5 +68,6 @@ public class Place extends BaseEntity {
         this.longitude = longitude;
         this.placeUrl = placeUrl;
         this.placeLocation = placeLocation;
+        placeImages = new ArrayList<>();
     }
 }

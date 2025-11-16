@@ -25,6 +25,7 @@ import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
+import backend.yourtrip.global.s3.service.S3Service;
 import java.time.Period;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final DayScheduleRepository dayScheduleRepository;
     private final PlaceRepository placeRepository;
     private final UserService userService;
+    private final S3Service s3Service;
 
     @Override
     @Transactional
@@ -70,7 +72,6 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Override
     @Transactional
     public PlaceCreateResponse savePlace(Long courseId, int day, PlaceCreateRequest request) {
-//        course.updateBudget(request.budget()); //총예산 업데이트 (추후 확장)
         Long userId = userService.getCurrentUserId();
 
         DaySchedule daySchedule = dayScheduleRepository.findOwnedByCourseIdAndDay(courseId, userId,
@@ -138,9 +139,16 @@ public class MyCourseServiceImpl implements MyCourseService {
                 day)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.DAY_SCHEDULE_NOT_FOUND));
 
-        //todo: 장소 이미지 presigned url 가져오기
+        List<String> s3Keys = daySchedule.getPlaces().stream()
+            .flatMap(place -> place.getPlaceImages().stream())
+            .map(placeImage -> placeImage.getPlaceImageS3Key())
+            .toList();
 
-        return DayScheduleMapper.toDayScheduleResponse(daySchedule);
+        List<String> presignedUrls = s3Keys.stream()
+            .map(s3Service::getPresignedUrl)
+            .toList();
+
+        return DayScheduleMapper.toDayScheduleResponse(daySchedule, presignedUrls);
     }
 
 }

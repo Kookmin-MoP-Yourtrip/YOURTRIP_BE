@@ -65,9 +65,8 @@ public class MyCourseController implements MyCourseControllerSpec {
         return myCourseService.getPlaceListByDay(courseId, day);
     }
 
-
     // ==========================
-    //  2. 나의 코스에 장소 추가
+    //  장소 추가
     // ==========================
     @PostMapping("/{courseId}/{day}/places")
     @ResponseStatus(HttpStatus.CREATED)

@@ -9,24 +9,25 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class DayScheduleMapper {
 
-    public static List<DayScheduleResponse> toListResponse(List<DaySchedule> daySchedules) {
-        return daySchedules.stream()
-            .map(day -> new DayScheduleResponse(
-                day.getId(),
-                day.getDay(),
-                day.getPlaces().stream()
-                    .map(PlaceMapper::toListResponse)
-                    .toList()
-            ))
-            .toList();
-    }
+//    public static List<DayScheduleResponse> toListResponse(List<DaySchedule> daySchedules) {
+//        return daySchedules.stream()
+//            .map(day -> new DayScheduleResponse(
+//                day.getId(),
+//                day.getDay(),
+//                day.getPlaces().stream()
+//                    .map(PlaceMapper::toListResponse)
+//                    .toList()
+//            ))
+//            .toList();
+//    }
 
-    public static DayScheduleResponse toDayScheduleResponse(DaySchedule daySchedule) {
+    public static DayScheduleResponse toDayScheduleResponse(DaySchedule daySchedule,
+        List<String> presignedUrls) {
         return new DayScheduleResponse(
             daySchedule.getId(),
             daySchedule.getDay(),
             daySchedule.getPlaces().stream()
-                .map(PlaceMapper::toListResponse)
+                .map(place -> PlaceMapper.toListResponse(place, presignedUrls))
                 .toList()
         );
     }

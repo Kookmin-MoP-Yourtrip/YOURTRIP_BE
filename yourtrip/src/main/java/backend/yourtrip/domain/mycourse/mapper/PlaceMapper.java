@@ -4,6 +4,7 @@ import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceListResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.place.Place;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -23,7 +24,7 @@ public class PlaceMapper {
             .build();
     }
 
-    public static PlaceListResponse toListResponse(Place place) {
+    public static PlaceListResponse toListResponse(Place place, List<String> presignedUrls) {
         return PlaceListResponse.builder()
             .placeId(place.getId())
             .placeName(place.getName())
@@ -33,8 +34,7 @@ public class PlaceMapper {
             .longitude(place.getLongitude())
             .placeUrl(place.getPlaceUrl())
             .placeLocation(place.getPlaceLocation())
-            .placeImagesUrls(
-            )
+            .placeImagesUrls(presignedUrls)
             .build();
     }
 

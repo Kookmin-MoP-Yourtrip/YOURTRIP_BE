@@ -11,16 +11,6 @@ public record PlaceCreateRequest(
     @NotBlank(message = "장소 이름은 필수 입력 항목입니다.")
     String placeName,
 
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm")
-    @Schema(type = "string", example = "10:30", description = "HH:mm 형식 (시와 분은 반드시 2자리로)")
-    @NotNull(message = "시작 시간은 필수 입력 항목입니다.")
-    LocalTime startTime,
-
-    @Schema(example = "황남시장에 짐보관")
-    String memo,
-
-//    int budget,
-
     @Schema(example = "35.884")
     double latitude,
 
