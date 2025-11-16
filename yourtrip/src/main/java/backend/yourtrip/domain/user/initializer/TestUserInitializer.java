@@ -59,6 +59,16 @@ public class TestUserInitializer implements ApplicationRunner {
 
         userRepository.save(testUser4);
 
+        //혜원
+        User testUser5 = User.builder()
+            .email("jbjokagd@gmail.com")
+            .password(passwordEncoder.encode("12345678"))
+            .nickname("조혜원")
+            .emailVerified(true)
+            .build();
+
+        userRepository.save(testUser5);
+
     }
 
 }
