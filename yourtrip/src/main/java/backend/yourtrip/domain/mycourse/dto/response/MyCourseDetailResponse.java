@@ -1,6 +1,6 @@
 package backend.yourtrip.domain.mycourse.dto.response;
 
-import backend.yourtrip.domain.mycourse.entity.enums.CourseRole;
+import backend.yourtrip.domain.mycourse.entity.myCourse.enums.CourseRole;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.LocalDate;
 import java.time.LocalDateTime;

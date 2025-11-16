@@ -1,7 +1,7 @@
 package backend.yourtrip.domain.uploadcourse.mapper;
 
-import backend.yourtrip.domain.mycourse.entity.MyCourse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
+import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import backend.yourtrip.domain.mycourse.mapper.DayScheduleMapper;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;

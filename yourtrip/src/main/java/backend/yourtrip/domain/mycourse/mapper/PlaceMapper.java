@@ -3,7 +3,7 @@ package backend.yourtrip.domain.mycourse.mapper;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceListResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
-import backend.yourtrip.domain.mycourse.entity.dayschedule.Place;
+import backend.yourtrip.domain.mycourse.entity.place.Place;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 

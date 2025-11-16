@@ -35,96 +35,8 @@ public class MyCourseController {
     private final MyCourseService myCourseService;
 
     // ==========================
-    //  1. 나의 코스 생성
+    //  나의 코스 생성
     // ==========================
-    @Operation(
-        summary = "나의 코스 생성",
-        description = """
-            ### 제약조건
-            - 제목(title): 공백 불가
-            - 여행지(location): 공백 불가
-            - 시작일(startDate), 종료일(endDate): 공백 불가, `startDate ≤ endDate`
-                
-            ### ⚠ 예외상황
-            - `INVALID_REQUEST_FIELD(400)`: 필드 유효성 오류(빈 값, 날짜 범위 오류 등)
-            """
-    )
-    @ApiResponses({
-        @ApiResponse(
-            responseCode = "201",
-            description = "코스 생성 성공",
-            content = @Content(
-                schema = @Schema(implementation = MyCourseCreateResponse.class),
-                examples = @ExampleObject(
-                    value = """
-                        {
-                          "myCourseId": 1,
-                          "message": "코스 생성 완료"
-                        }
-                        """
-                )
-            )
-        ),
-        @ApiResponse(
-            responseCode = "400",
-            description = "잘못된 요청(유효성 실패/날짜 범위 오류), 아래는 날짜 범위 오류의 경우의 응답",
-            content = @Content(
-                mediaType = "application/json",
-                examples = {
-                    @ExampleObject(
-                        name = "날짜 범위 오류",
-                        value = """
-                            {
-                              "timestamp": "2025-11-10T11:00:00",
-                              "code": "INVALID_REQUEST_FIELD",
-                              "message": "startDate는 endDate보다 이후일 수 없습니다."
-                            }
-                            """
-                    ),
-                    @ExampleObject(
-                        name = "제목 미입력",
-                        value = """
-                            {
-                              "timestamp": "2025-11-10T11:00:00",
-                              "code": "INVALID_REQUEST_FIELD",
-                              "message": "title: 코스 제목은 필수 입력 항목입니다."
-                            }
-                            """
-                    ),
-                    @ExampleObject(
-                        name = "여행지 미입력",
-                        value = """
-                            {
-                              "timestamp": "2025-11-10T11:00:00",
-                              "code": "INVALID_REQUEST_FIELD",
-                              "message": "location: 여행지는 필수 입력 항목입니다."
-                            }
-                            """
-                    ),
-                    @ExampleObject(
-                        name = "startDate 미입력",
-                        value = """
-                            {
-                              "timestamp": "2025-11-10T11:00:00",
-                              "code": "INVALID_REQUEST_FIELD",
-                              "message": "startDate: 여행 기간은 필수 입력 항목입니다."
-                            }
-                            """
-                    ),
-                    @ExampleObject(
-                        name = "endDate 미입력",
-                        value = """
-                            {
-                              "timestamp": "2025-11-10T11:00:00",
-                              "code": "INVALID_REQUEST_FIELD",
-                              "message": "endDate: 여행 기간은 필수 입력 항목입니다."
-                            }
-                            """
-                    ),
-                }
-            )
-        )
-    })
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public MyCourseCreateResponse createMyCourse(
@@ -235,7 +147,7 @@ public class MyCourseController {
     }
 
     // ==========================
-    //  3. 나의 코스 목록 조회
+    //  나의 코스 목록 조회
     // ==========================
     @GetMapping
     @Operation(summary = "나의 코스 목록 조회")

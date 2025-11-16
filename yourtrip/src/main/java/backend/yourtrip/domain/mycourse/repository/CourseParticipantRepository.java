@@ -1,7 +1,7 @@
 package backend.yourtrip.domain.mycourse.repository;
 
-import backend.yourtrip.domain.mycourse.entity.CourseParticipant;
-import backend.yourtrip.domain.mycourse.entity.enums.CourseRole;
+import backend.yourtrip.domain.mycourse.entity.myCourse.CourseParticipant;
+import backend.yourtrip.domain.mycourse.entity.myCourse.enums.CourseRole;
 import backend.yourtrip.domain.user.entity.User;
 import java.util.List;
 import java.util.Optional;
