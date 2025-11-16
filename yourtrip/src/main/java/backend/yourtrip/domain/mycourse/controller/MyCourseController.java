@@ -16,6 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -76,10 +77,9 @@ public class MyCourseController implements MyCourseControllerSpec {
     }
 
     // ==========================
-    //  장소 시간 추가
+    //  장소 시간 수정
     // ==========================
-    @PostMapping("/{courseId}/days/{dayId}/places/{placeId}/start-time")
-    @ResponseStatus(HttpStatus.CREATED)
+    @PatchMapping("/{courseId}/days/{dayId}/places/{placeId}/time")
     public LocalTime addPlaceTime(
         @PathVariable @Schema(example = "1") Long courseId,
         @PathVariable @Schema(example = "1") Long dayId,
@@ -90,10 +90,9 @@ public class MyCourseController implements MyCourseControllerSpec {
     }
 
     // ==========================
-    // 장소 메모 추가
+    // 장소 메모 수정
     // ==========================
-    @PostMapping("/{courseId}/days/{dayId}/places/{placeId}/memo")
-    @ResponseStatus(HttpStatus.CREATED)
+    @PatchMapping("/{courseId}/days/{dayId}/places/{placeId}/memo")
     public String addPlaceMemo(
         @PathVariable @Schema(example = "1") Long courseId,
         @PathVariable @Schema(example = "1") Long dayId,

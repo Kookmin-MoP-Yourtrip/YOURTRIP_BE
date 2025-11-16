@@ -15,10 +15,11 @@ public interface DayScheduleRepository extends JpaRepository<DaySchedule, Long> 
             JOIN ds.course c
             JOIN c.participants p
             WHERE p.user.id = :userId
+                AND c.id = :courseId
                 AND ds.id = :dayId
         """)
     Optional<DaySchedule> findByIdAndUserId(@Param("userId") Long userId,
-        @Param("dayId") Long dayId);
+        @Param("dayId") Long dayId, @Param("courseId") Long courseId);
 
     @Query("""
             SELECT ds
@@ -34,9 +35,12 @@ public interface DayScheduleRepository extends JpaRepository<DaySchedule, Long> 
         from DaySchedule ds
         left join fetch ds.places p
         where ds.id = :dayId
+            and ds.course.id = :courseId
         order by p.id
         """)
     Optional<DaySchedule> findByIdWithPlaces(@Param("courseId") Long courseId,
         @Param("dayId") Long daId);
+
+    boolean existsByIdAndCourse_Id(Long dayId, Long courseId);
 
 }

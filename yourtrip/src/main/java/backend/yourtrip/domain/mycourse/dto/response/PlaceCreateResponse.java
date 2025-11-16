@@ -1,5 +1,6 @@
 package backend.yourtrip.domain.mycourse.dto.response;
 
+import java.time.LocalTime;
 import lombok.Builder;
 
 @Builder
@@ -9,7 +10,9 @@ public record PlaceCreateResponse(
     double latitude,
     double longitude,
     String placeUrl,
-    String placeLocation
+    String placeLocation,
+    String placeMemo,
+    LocalTime placeStartTime
 ) {
 
 }

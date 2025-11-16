@@ -78,7 +78,7 @@ public class MyCourseServiceImpl implements MyCourseService {
         checkExistCourse(courseId);
         Long userId = userService.getCurrentUserId();
 
-        DaySchedule daySchedule = dayScheduleRepository.findByIdAndUserId(userId,
+        DaySchedule daySchedule = dayScheduleRepository.findByIdAndUserId(userId, courseId,
                 dayId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.DAY_SCHEDULE_NOT_FOUND));
 
@@ -143,8 +143,8 @@ public class MyCourseServiceImpl implements MyCourseService {
         }
     }
 
-    private void checkExistDaySchedule(Long dayId) {
-        if (!dayScheduleRepository.existsById(dayId)) {
+    private void checkExistDaySchedule(Long dayId, Long courseId) {
+        if (!dayScheduleRepository.existsByIdAndCourse_Id(dayId, courseId)) {
             throw new BusinessException(MyCourseErrorCode.DAY_SCHEDULE_NOT_FOUND);
         }
     }
@@ -160,7 +160,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     public LocalTime addPlaceTime(Long courseId, Long dayId, Long placeId,
         LocalTime startTime) {
         checkExistCourse(courseId);
-        checkExistDaySchedule(dayId);
+        checkExistDaySchedule(dayId, courseId);
 
         getPlace(placeId).setStartTime(startTime);
 
@@ -176,7 +176,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Transactional
     public String addPlaceMemo(Long courseId, Long dayId, Long placeId, String memo) {
         checkExistCourse(courseId);
-        checkExistDaySchedule(dayId);
+        checkExistDaySchedule(dayId, courseId);
 
         getPlace(placeId).setMemo(memo);
 
@@ -187,7 +187,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Transactional
     public String addPlaceImage(Long courseId, Long dayId, Long placeId, MultipartFile placeImage) {
         checkExistCourse(courseId);
-        checkExistDaySchedule(dayId);
+        checkExistDaySchedule(dayId, courseId);
         Place place = getPlace(placeId);
 
         String placeImageS3Key;

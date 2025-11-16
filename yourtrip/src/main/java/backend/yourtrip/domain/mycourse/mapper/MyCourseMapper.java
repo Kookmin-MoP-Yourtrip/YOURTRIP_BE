@@ -54,6 +54,7 @@ public class MyCourseMapper {
             .startDate(course.getStartDate())
             .endDate(course.getEndDate())
             .memberCount(course.getMemberCount())
+            .courseId(course.getId())
             .build();
     }
 }
