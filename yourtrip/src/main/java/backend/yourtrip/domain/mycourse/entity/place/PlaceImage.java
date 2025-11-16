@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class placeImage extends BaseEntity {
+public class PlaceImage extends BaseEntity {
 
     @Id
     @Column(name = "place_image_id")

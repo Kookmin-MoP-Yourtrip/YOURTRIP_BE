@@ -15,7 +15,6 @@ public class PlaceMapper {
             .name(request.placeName())
             .startTime(request.startTime())
             .memo(request.memo())
-//            .budget(request.budget())
             .latitude(request.latitude())
             .longitude(request.longitude())
             .placeUrl(request.placeUrl())
@@ -30,11 +29,12 @@ public class PlaceMapper {
             .placeName(place.getName())
             .startTime(place.getStartTime())
             .memo(place.getMemo())
-//            .budget(place.getBudget())
             .latitude(place.getLatitude())
             .longitude(place.getLongitude())
             .placeUrl(place.getPlaceUrl())
             .placeLocation(place.getPlaceLocation())
+            .placeImagesUrls(
+            )
             .build();
     }
 

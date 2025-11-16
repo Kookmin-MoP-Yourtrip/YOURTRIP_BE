@@ -10,11 +10,15 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import java.time.LocalTime;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 
 @Entity
 @Getter
@@ -46,6 +50,10 @@ public class Place extends BaseEntity {
     private String placeUrl;
 
     private String placeLocation;
+
+    @OneToMany(mappedBy = "place")
+    @Fetch(FetchMode.SUBSELECT) // place 조회 시 장소 사진들도 함께 조회
+    private List<PlaceImage> placeImages;
 
     @Builder
     public Place(DaySchedule daySchedule, String name, LocalTime startTime, String memo, int budget,

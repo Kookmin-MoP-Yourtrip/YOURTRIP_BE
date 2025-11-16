@@ -14,6 +14,7 @@ import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import backend.yourtrip.domain.mycourse.entity.myCourse.enums.CourseRole;
 import backend.yourtrip.domain.mycourse.entity.place.Place;
 import backend.yourtrip.domain.mycourse.mapper.CourseParticipantMapper;
+import backend.yourtrip.domain.mycourse.mapper.DayScheduleMapper;
 import backend.yourtrip.domain.mycourse.mapper.MyCourseMapper;
 import backend.yourtrip.domain.mycourse.mapper.PlaceMapper;
 import backend.yourtrip.domain.mycourse.repository.CourseParticipantRepository;
@@ -134,7 +135,9 @@ public class MyCourseServiceImpl implements MyCourseService {
                 day)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.DAY_SCHEDULE_NOT_FOUND));
 
-        return PlaceMapper.toDayScheduleListResponse(daySchedule);
+        //todo: 장소 이미지 presigned url 가져오기
+
+        return DayScheduleMapper.toDayScheduleResponse(daySchedule);
     }
 
 }
