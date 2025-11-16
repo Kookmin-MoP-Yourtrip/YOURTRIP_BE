@@ -8,6 +8,7 @@ import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListItemResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeCreateResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.myCourse.CourseParticipant;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
@@ -26,6 +27,7 @@ import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.s3.service.S3Service;
+import java.time.LocalTime;
 import java.time.Period;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -71,31 +73,17 @@ public class MyCourseServiceImpl implements MyCourseService {
 
     @Override
     @Transactional
-    public PlaceCreateResponse savePlace(Long courseId, int day, PlaceCreateRequest request) {
+    public PlaceCreateResponse savePlace(Long courseId, Long dayId, PlaceCreateRequest request) {
+        checkExistCourse(courseId);
         Long userId = userService.getCurrentUserId();
 
-        DaySchedule daySchedule = dayScheduleRepository.findOwnedByCourseIdAndDay(courseId, userId,
-                day)
-            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_OR_DAY_NOT_FOUND));
+        DaySchedule daySchedule = dayScheduleRepository.findByIdAndUserId(userId,
+                dayId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.DAY_SCHEDULE_NOT_FOUND));
 
         Place savedPlace = placeRepository.save(PlaceMapper.toEntity(request, daySchedule));
 
         return new PlaceCreateResponse(savedPlace.getId(), "장소 등록 완료");
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public MyCourseDetailResponse getMyCourseDetail(Long courseId) {
-        Long userId = userService.getCurrentUserId();
-
-        MyCourse myCourse = myCourseRepository.findCourseWithDaySchedule(courseId)
-            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
-
-        CourseRole role = courseParticipantRepository.findRole(userId,
-                courseId)
-            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.ROLE_NOT_SPECIFY));
-
-        return MyCourseMapper.toDetailResponse(myCourse, role);
     }
 
     @Override
@@ -117,7 +105,6 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Override
     @Transactional(readOnly = true)
     public MyCourse getMyCourseById(Long courseId) {
-        log.info("Getting MyCourse by ID: {}", courseId);
         return myCourseRepository.findById(courseId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
     }
@@ -130,13 +117,11 @@ public class MyCourseServiceImpl implements MyCourseService {
 
     @Override
     @Transactional(readOnly = true)
-    public DayScheduleResponse getPlaceListByDay(Long courseId, int day) {
-        if (!myCourseRepository.existsById(courseId)) {
-            throw new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND);
-        }
+    public DayScheduleResponse getPlaceListByDay(Long courseId, Long dayId) {
+        checkExistCourse(courseId);
 
-        DaySchedule daySchedule = dayScheduleRepository.findByCourseIdAndDayWithPlaces(courseId,
-                day)
+        DaySchedule daySchedule = dayScheduleRepository.findByIdWithPlaces(courseId,
+                dayId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.DAY_SCHEDULE_NOT_FOUND));
 
         List<String> s3Keys = daySchedule.getPlaces().stream()
@@ -150,5 +135,56 @@ public class MyCourseServiceImpl implements MyCourseService {
 
         return DayScheduleMapper.toDayScheduleResponse(daySchedule, presignedUrls);
     }
+
+    private void checkExistCourse(Long courseId) {
+        if (!myCourseRepository.existsById(courseId)) {
+            throw new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND);
+        }
+    }
+
+    private void checkExistDaySchedule(Long dayId) {
+        if (!dayScheduleRepository.existsById(dayId)) {
+            throw new BusinessException(MyCourseErrorCode.DAY_SCHEDULE_NOT_FOUND);
+        }
+    }
+
+    private void checkExistPlace(Long placeId) {
+        if (!placeRepository.existsById(placeId)) {
+            throw new BusinessException(MyCourseErrorCode.PLACE_NOT_FOUND);
+        }
+    }
+
+    @Override
+    @Transactional
+    public PlaceStartTimeCreateResponse addPlaceTime(Long courseId, Long dayId, Long placeId,
+        LocalTime startTime) {
+        checkExistCourse(courseId);
+        checkExistDaySchedule(dayId);
+        checkExistPlace(placeId);
+
+        Place place = placeRepository.findById(placeId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.PLACE_NOT_FOUND));
+
+        place.setStartTime(startTime);
+
+        return new PlaceStartTimeCreateResponse(startTime, "장소에 시간 추가 완료");
+    }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public MyCourseDetailResponse getMyCourseDetail(Long courseId) {
+        Long userId = userService.getCurrentUserId();
+
+        MyCourse myCourse = myCourseRepository.findCourseWithDaySchedule(courseId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
+
+        CourseRole role = courseParticipantRepository.findRole(userId,
+                courseId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.ROLE_NOT_SPECIFY));
+
+        return MyCourseMapper.toDetailResponse(myCourse, role);
+    }
+
 
 }

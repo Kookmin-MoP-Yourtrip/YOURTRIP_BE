@@ -7,7 +7,9 @@ import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeCreateResponse;
 import backend.yourtrip.domain.mycourse.service.MyCourseService;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
@@ -16,6 +18,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.time.LocalTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -58,23 +61,38 @@ public class MyCourseController implements MyCourseControllerSpec {
     //  일차별 장소 리스트 조회
     // ==========================
     @Override
-    @GetMapping("/{courseId}/{day}")
+    @GetMapping("/{courseId}/{dayId}/places")
     public DayScheduleResponse getDaySchedule(
         @PathVariable @Schema(example = "1") Long courseId,
-        @PathVariable @Schema(example = "1") int day) {
-        return myCourseService.getPlaceListByDay(courseId, day);
+        @PathVariable @Schema(example = "1") Long dayId) {
+        return myCourseService.getPlaceListByDay(courseId, dayId);
     }
 
     // ==========================
     //  장소 추가
     // ==========================
-    @PostMapping("/{courseId}/{day}/places")
+    @PostMapping("/{courseId}/{dayId}/places")
     @ResponseStatus(HttpStatus.CREATED)
     public PlaceCreateResponse createPlace(@Valid @RequestBody PlaceCreateRequest request,
         @PathVariable @Schema(example = "1") Long courseId,
-        @PathVariable @Schema(example = "1") int day) {
-        return myCourseService.savePlace(courseId, day, request);
+        @PathVariable @Schema(example = "1") Long dayId) {
+        return myCourseService.savePlace(courseId, dayId, request);
     }
+
+    // ==========================
+    //  장소에 시간 추가
+    // ==========================
+    @PostMapping("/{courseId}/{dayId}/places/{placeId}/time")
+    @ResponseStatus(HttpStatus.CREATED)
+    public PlaceStartTimeCreateResponse addPlaceTime(
+        @PathVariable @Schema(example = "1") Long courseId,
+        @PathVariable @Schema(example = "1") Long dayId,
+        @PathVariable @Schema(example = "1") Long placeId,
+        @RequestBody @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") @Schema(type = "string", example = "10:30", description = "HH:mm 형식 (시와 분은 반드시 2자리로)") LocalTime startTime) {
+
+        return myCourseService.addPlaceTime(courseId, dayId, placeId, startTime);
+    }
+
 
     // ==========================
     //  4. 나의 코스 상세 조회

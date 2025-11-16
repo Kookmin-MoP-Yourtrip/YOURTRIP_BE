@@ -18,6 +18,7 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.Fetch;
 import org.hibernate.annotations.FetchMode;
 
@@ -37,6 +38,7 @@ public class Place extends BaseEntity {
 
     private String name;
 
+    @Setter
     private LocalTime startTime;
 
     @Column(columnDefinition = "TEXT")

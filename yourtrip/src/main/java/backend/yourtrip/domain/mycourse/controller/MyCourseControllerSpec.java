@@ -186,7 +186,7 @@ public interface MyCourseControllerSpec {
             )
         )
     })
-    PlaceCreateResponse createPlace(PlaceCreateRequest request, Long courseId, int day);
+    PlaceCreateResponse createPlace(PlaceCreateRequest request, Long courseId, Long dayId);
 
     @Operation(summary = "나의 코스 목록 조회")
     @ApiResponses({
@@ -221,7 +221,7 @@ public interface MyCourseControllerSpec {
     })
     MyCourseListResponse getMyCourses();
 
-    DayScheduleResponse getDaySchedule(Long courseId, int day);
+    DayScheduleResponse getDaySchedule(Long courseId, Long dayId);
 
 
 }

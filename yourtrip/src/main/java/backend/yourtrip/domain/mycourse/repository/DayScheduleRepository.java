@@ -14,12 +14,11 @@ public interface DayScheduleRepository extends JpaRepository<DaySchedule, Long> 
             FROM DaySchedule ds
             JOIN ds.course c
             JOIN c.participants p
-            WHERE c.id = :courseId
-                AND p.user.id = :userId
-                AND ds.day = :day
+            WHERE p.user.id = :userId
+                AND ds.id = :dayId
         """)
-    Optional<DaySchedule> findOwnedByCourseIdAndDay(@Param("courseId") Long courseId,
-        @Param("userId") Long userId, @Param("day") int day);
+    Optional<DaySchedule> findByIdAndUserId(@Param("userId") Long userId,
+        @Param("dayId") Long dayId);
 
     @Query("""
             SELECT ds
@@ -34,11 +33,10 @@ public interface DayScheduleRepository extends JpaRepository<DaySchedule, Long> 
         select distinct ds
         from DaySchedule ds
         left join fetch ds.places p
-        where ds.course.id = :courseId
-            and ds.day = :day
-        order by p.id asc
+        where ds.id = :dayId
+        order by p.id
         """)
-    Optional<DaySchedule> findByCourseIdAndDayWithPlaces(@Param("courseId") Long courseId,
-        @Param("day") int day);
+    Optional<DaySchedule> findByIdWithPlaces(@Param("courseId") Long courseId,
+        @Param("dayId") Long daId);
 
 }
