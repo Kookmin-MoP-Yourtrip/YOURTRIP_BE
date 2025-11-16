@@ -2,6 +2,7 @@ package backend.yourtrip.domain.mycourse.entity.place;
 
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.global.common.BaseEntity;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -41,6 +42,7 @@ public class Place extends BaseEntity {
     @Setter
     private LocalTime startTime;
 
+    @Setter
     @Column(columnDefinition = "TEXT")
     private String memo;
 
@@ -54,7 +56,7 @@ public class Place extends BaseEntity {
 
     private String placeLocation;
 
-    @OneToMany(mappedBy = "place")
+    @OneToMany(mappedBy = "place", cascade = CascadeType.PERSIST)
     @Fetch(FetchMode.SUBSELECT) // place 조회 시 장소 사진들도 함께 조회
     private List<PlaceImage> placeImages;
 

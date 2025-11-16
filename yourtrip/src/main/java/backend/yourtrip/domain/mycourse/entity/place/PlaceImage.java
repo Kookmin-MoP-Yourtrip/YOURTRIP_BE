@@ -27,4 +27,9 @@ public class PlaceImage extends BaseEntity {
 
     private String placeImageS3Key;
 
+    public PlaceImage(Place place, String placeImageS3Key) {
+        this.place = place;
+        this.placeImageS3Key = placeImageS3Key;
+    }
+
 }
