@@ -45,7 +45,7 @@ public class UploadCourse extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String introduction;
 
-    private String thumbnailImageUrl;
+    private String thumbnailImageS3Key;
 
     private int commentCount;
 
@@ -61,11 +61,11 @@ public class UploadCourse extends BaseEntity {
     private String location;
 
     @Builder
-    public UploadCourse(String title, String introduction, String thumbnailImageUrl,
+    public UploadCourse(String title, String introduction, String thumbnailImageS3Key,
         MyCourse myCourse, User user, String location) {
         this.title = title;
         this.introduction = introduction;
-        this.thumbnailImageUrl = thumbnailImageUrl;
+        this.thumbnailImageS3Key = thumbnailImageS3Key;
         this.myCourse = myCourse;
         this.user = user;
         this.location = location;

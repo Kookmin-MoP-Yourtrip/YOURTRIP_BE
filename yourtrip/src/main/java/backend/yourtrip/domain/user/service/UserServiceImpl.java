@@ -1,23 +1,32 @@
 package backend.yourtrip.domain.user.service;
 
-import backend.yourtrip.domain.user.dto.request.*;
-import backend.yourtrip.domain.user.dto.response.*;
-import backend.yourtrip.domain.user.entity.*;
+import backend.yourtrip.domain.user.dto.request.ProfileCreateRequest;
+import backend.yourtrip.domain.user.dto.request.UserLoginRequest;
+import backend.yourtrip.domain.user.dto.response.UserLoginResponse;
+import backend.yourtrip.domain.user.dto.response.UserSignupResponse;
+import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.mapper.UserMapper;
 import backend.yourtrip.domain.user.repository.UserRepository;
 import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UserErrorCode;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
 import backend.yourtrip.global.mail.service.MailService;
+import backend.yourtrip.global.s3.service.S3Service;
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.web.multipart.MultipartFile;
 
 @RequiredArgsConstructor
 @Service
@@ -35,8 +44,7 @@ public class UserServiceImpl implements UserService {
     private final Map<String, String> tempPasswords = new ConcurrentHashMap<>();
 
     private static final int CODE_EXPIRY_MINUTES = 5;
-    private static final String DEFAULT_PROFILE_IMAGE =
-        "https://yourtrip.s3.ap-northeast-2.amazonaws.com/default_profile.png";
+    private final S3Service s3Service;
 
     @Override
     public void sendVerificationCode(String email) {
@@ -51,6 +59,9 @@ public class UserServiceImpl implements UserService {
         mailService.sendVerificationMail(email, code);
 
         System.out.println("[인증번호 전송 완료] " + email);
+//        verificationCodes.put(email, "123");
+//        codeExpiry.put(email, LocalDateTime.now().plusMinutes(CODE_EXPIRY_MINUTES));
+
     }
 
     @Override
@@ -90,7 +101,8 @@ public class UserServiceImpl implements UserService {
 
     @Transactional
     @Override
-    public UserSignupResponse completeSignup(ProfileCreateRequest request) {
+    public UserSignupResponse completeSignup(ProfileCreateRequest request,
+        MultipartFile profileImage) {
         String email = request.email();
 
         if (!verifiedEmails.contains(email)) {
@@ -104,16 +116,23 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(UserErrorCode.EMAIL_ALREADY_EXIST);
         }
 
-        String imageUrl = (request.profileImageUrl() != null && !request.profileImageUrl().isBlank())
-            ? request.profileImageUrl()
-            : DEFAULT_PROFILE_IMAGE;
+        String profileImageS3Key;
+        if (profileImage != null) {
+            try {
+                profileImageS3Key = s3Service.uploadFile(profileImage).key();
+            } catch (IOException e) {
+                throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+            }
+        } else {
+            profileImageS3Key = "default-profile.png";
+        }
 
         User user = User.builder()
             .email(email)
             .password(encodedPw)
             .nickname(request.nickname())
-            .profileImageUrl(imageUrl)
             .emailVerified(true)
+            .profileImageS3Key(profileImageS3Key)
             .deleted(false)
             .build();
 
@@ -126,7 +145,8 @@ public class UserServiceImpl implements UserService {
 
         System.out.println("[회원가입 완료] " + user.getEmail());
 
-        return UserMapper.toSignupResponse(user);
+        String profileUrl = s3Service.getPresignedUrl(user.getProfileImageS3Key());
+        return UserMapper.toSignupResponse(user, profileUrl);
     }
 
     @Transactional
@@ -184,30 +204,9 @@ public class UserServiceImpl implements UserService {
             ? SecurityContextHolder.getContext().getAuthentication().getPrincipal()
             : null;
 
-        if (principal instanceof Long id) return id;
-        throw new BusinessException(UserErrorCode.USER_NOT_FOUND);
-    }
-
-    @Transactional
-    @Override
-    public UserLoginResponse kakaoLoginOrSignup(String kakaoId, String email, String nickname, String profileImageUrl) {
-        User user = userRepository.findByEmail(email).orElse(null);
-
-        if (user == null) {
-            user = UserMapper.toKakaoTemp(kakaoId, email, profileImageUrl)
-                .toBuilder()
-                .nickname(nickname)
-                .role(UserRole.USER)
-                .build();
-            user = userRepository.save(user);
+        if (principal instanceof Long id) {
+            return id;
         }
-
-        String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail());
-        String refreshToken = jwtTokenProvider.createRefreshToken(user.getId(), user.getEmail());
-
-        user = user.toBuilder().refreshToken(refreshToken).build();
-        userRepository.save(user);
-
-        return new UserLoginResponse(user.getId(), user.getNickname(), accessToken);
+        throw new BusinessException(UserErrorCode.USER_NOT_FOUND);
     }
 }

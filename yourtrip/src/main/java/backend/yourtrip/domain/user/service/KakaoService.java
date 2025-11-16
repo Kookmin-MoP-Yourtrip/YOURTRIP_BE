@@ -1,7 +1,8 @@
 package backend.yourtrip.domain.user.service;
 
 import backend.yourtrip.domain.user.dto.response.UserLoginResponse;
-import backend.yourtrip.domain.user.entity.*;
+import backend.yourtrip.domain.user.entity.User;
+import backend.yourtrip.domain.user.entity.UserRole;
 import backend.yourtrip.domain.user.mapper.UserMapper;
 import backend.yourtrip.domain.user.repository.UserRepository;
 import backend.yourtrip.domain.user.service.dto.response.KakaoLoginInitResponse;
@@ -9,12 +10,16 @@ import backend.yourtrip.domain.user.service.dto.response.KakaoProfileResponse;
 import backend.yourtrip.domain.user.service.dto.response.KakaoTokenResponse;
 import backend.yourtrip.domain.user.service.util.KakaoUtil;
 import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UserErrorCode;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
+import backend.yourtrip.global.s3.service.S3Service;
+import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
 @Service
@@ -24,6 +29,7 @@ public class KakaoService {
     private final KakaoUtil kakaoUtil;
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
+    private final S3Service s3Service;
 
     @Transactional
     public KakaoLoginInitResponse init(String code) {
@@ -36,10 +42,6 @@ public class KakaoService {
             ? email
             : kakaoId + "@kakao-temp.local";
 
-        String image = profile.kakaoAccount().profile() != null
-            ? profile.kakaoAccount().profile().profileImageUrl()
-            : null;
-
         User existing = userRepository.findBySocialId(kakaoId)
             .or(() -> userRepository.findByEmail(safeEmail))
             .filter(u -> u.getRole() == UserRole.USER)
@@ -51,25 +53,34 @@ public class KakaoService {
                 "EXISTING",
                 kakaoId,
                 safeEmail,
-                image,
                 new UserLoginResponse(existing.getId(), existing.getNickname(), at)
             );
         }
 
         userRepository.findBySocialId(kakaoId)
-            .orElseGet(() -> userRepository.save(UserMapper.toKakaoTemp(kakaoId, safeEmail, image)));
+            .orElseGet(
+                () -> userRepository.save(UserMapper.toKakaoTemp(kakaoId, safeEmail)));
 
-        return new KakaoLoginInitResponse("NEED_PROFILE", kakaoId, safeEmail, image, null);
+        return new KakaoLoginInitResponse("NEED_PROFILE", kakaoId, safeEmail, null);
     }
 
     @Transactional
-    public UserLoginResponse complete(String kakaoId, String nickname, String profileImageUrl) {
+    public UserLoginResponse complete(String kakaoId, String nickname,
+        MultipartFile profileImage) {
+
+        String profileImageS3Key;
+        try {
+            profileImageS3Key = s3Service.uploadFile(profileImage).key();
+        } catch (IOException e) {
+            throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+        }
+
         User temp = userRepository.findBySocialId(kakaoId)
             .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
 
         temp = temp.toBuilder()
             .nickname(nickname)
-            .profileImageUrl(profileImageUrl)
+            .profileImageS3Key(profileImageS3Key)
             .role(UserRole.USER)
             .build();
         temp = userRepository.save(temp);

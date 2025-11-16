@@ -29,24 +29,24 @@ public class UploadCourseMapper {
     }
 
     public static UploadCourse toEntity(UploadCourseCreateRequest request, MyCourse myCourse,
-        User user) {
+        User user, String thumbnailS3Key) {
         return UploadCourse.builder()
             .title(request.title())
             .introduction(request.introduction())
-            .thumbnailImageUrl(request.thumbnailImage())
             .location(myCourse.getLocation())
             .myCourse(myCourse)
             .user(user)
+            .thumbnailImageS3Key(thumbnailS3Key)
             .build();
     }
 
     public static UploadCourseDetailResponse toDetailResponse(UploadCourse uploadCourse,
-        List<DaySchedule> daySchedules) {
+        List<DaySchedule> daySchedules, String presignedUrl, String profileUrl) {
         return UploadCourseDetailResponse.builder()
             .uploadCourseId(uploadCourse.getId())
             .title(uploadCourse.getTitle())
             .introduction(uploadCourse.getIntroduction())
-            .thumbnailImageUrl(uploadCourse.getThumbnailImageUrl())
+            .thumbnailImageUrl(presignedUrl)
             .keywords(uploadCourse.getKeywords().stream()
                 .map(CourseKeyword::getKeywordType)
                 .toList()
@@ -58,23 +58,24 @@ public class UploadCourseMapper {
             .createdAt(uploadCourse.getCreatedAt())
             .writerId(uploadCourse.getUser().getId())
             .writerNickname(uploadCourse.getUser().getNickname())
-            .writerProfileUrl(uploadCourse.getUser().getProfileImageUrl())
+            .writerProfileUrl(profileUrl)
             .daySchedules(DayScheduleMapper.toListResponse(daySchedules))
             .build();
     }
 
-    public static UploadCourseListItemResponse toListItemResponse(UploadCourse uploadCourse) {
+    public static UploadCourseListItemResponse toListItemResponse(UploadCourse uploadCourse,
+        String thumbnailUrl, String profileUrl) {
         return UploadCourseListItemResponse.builder()
             .uploadCourseId(uploadCourse.getId())
             .title(uploadCourse.getTitle())
             .location(uploadCourse.getLocation())
-            .thumbnailImageUrl(uploadCourse.getThumbnailImageUrl())
+            .thumbnailImageUrl(thumbnailUrl)
             .heartCount(uploadCourse.getHeartCount())
             .commentCount(uploadCourse.getCommentCount())
             .viewCount(uploadCourse.getViewCount())
             .writerId(uploadCourse.getUser().getId())
             .writerNickname(uploadCourse.getUser().getNickname())
-            .writerProfileUrl(uploadCourse.getUser().getProfileImageUrl())
+            .writerProfileUrl(profileUrl)
             .createdAt(uploadCourse.getCreatedAt())
             .build();
     }

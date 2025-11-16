@@ -11,8 +11,7 @@ public record KakaoCompleteRequest(
 
     @Schema(description = "닉네임 (1~20자)", example = "여행러버", required = true)
     @NotBlank(message = "닉네임은 필수 입력값입니다.")
-    String nickname,
+    String nickname
+) {
 
-    @Schema(description = "프로필 이미지 URL", example = "https://k.kakaocdn.net/.../profile.jpg")
-    String profileImageUrl
-) {}
+}

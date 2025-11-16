@@ -1,8 +1,11 @@
 package backend.yourtrip.domain.user.service;
 
-import backend.yourtrip.domain.user.dto.request.*;
-import backend.yourtrip.domain.user.dto.response.*;
+import backend.yourtrip.domain.user.dto.request.ProfileCreateRequest;
+import backend.yourtrip.domain.user.dto.request.UserLoginRequest;
+import backend.yourtrip.domain.user.dto.response.UserLoginResponse;
+import backend.yourtrip.domain.user.dto.response.UserSignupResponse;
 import backend.yourtrip.domain.user.entity.User;
+import org.springframework.web.multipart.MultipartFile;
 
 public interface UserService {
 
@@ -12,13 +15,11 @@ public interface UserService {
 
     void setPassword(String email, String password);
 
-    UserSignupResponse completeSignup(ProfileCreateRequest request);
+    UserSignupResponse completeSignup(ProfileCreateRequest request, MultipartFile profileImage);
 
     UserLoginResponse login(UserLoginRequest request);
 
     UserLoginResponse refresh(String refreshToken);
-
-    UserLoginResponse kakaoLoginOrSignup(String kakaoId, String email, String nickname, String profileImageUrl);
 
     User getUser(Long userId);
 
