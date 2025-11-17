@@ -1,8 +1,13 @@
 package backend.yourtrip.global.jwt;
 
+import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.UserErrorCode;
+import backend.yourtrip.global.security.CustomUserDetails;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -66,5 +71,17 @@ public class JwtTokenProvider {
             .build()
             .parseClaimsJws(token)
             .getBody();
+    }
+
+    public Long getCurrentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        if (auth == null || !auth.isAuthenticated() ||
+            auth.getPrincipal().equals("anonymousUser")) {
+            throw new BusinessException(UserErrorCode.USER_NOT_FOUND);
+        }
+
+        CustomUserDetails principal = (CustomUserDetails) auth.getPrincipal();
+        return principal.getUserId();
     }
 }

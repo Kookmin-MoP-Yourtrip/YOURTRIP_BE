@@ -57,7 +57,6 @@ public class MailService {
             logBuilder.status("FAILED").errorMessage(e.getMessage());
             System.err.println("[메일 전송 실패] " + to + " → " + e.getMessage());
 
-            // 재시도 조건
             if (attempt < MAX_RETRY) {
                 System.out.println("[재시도 진행] " + (attempt + 1) + "회차");
                 sendMailWithLogging(to, subject, text, attempt + 1);
@@ -72,5 +71,24 @@ public class MailService {
         } finally {
             mailLogRepository.save(logBuilder.build());
         }
+    }
+
+    // ===============================
+    //  비밀번호 찾기 메일 전송 메서드
+    // ===============================
+    @Transactional
+    public void sendPasswordResetMail(String to, String code) {
+        String subject = "[너의 여행은] 비밀번호 재설정 인증번호 안내";
+        String body = """
+                안녕하세요!
+                '너의 여행은' 비밀번호 재설정 인증번호를 안내드립니다.
+
+                인증번호: %s
+
+                본 인증번호는 5분간 유효합니다.
+                요청하지 않은 경우 메일을 무시해주세요.
+                """.formatted(code);
+
+        sendMailWithLogging(to, subject, body, 0);
     }
 }

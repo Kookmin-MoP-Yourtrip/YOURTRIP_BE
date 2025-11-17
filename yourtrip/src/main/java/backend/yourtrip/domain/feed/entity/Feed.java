@@ -40,18 +40,18 @@ public class Feed extends BaseEntity {
     private String content;
 
     @OneToMany(mappedBy = "feed", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Hashtag> hashtags;
+    private List<Hashtag> hashtags = new ArrayList<>();
 
-    @Column(name = "commentCount", nullable = false, columnDefinition = "int default 0")
+    @Column(nullable = false, columnDefinition = "int default 0")
     private int commentCount;
 
-    @Column(name = "heartCount", nullable = false, columnDefinition = "int default 0")
+    @Column(nullable = false, columnDefinition = "int default 0")
     private int heartCount;
 
-    @Column(name = "viewCount", nullable = false, columnDefinition = "int default 0")
+    @Column(nullable = false, columnDefinition = "int default 0")
     private int viewCount;
 
-    @Column(name = "deleted", nullable = false, columnDefinition = "boolean default false")
+    @Column(nullable = false, columnDefinition = "boolean default false")
     private boolean deleted;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -64,38 +64,29 @@ public class Feed extends BaseEntity {
         this.title = title;
         this.location = location;
         this.content = content;
-        hashtags = new ArrayList<>();
-        commentCount = 0;
-        heartCount = 0;
-        viewCount = 0;
         this.uploadCourse = uploadCourse;
+
+        this.commentCount = 0;
+        this.heartCount = 0;
+        this.viewCount = 0;
+        this.deleted = false;
     }
 
     public void updateFeed(String title, String location, String content, UploadCourse uploadCourse) {
-        if (title != null && !title.trim().isEmpty()) {
-            this.title = title;
-        }
-        if (location != null && !location.trim().isEmpty()) {
-            this.location = location;
-        }
-        if (content != null && !content.trim().isEmpty()) {
-            this.content = content;
-        }
-        if (uploadCourse != null) {
-            this.uploadCourse = uploadCourse;
-        }
 
+        if (title != null && !title.trim().isEmpty()) this.title = title;
+        if (location != null && !location.trim().isEmpty()) this.location = location;
+        if (content != null && !content.trim().isEmpty()) this.content = content;
+        if (uploadCourse != null) this.uploadCourse = uploadCourse;
     }
 
-    public void updateHashtags(List<Hashtag> newHashtags) {
-        this.hashtags.clear();
-        this.hashtags.addAll(newHashtags);
+    public void updateHashtags(List<Hashtag> newTags) {
+        hashtags.clear();
+        hashtags.addAll(newTags);
     }
 
     public void delete() {
-        if (this.deleted) {
-            throw new BusinessException(FeedErrorCode.FEED_ALREADY_DELETED);
-        }
+        if (this.deleted) throw new BusinessException(FeedErrorCode.FEED_ALREADY_DELETED);
         this.deleted = true;
     }
 

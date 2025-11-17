@@ -1,20 +1,9 @@
 package backend.yourtrip.domain.user.entity;
 
 import backend.yourtrip.global.common.BaseEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import org.hibernate.annotations.SQLRestriction;
+import jakarta.persistence.*;
+import lombok.*;
+import org.hibernate.annotations.Where;
 
 @Getter
 @Builder(toBuilder = true)
@@ -22,7 +11,7 @@ import org.hibernate.annotations.SQLRestriction;
 @AllArgsConstructor
 @Entity
 @Table(name = "users")
-@SQLRestriction("deleted = false")
+@Where(clause = "deleted = false")
 public class User extends BaseEntity {
 
     @Id
@@ -31,17 +20,16 @@ public class User extends BaseEntity {
     private Long id;
 
     private String email;
-
     private String password;
-
     private String nickname;
 
+    // S3에 저장된 프로필 이미지 key
     private String profileImageS3Key;
 
-    private boolean deleted;
+    @Builder.Default
+    private boolean deleted = false;
 
     private String refreshToken;
-
     private boolean emailVerified;
 
     @Enumerated(EnumType.STRING)
