@@ -35,10 +35,10 @@ public class FeedMapper {
             throw new BusinessException(FeedErrorCode.FEED_NOT_FOUND);
         }
         List<String> hashtagNames = feed.getHashtags() != null
-                ? feed.getHashtags().stream()
-                    .map(Hashtag::getTagName)
-                    .collect(Collectors.toList())
-                :List.of();
+            ? feed.getHashtags().stream()
+            .map(Hashtag::getTagName)
+            .collect(Collectors.toList())
+            :List.of();
 
         User user = feed.getUser();
         UploadCourse uploadCourse = feed.getUploadCourse();
@@ -47,7 +47,7 @@ public class FeedMapper {
                 .feedId(feed.getId())
                 .userId(user != null ? user.getId() : null)
                 .nickname(user != null ? user.getNickname() : null)
-                .profileImageUrl(user != null ? user.getProfileImageUrl() : null)
+                .profileImageUrl(user != null ? user.getProfileImageS3Key() : null)
                 .title(feed.getTitle())
                 .hashtags(hashtagNames)
                 .location(feed.getLocation())
@@ -61,16 +61,16 @@ public class FeedMapper {
 
     public static FeedListResponse toListResponse(Page<Feed> feedPage) {
         List<FeedDetailResponse> responses = feedPage.getContent().stream()
-                .map(FeedMapper::toDetailResponse)
-                .toList();
+            .map(FeedMapper::toDetailResponse)
+            .toList();
 
         return new FeedListResponse(
-                responses,
-                feedPage.getNumber(),
-                feedPage.getTotalPages(),
-                feedPage.getTotalElements(),
-                feedPage.hasNext(),
-                feedPage.hasPrevious()
-                );
+            responses,
+            feedPage.getNumber(),
+            feedPage.getTotalPages(),
+            feedPage.getTotalElements(),
+            feedPage.hasNext(),
+            feedPage.hasPrevious()
+        );
     }
 }

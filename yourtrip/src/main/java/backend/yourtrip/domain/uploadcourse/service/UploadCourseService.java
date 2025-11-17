@@ -6,12 +6,14 @@ import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateRespo
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListResponse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.UploadCourseSortType;
+import org.springframework.web.multipart.MultipartFile;
 
 public interface UploadCourseService {
 
     CourseKeywordListResponse getCourseKeywordList();
 
-    UploadCourseCreateResponse createUploadCourse(UploadCourseCreateRequest request);
+    UploadCourseCreateResponse createUploadCourse(UploadCourseCreateRequest request,
+        MultipartFile thumbnailImage);
 
     UploadCourseDetailResponse getDetail(Long uploadCourseId);
 

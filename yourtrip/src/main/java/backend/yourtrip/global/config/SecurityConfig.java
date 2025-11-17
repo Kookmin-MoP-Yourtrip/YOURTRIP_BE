@@ -34,6 +34,7 @@ public class SecurityConfig {
             .sessionManagement(
                 session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                // 정적 리소스 및 Swagger 허용
                 .requestMatchers(
                     "/", "/index.html", "/error",
                     "/favicon.ico", "/css/**", "/js/**", "/images/**",
@@ -43,6 +44,8 @@ public class SecurityConfig {
                     "/swagger-resources",
                     "/webjars/**"
                 ).permitAll()
+
+                // 이메일 회원가입 단계 허용
                 .requestMatchers(
                     "/api/users/email/send",
                     "/api/users/email/verify",
@@ -51,12 +54,22 @@ public class SecurityConfig {
                     "/api/users/login",
                     "/api/users/refresh"
                 ).permitAll()
+
+                // 🔥 카카오 로그인 + 회원가입 완료 허용 (중요)
+                .requestMatchers(
+                    "/api/users/login/kakao/callback",
+                    "/api/users/login/kakao/complete"
+                ).permitAll()
+
+                // Upload-courses GET 허용
                 .requestMatchers(
                     HttpMethod.GET, "/api/upload-courses/**"
                 ).permitAll()
                 .requestMatchers(
                     HttpMethod.GET, "/api/upload-courses/keywords"
                 ).permitAll()
+
+                // 나머지는 인증 필요
                 .anyRequest().authenticated()
             )
             .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider),
