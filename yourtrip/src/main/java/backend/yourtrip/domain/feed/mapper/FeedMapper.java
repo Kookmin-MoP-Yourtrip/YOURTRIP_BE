@@ -51,7 +51,7 @@ public class FeedMapper {
                 .title(feed.getTitle())
                 .hashtags(hashtagNames)
                 .location(feed.getLocation())
-                .contentUrl(feed.getContent())
+                .content(feed.getContent())
                 .commentCount(feed.getCommentCount())
                 .heartCount(feed.getHeartCount())
                 .viewCount(feed.getViewCount())
