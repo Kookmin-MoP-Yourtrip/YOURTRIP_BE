@@ -12,7 +12,7 @@ public record FeedDetailResponse(
         String profileImageUrl,
         String title,
         String location,
-        String contentUrl,
+        String content,
         List<String> hashtags,
         int commentCount,
         int heartCount,

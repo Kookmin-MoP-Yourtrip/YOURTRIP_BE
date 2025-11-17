@@ -1,14 +1,15 @@
 package backend.yourtrip.domain.feed.service;
 
 import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
-import backend.yourtrip.domain.feed.dto.response.FeedCreateResponse;
-import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
-import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
+import backend.yourtrip.domain.feed.dto.request.FeedUpdateRequest;
+import backend.yourtrip.domain.feed.dto.response.*;
 import backend.yourtrip.domain.feed.entity.Feed;
 import backend.yourtrip.domain.feed.entity.Hashtag;
 import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
 import backend.yourtrip.domain.feed.mapper.FeedMapper;
 import backend.yourtrip.domain.feed.repository.FeedRepository;
+import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
+import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.BusinessException;
@@ -22,30 +23,48 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-
 @Service
 @RequiredArgsConstructor
-public class FeedServiceImpl implements FeedService{
+public class FeedServiceImpl implements FeedService {
 
     private final FeedRepository feedRepository;
     private final UserService userService;
+    private final UploadCourseRepository uploadCourseRepository;
 
     @Override
     @Transactional
     public FeedCreateResponse saveFeed(FeedCreateRequest request) {
+        if (request.title() == null || request.title().trim().isEmpty()) {
+            throw new BusinessException(FeedErrorCode.FEED_TITLE_REQUIRED);
+        }
+        if (request.content() == null || request.content().trim().isEmpty()) {
+            throw new BusinessException(FeedErrorCode.FEED_CONTENT_REQUIRED);
+        }
+
         Long userId = userService.getCurrentUserId();
         User user = userService.getUser(userId);
 
-        Feed feed = FeedMapper.toEntity(user, request);
+        UploadCourse uploadCourse = null;
+        if (request.uploadCourseId() != null) {
+            uploadCourse = uploadCourseRepository.findById(request.uploadCourseId())
+                    .orElseThrow(() -> new BusinessException(FeedErrorCode.UPLOAD_COURSE_NOT_FOUND));
+
+            if (!uploadCourse.getUser().getId().equals(userId)) {
+                throw new BusinessException(FeedErrorCode.UPLOAD_COURSE_FORBIDDEN);
+            }
+        }
+
+        Feed feed = FeedMapper.toEntity(user, request, uploadCourse);
         Feed savedFeed = feedRepository.save(feed);
 
-        for (String hashtag : request.hashtags()) {
-            Hashtag tagName = Hashtag.builder()
-                    .feed(feed)
-                    .tagName(hashtag)
-                    .build();
-            feed.getHashtags().add(tagName);
+        if (request.hashtags() != null && !request.hashtags().isEmpty()) {
+            for (String hashtag : request.hashtags()) {
+                Hashtag tagName = Hashtag.builder()
+                        .feed(feed)
+                        .tagName(hashtag)
+                        .build();
+                feed.getHashtags().add(tagName);
+            }
         }
 
         return new FeedCreateResponse(savedFeed.getId(), FeedResponseCode.FEED_CREATED.getMessage());
@@ -96,5 +115,55 @@ public class FeedServiceImpl implements FeedService{
         Page<Feed> feedPage = feedRepository.findByKeyword(keyword, pageable);
 
         return FeedMapper.toListResponse(feedPage);
+    }
+
+    @Override
+    @Transactional
+    public FeedUpdateResponse updateFeed(Long feedId, FeedUpdateRequest request) {
+        //필드 조회
+        Feed feed = feedRepository.findById(feedId)
+                .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
+
+        //권한 확인
+        Long currentUserId = userService.getCurrentUserId();
+        if (!feed.getUser().getId().equals(currentUserId)) {
+            throw new BusinessException(FeedErrorCode.FEED_UPDATE_NOT_AUTHORIZED);
+        }
+
+        UploadCourse uploadCourse = null;
+        if (request.uploadCourseId() != null) {
+            uploadCourse = uploadCourseRepository.findById(request.uploadCourseId())
+                    .orElseThrow(() -> new BusinessException(FeedErrorCode.UPLOAD_COURSE_NOT_FOUND));
+
+            if (!uploadCourse.getUser().getId().equals(currentUserId)) {
+                throw new BusinessException(FeedErrorCode.UPLOAD_COURSE_FORBIDDEN);
+            }
+        }
+        feed.updateFeed(request.title(), request.location(), request.content(), uploadCourse);
+
+        if (request.hashtags() != null) {
+            feed.getHashtags().clear();
+            for (String hashtags : request.hashtags()) {
+                Hashtag tagName = Hashtag.builder()
+                        .feed(feed)
+                        .tagName(hashtags)
+                        .build();
+                feed.getHashtags().add(tagName);
+            }
+        }
+        return new FeedUpdateResponse(feed.getId(), FeedResponseCode.FEED_UPDATED.getMessage());
+    }
+
+    @Override
+    @Transactional
+    public void deleteFeed(Long feedId) {
+        Feed feed = feedRepository.findById(feedId)
+                .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
+
+        Long currentUserId = userService.getCurrentUserId();
+        if (!feed.getUser().getId().equals(currentUserId)) {
+            throw new BusinessException(FeedErrorCode.FEED_DELETE_NOT_AUTHORIZED);
+        }
+        feed.delete();
     }
 }
