@@ -21,9 +21,6 @@ public record UploadCourseCreateRequest(
     @Schema(example = "술과 음식을 좋아하는 분들 안성맞춤 코스")
     String introduction,
 
-    @Schema(example = "example.png", description = ".jpg/.png 타입만 허용")
-    String thumbnailImage, //TODO: 멀티파트 데이터 입력으로 변경
-
     @ArraySchema(
         schema = @Schema(
             implementation = KeywordType.class,

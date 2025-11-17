@@ -48,6 +48,9 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    implementation platform('software.amazon.awssdk:bom:2.25.30') // 최신 안정판으로 맞추기
+    implementation 'software.amazon.awssdk:s3'
 }
 
 tasks.named('test') {

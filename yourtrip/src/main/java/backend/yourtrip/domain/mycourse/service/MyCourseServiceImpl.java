@@ -26,11 +26,13 @@ import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import java.time.Period;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class MyCourseServiceImpl implements MyCourseService {
 
     private final MyCourseRepository myCourseRepository;
@@ -82,7 +84,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Transactional(readOnly = true)
     public MyCourseDetailResponse getMyCourseDetail(Long courseId) {
         Long userId = userService.getCurrentUserId();
-        
+
         MyCourse myCourse = myCourseRepository.findCourseWithDaySchedule(courseId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
 
@@ -112,6 +114,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Override
     @Transactional(readOnly = true)
     public MyCourse getMyCourseById(Long courseId) {
+        log.info("Getting MyCourse by ID: {}", courseId);
         return myCourseRepository.findById(courseId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
     }

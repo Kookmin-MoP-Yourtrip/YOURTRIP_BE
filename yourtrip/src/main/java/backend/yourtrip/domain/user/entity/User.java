@@ -1,10 +1,20 @@
 package backend.yourtrip.domain.user.entity;
 
 import backend.yourtrip.global.common.BaseEntity;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.SQLRestriction;
-
-import lombok.*;
 
 @Getter
 @Builder(toBuilder = true)
@@ -26,7 +36,7 @@ public class User extends BaseEntity {
 
     private String nickname;
 
-    private String profileImageUrl;
+    private String profileImageS3Key;
 
     private boolean deleted;
 
