@@ -16,7 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
@@ -136,6 +138,24 @@ public class S3Service {
 
         // 3) URL 반환
         return presignedRequest.url().toString();
+    }
+
+    public void deleteFile(String key) {
+        if (key == null || key.isBlank()) {
+            throw new BusinessException(S3ErrorCode.INVALID_S3_KEY);
+        }
+
+        try {
+            DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .build();
+
+            s3Client.deleteObject(deleteRequest);
+
+        } catch (S3Exception e) {
+            throw new BusinessException(S3ErrorCode.FAIL_DELETE_FILE);
+        }
     }
 
 }

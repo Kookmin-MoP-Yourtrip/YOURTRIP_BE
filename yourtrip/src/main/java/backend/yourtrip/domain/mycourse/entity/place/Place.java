@@ -57,7 +57,7 @@ public class Place extends BaseEntity {
 
     private String placeLocation;
 
-    @OneToMany(mappedBy = "place", cascade = CascadeType.PERSIST)
+    @OneToMany(mappedBy = "place", cascade = CascadeType.ALL, orphanRemoval = true)
     @Fetch(FetchMode.SUBSELECT) // place 조회 시 장소 사진들도 함께 조회
     private List<PlaceImage> placeImages;
 

@@ -20,6 +20,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -95,6 +96,20 @@ public class MyCourseController implements MyCourseControllerSpec {
     }
 
     // ==========================
+    // 장소 삭제
+    // =========================
+    @DeleteMapping("/{courseId}/days/{dayId}/places/{placeId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deletePlace(
+        @PathVariable @Schema(example = "1") Long courseId,
+        @PathVariable @Schema(example = "1") Long dayId,
+        @PathVariable @Schema(example = "1") Long placeId
+    ) {
+        myCourseService.deletePlace(courseId, dayId, placeId);
+    }
+
+
+    // ==========================
     //  장소 시간 수정
     // ==========================
     @PatchMapping("/{courseId}/days/{dayId}/places/{placeId}/start-time")
@@ -134,5 +149,18 @@ public class MyCourseController implements MyCourseControllerSpec {
         return myCourseService.addPlaceImage(courseId, dayId, placeId, placeImage);
     }
 
+    // ==========================
+    // 장소 이미지 삭제
+    // =========================
+    @DeleteMapping("/{courseId}/days/{dayId}/places/{placeId}/images/{imageId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deletePlaceImage(
+        @PathVariable @Schema(example = "1") Long courseId,
+        @PathVariable @Schema(example = "1") Long dayId,
+        @PathVariable @Schema(example = "1") Long placeId,
+        @PathVariable @Schema(example = "1") Long imageId
+    ) {
+        myCourseService.deletePlaceImage(courseId, dayId, placeId, imageId);
+    }
 
 }

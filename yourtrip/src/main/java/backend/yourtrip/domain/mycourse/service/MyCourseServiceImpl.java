@@ -24,6 +24,7 @@ import backend.yourtrip.domain.mycourse.mapper.PlaceMapper;
 import backend.yourtrip.domain.mycourse.repository.CourseParticipantRepository;
 import backend.yourtrip.domain.mycourse.repository.DayScheduleRepository;
 import backend.yourtrip.domain.mycourse.repository.MyCourseRepository;
+import backend.yourtrip.domain.mycourse.repository.PlaceImageRepository;
 import backend.yourtrip.domain.mycourse.repository.PlaceRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
@@ -52,6 +53,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final PlaceRepository placeRepository;
     private final UserService userService;
     private final S3Service s3Service;
+    private final PlaceImageRepository placeImageRepository;
 
     @Override
     @Transactional
@@ -204,8 +206,8 @@ public class MyCourseServiceImpl implements MyCourseService {
             throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
         }
 
-        PlaceImage savedPlaceImage = new PlaceImage(place, placeImageS3Key);
-        place.getPlaceImages().add(savedPlaceImage);
+        PlaceImage savedPlaceImage = placeImageRepository.save(
+            new PlaceImage(place, placeImageS3Key));
 
         return new PlaceImageCreateResponse(savedPlaceImage.getId(),
             s3Service.getPresignedUrl(placeImageS3Key));
@@ -222,6 +224,27 @@ public class MyCourseServiceImpl implements MyCourseService {
         place.updatePlace(request);
 
         return PlaceMapper.toUpdateResponse(place);
+    }
+
+    @Override
+    @Transactional
+    public void deletePlaceImage(Long courseId, Long dayId, Long placeId, Long imageId) {
+        checkExistCourse(courseId);
+        checkExistDaySchedule(dayId, courseId);
+        Place place = getPlace(placeId);
+
+        PlaceImage placeImage = placeImageRepository.findByIdAndPlace_Id(imageId, placeId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.PLACE_IMAGE_NOT_FOUND));
+
+        s3Service.deleteFile(placeImage.getPlaceImageS3Key());
+
+        place.getPlaceImages().remove(placeImage);
+    }
+
+    @Override
+    @Transactional
+    public void deletePlace(Long courseId, Long dayId, Long placeId) {
+
     }
 
 

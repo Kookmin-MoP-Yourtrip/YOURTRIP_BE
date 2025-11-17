@@ -41,4 +41,8 @@ public interface MyCourseService {
 
     PlaceUpdateResponse updatePlace(Long courseId, Long dayId, Long placeId,
         PlaceUpdateRequest request);
+
+    void deletePlaceImage(Long courseId, Long dayId, Long placeId, Long imageId);
+
+    void deletePlace(Long courseId, Long dayId, Long placeId);
 }
