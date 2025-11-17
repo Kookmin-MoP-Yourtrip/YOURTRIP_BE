@@ -56,11 +56,13 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
         User user = userService.getUser(userService.getCurrentUserId());
 
-        String thumbnailS3Key;
-        try {
-            thumbnailS3Key = s3Service.uploadFile(thumbnailImage).key();
-        } catch (IOException e) {
-            throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+        String thumbnailS3Key = null;
+        if (thumbnailImage != null) {
+            try {
+                thumbnailS3Key = s3Service.uploadFile(thumbnailImage).key();
+            } catch (IOException e) {
+                throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+            }
         }
 
         UploadCourse savedUploadCourse = uploadCourseRepository.save(

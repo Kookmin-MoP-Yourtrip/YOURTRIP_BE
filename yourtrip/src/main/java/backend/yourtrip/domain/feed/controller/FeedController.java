@@ -2,12 +2,12 @@ package backend.yourtrip.domain.feed.controller;
 
 
 import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
-import backend.yourtrip.domain.feed.dto.response.FeedCreateResponse;
-import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
-import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
+import backend.yourtrip.domain.feed.dto.request.FeedUpdateRequest;
+import backend.yourtrip.domain.feed.dto.response.*;
 import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
 import backend.yourtrip.domain.feed.service.FeedService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/feeds")
+@Tag(name = "Feed API", description = "피드 관련 API")
 public class FeedController {
 
     private final FeedService feedService;
@@ -64,6 +65,24 @@ public class FeedController {
             @RequestParam(defaultValue = "10") int size
     ) {
         return feedService.getFeedByKeyword(keyword, page, size);
+    }
+
+    @PutMapping("/{feedId}")
+    @Operation(summary = "피드 수정")
+    public FeedUpdateResponse updateFeed(
+            @PathVariable Long feedId,
+            @Valid @RequestBody FeedUpdateRequest request
+            ) {
+        return feedService.updateFeed(feedId, request);
+    }
+
+    @DeleteMapping("/{feedId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "피드 삭제")
+    public void deleteFeed(
+            @PathVariable Long feedId
+    ) {
+        feedService.deleteFeed(feedId);
     }
 }
 
