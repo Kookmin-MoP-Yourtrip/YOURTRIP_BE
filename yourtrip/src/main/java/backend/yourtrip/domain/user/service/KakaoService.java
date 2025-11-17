@@ -68,11 +68,13 @@ public class KakaoService {
     public UserLoginResponse complete(String kakaoId, String nickname,
         MultipartFile profileImage) {
 
-        String profileImageS3Key;
-        try {
-            profileImageS3Key = s3Service.uploadFile(profileImage).key();
-        } catch (IOException e) {
-            throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+        String profileImageS3Key = null;
+        if (profileImage != null) {
+            try {
+                profileImageS3Key = s3Service.uploadFile(profileImage).key();
+            } catch (IOException e) {
+                throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+            }
         }
 
         User temp = userRepository.findBySocialId(kakaoId)

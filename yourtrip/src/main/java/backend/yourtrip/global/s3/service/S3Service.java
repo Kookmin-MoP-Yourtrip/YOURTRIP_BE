@@ -36,11 +36,22 @@ public class S3Service {
     private String region;
 
     private final S3Presigner presigner;
+    private volatile Set<String> allowedContentTypeSetCache;
 
     //허용 타입을 set으로 변환
     private Set<String> allowedContentTypeSet() {
-        return Stream.of(allowedContentTypes.split(","))
-            .map(String::trim).collect(Collectors.toSet());
+        Set<String> cache = allowedContentTypeSetCache;
+        if (cache == null) {
+            synchronized (this) {
+                cache = allowedContentTypeSetCache;
+                if (cache == null) {
+                    cache = Stream.of(allowedContentTypes.split(","))
+                        .map(String::trim).collect(Collectors.toSet());
+                    allowedContentTypeSetCache = cache;
+                }
+            }
+        }
+        return cache;
     }
 
     public UploadResult uploadFile(MultipartFile file) throws IOException {
