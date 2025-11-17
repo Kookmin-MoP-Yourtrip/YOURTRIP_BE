@@ -1,5 +1,6 @@
 package backend.yourtrip.global.config;
 
+import backend.yourtrip.domain.user.repository.UserRepository;
 import backend.yourtrip.global.jwt.JwtAuthenticationFilter;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
 import java.util.List;
@@ -25,6 +26,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserRepository userRepository;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -45,18 +47,20 @@ public class SecurityConfig {
                     "/webjars/**"
                 ).permitAll()
 
-                // 이메일 회원가입 단계 허용
                 .requestMatchers(
                     "/api/users/email/send",
                     "/api/users/email/verify",
                     "/api/users/password",
                     "/api/users/profile",
                     "/api/users/login",
-                    "/api/users/refresh"
-                ).permitAll()
+                    "/api/users/refresh",
 
-                // 🔥 카카오 로그인 + 회원가입 완료 허용 (중요)
-                .requestMatchers(
+                    // 비밀번호 찾기
+                    "/api/users/password/find/email",
+                    "/api/users/password/find/verify",
+                    "/api/users/password/find/reset",
+
+                    // 카카오
                     "/api/users/login/kakao/callback",
                     "/api/users/login/kakao/complete"
                 ).permitAll()
@@ -72,8 +76,10 @@ public class SecurityConfig {
                 // 나머지는 인증 필요
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider),
-                UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(
+                new JwtAuthenticationFilter(jwtTokenProvider, userRepository),
+                UsernamePasswordAuthenticationFilter.class
+            )
 
         return http.build();
     }
