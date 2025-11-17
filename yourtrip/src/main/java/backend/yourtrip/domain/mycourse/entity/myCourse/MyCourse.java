@@ -1,7 +1,7 @@
-package backend.yourtrip.domain.mycourse.entity;
+package backend.yourtrip.domain.mycourse.entity.myCourse;
 
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
-import backend.yourtrip.domain.mycourse.entity.enums.MyCourseType;
+import backend.yourtrip.domain.mycourse.entity.myCourse.enums.MyCourseType;
 import backend.yourtrip.global.common.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

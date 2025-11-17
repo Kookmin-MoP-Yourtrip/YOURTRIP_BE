@@ -1,8 +1,8 @@
 package backend.yourtrip.domain.mycourse.mapper;
 
-import backend.yourtrip.domain.mycourse.entity.CourseParticipant;
-import backend.yourtrip.domain.mycourse.entity.MyCourse;
-import backend.yourtrip.domain.mycourse.entity.enums.CourseRole;
+import backend.yourtrip.domain.mycourse.entity.myCourse.CourseParticipant;
+import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
+import backend.yourtrip.domain.mycourse.entity.myCourse.enums.CourseRole;
 import backend.yourtrip.domain.user.entity.User;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;

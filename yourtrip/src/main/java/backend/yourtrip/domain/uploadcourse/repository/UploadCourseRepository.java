@@ -1,6 +1,6 @@
 package backend.yourtrip.domain.uploadcourse.repository;
 
-import backend.yourtrip.domain.mycourse.entity.MyCourse;
+import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import java.util.List;
 import java.util.Optional;

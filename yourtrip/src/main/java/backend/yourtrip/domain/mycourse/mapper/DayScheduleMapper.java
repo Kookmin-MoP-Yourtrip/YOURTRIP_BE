@@ -1,6 +1,8 @@
 package backend.yourtrip.domain.mycourse.mapper;
 
-import backend.yourtrip.domain.mycourse.dto.response.DayScheduleListResponse;
+import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
+import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse.DayScheduleSummary;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceImageResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import java.util.List;
 import lombok.AccessLevel;
@@ -9,15 +11,23 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class DayScheduleMapper {
 
-    public static List<DayScheduleListResponse> toListResponse(List<DaySchedule> daySchedules) {
+    public static List<DayScheduleSummary> toSummaryResponse(List<DaySchedule> daySchedules) {
         return daySchedules.stream()
-            .map(day -> new DayScheduleListResponse(
+            .map(day -> new DayScheduleSummary(
                 day.getId(),
-                day.getDay(),
-                day.getPlaces().stream()
-                    .map(PlaceMapper::toListResponse)
-                    .toList()
+                day.getDay()
             ))
             .toList();
+    }
+
+    public static DayScheduleResponse toDayScheduleResponse(DaySchedule daySchedule,
+        List<PlaceImageResponse> placeImages) {
+        return new DayScheduleResponse(
+            daySchedule.getId(),
+            daySchedule.getDay(),
+            daySchedule.getPlaces().stream()
+                .map(place -> PlaceMapper.toListResponse(place, placeImages))
+                .toList()
+        );
     }
 }

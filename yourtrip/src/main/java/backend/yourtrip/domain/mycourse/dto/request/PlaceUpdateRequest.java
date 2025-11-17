@@ -3,21 +3,21 @@ package backend.yourtrip.domain.mycourse.dto.request;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 
-public record PlaceCreateRequest(
-    @Schema(example = "황리단길")
+public record PlaceUpdateRequest(
+    @Schema(example = "첨성대")
     @NotBlank(message = "장소 이름은 필수 입력 항목입니다.")
     String placeName,
 
-    @Schema(example = "35.884")
+    @Schema(example = "39.684")
     double latitude,
 
-    @Schema(example = "129.8341")
+    @Schema(example = "125.4321")
     double longitude,
 
-    @Schema(example = "http://place.map.kakao.com/26338954")
+    @Schema(example = "http://place.map.kakao.com/12345678")
     String placeUrl,
 
-    @Schema(example = "경상북도 경주시 황남동 292-3")
+    @Schema(example = "경북 경주시 인왕동 839-1")
     String placeLocation
 ) {
 
