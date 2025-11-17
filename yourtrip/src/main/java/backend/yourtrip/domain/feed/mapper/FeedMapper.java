@@ -25,7 +25,7 @@ public class FeedMapper {
                 .title(request.title())
                 .location(request.location())
                 .content(request.content())
-                .uploadCourse(uploadCourse)
+                .tagCourse(uploadCourse)
                 .build();
     }
 
@@ -41,7 +41,7 @@ public class FeedMapper {
             :List.of();
 
         User user = feed.getUser();
-        UploadCourse uploadCourse = feed.getUploadCourse();
+        UploadCourse uploadCourse = feed.getTagCourse();
 
         return FeedDetailResponse.builder()
                 .feedId(feed.getId())
