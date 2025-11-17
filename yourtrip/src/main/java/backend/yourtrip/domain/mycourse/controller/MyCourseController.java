@@ -16,7 +16,6 @@ import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeUpdateRespons
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.service.MyCourseService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -36,7 +35,6 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/my-courses")
-@Tag(name = "MyCourse API", description = "나의 코스 관련 API")
 public class MyCourseController implements MyCourseControllerSpec {
 
     private final MyCourseService myCourseService;
