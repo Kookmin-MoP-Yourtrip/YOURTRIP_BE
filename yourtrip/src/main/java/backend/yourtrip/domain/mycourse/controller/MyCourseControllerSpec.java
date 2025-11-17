@@ -245,6 +245,8 @@ public interface MyCourseControllerSpec {
             - 특정 코스의 특정 일차에 해당하는 장소 리스트를 조회합니다. (피그마에서 일차별로 탭 누르는 화면)
             - 앞서 나의 코스 단건 조회 API에서 제공된 dayId를 사용하여 해당 일차의 장소들을 불러올 수 있습니다.
             - 장소의 latitude, longitude가 null인 경우, 수기로 추가된 장소입니다.
+            - 반환받는 image url들은 임시 url로 15분간만 유효합니다(보안상 문제), 로드한 이미지가 15분 뒤에 사라지는게 아니라 발급받은 url로 15분이 지난 후 로드를 시도하면 유효하지 않다는 뜻입니다.
+
             ### 제약조건
             - 경로 변수
                 - 코스 ID(courseId): 존재하는 코스여야 함
@@ -457,7 +459,7 @@ public interface MyCourseControllerSpec {
         ),
         @ApiResponse(
             responseCode = "400",
-            description = "필수값 미입력 시",
+            description = "장소명 미입력",
             content = @Content(
                 mediaType = "application/json",
                 examples = {
@@ -468,6 +470,45 @@ public interface MyCourseControllerSpec {
                               "timestamp": "2025-11-10T11:00:00",
                               "code": "INVALID_REQUEST_FIELD",
                               "message": "placeName: 장소 이름은 필수 입력 항목입니다."
+                            }
+                            """
+                    )
+                }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "경로변수로 올바르지 않은 courseId, dayId, placeId가 주어졌을 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "잘못된 courseId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "COURSE_NOT_FOUND",
+                              "message": "코스를 찾을 수 없습니다."
+                            }
+                            """
+                    ),
+                    @ExampleObject(
+                        name = "잘못된 dayId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "DAY_SCHEDULE_NOT_FOUND",
+                              "message": "해당 일차 일정을 찾을 수 없습니다."
+                            }
+                            """
+                    ),
+                    @ExampleObject(
+                        name = "잘못된 placeId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "PLACE_NOT_FOUND",
+                              "message": "해당 장소를 찾을 수 없습니다."
                             }
                             """
                     )
@@ -497,6 +538,51 @@ public interface MyCourseControllerSpec {
         - `PLACE_NOT_FOUND(404)`: 해당 일차에 존재하지 않는 장소인 경우 (잘못된 place Id가 주어진 경우)
         """
     )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "204",
+            description = "장소 삭제 성공"
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "경로변수로 올바르지 않은 courseId, dayId, placeId가 주어졌을 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "잘못된 courseId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "COURSE_NOT_FOUND",
+                              "message": "코스를 찾을 수 없습니다."
+                            }
+                            """
+                    ),
+                    @ExampleObject(
+                        name = "잘못된 dayId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "DAY_SCHEDULE_NOT_FOUND",
+                              "message": "해당 일차 일정을 찾을 수 없습니다."
+                            }
+                            """
+                    ),
+                    @ExampleObject(
+                        name = "잘못된 placeId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "PLACE_NOT_FOUND",
+                              "message": "해당 장소를 찾을 수 없습니다."
+                            }
+                            """
+                    )
+                }
+            )
+        )
+    })
     void deletePlace(
         @Schema(example = "1") Long courseId,
         @Schema(example = "1") Long dayId,
@@ -521,7 +607,7 @@ public interface MyCourseControllerSpec {
         - `INVALID_REQUEST_FIELD(400)`: 필드 유효성 오류(시간 포맷 불일치 등)
         """
     )
-    @ApiResponses(
+    @ApiResponses({
         @ApiResponse(
             responseCode = "200",
             description = "장소 시간 수정 성공",
@@ -536,8 +622,66 @@ public interface MyCourseControllerSpec {
                         """
                 )
             )
+        ),
+        @ApiResponse(
+            responseCode = "400",
+            description = "시간 포맷 불일치",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "시간 포맷 불일치",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "INVALID_REQUEST_FIELD",
+                              "message": "startTime: 시간은 HH:mm 형식이어야 합니다."
+                            }
+                            """
+                    )
+                }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "경로변수로 올바르지 않은 courseId, dayId, placeId가 주어졌을 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "잘못된 courseId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "COURSE_NOT_FOUND",
+                              "message": "코스를 찾을 수 없습니다."
+                            }
+                            """
+                    ),
+                    @ExampleObject(
+                        name = "잘못된 dayId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "DAY_SCHEDULE_NOT_FOUND",
+                              "message": "해당 일차 일정을 찾을 수 없습니다."
+                            }
+                            """
+                    ),
+                    @ExampleObject(
+                        name = "잘못된 placeId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "PLACE_NOT_FOUND",
+                              "message": "해당 장소를 찾을 수 없습니다."
+                            }
+                            """
+                    )
+                }
+            )
         )
-    )
+    })
     PlaceStartTimeUpdateResponse updatePlaceTime(
         @Schema(example = "1") Long courseId,
         @Schema(example = "1") Long dayId,
@@ -562,7 +706,7 @@ public interface MyCourseControllerSpec {
         - `PLACE_NOT_FOUND(404)`: 해당 일차에 존재하지 않는 장소인 경우 (잘못된 placeId가 주어진 경우)
         """
     )
-    @ApiResponses(
+    @ApiResponses({
         @ApiResponse(
             responseCode = "200",
             description = "장소 메모 수정 성공",
@@ -577,7 +721,47 @@ public interface MyCourseControllerSpec {
                         """
                 )
             )
-        ))
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "경로변수로 올바르지 않은 courseId, dayId, placeId가 주어졌을 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "잘못된 courseId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "COURSE_NOT_FOUND",
+                              "message": "코스를 찾을 수 없습니다."
+                            }
+                            """
+                    ),
+                    @ExampleObject(
+                        name = "잘못된 dayId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "DAY_SCHEDULE_NOT_FOUND",
+                              "message": "해당 일차 일정을 찾을 수 없습니다."
+                            }
+                            """
+                    ),
+                    @ExampleObject(
+                        name = "잘못된 placeId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "PLACE_NOT_FOUND",
+                              "message": "해당 장소를 찾을 수 없습니다."
+                            }
+                            """
+                    )
+                }
+            )
+        )
+    })
     PlaceMemoUpdateResponse updatePlaceMemo(
         @Schema(example = "1") Long courseId,
         @Schema(example = "1") Long dayId,
@@ -590,6 +774,10 @@ public interface MyCourseControllerSpec {
         ### 설명
         - 특정 코스의 특정 일차에 있는 특정 장소에 사진을 추가합니다.
         - 추가된 사진은 해당 장소의 사진 리스트에 포함됩니다.
+        - multipart/form-data 타입으로 이미지를 업로드합니다
+        - png, jpeg, jpg, webp, mp4, quicktime, webm 타입만 업로드 가능합니다.
+        - 반환받는 image url은 임시 url로 15분간만 유효합니다(보안상 문제), 로드한 이미지가 15분 뒤에 사라지는게 아니라 발급받은 url로 15분이 지난 후 로드를 시도하면 유효하지 않다는 뜻입니다.
+
         ### 제약조건
         - 경로 변수
             - 코스 ID(courseId): 존재하는 코스여야 함
@@ -601,6 +789,7 @@ public interface MyCourseControllerSpec {
         - `COURSE_NOT_FOUND(404)`: 코스가 존재하지 않는 경우 (잘못된 courseId가 주어진 경우)
         - `DAY_SCHEDULE_NOT_FOUND(404)`: 해당 코스에 존재하지 않는 일차인 경우 (잘못된 dayId가 주어진 경우)
         - `PLACE_NOT_FOUND(404)`: 해당 일차에 존재하지 않는 장소인 경우 (잘못된 placeId가 주어진 경우)
+        - `FAIL_UPLOAD_FILE(503)`: 파일 업로드에 실패한 경우
         """
     )
     @ApiResponses({
@@ -614,6 +803,61 @@ public interface MyCourseControllerSpec {
                         {
                           "imageId": 1,
                           "imageUrl": "https://yourtrip-bucket.s3.ap-northeast-2.amazonaws.com/place-images/abcd1234.jpg"
+                        }
+                        """
+                )
+            )
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "경로변수로 올바르지 않은 courseId, dayId, placeId가 주어졌을 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "잘못된 courseId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "COURSE_NOT_FOUND",
+                              "message": "코스를 찾을 수 없습니다."
+                            }
+                            """
+                    ),
+                    @ExampleObject(
+                        name = "잘못된 dayId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "DAY_SCHEDULE_NOT_FOUND",
+                              "message": "해당 일차 일정을 찾을 수 없습니다."
+                            }
+                            """
+                    ),
+                    @ExampleObject(
+                        name = "잘못된 placeId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "PLACE_NOT_FOUND",
+                              "message": "해당 장소를 찾을 수 없습니다."
+                            }
+                            """
+                    )
+                }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "503",
+            description = "파일 업로드 실패 시",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "timestamp": "2025-11-10T11:00:00",
+                          "code": "FAIL_UPLOAD_FILE",
+                          "message": "파일 업로드에 실패하였습니다. 잠시 후에 다시 시도해주세요"
                         }
                         """
                 )
@@ -641,8 +885,80 @@ public interface MyCourseControllerSpec {
         - `DAY_SCHEDULE_NOT_FOUND(404)`: 해당 코스에 존재하지 않는 일차인 경우 (잘못된 dayId가 주어진 경우)
         - `PLACE_NOT_FOUND(404)`: 해당 일차에 존재하지 않는 장소인 경우 (잘못된 placeId가 주어진 경우)
         - `PLACE_IMAGE_NOT_FOUND(404)`: 해당 장소에 존재하지 않는 이미지인 경우 (잘못된 placeImageId가 주어진 경우)
+        - `FAIL_DELETE_FILE(503)`: 파일 삭제에 실패한 경우
         """
     )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "204",
+            description = "장소 사진 삭제 성공"
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "경로변수로 올바르지 않은 courseId, dayId, placeId, imageId가 주어졌을 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = {
+                    @ExampleObject(
+                        name = "잘못된 courseId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "COURSE_NOT_FOUND",
+                              "message": "코스를 찾을 수 없습니다."
+                            }
+                            """
+                    ),
+                    @ExampleObject(
+                        name = "잘못된 dayId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "DAY_SCHEDULE_NOT_FOUND",
+                              "message": "해당 일차 일정을 찾을 수 없습니다."
+                            }
+                            """
+                    ),
+                    @ExampleObject(
+                        name = "잘못된 placeId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "PLACE_NOT_FOUND",
+                              "message": "해당 장소를 찾을 수 없습니다."
+                            }
+                            """
+                    ),
+                    @ExampleObject(
+                        name = "잘못된 imageId가 주어졌을 때",
+                        value = """
+                            {
+                              "timestamp": "2025-11-10T11:00:00",
+                              "code": "PLACE_IMAGE_NOT_FOUND",
+                              "message": "해당 장소 이미지를 찾을 수 없습니다."
+                            }
+                            """
+                    )
+                }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "503",
+            description = "파일 삭제 실패 시",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "timestamp": "2025-11-10T11:00:00",
+                          "code": "FAIL_DELETE_FILE",
+                          "message": "파일 삭제에 실패하였습니다. 잠시 후에 다시 시도해주세요"
+                        }
+                        """
+                )
+            )
+        )
+    })
     void deletePlaceImage(
         @Schema(example = "1") Long courseId,
         @Schema(example = "1") Long dayId,

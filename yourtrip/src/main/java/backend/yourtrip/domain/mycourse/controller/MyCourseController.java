@@ -15,6 +15,7 @@ import backend.yourtrip.domain.mycourse.dto.response.PlaceMemoUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.service.MyCourseService;
+import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -152,6 +153,24 @@ public class MyCourseController implements MyCourseControllerSpec {
     // ==========================
     // 장소 사진 추가
     // =========================
+    @Operation(summary = "장소 사진 추가", description = """
+        ### 설명
+        - 특정 코스의 특정 일차에 있는 특정 장소에 사진을 추가합니다.
+        - 추가된 사진은 해당 장소의 사진 리스트에 포함됩니다.
+        - png, jpeg, jpg, webp, mp4, quicktime, webm 타입만 업로드 가능합니다.
+
+        ### 제약조건
+        - 경로 변수
+            - 코스 ID(courseId): 존재하는 코스여야 함
+            - 일차 ID(dayId): 해당 코스에 존재하는 일차여야 함
+            - 장소 ID(placeId): 해당 일차에 존재하는 장소여야 함
+        - 요청 값
+            - 장소 이미지(placeImage): 이미지 파일 (MultipartFile)
+        ### ⚠ 예외상황
+        - `COURSE_NOT_FOUND(404)`: 코스가 존재하지 않는 경우 (잘못된 courseId가 주어진 경우)
+        - `DAY_SCHEDULE_NOT_FOUND(404)`: 해당 코스에 존재하지 않는 일차인 경우 (잘못된 dayId가 주어진 경우)
+        - `PLACE_NOT_FOUND(404)`: 해당 일차에 존재하지 않는 장소인 경우 (잘못된 placeId가 주어진 경우)
+        """)
     @Override
     @PostMapping(value = "/{courseId}/days/{dayId}/places/{placeId}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
