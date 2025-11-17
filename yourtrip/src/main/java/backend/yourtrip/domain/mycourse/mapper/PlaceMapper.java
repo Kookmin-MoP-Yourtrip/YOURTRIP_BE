@@ -2,6 +2,7 @@ package backend.yourtrip.domain.mycourse.mapper;
 
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceImageResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
@@ -24,7 +25,8 @@ public class PlaceMapper {
             .build();
     }
 
-    public static PlaceListResponse toListResponse(Place place, List<String> presignedUrls) {
+    public static PlaceListResponse toListResponse(Place place,
+        List<PlaceImageResponse> placeImages) {
         return PlaceListResponse.builder()
             .placeId(place.getId())
             .placeName(place.getName())
@@ -34,7 +36,7 @@ public class PlaceMapper {
             .longitude(place.getLongitude())
             .placeUrl(place.getPlaceUrl())
             .placeLocation(place.getPlaceLocation())
-            .placeImagesUrls(presignedUrls)
+            .placeImages(placeImages)
             .build();
     }
 

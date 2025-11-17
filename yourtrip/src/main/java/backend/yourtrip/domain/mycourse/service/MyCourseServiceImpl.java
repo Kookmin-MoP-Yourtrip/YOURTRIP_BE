@@ -10,6 +10,7 @@ import backend.yourtrip.domain.mycourse.dto.response.MyCourseListItemResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceImageCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceImageResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceMemoUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
@@ -140,11 +141,15 @@ public class MyCourseServiceImpl implements MyCourseService {
             .map(placeImage -> placeImage.getPlaceImageS3Key())
             .toList();
 
-        List<String> presignedUrls = s3Keys.stream()
-            .map(s3Service::getPresignedUrl)
+        List<PlaceImageResponse> imageIdAndUrls = daySchedule.getPlaces().stream()
+            .flatMap(place -> place.getPlaceImages().stream())
+            .map(placeImage -> new PlaceImageResponse(
+                placeImage.getId(),
+                s3Service.getPresignedUrl(placeImage.getPlaceImageS3Key())
+            ))
             .toList();
 
-        return DayScheduleMapper.toDayScheduleResponse(daySchedule, presignedUrls);
+        return DayScheduleMapper.toDayScheduleResponse(daySchedule, imageIdAndUrls);
     }
 
     private void checkExistCourse(Long courseId) {

@@ -635,12 +635,12 @@ public interface MyCourseControllerSpec {
             - 코스 ID(courseId): 존재하는 코스여야 함
             - 일차 ID(dayId): 해당 코스에 존재하는 일차여야 함
             - 장소 ID(placeId): 해당 일차에 존재하는 장소여야 함
-            - 이미지 ID(imageId): 해당 장소에 존재하는 이미지여야 함. 앞서 장소 사진 추가 혹은 일차별 장소 리스트 조회에서 반환받은 imageId를 사용합니다.
+            - 이미지 ID(imageId): 해당 장소에 존재하는 이미지여야 함. 앞서 장소 사진 추가 혹은 일차별 장소 리스트 조회에서 반환받은 placeImageId를 사용합니다.
         ### ⚠ 예외상황
         - `COURSE_NOT_FOUND(404)`: 코스가 존재하지 않는 경우 (잘못된 courseId가 주어진 경우)
         - `DAY_SCHEDULE_NOT_FOUND(404)`: 해당 코스에 존재하지 않는 일차인 경우 (잘못된 dayId가 주어진 경우)
         - `PLACE_NOT_FOUND(404)`: 해당 일차에 존재하지 않는 장소인 경우 (잘못된 placeId가 주어진 경우)
-        - `PLACE_IMAGE_NOT_FOUND(404)`: 해당 장소에 존재하지 않는 이미지인 경우 (잘못된 imageId가 주어진 경우)
+        - `PLACE_IMAGE_NOT_FOUND(404)`: 해당 장소에 존재하지 않는 이미지인 경우 (잘못된 placeImageId가 주어진 경우)
         """
     )
     void deletePlaceImage(

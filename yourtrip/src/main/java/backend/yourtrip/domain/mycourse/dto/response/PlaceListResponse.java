@@ -14,7 +14,7 @@ public record PlaceListResponse(
     double longitude,
     String placeUrl,
     String placeLocation,
-    List<String> placeImagesUrls
+    List<PlaceImageResponse> placeImages
 ) {
 
 }
