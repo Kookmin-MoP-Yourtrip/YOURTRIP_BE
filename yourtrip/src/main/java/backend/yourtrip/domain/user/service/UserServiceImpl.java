@@ -209,4 +209,85 @@ public class UserServiceImpl implements UserService {
         }
         throw new BusinessException(UserErrorCode.USER_NOT_FOUND);
     }
+
+    // =========================================================
+    // 비밀번호 찾기 1단계 - 이메일로 인증번호 발송
+    // =========================================================
+    @Override
+    public void findPasswordSendEmail(String email) {
+
+        // 가입된 이메일인지 체크
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new BusinessException(UserErrorCode.EMAIL_NOT_FOUND));
+
+        // 인증번호 생성
+        String code = String.format("%06d", new Random().nextInt(1_000_000));
+
+        verificationCodes.put(email, code);
+        codeExpiry.put(email, LocalDateTime.now().plusMinutes(CODE_EXPIRY_MINUTES));
+
+        // 메일 발송
+        mailService.sendVerificationMail(email, code);
+
+        System.out.println("[비밀번호 찾기 인증번호 발송 완료] " + email + " / code=" + code);
+    }
+
+    // =========================================================
+    // 비밀번호 찾기 2단계 - 인증번호 검증
+    // =========================================================
+    @Override
+    public void findPasswordVerify(String email, String code) {
+
+        String stored = verificationCodes.get(email);
+        LocalDateTime expiry = codeExpiry.get(email);
+
+        if (stored == null || expiry == null) {
+            throw new BusinessException(UserErrorCode.INVALID_VERIFICATION_CODE);
+        }
+        if (LocalDateTime.now().isAfter(expiry)) {
+            verificationCodes.remove(email);
+            codeExpiry.remove(email);
+            throw new BusinessException(UserErrorCode.VERIFICATION_CODE_EXPIRED);
+        }
+        if (!stored.equals(code)) {
+            throw new BusinessException(UserErrorCode.INVALID_VERIFICATION_CODE);
+        }
+
+        // 비밀번호 재설정 플로우에서도 verifiedEmails 사용
+        verifiedEmails.add(email);
+
+        System.out.println("[비밀번호 찾기 이메일 인증 완료] " + email);
+    }
+
+    // =========================================================
+    // 비밀번호 찾기 3단계 - 비밀번호 재설정
+    // =========================================================
+    @Override
+    public void resetPassword(String email, String newPassword) {
+
+        // 인증 이메일인지 확인
+        if (!verifiedEmails.contains(email)) {
+            throw new BusinessException(UserErrorCode.EMAIL_NOT_VERIFIED);
+        }
+
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new BusinessException(UserErrorCode.EMAIL_NOT_FOUND));
+
+        // 비밀번호 검증
+        if (newPassword == null || newPassword.isBlank() || newPassword.length() < 8) {
+            throw new BusinessException(UserErrorCode.INVALID_REQUEST_FIELD);
+        }
+
+        // 업데이트
+        String encoded = passwordEncoder.encode(newPassword);
+        user = user.toBuilder().password(encoded).build();
+        userRepository.save(user);
+
+        // 메모리 데이터 정리
+        verificationCodes.remove(email);
+        codeExpiry.remove(email);
+        verifiedEmails.remove(email);
+
+        System.out.println("[비밀번호 재설정 완료] " + email);
+    }
 }

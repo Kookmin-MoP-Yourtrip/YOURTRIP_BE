@@ -24,6 +24,7 @@ import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.LikedErrorCode;
 import backend.yourtrip.global.exception.errorCode.UserErrorCode;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
+import backend.yourtrip.global.s3.service.S3Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,6 +46,8 @@ public class MyPageLikedServiceImpl implements MyPageLikedService {
     private final PlaceRepository placeRepository;
     private final CourseParticipantRepository courseParticipantRepository;
 
+    private final S3Service s3Service;
+
     private User getCurrentUser() {
         Long userId = jwtTokenProvider.getCurrentUserId();
         return userRepository.findById(userId)
@@ -64,11 +67,14 @@ public class MyPageLikedServiceImpl implements MyPageLikedService {
         return hearts.stream()
             .map(heart -> {
                 UploadCourse c = heart.getUploadCourse();
+
+                String thumbnailUrl = s3Service.getPresignedUrl(c.getThumbnailImageS3Key());
+
                 return LikedCourseResponse.builder()
                     .uploadCourseId(c.getId())
                     .title(c.getTitle())
                     .introduction(c.getIntroduction())
-                    .thumbnailImage(c.getThumbnailImageUrl())
+                    .thumbnailImage(thumbnailUrl) // ✔ 수정됨
                     .keywords(c.getKeywords().stream()
                         .map(k -> k.getKeywordType().name())
                         .toList())
@@ -90,11 +96,12 @@ public class MyPageLikedServiceImpl implements MyPageLikedService {
         return hearts.stream()
             .map(heart -> {
                 var f = heart.getFeed();
+
                 return LikedFeedResponse.builder()
                     .feedId(f.getId())
                     .title(f.getTitle())
                     .location(f.getLocation())
-                    .contentUrl(f.getContentUrl())
+                    .contentUrl(f.getContent())
                     .heartCount(f.getHeartCount())
                     .commentCount(f.getCommentCount())
                     .build();

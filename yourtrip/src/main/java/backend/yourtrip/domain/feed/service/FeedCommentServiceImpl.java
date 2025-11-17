@@ -32,9 +32,6 @@ public class FeedCommentServiceImpl implements FeedCommentService {
     private static final DateTimeFormatter COMMENT_TIME_FORMATTER =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-    // =========================================================
-    // 1. 댓글 생성
-    // =========================================================
     @Override
     @Transactional
     public FeedCommentResponse createComment(Long feedId, FeedCommentRequest request) {
@@ -51,17 +48,13 @@ public class FeedCommentServiceImpl implements FeedCommentService {
             .deleted(false)
             .build();
 
-        FeedComment saved = feedCommentRepository.save(comment);
+        FeedComment savedComment = feedCommentRepository.save(comment);
 
-        // 댓글 수 증가
         feed.increaseCommentCount();
 
-        return toResponse(saved);
+        return toResponse(savedComment);
     }
 
-    // =========================================================
-    // 2. 댓글 리스트 조회 (페이징)
-    // =========================================================
     @Override
     @Transactional(readOnly = true)
     public FeedCommentListResponse getComments(Long feedId, int page, int size) {
@@ -72,7 +65,7 @@ public class FeedCommentServiceImpl implements FeedCommentService {
             PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "createdAt"));
 
         Page<FeedComment> commentPage =
-            feedCommentRepository.findByFeedIdAndDeletedFalse(feed.getId(), pageable);
+            feedCommentRepository.findByFeedIdAndDeletedFalse(feedId, pageable);
 
         List<FeedCommentResponse> responses = commentPage.getContent().stream()
             .map(this::toResponse)
@@ -88,36 +81,26 @@ public class FeedCommentServiceImpl implements FeedCommentService {
         );
     }
 
-    // =========================================================
-    // 3. 댓글 단건 조회
-    // =========================================================
     @Override
     @Transactional(readOnly = true)
     public FeedCommentResponse getComment(Long feedId, Long commentId) {
         FeedComment comment = feedCommentRepository
             .findByIdAndFeedIdAndDeletedFalse(commentId, feedId)
-            .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND)); // 댓글용 에러코드 따로 만들거면 여기 바꾸면 됨
+            .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
 
         return toResponse(comment);
     }
 
-    // =========================================================
-    // 4. 댓글 수정
-    // =========================================================
     @Override
     @Transactional
-    public FeedCommentResponse updateComment(
-        Long feedId,
-        Long commentId,
-        FeedCommentUpdateRequest request
-    ) {
+    public FeedCommentResponse updateComment(Long feedId, Long commentId, FeedCommentUpdateRequest request) {
         FeedComment comment = feedCommentRepository
             .findByIdAndFeedIdAndDeletedFalse(commentId, feedId)
             .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
 
         Long currentUserId = userService.getCurrentUserId();
         if (!comment.getUser().getId().equals(currentUserId)) {
-            throw new BusinessException(FeedErrorCode.FEED_NOT_FOUND);
+            throw new BusinessException(FeedErrorCode.FEED_UPDATE_NOT_AUTHORIZED);
         }
 
         comment.updateContent(request.content());
@@ -125,9 +108,6 @@ public class FeedCommentServiceImpl implements FeedCommentService {
         return toResponse(comment);
     }
 
-    // =========================================================
-    // 5. 댓글 삭제
-    // =========================================================
     @Override
     @Transactional
     public void deleteComment(Long feedId, Long commentId) {
@@ -137,16 +117,13 @@ public class FeedCommentServiceImpl implements FeedCommentService {
 
         Long currentUserId = userService.getCurrentUserId();
         if (!comment.getUser().getId().equals(currentUserId)) {
-            throw new BusinessException(FeedErrorCode.FEED_NOT_FOUND);
+            throw new BusinessException(FeedErrorCode.FEED_DELETE_NOT_AUTHORIZED);
         }
 
         comment.delete();
         comment.getFeed().decreaseCommentCount();
     }
 
-    // =========================================================
-    // 내부 매퍼: 엔티티 -> 응답 DTO
-    // =========================================================
     private FeedCommentResponse toResponse(FeedComment comment) {
         return FeedCommentResponse.builder()
             .commentId(comment.getId())

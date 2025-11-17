@@ -27,18 +27,19 @@ public class MyFeedServiceImpl implements MyFeedService {
     }
 
     private Feed getMyFeed(Long feedId) {
-        Long userId = getCurrentUserId();
-
         Feed feed = feedRepository.findById(feedId)
             .orElseThrow(() -> new BusinessException(MyFeedErrorCode.MY_FEED_NOT_FOUND));
 
-        if (!feed.getUser().getId().equals(userId)) {
+        if (!feed.getUser().getId().equals(getCurrentUserId())) {
             throw new BusinessException(MyFeedErrorCode.MY_FEED_FORBIDDEN);
         }
 
         return feed;
     }
 
+    // =========================================================
+    // 내 피드 목록
+    // =========================================================
     @Override
     @Transactional(readOnly = true)
     public FeedListResponse getMyFeeds(int page, int size) {
@@ -47,6 +48,9 @@ public class MyFeedServiceImpl implements MyFeedService {
         return FeedMapper.toListResponse(feedPage);
     }
 
+    // =========================================================
+    // 내 피드 상세 조회 (+ 조회수 증가)
+    // =========================================================
     @Override
     @Transactional
     public FeedDetailResponse getMyFeedDetail(Long feedId) {
@@ -58,28 +62,34 @@ public class MyFeedServiceImpl implements MyFeedService {
     @Override
     @Transactional
     public MyFeedVisibilityResponse toggleVisibility(Long feedId) {
-        Feed feed = getMyFeed(feedId);
-        feed.updateVisibility();
-        return new MyFeedVisibilityResponse(
-            feedId,
-            feed.isPublic(),
-            feed.isPublic() ? "피드가 공개되었습니다." : "피드가 비공개로 변경되었습니다."
-        );
+        throw new UnsupportedOperationException("Feed 공개/비공개 기능이 존재하지 않습니다.");
     }
 
+    // =========================================================
+    // 내 피드 수정
+    // =========================================================
     @Override
     @Transactional
     public FeedDetailResponse updateFeed(Long feedId, MyFeedUpdateRequest request) {
         Feed feed = getMyFeed(feedId);
-        feed.updateFeed(request.title(), request.location(), request.contentUrl());
+
+        feed.updateFeed(
+            request.title(),
+            request.location(),
+            request.contentUrl(),
+            null
+        );
+
         return FeedMapper.toDetailResponse(feed);
     }
 
+    // =========================================================
+    // 내 피드 삭제
+    // =========================================================
     @Override
     @Transactional
     public void deleteFeed(Long feedId) {
         Feed feed = getMyFeed(feedId);
-        // soft delete
-        feed.softDelete();
+        feed.delete();
     }
 }

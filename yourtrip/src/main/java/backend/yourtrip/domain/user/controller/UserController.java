@@ -3,6 +3,7 @@ package backend.yourtrip.domain.user.controller;
 import backend.yourtrip.domain.user.dto.request.EmailSendRequest;
 import backend.yourtrip.domain.user.dto.request.EmailVerifyRequest;
 import backend.yourtrip.domain.user.dto.request.PasswordSetRequest;
+import backend.yourtrip.domain.user.dto.request.PasswordResetRequest;
 import backend.yourtrip.domain.user.dto.request.ProfileCreateRequest;
 import backend.yourtrip.domain.user.dto.request.UserLoginRequest;
 import backend.yourtrip.domain.user.dto.response.UserLoginResponse;
