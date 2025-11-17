@@ -15,9 +15,15 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 
 public interface MyCourseControllerSpec {
 
+    // ==========================
+    //  나의 코스 생성
+    // ==========================
     @Operation(
         summary = "나의 코스 생성",
         description = """
+            ### 설명
+            - 새로운 나의 코스를 생성합니다.
+            - 생성 시 코스의 제목, 여행지, 여행 시작일과 종료일을 입력받습니다.
             ### 제약조건
             - 제목(title): 공백 불가
             - 여행지(location): 공백 불가
@@ -37,7 +43,11 @@ public interface MyCourseControllerSpec {
                     value = """
                         {
                           "myCourseId": 1,
-                          "message": "코스 생성 완료"
+                          "title": "개쩌는 경주 여행기",
+                          "location": "경주",
+                          "startDate": "2025-10-31",
+                          "endDate": "2025-11-02"
+                          "memberCount": 1
                         }
                         """
                 )
@@ -105,6 +115,77 @@ public interface MyCourseControllerSpec {
     })
     MyCourseCreateResponse createMyCourse(MyCourseCreateRequest request);
 
+    // ==========================
+    //  나의 코스 목록 조회
+    // ==========================
+    @Operation(summary = "나의 코스 목록 조회", description = """
+        ### 설명
+        - 내가 생성한 코스들의 요약 정보를 가장 최근에 수정한 순서대로 조회합니다.
+        - 각 코스의 ID, 제목, 여행지, 여행 기간, 편집 인원 수를 포함합니다.
+        """)
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "나의 코스 목록 조회 성공",
+            content = @Content(
+                schema = @Schema(implementation = MyCourseListResponse.class),
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "myCourses": [
+                            {
+                              "courseId": 1,
+                              "title": "개쩌는 호주 여행기",
+                              "location": "호주",
+                              "startDate": "2025-10-31",
+                              "endDate": "2025-11-02",
+                              "memberCount": 1
+                            },
+                            {
+                              "courseId": 2,
+                              "title": "개쩌는 경주 여행기",
+                              "location": "경주",
+                              "startDate": "2025-10-31",
+                              "endDate": "2025-11-02",
+                              "memberCount": 1
+                            }
+                          ]
+                        """
+                )
+            )
+        )
+    })
+    MyCourseListResponse getMyCourses();
+
+    // ==========================
+    //  일차별 장소 리스트 조회
+    // ==========================
+    @Operation(
+        summary = "일차별 장소 리스트 조회",
+        description = """
+            ### 설명
+            - 특정 코스의 특정 일차에 해당하는 장소 리스트를 조회합니다. (피그마에서 일차별로 탭 누르는 화면)
+            - 각 장소의 ID, 이름, 시작 시간, 장소 URL을 포함합니다.
+                        
+            ### 제약조건
+            - 경로 변수
+                - 코스 ID(courseId): 존재하는 코스여야 함
+                - 일차(day): 코스 기간 내 정수 (예: 3일 일정이면 1~3)
+
+            ### ⚠ 예외상황
+            - `COURSE_NOT_FOUND(404)`: 코스가 존재하지 않는 경우 (잘못된 courseId가 주어진 경우)
+            - `DAY_NOT_FOUND(404)`: 해당 일차가 코스 기간을 벗어나는 경우
+                    
+            ### 참고사항
+            - 반환되는 장소 리스트는 각 장소의 시작 시간 기준 오름차순으로 정렬되어 있습니다.
+            """
+    )
+    DayScheduleResponse getDaySchedule(@Schema(example = "1") Long courseId,
+        @Schema(example = "1") Long dayId);
+
+    // ==========================
+    //  장소 추가
+    // ==========================
     @Operation(
         summary = "나의 코스에 장소 추가",
         description = """
@@ -186,42 +267,8 @@ public interface MyCourseControllerSpec {
             )
         )
     })
-    PlaceCreateResponse createPlace(PlaceCreateRequest request, Long courseId, Long dayId);
-
-    @Operation(summary = "나의 코스 목록 조회")
-    @ApiResponses({
-        @ApiResponse(
-            responseCode = "200",
-            description = "나의 코스 목록 조회 성공",
-            content = @Content(
-                schema = @Schema(implementation = MyCourseListResponse.class),
-                examples = @ExampleObject(
-                    value = """
-                        {
-                          "myCourses": [
-                            {
-                              "title": "개쩌는 호주 여행기",
-                              "location": "호주",
-                              "startDate": "2025-10-31",
-                              "endDate": "2025-11-02",
-                              "memberCount": 1
-                            },
-                            {
-                              "title": "개쩌는 경주 여행기",
-                              "location": "경주",
-                              "startDate": "2025-10-31",
-                              "endDate": "2025-11-02",
-                              "memberCount": 1
-                            }
-                          ]
-                        """
-                )
-            )
-        )
-    })
-    MyCourseListResponse getMyCourses();
-
-    DayScheduleResponse getDaySchedule(Long courseId, Long dayId);
+    PlaceCreateResponse createPlace(PlaceCreateRequest request,
+        @Schema(example = "1") Long courseId, @Schema(example = "1") Long dayId);
 
 
 }

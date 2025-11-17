@@ -7,6 +7,7 @@ import backend.yourtrip.domain.mycourse.dto.request.PlaceStartTimeRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceUpdateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceImageCreateResponse;
@@ -61,24 +62,33 @@ public class MyCourseController implements MyCourseControllerSpec {
     }
 
     // ==========================
+    //  나의 코스 단건 조회
+    // ==========================
+    @GetMapping("/{courseId}")
+    public MyCourseDetailResponse getMyCourse(@PathVariable Long courseId) {
+        return myCourseService.getMyCourseDetail(courseId);
+    }
+
+    // ==========================
     //  일차별 장소 리스트 조회
     // ==========================
     @Override
     @GetMapping("/{courseId}/days/{dayId}/places")
     public DayScheduleResponse getDaySchedule(
-        @PathVariable @Schema(example = "1") Long courseId,
-        @PathVariable @Schema(example = "1") Long dayId) {
+        @PathVariable Long courseId,
+        @PathVariable Long dayId) {
         return myCourseService.getPlaceListByDay(courseId, dayId);
     }
 
     // ==========================
     //  장소 추가
     // ==========================
+    @Override
     @PostMapping("/{courseId}/days/{dayId}/places")
     @ResponseStatus(HttpStatus.CREATED)
     public PlaceCreateResponse createPlace(@Valid @RequestBody PlaceCreateRequest request,
-        @PathVariable @Schema(example = "1") Long courseId,
-        @PathVariable @Schema(example = "1") Long dayId) {
+        @PathVariable Long courseId,
+        @PathVariable Long dayId) {
         return myCourseService.savePlace(courseId, dayId, request);
     }
 

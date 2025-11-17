@@ -5,6 +5,7 @@ import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceUpdateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceImageCreateResponse;
@@ -45,4 +46,6 @@ public interface MyCourseService {
     void deletePlaceImage(Long courseId, Long dayId, Long placeId, Long imageId);
 
     void deletePlace(Long courseId, Long dayId, Long placeId);
+
+    MyCourseDetailResponse getMyCourseDetail(Long courseId);
 }

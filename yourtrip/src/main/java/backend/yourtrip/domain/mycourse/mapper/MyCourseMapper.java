@@ -42,8 +42,8 @@ public class MyCourseMapper {
             .endDate(course.getEndDate())
             .role(role)
             .updatedAt(course.getUpdatedAt())
-//            .daySchedules(DayScheduleMapper.toListResponse(
-//                course.getDaySchedules()))
+            .daySchedules(DayScheduleMapper.toSummaryResponse(
+                course.getDaySchedules()))
             .build();
     }
 
