@@ -8,6 +8,8 @@ import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MypageErrorCode;
 import backend.yourtrip.global.exception.errorCode.UserErrorCode;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
+import backend.yourtrip.global.s3.service.S3Service;
+import backend.yourtrip.global.s3.service.S3Service.UploadResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -20,8 +22,8 @@ public class MyPageProfileServiceImpl implements MyPageProfileService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final S3Uploader s3Uploader;
     private final JwtTokenProvider jwtTokenProvider;
+    private final S3Service s3Service;
 
     /** 현재 로그인 사용자 조회 */
     private User getCurrentUser() {
@@ -31,7 +33,7 @@ public class MyPageProfileServiceImpl implements MyPageProfileService {
     }
 
     // ===========================
-    // 1. 이미지 업로드
+    // 1. 프로필 이미지 업로드
     // ===========================
     @Override
     @Transactional
@@ -44,12 +46,17 @@ public class MyPageProfileServiceImpl implements MyPageProfileService {
         User user = getCurrentUser();
 
         try {
-            String url = s3Uploader.upload(file, "profile");
+            UploadResult result = s3Service.uploadFile(file);
 
-            user = user.toBuilder().profileImageUrl(url).build();
+            user = user.toBuilder()
+                .profileImageS3Key(result.key())
+                .build();
+
             userRepository.save(user);
 
-            return new ProfileImageResponse(url);
+            String presignedUrl = s3Service.getPresignedUrl(result.key());
+
+            return new ProfileImageResponse(presignedUrl);
 
         } catch (Exception e) {
             throw new BusinessException(MypageErrorCode.PROFILE_IMAGE_UPLOAD_FAILED);
@@ -73,7 +80,10 @@ public class MyPageProfileServiceImpl implements MyPageProfileService {
             throw new BusinessException(MypageErrorCode.NICKNAME_DUPLICATED);
         }
 
-        user = user.toBuilder().nickname(nickname).build();
+        user = user.toBuilder()
+            .nickname(nickname)
+            .build();
+
         userRepository.save(user);
     }
 
@@ -90,7 +100,7 @@ public class MyPageProfileServiceImpl implements MyPageProfileService {
             throw new BusinessException(MypageErrorCode.PASSWORD_INCORRECT);
         }
 
-        if (req.newPassword() == null || req.newPassword().length() < 8) {
+        if (req.newPassword().length() < 8) {
             throw new BusinessException(MypageErrorCode.NEW_PASSWORD_INVALID);
         }
 
@@ -102,7 +112,7 @@ public class MyPageProfileServiceImpl implements MyPageProfileService {
     }
 
     // ===========================
-    // 4. 회원 탈퇴 처리
+    // 4. 회원 탈퇴
     // ===========================
     @Override
     @Transactional
@@ -114,7 +124,10 @@ public class MyPageProfileServiceImpl implements MyPageProfileService {
             throw new BusinessException(MypageErrorCode.ALREADY_DELETED_USER);
         }
 
-        user = user.toBuilder().deleted(true).build();
+        user = user.toBuilder()
+            .deleted(true)
+            .build();
+
         userRepository.save(user);
     }
 }

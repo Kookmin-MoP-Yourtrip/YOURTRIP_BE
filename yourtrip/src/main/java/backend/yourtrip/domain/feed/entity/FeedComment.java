@@ -34,4 +34,8 @@ public class FeedComment extends BaseEntity {
     public void delete() {
         this.deleted = true;
     }
+
+    public void updateContent(String content) {
+        this.content = content;
+    }
 }

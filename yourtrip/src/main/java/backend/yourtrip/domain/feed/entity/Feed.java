@@ -50,15 +50,15 @@ public class Feed extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "upload_course_id")
-    private UploadCourse tagCourse;
+    private UploadCourse uploadCourse;
 
     @Builder
-    public Feed(User user, String title, String location, String contentUrl, UploadCourse tagCourse) {
+    public Feed(User user, String title, String location, String contentUrl, UploadCourse uploadCourse) {
         this.user = user;
         this.title = title;
         this.location = location;
         this.contentUrl = contentUrl;
-        this.tagCourse = tagCourse;
+        this.uploadCourse = uploadCourse;
         this.commentCount = 0;
         this.heartCount = 0;
         this.viewCount = 0;
