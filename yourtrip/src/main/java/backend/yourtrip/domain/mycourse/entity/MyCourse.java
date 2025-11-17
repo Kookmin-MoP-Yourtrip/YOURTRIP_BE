@@ -69,6 +69,10 @@ public class MyCourse extends BaseEntity {
         participants = new ArrayList<>();
     }
 
+    public void setType(MyCourseType type) {
+        this.type = type;
+    }
+
 //    public void updateBudget(int budget) {
 //        this.totalBudget += budget;
 //    }

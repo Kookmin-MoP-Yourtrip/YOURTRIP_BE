@@ -15,6 +15,12 @@ public interface UserService {
 
     void setPassword(String email, String password);
 
+    void findPasswordSendEmail(String email);
+
+    void findPasswordVerify(String email, String code);
+
+    void resetPassword(String email, String newPassword);
+
     UserSignupResponse completeSignup(ProfileCreateRequest request, MultipartFile profileImage);
 
     UserLoginResponse login(UserLoginRequest request);
