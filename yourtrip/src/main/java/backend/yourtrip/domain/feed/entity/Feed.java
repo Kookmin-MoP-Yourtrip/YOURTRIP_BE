@@ -102,4 +102,12 @@ public class Feed extends BaseEntity {
     public void increaseViewCount() {
         this.viewCount += 1;
     }
+
+    public void increaseCommentCount() {
+        this.commentCount += 1;
+    }
+
+    public void decreaseCommentCount() {
+        this.commentCount -= 1;
+    }
 }
