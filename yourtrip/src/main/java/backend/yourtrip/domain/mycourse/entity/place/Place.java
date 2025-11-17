@@ -1,5 +1,6 @@
 package backend.yourtrip.domain.mycourse.entity.place;
 
+import backend.yourtrip.domain.mycourse.dto.request.PlaceUpdateRequest;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.global.common.BaseEntity;
 import jakarta.persistence.CascadeType;
@@ -73,5 +74,13 @@ public class Place extends BaseEntity {
         this.placeUrl = placeUrl;
         this.placeLocation = placeLocation;
         placeImages = new ArrayList<>();
+    }
+
+    public void updatePlace(PlaceUpdateRequest request) {
+        this.name = request.placeName();
+        this.latitude = request.latitude();
+        this.longitude = request.longitude();
+        this.placeUrl = request.placeUrl();
+        this.placeLocation = request.placeLocation();
     }
 }

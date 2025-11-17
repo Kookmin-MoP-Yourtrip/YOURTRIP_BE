@@ -2,10 +2,12 @@ package backend.yourtrip.domain.mycourse.controller;
 
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
+import backend.yourtrip.domain.mycourse.dto.request.PlaceUpdateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.service.MyCourseService;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -74,6 +76,19 @@ public class MyCourseController implements MyCourseControllerSpec {
         @PathVariable @Schema(example = "1") Long courseId,
         @PathVariable @Schema(example = "1") Long dayId) {
         return myCourseService.savePlace(courseId, dayId, request);
+    }
+
+    // ==========================
+    //  장소 수정
+    // ==========================
+    @PatchMapping("/{courseId}/days/{dayId}/places/{placeId}")
+    public PlaceUpdateResponse updatePlace(
+        @PathVariable @Schema(example = "1") Long courseId,
+        @PathVariable @Schema(example = "1") Long dayId,
+        @PathVariable @Schema(example = "1") Long placeId,
+        @Valid @RequestBody PlaceUpdateRequest request
+    ) {
+        return myCourseService.updatePlace(courseId, dayId, placeId, request);
     }
 
     // ==========================

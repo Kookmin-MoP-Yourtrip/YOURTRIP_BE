@@ -3,6 +3,7 @@ package backend.yourtrip.domain.mycourse.mapper;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceListResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.place.Place;
 import java.util.List;
@@ -50,4 +51,14 @@ public class PlaceMapper {
             .build();
     }
 
+    public static PlaceUpdateResponse toUpdateResponse(Place place) {
+        return PlaceUpdateResponse.builder()
+            .placeId(place.getId())
+            .placeName(place.getName())
+            .latitude(place.getLatitude())
+            .longitude(place.getLongitude())
+            .placeUrl(place.getPlaceUrl())
+            .placeLocation(place.getPlaceLocation())
+            .build();
+    }
 }

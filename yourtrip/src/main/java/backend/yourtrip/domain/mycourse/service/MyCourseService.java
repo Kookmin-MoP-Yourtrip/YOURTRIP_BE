@@ -2,10 +2,12 @@ package backend.yourtrip.domain.mycourse.service;
 
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
+import backend.yourtrip.domain.mycourse.dto.request.PlaceUpdateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import java.time.LocalTime;
@@ -32,4 +34,7 @@ public interface MyCourseService {
     String addPlaceMemo(Long courseId, Long dayId, Long placeId, String memo);
 
     String addPlaceImage(Long courseId, Long dayId, Long placeId, MultipartFile placeImage);
+
+    PlaceUpdateResponse updatePlace(Long courseId, Long dayId, Long placeId,
+        PlaceUpdateRequest request);
 }

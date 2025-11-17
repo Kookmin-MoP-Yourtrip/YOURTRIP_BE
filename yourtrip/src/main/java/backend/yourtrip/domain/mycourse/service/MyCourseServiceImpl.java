@@ -2,11 +2,13 @@ package backend.yourtrip.domain.mycourse.service;
 
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
+import backend.yourtrip.domain.mycourse.dto.request.PlaceUpdateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListItemResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.myCourse.CourseParticipant;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
@@ -199,6 +201,19 @@ public class MyCourseServiceImpl implements MyCourseService {
 
         place.getPlaceImages().add(new PlaceImage(place, placeImageS3Key));
         return s3Service.getPresignedUrl(placeImageS3Key);
+    }
+
+    @Override
+    @Transactional
+    public PlaceUpdateResponse updatePlace(Long courseId, Long dayId, Long placeId,
+        PlaceUpdateRequest request) {
+        checkExistCourse(courseId);
+        checkExistDaySchedule(dayId, courseId);
+        Place place = getPlace(placeId);
+
+        place.updatePlace(request);
+
+        return PlaceMapper.toUpdateResponse(place);
     }
 
 
