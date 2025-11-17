@@ -56,10 +56,10 @@ public class Feed extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "upload_course_id")
-    private UploadCourse tagCourse;
+    private UploadCourse uploadCourse;
 
     @Builder
-    public Feed (User user, String title, String location, String content, UploadCourse tagCourse) {
+    public Feed (User user, String title, String location, String content, UploadCourse uploadCourse) {
         this.user = user;
         this.title = title;
         this.location = location;
@@ -68,10 +68,10 @@ public class Feed extends BaseEntity {
         commentCount = 0;
         heartCount = 0;
         viewCount = 0;
-        this.tagCourse = tagCourse;
+        this.uploadCourse = uploadCourse;
     }
 
-    public void updateFeed(String title, String location, String content, UploadCourse tagCourse) {
+    public void updateFeed(String title, String location, String content, UploadCourse uploadCourse) {
         if (title != null && !title.trim().isEmpty()) {
             this.title = title;
         }
@@ -81,8 +81,8 @@ public class Feed extends BaseEntity {
         if (content != null && !content.trim().isEmpty()) {
             this.content = content;
         }
-        if (tagCourse != null) {
-            this.tagCourse = tagCourse;
+        if (uploadCourse != null) {
+            this.uploadCourse = uploadCourse;
         }
 
     }
