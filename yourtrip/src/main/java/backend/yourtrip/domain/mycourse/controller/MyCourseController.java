@@ -2,18 +2,21 @@ package backend.yourtrip.domain.mycourse.controller;
 
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
+import backend.yourtrip.domain.mycourse.dto.request.PlaceMemoRequest;
+import backend.yourtrip.domain.mycourse.dto.request.PlaceStartTimeRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceUpdateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceImageCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceMemoUpdateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.service.MyCourseService;
-import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.time.LocalTime;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -94,27 +97,27 @@ public class MyCourseController implements MyCourseControllerSpec {
     // ==========================
     //  장소 시간 수정
     // ==========================
-    @PatchMapping("/{courseId}/days/{dayId}/places/{placeId}/time")
-    public LocalTime addPlaceTime(
+    @PatchMapping("/{courseId}/days/{dayId}/places/{placeId}/start-time")
+    public PlaceStartTimeUpdateResponse addPlaceTime(
         @PathVariable @Schema(example = "1") Long courseId,
         @PathVariable @Schema(example = "1") Long dayId,
         @PathVariable @Schema(example = "1") Long placeId,
-        @RequestBody @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") @Schema(type = "string", example = "10:30", description = "HH:mm 형식 (시와 분은 반드시 2자리로)") LocalTime startTime) {
+        @RequestBody PlaceStartTimeRequest request) {
 
-        return myCourseService.addPlaceTime(courseId, dayId, placeId, startTime);
+        return myCourseService.addPlaceTime(courseId, dayId, placeId, request.startTime());
     }
 
     // ==========================
     // 장소 메모 수정
     // ==========================
     @PatchMapping("/{courseId}/days/{dayId}/places/{placeId}/memo")
-    public String addPlaceMemo(
+    public PlaceMemoUpdateResponse addPlaceMemo(
         @PathVariable @Schema(example = "1") Long courseId,
         @PathVariable @Schema(example = "1") Long dayId,
         @PathVariable @Schema(example = "1") Long placeId,
-        @RequestBody @Schema(example = "황남시장에 짐보관") String memo
+        @RequestBody PlaceMemoRequest request
     ) {
-        return myCourseService.addPlaceMemo(courseId, dayId, placeId, memo);
+        return myCourseService.addPlaceMemo(courseId, dayId, placeId, request.memo());
     }
 
     // ==========================
@@ -122,7 +125,7 @@ public class MyCourseController implements MyCourseControllerSpec {
     // =========================
     @PostMapping(value = "/{courseId}/days/{dayId}/places/{placeId}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
-    public String addPlaceImage(
+    public PlaceImageCreateResponse addPlaceImage(
         @PathVariable @Schema(example = "1") Long courseId,
         @PathVariable @Schema(example = "1") Long dayId,
         @PathVariable @Schema(example = "1") Long placeId,

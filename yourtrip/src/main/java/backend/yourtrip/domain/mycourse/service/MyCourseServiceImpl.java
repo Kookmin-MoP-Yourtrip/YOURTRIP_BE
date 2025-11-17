@@ -8,6 +8,9 @@ import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListItemResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceImageCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceMemoUpdateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.myCourse.CourseParticipant;
@@ -159,14 +162,14 @@ public class MyCourseServiceImpl implements MyCourseService {
 
     @Override
     @Transactional
-    public LocalTime addPlaceTime(Long courseId, Long dayId, Long placeId,
+    public PlaceStartTimeUpdateResponse addPlaceTime(Long courseId, Long dayId, Long placeId,
         LocalTime startTime) {
         checkExistCourse(courseId);
         checkExistDaySchedule(dayId, courseId);
 
         getPlace(placeId).setStartTime(startTime);
 
-        return startTime;
+        return new PlaceStartTimeUpdateResponse(placeId, startTime);
     }
 
     private Place getPlace(Long placeId) {
@@ -176,18 +179,20 @@ public class MyCourseServiceImpl implements MyCourseService {
 
     @Override
     @Transactional
-    public String addPlaceMemo(Long courseId, Long dayId, Long placeId, String memo) {
+    public PlaceMemoUpdateResponse addPlaceMemo(Long courseId, Long dayId, Long placeId,
+        String memo) {
         checkExistCourse(courseId);
         checkExistDaySchedule(dayId, courseId);
 
         getPlace(placeId).setMemo(memo);
 
-        return memo;
+        return new PlaceMemoUpdateResponse(placeId, memo);
     }
 
     @Override
     @Transactional
-    public String addPlaceImage(Long courseId, Long dayId, Long placeId, MultipartFile placeImage) {
+    public PlaceImageCreateResponse addPlaceImage(Long courseId, Long dayId, Long placeId,
+        MultipartFile placeImage) {
         checkExistCourse(courseId);
         checkExistDaySchedule(dayId, courseId);
         Place place = getPlace(placeId);
@@ -199,8 +204,11 @@ public class MyCourseServiceImpl implements MyCourseService {
             throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
         }
 
-        place.getPlaceImages().add(new PlaceImage(place, placeImageS3Key));
-        return s3Service.getPresignedUrl(placeImageS3Key);
+        PlaceImage savedPlaceImage = new PlaceImage(place, placeImageS3Key);
+        place.getPlaceImages().add(savedPlaceImage);
+
+        return new PlaceImageCreateResponse(savedPlaceImage.getId(),
+            s3Service.getPresignedUrl(placeImageS3Key));
     }
 
     @Override

@@ -6,6 +6,7 @@ import lombok.Builder;
 
 @Builder
 public record MyCourseListItemResponse(
+    Long courseId,
     String title,
     @Schema(description = "여행지")
     String location,
@@ -14,8 +15,7 @@ public record MyCourseListItemResponse(
     @Schema(description = "여행 종료 날짜")
     LocalDate endDate,
     @Schema(example = "1", description = "코스 편집 인원 수")
-    int memberCount,
-    Long courseId
+    int memberCount
 ) {
 
 }

@@ -7,6 +7,9 @@ import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceImageCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceMemoUpdateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
@@ -28,12 +31,13 @@ public interface MyCourseService {
 
     DayScheduleResponse getPlaceListByDay(Long courseId, Long dayId);
 
-    LocalTime addPlaceTime(Long courseId, Long dayId, Long placeId,
+    PlaceStartTimeUpdateResponse addPlaceTime(Long courseId, Long dayId, Long placeId,
         LocalTime startTime);
 
-    String addPlaceMemo(Long courseId, Long dayId, Long placeId, String memo);
+    PlaceMemoUpdateResponse addPlaceMemo(Long courseId, Long dayId, Long placeId, String memo);
 
-    String addPlaceImage(Long courseId, Long dayId, Long placeId, MultipartFile placeImage);
+    PlaceImageCreateResponse addPlaceImage(Long courseId, Long dayId, Long placeId,
+        MultipartFile placeImage);
 
     PlaceUpdateResponse updatePlace(Long courseId, Long dayId, Long placeId,
         PlaceUpdateRequest request);
