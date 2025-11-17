@@ -32,10 +32,10 @@ public interface MyCourseService {
 
     DayScheduleResponse getPlaceListByDay(Long courseId, Long dayId);
 
-    PlaceStartTimeUpdateResponse addPlaceTime(Long courseId, Long dayId, Long placeId,
+    PlaceStartTimeUpdateResponse updatePlaceTime(Long courseId, Long dayId, Long placeId,
         LocalTime startTime);
 
-    PlaceMemoUpdateResponse addPlaceMemo(Long courseId, Long dayId, Long placeId, String memo);
+    PlaceMemoUpdateResponse updatePlaceMemo(Long courseId, Long dayId, Long placeId, String memo);
 
     PlaceImageCreateResponse addPlaceImage(Long courseId, Long dayId, Long placeId,
         MultipartFile placeImage);

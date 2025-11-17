@@ -15,7 +15,6 @@ import backend.yourtrip.domain.mycourse.dto.response.PlaceMemoUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.service.MyCourseService;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -64,6 +63,7 @@ public class MyCourseController implements MyCourseControllerSpec {
     // ==========================
     //  나의 코스 단건 조회
     // ==========================
+    @Override
     @GetMapping("/{courseId}")
     public MyCourseDetailResponse getMyCourse(@PathVariable Long courseId) {
         return myCourseService.getMyCourseDetail(courseId);
@@ -95,11 +95,12 @@ public class MyCourseController implements MyCourseControllerSpec {
     // ==========================
     //  장소 수정
     // ==========================
+    @Override
     @PatchMapping("/{courseId}/days/{dayId}/places/{placeId}")
     public PlaceUpdateResponse updatePlace(
-        @PathVariable @Schema(example = "1") Long courseId,
-        @PathVariable @Schema(example = "1") Long dayId,
-        @PathVariable @Schema(example = "1") Long placeId,
+        @PathVariable Long courseId,
+        @PathVariable Long dayId,
+        @PathVariable Long placeId,
         @Valid @RequestBody PlaceUpdateRequest request
     ) {
         return myCourseService.updatePlace(courseId, dayId, placeId, request);
@@ -108,12 +109,13 @@ public class MyCourseController implements MyCourseControllerSpec {
     // ==========================
     // 장소 삭제
     // =========================
+    @Override
     @DeleteMapping("/{courseId}/days/{dayId}/places/{placeId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deletePlace(
-        @PathVariable @Schema(example = "1") Long courseId,
-        @PathVariable @Schema(example = "1") Long dayId,
-        @PathVariable @Schema(example = "1") Long placeId
+        @PathVariable Long courseId,
+        @PathVariable Long dayId,
+        @PathVariable Long placeId
     ) {
         myCourseService.deletePlace(courseId, dayId, placeId);
     }
@@ -122,38 +124,41 @@ public class MyCourseController implements MyCourseControllerSpec {
     // ==========================
     //  장소 시간 수정
     // ==========================
+    @Override
     @PatchMapping("/{courseId}/days/{dayId}/places/{placeId}/start-time")
-    public PlaceStartTimeUpdateResponse addPlaceTime(
-        @PathVariable @Schema(example = "1") Long courseId,
-        @PathVariable @Schema(example = "1") Long dayId,
-        @PathVariable @Schema(example = "1") Long placeId,
+    public PlaceStartTimeUpdateResponse updatePlaceTime(
+        @PathVariable Long courseId,
+        @PathVariable Long dayId,
+        @PathVariable Long placeId,
         @RequestBody PlaceStartTimeRequest request) {
 
-        return myCourseService.addPlaceTime(courseId, dayId, placeId, request.startTime());
+        return myCourseService.updatePlaceTime(courseId, dayId, placeId, request.startTime());
     }
 
     // ==========================
     // 장소 메모 수정
     // ==========================
+    @Override
     @PatchMapping("/{courseId}/days/{dayId}/places/{placeId}/memo")
-    public PlaceMemoUpdateResponse addPlaceMemo(
-        @PathVariable @Schema(example = "1") Long courseId,
-        @PathVariable @Schema(example = "1") Long dayId,
-        @PathVariable @Schema(example = "1") Long placeId,
+    public PlaceMemoUpdateResponse updatePlaceMemo(
+        @PathVariable Long courseId,
+        @PathVariable Long dayId,
+        @PathVariable Long placeId,
         @RequestBody PlaceMemoRequest request
     ) {
-        return myCourseService.addPlaceMemo(courseId, dayId, placeId, request.memo());
+        return myCourseService.updatePlaceMemo(courseId, dayId, placeId, request.memo());
     }
 
     // ==========================
     // 장소 사진 추가
     // =========================
+    @Override
     @PostMapping(value = "/{courseId}/days/{dayId}/places/{placeId}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public PlaceImageCreateResponse addPlaceImage(
-        @PathVariable @Schema(example = "1") Long courseId,
-        @PathVariable @Schema(example = "1") Long dayId,
-        @PathVariable @Schema(example = "1") Long placeId,
+        @PathVariable Long courseId,
+        @PathVariable Long dayId,
+        @PathVariable Long placeId,
         @RequestPart("placeImage") MultipartFile placeImage
     ) {
         return myCourseService.addPlaceImage(courseId, dayId, placeId, placeImage);
@@ -165,10 +170,10 @@ public class MyCourseController implements MyCourseControllerSpec {
     @DeleteMapping("/{courseId}/days/{dayId}/places/{placeId}/images/{imageId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deletePlaceImage(
-        @PathVariable @Schema(example = "1") Long courseId,
-        @PathVariable @Schema(example = "1") Long dayId,
-        @PathVariable @Schema(example = "1") Long placeId,
-        @PathVariable @Schema(example = "1") Long imageId
+        @PathVariable Long courseId,
+        @PathVariable Long dayId,
+        @PathVariable Long placeId,
+        @PathVariable Long imageId
     ) {
         myCourseService.deletePlaceImage(courseId, dayId, placeId, imageId);
     }

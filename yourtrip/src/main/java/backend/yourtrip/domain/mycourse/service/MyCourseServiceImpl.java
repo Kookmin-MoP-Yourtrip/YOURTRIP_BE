@@ -161,7 +161,7 @@ public class MyCourseServiceImpl implements MyCourseService {
 
     @Override
     @Transactional
-    public PlaceStartTimeUpdateResponse addPlaceTime(Long courseId, Long dayId, Long placeId,
+    public PlaceStartTimeUpdateResponse updatePlaceTime(Long courseId, Long dayId, Long placeId,
         LocalTime startTime) {
         checkExistCourse(courseId);
         checkExistDaySchedule(dayId, courseId);
@@ -178,7 +178,7 @@ public class MyCourseServiceImpl implements MyCourseService {
 
     @Override
     @Transactional
-    public PlaceMemoUpdateResponse addPlaceMemo(Long courseId, Long dayId, Long placeId,
+    public PlaceMemoUpdateResponse updatePlaceMemo(Long courseId, Long dayId, Long placeId,
         String memo) {
         checkExistCourse(courseId);
         checkExistDaySchedule(dayId, courseId);

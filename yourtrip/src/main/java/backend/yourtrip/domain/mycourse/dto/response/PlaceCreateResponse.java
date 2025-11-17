@@ -11,8 +11,8 @@ public record PlaceCreateResponse(
     double longitude,
     String placeUrl,
     String placeLocation,
-    String placeMemo,
-    LocalTime placeStartTime
+    String memo,
+    LocalTime startTime
 ) {
 
 }

@@ -47,11 +47,9 @@ public class Place extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String memo;
 
-    private int budget;
+    private Double latitude; //위도
 
-    private double latitude; //위도
-
-    private double longitude; //경도
+    private Double longitude; //경도
 
     private String placeUrl;
 
@@ -62,13 +60,12 @@ public class Place extends BaseEntity {
     private List<PlaceImage> placeImages;
 
     @Builder
-    public Place(DaySchedule daySchedule, String name, LocalTime startTime, String memo, int budget,
+    public Place(DaySchedule daySchedule, String name, LocalTime startTime, String memo,
         double latitude, double longitude, String placeUrl, String placeLocation) {
         this.daySchedule = daySchedule;
         this.name = name;
         this.startTime = startTime;
         this.memo = memo;
-        this.budget = budget;
         this.latitude = latitude;
         this.longitude = longitude;
         this.placeUrl = placeUrl;
