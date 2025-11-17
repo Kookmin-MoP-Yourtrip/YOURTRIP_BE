@@ -156,12 +156,6 @@ public class MyCourseServiceImpl implements MyCourseService {
         }
     }
 
-    private void checkExistPlace(Long placeId) {
-        if (!placeRepository.existsById(placeId)) {
-            throw new BusinessException(MyCourseErrorCode.PLACE_NOT_FOUND);
-        }
-    }
-
     @Override
     @Transactional
     public PlaceStartTimeUpdateResponse addPlaceTime(Long courseId, Long dayId, Long placeId,
@@ -169,13 +163,13 @@ public class MyCourseServiceImpl implements MyCourseService {
         checkExistCourse(courseId);
         checkExistDaySchedule(dayId, courseId);
 
-        getPlace(placeId).setStartTime(startTime);
+        getPlaceByIdAndDayId(placeId, dayId).setStartTime(startTime);
 
         return new PlaceStartTimeUpdateResponse(placeId, startTime);
     }
 
-    private Place getPlace(Long placeId) {
-        return placeRepository.findById(placeId)
+    private Place getPlaceByIdAndDayId(Long placeId, Long dayId) {
+        return placeRepository.findByIdAndDaySchedule_Id(placeId, dayId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.PLACE_NOT_FOUND));
     }
 
@@ -186,7 +180,7 @@ public class MyCourseServiceImpl implements MyCourseService {
         checkExistCourse(courseId);
         checkExistDaySchedule(dayId, courseId);
 
-        getPlace(placeId).setMemo(memo);
+        getPlaceByIdAndDayId(placeId, dayId).setMemo(memo);
 
         return new PlaceMemoUpdateResponse(placeId, memo);
     }
@@ -197,7 +191,7 @@ public class MyCourseServiceImpl implements MyCourseService {
         MultipartFile placeImage) {
         checkExistCourse(courseId);
         checkExistDaySchedule(dayId, courseId);
-        Place place = getPlace(placeId);
+        Place place = getPlaceByIdAndDayId(placeId, dayId);
 
         String placeImageS3Key;
         try {
@@ -219,7 +213,7 @@ public class MyCourseServiceImpl implements MyCourseService {
         PlaceUpdateRequest request) {
         checkExistCourse(courseId);
         checkExistDaySchedule(dayId, courseId);
-        Place place = getPlace(placeId);
+        Place place = getPlaceByIdAndDayId(placeId, dayId);
 
         place.updatePlace(request);
 
@@ -231,7 +225,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     public void deletePlaceImage(Long courseId, Long dayId, Long placeId, Long imageId) {
         checkExistCourse(courseId);
         checkExistDaySchedule(dayId, courseId);
-        Place place = getPlace(placeId);
+        Place place = getPlaceByIdAndDayId(placeId, dayId);
 
         PlaceImage placeImage = placeImageRepository.findByIdAndPlace_Id(imageId, placeId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.PLACE_IMAGE_NOT_FOUND));
@@ -244,7 +238,16 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Override
     @Transactional
     public void deletePlace(Long courseId, Long dayId, Long placeId) {
+        checkExistCourse(courseId);
+        checkExistDaySchedule(dayId, courseId);
+        Place place = getPlaceByIdAndDayId(placeId, dayId);
 
+        placeRepository.delete(place);
+
+        // S3에서 장소 사진들 삭제
+        place.getPlaceImages().forEach(placeImage ->
+            s3Service.deleteFile(placeImage.getPlaceImageS3Key())
+        );
     }
 
 
