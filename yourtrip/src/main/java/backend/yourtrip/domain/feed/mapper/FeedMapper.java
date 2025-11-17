@@ -9,88 +9,56 @@ import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.FeedErrorCode;
-import java.util.List;
-import java.util.stream.Collectors;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.springframework.data.domain.Page;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class FeedMapper {
 
-    /**
-     * 피드 생성용 엔티티 매핑
-     */
-    public static Feed toEntity(User user, FeedCreateRequest request) {
+    public static Feed toEntity(User user, FeedCreateRequest request, UploadCourse uploadCourse) {
         return Feed.builder()
-            .user(user)
-            .title(request.title())
-            .location(request.location())
-            .contentUrl(request.contentUrl())
-            // uploadCourse, isPublic 등은 서비스 레벨에서 따로 세팅하고 있으면 그대로 두면 됨
-            .build();
+                .user(user)
+                .title(request.title())
+                .location(request.location())
+                .content(request.content())
+                .uploadCourse(uploadCourse)
+                .build();
     }
 
-    /**
-     * 피드 상세보기 응답 매핑
-     */
     public static FeedDetailResponse toDetailResponse(Feed feed) {
 
-        if (feed == null) {
+        if(feed == null) {
             throw new BusinessException(FeedErrorCode.FEED_NOT_FOUND);
         }
-
-        User user = feed.getUser();
-        UploadCourse uploadCourse = feed.getUploadCourse();
-
-        // 해시태그 이름 리스트
         List<String> hashtagNames = feed.getHashtags() != null
             ? feed.getHashtags().stream()
             .map(Hashtag::getTagName)
             .collect(Collectors.toList())
-            : List.of();
+            :List.of();
 
-        // --- 업로드 코스 정보 매핑 ---
-        Long courseId = null;
-        String courseTitle = null;
-        String courseThumbnail = null;
-        String courseLocation = null;
-
-        if (uploadCourse != null) {
-            courseId = uploadCourse.getId();
-            courseTitle = uploadCourse.getTitle();
-            courseThumbnail = uploadCourse.getThumbnailImageS3Key();
-            courseLocation = uploadCourse.getLocation();
-        }
+        User user = feed.getUser();
+        UploadCourse uploadCourse = feed.getUploadCourse();
 
         return FeedDetailResponse.builder()
-            .feedId(feed.getId())
-            .userId(user != null ? user.getId() : null)
-            .nickname(user != null ? user.getNickname() : null)
-            .profileImageUrl(user != null ? user.getProfileImageS3Key() : null)
-            .title(feed.getTitle())
-            .hashtags(hashtagNames)
-            .location(feed.getLocation())
-            .contentUrl(feed.getContentUrl())
-            .commentCount(feed.getCommentCount())
-            .heartCount(feed.getHeartCount())
-            .viewCount(feed.getViewCount())
-
-            // --- 업로드 코스 정보 ---
-            .courseId(courseId)
-            .courseTitle(courseTitle)
-            .courseThumbnail(courseThumbnail)
-            .courseLocation(courseLocation)
-
-            // --- 공통 메타 정보 ---
-            .createdAt(feed.getCreatedAt())
-            .isPublic(feed.isPublic())
-            .build();
+                .feedId(feed.getId())
+                .userId(user != null ? user.getId() : null)
+                .nickname(user != null ? user.getNickname() : null)
+                .profileImageUrl(user != null ? user.getProfileImageS3Key() : null)
+                .title(feed.getTitle())
+                .hashtags(hashtagNames)
+                .location(feed.getLocation())
+                .content(feed.getContent())
+                .commentCount(feed.getCommentCount())
+                .heartCount(feed.getHeartCount())
+                .viewCount(feed.getViewCount())
+                .uploadCourseId(uploadCourse != null ? uploadCourse.getId() : null)
+                .build();
     }
 
-    /**
-     * 피드 리스트 응답 매핑
-     */
     public static FeedListResponse toListResponse(Page<Feed> feedPage) {
         List<FeedDetailResponse> responses = feedPage.getContent().stream()
             .map(FeedMapper::toDetailResponse)

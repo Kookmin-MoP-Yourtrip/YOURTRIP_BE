@@ -3,6 +3,8 @@ package backend.yourtrip.domain.feed.entity;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.global.common.BaseEntity;
+import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.FeedErrorCode;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -25,73 +27,79 @@ public class Feed extends BaseEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @Column(name = "title", nullable = false, length = 100)
     private String title;
 
+    @Column(name = "location", nullable = false, length = 50)
     private String location;
 
-    private String contentUrl;
+    @Column(name = "content", nullable = false, length = 1000)
+    private String content;
 
-    @OneToMany(mappedBy = "feed", cascade = CascadeType.PERSIST)
-    private List<Hashtag> hashtags = new ArrayList<>();
+    @OneToMany(mappedBy = "feed", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Hashtag> hashtags;
 
+    @Column(name = "commentCount", nullable = false, columnDefinition = "int default 0")
     private int commentCount;
 
+    @Column(name = "heartCount", nullable = false, columnDefinition = "int default 0")
     private int heartCount;
 
+    @Column(name = "viewCount", nullable = false, columnDefinition = "int default 0")
     private int viewCount;
 
+    @Column(name = "deleted", nullable = false, columnDefinition = "boolean default false")
     private boolean deleted;
-
-    @Column(nullable = false)
-    private boolean isPublic = true;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "upload_course_id")
     private UploadCourse uploadCourse;
 
     @Builder
-    public Feed(User user, String title, String location, String contentUrl, UploadCourse uploadCourse) {
+    public Feed (User user, String title, String location, String content, UploadCourse uploadCourse) {
         this.user = user;
         this.title = title;
         this.location = location;
-        this.contentUrl = contentUrl;
+        this.content = content;
+        hashtags = new ArrayList<>();
+        commentCount = 0;
+        heartCount = 0;
+        viewCount = 0;
         this.uploadCourse = uploadCourse;
-        this.commentCount = 0;
-        this.heartCount = 0;
-        this.viewCount = 0;
-        this.deleted = false;
-        this.isPublic = true;
-        this.hashtags = new ArrayList<>();
+    }
+
+    public void updateFeed(String title, String location, String content, UploadCourse uploadCourse) {
+        if (title != null && !title.trim().isEmpty()) {
+            this.title = title;
+        }
+        if (location != null && !location.trim().isEmpty()) {
+            this.location = location;
+        }
+        if (content != null && !content.trim().isEmpty()) {
+            this.content = content;
+        }
+        if (uploadCourse != null) {
+            this.uploadCourse = uploadCourse;
+        }
+
+    }
+
+    public void updateHashtags(List<Hashtag> newHashtags) {
+        this.hashtags.clear();
+        this.hashtags.addAll(newHashtags);
+    }
+
+    public void delete() {
+        if (this.deleted) {
+            throw new BusinessException(FeedErrorCode.FEED_ALREADY_DELETED);
+        }
+        this.deleted = true;
     }
 
     public void increaseViewCount() {
         this.viewCount += 1;
-    }
-
-    public void updateVisibility() {
-        this.isPublic = !this.isPublic;
-    }
-
-    public void updateFeed(String title, String location, String contentUrl) {
-        this.title = title;
-        this.location = location;
-        this.contentUrl = contentUrl;
-    }
-
-    public void increaseCommentCount() {
-        this.commentCount += 1;
-    }
-
-    public void decreaseCommentCount() {
-        if (this.commentCount > 0) {
-            this.commentCount -= 1;
-        }
-    }
-
-    public void softDelete() {
-        this.deleted = true;
     }
 }
