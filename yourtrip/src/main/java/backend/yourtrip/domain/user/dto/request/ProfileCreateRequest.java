@@ -8,8 +8,7 @@ public record ProfileCreateRequest(
     String email,
 
     @Schema(description = "닉네임 (1~20자)", example = "여행러버")
-    String nickname,
+    String nickname
+) {
 
-    @Schema(description = "프로필 이미지 URL (선택, null일 시 서버 기본 이미지 적용)", example = "https://cdn.example.com/profile.png")
-    String profileImageUrl
-) {}
+}
