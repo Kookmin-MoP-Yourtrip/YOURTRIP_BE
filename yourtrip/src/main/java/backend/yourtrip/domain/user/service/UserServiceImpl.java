@@ -21,6 +21,8 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+
+import backend.yourtrip.global.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -200,12 +202,12 @@ public class UserServiceImpl implements UserService {
     @Override
     public Long getCurrentUserId() {
         Object principal = SecurityContextHolder.getContext()
-            .getAuthentication() != null
-            ? SecurityContextHolder.getContext().getAuthentication().getPrincipal()
-            : null;
+                .getAuthentication() != null
+                ? SecurityContextHolder.getContext().getAuthentication().getPrincipal()
+                : null;
 
-        if (principal instanceof Long id) {
-            return id;
+        if (principal instanceof CustomUserDetails userDetails) {
+            return userDetails.getUserId();
         }
         throw new BusinessException(UserErrorCode.USER_NOT_FOUND);
     }

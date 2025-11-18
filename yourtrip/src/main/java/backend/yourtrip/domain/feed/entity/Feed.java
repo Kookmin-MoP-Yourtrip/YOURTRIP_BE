@@ -42,16 +42,16 @@ public class Feed extends BaseEntity {
     @OneToMany(mappedBy = "feed", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Hashtag> hashtags = new ArrayList<>();
 
-    @Column(nullable = false, columnDefinition = "int default 0")
+    @Column(name = "commentCount", nullable = false, columnDefinition = "int default 0")
     private int commentCount;
 
-    @Column(nullable = false, columnDefinition = "int default 0")
+    @Column(name = "heartCount", nullable = false, columnDefinition = "int default 0")
     private int heartCount;
 
-    @Column(nullable = false, columnDefinition = "int default 0")
+    @Column(name = "viewCount", nullable = false, columnDefinition = "int default 0")
     private int viewCount;
 
-    @Column(nullable = false, columnDefinition = "boolean default false")
+    @Column(name = "deleted", nullable = false, columnDefinition = "boolean default false")
     private boolean deleted;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -92,5 +92,13 @@ public class Feed extends BaseEntity {
 
     public void increaseViewCount() {
         this.viewCount += 1;
+    }
+
+    public void increaseCommentCount() {
+        this.commentCount += 1;
+    }
+
+    public void decreaseCommentCount() {
+        this.commentCount -= 1;
     }
 }
