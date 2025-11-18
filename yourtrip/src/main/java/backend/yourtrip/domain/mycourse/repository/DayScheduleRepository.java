@@ -19,7 +19,7 @@ public interface DayScheduleRepository extends JpaRepository<DaySchedule, Long> 
                 AND ds.id = :dayId
         """)
     Optional<DaySchedule> findByIdAndUserId(@Param("userId") Long userId,
-        @Param("dayId") Long dayId, @Param("courseId") Long courseId);
+        @Param("courseId") Long courseId, @Param("dayId") Long dayId);
 
     @Query("""
             SELECT ds

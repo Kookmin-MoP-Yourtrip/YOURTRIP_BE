@@ -8,12 +8,6 @@ group = 'backend'
 version = '0.0.1-SNAPSHOT'
 description = 'yourtrip'
 
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
 configurations {
     compileOnly {
         extendsFrom annotationProcessor
