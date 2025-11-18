@@ -23,7 +23,7 @@ public class User extends BaseEntity {
     private String password;
     private String nickname;
 
-    // S3에 저장된 프로필 이미지 key
+    // S3에 저장된 프로필 이미지 key (URL 저장도 가능)
     private String profileImageS3Key;
 
     @Builder.Default
@@ -44,4 +44,24 @@ public class User extends BaseEntity {
 
     @Column(unique = true)
     private String socialId;
+
+    /** 프로필 이미지 URL 또는 S3 Key 변경 */
+    public void updateProfileImage(String profileUrl) {
+        this.profileImageS3Key = profileUrl;
+    }
+
+    /** 닉네임 변경 */
+    public void updateNickname(String nickname) {
+        this.nickname = nickname;
+    }
+
+    /** 비밀번호 변경 */
+    public void updatePassword(String encodedPassword) {
+        this.password = encodedPassword;
+    }
+
+    /** Soft delete 처리 */
+    public void deleteUser() {
+        this.deleted = true;
+    }
 }
