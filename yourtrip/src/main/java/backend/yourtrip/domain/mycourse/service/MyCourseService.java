@@ -14,6 +14,7 @@ import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeUpdateRespons
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
+import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import java.time.LocalTime;
 import java.util.List;
 import org.springframework.web.multipart.MultipartFile;
@@ -48,4 +49,6 @@ public interface MyCourseService {
     void deletePlace(Long courseId, Long dayId, Long placeId);
 
     MyCourseDetailResponse getMyCourseDetail(Long courseId);
+
+    void forkCourse(Long userId, UploadCourse uploadCourse);
 }

@@ -14,6 +14,7 @@ import backend.yourtrip.domain.mycourse.dto.response.PlaceImageResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceMemoUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
+import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.myCourse.CourseParticipant;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
@@ -273,5 +274,39 @@ public class MyCourseServiceImpl implements MyCourseService {
         return MyCourseMapper.toDetailResponse(myCourse, role);
     }
 
+    // ========================================================
+    // 업로드 코스 → 나의 코스 복사 기능
+    // ========================================================
+    @Override
+    @Transactional
+    public void forkCourse(Long userId, UploadCourse uploadCourse) {
 
+        User user = userService.getUser(userId);
+        MyCourse origin = uploadCourse.getMyCourse();   // 업로드 코스가 가진 MyCourse 참조
+
+        if (origin == null) {
+            throw new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND);
+        }
+
+        // 복제할 MyCourse 생성
+        MyCourse copied = MyCourse.builder()
+            .title(uploadCourse.getTitle())
+            .location(uploadCourse.getLocation())
+            .startDate(origin.getStartDate())
+            .endDate(origin.getEndDate())
+            .build();
+
+        myCourseRepository.save(copied);
+
+        // 참여자 생성 (owner = 현재 사용자)
+        courseParticipantRepository.save(
+            CourseParticipantMapper.toEntityWithOwner(user, copied)
+        );
+
+        // 일차 자동 생성
+        int days = Period.between(origin.getStartDate(), origin.getEndDate()).getDays() + 1;
+        for (int i = 1; i <= days; i++) {
+            dayScheduleRepository.save(new DaySchedule(copied, i));
+        }
+    }
 }

@@ -4,7 +4,7 @@ import backend.yourtrip.domain.mypage.dto.response.LikedCourseResponse;
 import backend.yourtrip.domain.mypage.dto.response.LikedFeedResponse;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
-import backend.yourtrip.domain.uploadcourse.service.MyCourseService;
+import backend.yourtrip.domain.mycourse.service.MyCourseService;
 import backend.yourtrip.domain.heart.repository.FeedHeartRepository;
 import backend.yourtrip.domain.heart.repository.UploadCourseHeartRepository;
 import backend.yourtrip.domain.user.service.UserService;
@@ -23,6 +23,7 @@ public class MyPageLikedServiceImpl implements MyPageLikedService {
     private final UploadCourseHeartRepository uploadCourseHeartRepository;
     private final FeedHeartRepository feedHeartRepository;
     private final UploadCourseRepository uploadCourseRepository;
+
     private final MyCourseService myCourseService;
     private final UserService userService;
 
@@ -48,6 +49,7 @@ public class MyPageLikedServiceImpl implements MyPageLikedService {
         UploadCourse uploadCourse = uploadCourseRepository.findById(uploadCourseId)
             .orElseThrow(() -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
 
+        // 업로드 코스를 나의 코스로 복사 (추후 MyCourseServiceImpl에서 구현)
         myCourseService.forkCourse(userId, uploadCourse);
     }
 }
