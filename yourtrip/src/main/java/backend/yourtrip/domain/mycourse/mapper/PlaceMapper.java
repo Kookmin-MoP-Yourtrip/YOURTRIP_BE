@@ -3,11 +3,12 @@ package backend.yourtrip.domain.mycourse.mapper;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceImageResponse;
-import backend.yourtrip.domain.mycourse.dto.response.PlaceListResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.place.Place;
 import java.util.List;
+import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -25,9 +26,13 @@ public class PlaceMapper {
             .build();
     }
 
-    public static PlaceListResponse toListResponse(Place place,
+    public static PlaceResponse toListResponse(Place place,
         List<PlaceImageResponse> placeImages) {
-        return PlaceListResponse.builder()
+        List<PlaceImageResponse> filteredImages = placeImages.stream()
+            .filter(img -> Objects.equals(img.placeId(), place.getId()))
+            .toList();
+
+        return PlaceResponse.builder()
             .placeId(place.getId())
             .placeName(place.getName())
             .startTime(place.getStartTime())
@@ -36,7 +41,7 @@ public class PlaceMapper {
             .longitude(place.getLongitude())
             .placeUrl(place.getPlaceUrl())
             .placeLocation(place.getPlaceLocation())
-            .placeImages(placeImages)
+            .placeImages(filteredImages)
             .build();
     }
 

@@ -10,6 +10,7 @@ import backend.yourtrip.domain.mycourse.dto.response.MyCourseListItemResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceImageCreateResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceImageResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceMemoUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
@@ -38,7 +39,6 @@ import backend.yourtrip.global.s3.service.S3Service;
 import java.io.IOException;
 import java.time.LocalTime;
 import java.time.Period;
-import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -137,26 +137,15 @@ public class MyCourseServiceImpl implements MyCourseService {
                 dayId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.DAY_SCHEDULE_NOT_FOUND));
 
-//        List<String> s3Keys = daySchedule.getPlaces().stream()
-//            .flatMap(place -> place.getPlaceImages().stream())
-//            .map(placeImage -> placeImage.getPlaceImageS3Key())
-//            .toList();
-//
-//        List<PlaceImageResponse> imageIdAndUrls = daySchedule.getPlaces().stream()
-//            .flatMap(place -> place.getPlaceImages().stream())
-//            .map(placeImage -> new PlaceImageResponse(
-//                placeImage.getId(),
-//                s3Service.getPresignedUrl(placeImage.getPlaceImageS3Key())
-//            ))
-//            .toList();
-
-        List<PlaceImage> imageIdAndUrls = new ArrayList<>();
-//        daySchedule.getPlaces().forEach(place -> {
-//            place.getPlaceImages().forEach(placeImage -> {
-//                imageIdAndUrls.add(placeImage.getId(),
-//                    s3Service.getPresignedUrl(placeImage.getPlaceImageS3Key()));
-//            });
-//        });
+        List<PlaceImageResponse> imageIdAndUrls = daySchedule.getPlaces().stream()
+            .flatMap(place -> place.getPlaceImages().stream()
+                .map(placeImage -> new PlaceImageResponse(
+                    place.getId(),
+                    placeImage.getId(),
+                    s3Service.getPresignedUrl(placeImage.getPlaceImageS3Key())
+                ))
+            )
+            .toList();
 
         return DayScheduleMapper.toDayScheduleResponse(daySchedule, imageIdAndUrls);
     }
