@@ -3,6 +3,7 @@ package backend.yourtrip.domain.user.controller;
 import backend.yourtrip.domain.user.dto.request.EmailSendRequest;
 import backend.yourtrip.domain.user.dto.request.EmailVerifyRequest;
 import backend.yourtrip.domain.user.dto.request.PasswordSetRequest;
+import backend.yourtrip.domain.user.dto.request.PasswordResetRequest;
 import backend.yourtrip.domain.user.dto.request.ProfileCreateRequest;
 import backend.yourtrip.domain.user.dto.request.UserLoginRequest;
 import backend.yourtrip.domain.user.dto.response.UserLoginResponse;
@@ -369,6 +370,160 @@ public class UserController {
     public UserLoginResponse refresh(@RequestHeader("Authorization") String refreshToken) {
         return userService.refresh(refreshToken);
     }
+
+    // =========================================================
+    // [비밀번호 찾기 1단계] 이메일 입력 → 인증번호 발송
+    // =========================================================
+    @Operation(
+        summary = "비밀번호 찾기 - 인증번호 발송",
+        description = """
+    비밀번호를 찾기 위해 이메일을 입력하면  
+    **가입 여부 확인 → 인증번호(6자리) 발송**을 수행합니다.
+    
+    ### 제약조건
+    - 가입된 이메일이어야 합니다.
+    - 동일 이메일 재요청 시 **가장 최근 인증번호만 유효**
+    - 인증번호 유효시간: **5분**
+
+    ### 예외상황 / 에러코드
+    - `EMAIL_NOT_FOUND(400)` : 가입되지 않은 이메일
+    - `INVALID_REQUEST_FIELD(400)` : 이메일 누락/형식 오류
+
+    ### 테스트 방법
+    1. Swagger에서 **POST** `/api/users/password/find/email`
+    2. 요청 예시:
+    ```json
+    { "email": "user@example.com" }
+    ```
+    3. 정상: **200 OK** (본문 없음)  
+       - 개발 환경에서는 인증번호가 서버 콘솔에 출력됩니다.
+    """
+    )
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "인증번호 발송 성공(본문 없음)"),
+        @ApiResponse(responseCode = "400", description = "가입되지 않은 이메일 / 필드 오류",
+            content = @Content(mediaType = "application/json",
+                examples = @ExampleObject(value = """
+            {
+              "timestamp": "2025-11-16T20:10:00",
+              "code": "EMAIL_NOT_FOUND",
+              "message": "존재하지 않는 이메일입니다."
+            }
+            """)))
+    })
+    @PostMapping("/password/find/email")
+    @ResponseStatus(HttpStatus.OK)
+    public void findPasswordSendEmail(@RequestBody EmailSendRequest request) {
+        userService.findPasswordSendEmail(request.email());
+    }
+
+    // =========================================================
+    // [비밀번호 찾기 2단계] 인증번호 검증
+    // =========================================================
+    @Operation(
+        summary = "비밀번호 찾기 - 인증번호 확인",
+        description = """
+    이메일로 발송된 **6자리 인증번호**를 검증합니다.
+
+    ### 제약조건
+    - email, code 모두 필수
+    - 코드 유효시간 5분
+    - 불일치 시 실패
+
+    ### 예외상황 / 에러코드
+    - `INVALID_VERIFICATION_CODE(400)` : 코드 불일치
+    - `VERIFICATION_CODE_EXPIRED(400)` : 인증번호 만료
+    - `INVALID_REQUEST_FIELD(400)` : 필드 누락/형식 오류
+
+    ### 테스트 방법
+    1. **POST** `/api/users/password/find/verify`
+    2. 요청 예시:
+    ```json
+    { "email": "user@example.com", "code": "123456" }
+    ```
+    3. 정상: **200 OK**, 이후 비밀번호 재설정 가능
+    """
+    )
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "인증 성공(본문 없음)"),
+        @ApiResponse(responseCode = "400", description = "코드 불일치 / 만료 / 필드 오류",
+            content = @Content(mediaType = "application/json", examples = {
+                @ExampleObject(name = "코드 불일치", value = """
+            {
+              "timestamp": "2025-11-16T20:12:00",
+              "code": "INVALID_VERIFICATION_CODE",
+              "message": "인증번호가 올바르지 않습니다."
+            }
+            """),
+                @ExampleObject(name = "인증번호 만료", value = """
+            {
+              "timestamp": "2025-11-16T20:13:00",
+              "code": "VERIFICATION_CODE_EXPIRED",
+              "message": "인증번호가 만료되었습니다."
+            }
+            """)
+            }))
+    })
+    @PostMapping("/password/find/verify")
+    @ResponseStatus(HttpStatus.OK)
+    public void findPasswordVerify(@RequestBody EmailVerifyRequest request) {
+        userService.findPasswordVerify(request.email(), request.code());
+    }
+
+    // =========================================================
+    // [비밀번호 찾기 3단계] 새 비밀번호 설정
+    // =========================================================
+    @Operation(
+        summary = "비밀번호 재설정",
+        description = """
+    인증번호 검증(pw2)이 완료된 이메일에 대해  
+    **새로운 비밀번호**를 설정합니다.
+
+    ### 비밀번호 정책
+    - 최소 **8자 이상**
+    - 공백 불가
+    - 영문/숫자/특수문자 조합 권장
+
+    ### 제약조건
+    - 이메일이 **인증 완료 상태**여야 함
+    - newPassword 필수
+
+    ### 예외상황 / 에러코드
+    - `EMAIL_NOT_VERIFIED(400)` : 인증되지 않은 이메일
+    - `INVALID_REQUEST_FIELD(400)` : 비밀번호 형식 오류
+    - `EMAIL_NOT_FOUND(400)` : 가입 계정 없음
+
+    ### 테스트 방법
+    1. **POST** `/api/users/password/find/reset`
+    2. 요청 예시:
+    ```json
+    {
+      "email": "user@example.com",
+      "newPassword": "Abcd1234!"
+    }
+    ```
+    3. 정상: **200 OK**  
+       → pw6 화면으로 이동 (비밀번호 변경 완료)
+    """
+    )
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "비밀번호 재설정 성공(본문 없음)"),
+        @ApiResponse(responseCode = "400", description = "필드 오류 / 미인증 / 계정 없음",
+            content = @Content(mediaType = "application/json",
+                examples = @ExampleObject(value = """
+            {
+              "timestamp": "2025-11-16T20:15:00",
+              "code": "EMAIL_NOT_VERIFIED",
+              "message": "이메일 인증이 완료되지 않았습니다."
+            }
+            """)))
+    })
+    @PostMapping("/password/find/reset")
+    @ResponseStatus(HttpStatus.OK)
+    public void resetPassword(@RequestBody PasswordResetRequest request) {
+        userService.resetPassword(request.email(), request.newPassword());
+    }
+
 
     // =========================================================
     // [카카오 로그인]

@@ -1,6 +1,6 @@
 package backend.yourtrip.domain.uploadcourse.entity;
 
-import backend.yourtrip.domain.mycourse.entity.MyCourse;
+import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.global.common.BaseEntity;
 import jakarta.persistence.CascadeType;

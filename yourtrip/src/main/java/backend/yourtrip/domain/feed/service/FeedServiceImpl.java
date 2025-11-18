@@ -16,10 +16,7 @@ import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.FeedErrorCode;
 import backend.yourtrip.global.exception.errorCode.FeedResponseCode;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,13 +28,17 @@ public class FeedServiceImpl implements FeedService {
     private final UserService userService;
     private final UploadCourseRepository uploadCourseRepository;
 
+    // ======================================
+    // 1. 피드 생성
+    // ======================================
     @Override
     @Transactional
     public FeedCreateResponse saveFeed(FeedCreateRequest request) {
-        if (request.title() == null || request.title().trim().isEmpty()) {
+
+        if (request.title() == null || request.title().isBlank()) {
             throw new BusinessException(FeedErrorCode.FEED_TITLE_REQUIRED);
         }
-        if (request.content() == null || request.content().trim().isEmpty()) {
+        if (request.content() == null || request.content().isBlank()) {
             throw new BusinessException(FeedErrorCode.FEED_CONTENT_REQUIRED);
         }
 
@@ -46,8 +47,9 @@ public class FeedServiceImpl implements FeedService {
 
         UploadCourse uploadCourse = null;
         if (request.uploadCourseId() != null) {
+
             uploadCourse = uploadCourseRepository.findById(request.uploadCourseId())
-                    .orElseThrow(() -> new BusinessException(FeedErrorCode.UPLOAD_COURSE_NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(FeedErrorCode.UPLOAD_COURSE_NOT_FOUND));
 
             if (!uploadCourse.getUser().getId().equals(userId)) {
                 throw new BusinessException(FeedErrorCode.UPLOAD_COURSE_FORBIDDEN);
@@ -55,115 +57,143 @@ public class FeedServiceImpl implements FeedService {
         }
 
         Feed feed = FeedMapper.toEntity(user, request, uploadCourse);
-        Feed savedFeed = feedRepository.save(feed);
+        feedRepository.save(feed);
 
-        if (request.hashtags() != null && !request.hashtags().isEmpty()) {
-            for (String hashtag : request.hashtags()) {
-                Hashtag tagName = Hashtag.builder()
-                        .feed(feed)
-                        .tagName(hashtag)
-                        .build();
-                feed.getHashtags().add(tagName);
+        // 해시태그 저장
+        if (request.hashtags() != null) {
+            for (String tag : request.hashtags()) {
+                Hashtag hashtag = Hashtag.builder()
+                    .feed(feed)
+                    .tagName(tag)
+                    .build();
+
+                feed.getHashtags().add(hashtag);
             }
         }
 
-        return new FeedCreateResponse(savedFeed.getId(), FeedResponseCode.FEED_CREATED.getMessage());
+        return new FeedCreateResponse(feed.getId(), FeedResponseCode.FEED_CREATED.getMessage());
     }
 
+    // ======================================
+    // 2. 단건 조회
+    // ======================================
     @Override
     @Transactional
     public FeedDetailResponse getFeedByFeedId(Long feedId) {
+
         Feed feed = feedRepository.findFeedWithHashtag(feedId)
-                .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
+            .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
 
         feed.increaseViewCount();
 
         return FeedMapper.toDetailResponse(feed);
     }
 
+    // ======================================
+    // 3. 전체 조회
+    // ======================================
     @Override
     @Transactional(readOnly = true)
     public FeedListResponse getFeedAll(int page, int size, FeedSortType sortType) {
-        Sort sort = createSort(sortType);
-        Pageable pageable = PageRequest.of(page, size, sort);
 
-        Page<Feed> feedPage = feedRepository.findAll(pageable);
-        return FeedMapper.toListResponse(feedPage);
+        Pageable pageable = PageRequest.of(page, size, getSort(sortType));
+        Page<Feed> feeds = feedRepository.findAll(pageable);
+
+        return FeedMapper.toListResponse(feeds);
     }
-
-    private Sort createSort(FeedSortType sortType) {
+    private Sort getSort(FeedSortType sortType) {
         return switch (sortType) {
             case NEW -> Sort.by(Sort.Direction.DESC, "createdAt");
             case POPULAR -> Sort.by(Sort.Direction.DESC, "viewCount");
         };
     }
 
+    // ======================================
+    // 4. 유저별 조회
+    // ======================================
     @Override
     @Transactional(readOnly = true)
     public FeedListResponse getFeedByUserId(Long userId, int page, int size) {
+
         userService.getUser(userId);
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<Feed> feedPage = feedRepository.findByUser_Id(userId, pageable);
 
-        return FeedMapper.toListResponse(feedPage);
+        Page<Feed> feeds = feedRepository.findByUser_Id(userId, pageable);
+        return FeedMapper.toListResponse(feeds);
     }
 
+    // ======================================
+    // 5. 키워드 검색
+    // ======================================
     @Override
     @Transactional(readOnly = true)
     public FeedListResponse getFeedByKeyword(String keyword, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<Feed> feedPage = feedRepository.findByKeyword(keyword, pageable);
 
-        return FeedMapper.toListResponse(feedPage);
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Feed> feeds = feedRepository.findByKeyword(keyword, pageable);
+
+        return FeedMapper.toListResponse(feeds);
     }
 
+    // ======================================
+    // 6. 수정
+    // ======================================
     @Override
     @Transactional
     public FeedUpdateResponse updateFeed(Long feedId, FeedUpdateRequest request) {
-        //필드 조회
-        Feed feed = feedRepository.findById(feedId)
-                .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
 
-        //권한 확인
-        Long currentUserId = userService.getCurrentUserId();
-        if (!feed.getUser().getId().equals(currentUserId)) {
+        Feed feed = feedRepository.findById(feedId)
+            .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
+
+        Long userId = userService.getCurrentUserId();
+        if (!feed.getUser().getId().equals(userId)) {
             throw new BusinessException(FeedErrorCode.FEED_UPDATE_NOT_AUTHORIZED);
         }
 
         UploadCourse uploadCourse = null;
+
         if (request.uploadCourseId() != null) {
             uploadCourse = uploadCourseRepository.findById(request.uploadCourseId())
-                    .orElseThrow(() -> new BusinessException(FeedErrorCode.UPLOAD_COURSE_NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(FeedErrorCode.UPLOAD_COURSE_NOT_FOUND));
 
-            if (!uploadCourse.getUser().getId().equals(currentUserId)) {
+            if (!uploadCourse.getUser().getId().equals(userId)) {
                 throw new BusinessException(FeedErrorCode.UPLOAD_COURSE_FORBIDDEN);
             }
         }
+
         feed.updateFeed(request.title(), request.location(), request.content(), uploadCourse);
 
+        // 해시태그 갱신
+        feed.getHashtags().clear();
         if (request.hashtags() != null) {
-            feed.getHashtags().clear();
-            for (String hashtags : request.hashtags()) {
-                Hashtag tagName = Hashtag.builder()
-                        .feed(feed)
-                        .tagName(hashtags)
-                        .build();
-                feed.getHashtags().add(tagName);
+            for (String tag : request.hashtags()) {
+                Hashtag hashtag = Hashtag.builder()
+                    .feed(feed)
+                    .tagName(tag)
+                    .build();
+                feed.getHashtags().add(hashtag);
             }
         }
+
         return new FeedUpdateResponse(feed.getId(), FeedResponseCode.FEED_UPDATED.getMessage());
     }
 
+    // ======================================
+    // 7. 삭제
+    // ======================================
     @Override
     @Transactional
     public void deleteFeed(Long feedId) {
-        Feed feed = feedRepository.findById(feedId)
-                .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
 
-        Long currentUserId = userService.getCurrentUserId();
-        if (!feed.getUser().getId().equals(currentUserId)) {
+        Feed feed = feedRepository.findById(feedId)
+            .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
+
+        Long userId = userService.getCurrentUserId();
+
+        if (!feed.getUser().getId().equals(userId)) {
             throw new BusinessException(FeedErrorCode.FEED_DELETE_NOT_AUTHORIZED);
         }
+
         feed.delete();
     }
 }

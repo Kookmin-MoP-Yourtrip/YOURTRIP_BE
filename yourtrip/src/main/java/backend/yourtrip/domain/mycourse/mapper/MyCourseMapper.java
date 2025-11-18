@@ -1,10 +1,11 @@
 package backend.yourtrip.domain.mycourse.mapper;
 
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
+import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseListItemResponse;
-import backend.yourtrip.domain.mycourse.entity.MyCourse;
-import backend.yourtrip.domain.mycourse.entity.enums.CourseRole;
+import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
+import backend.yourtrip.domain.mycourse.entity.myCourse.enums.CourseRole;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -20,18 +21,28 @@ public class MyCourseMapper {
             .build();
     }
 
+    public static MyCourseCreateResponse toCreateResponse(MyCourse course) {
+        return MyCourseCreateResponse.builder()
+            .myCourseId(course.getId())
+            .title(course.getTitle())
+            .location(course.getLocation())
+            .memberCount(course.getMemberCount())
+            .startDate(course.getStartDate())
+            .endDate(course.getEndDate())
+            .build();
+    }
+
     public static MyCourseDetailResponse toDetailResponse(MyCourse course, CourseRole role) {
         return MyCourseDetailResponse.builder()
             .courseId(course.getId())
             .title(course.getTitle())
             .location(course.getLocation())
-//            .totalBudget(course.getTotalBudget())
             .memberCount(course.getMemberCount())
             .startDate(course.getStartDate())
             .endDate(course.getEndDate())
             .role(role)
             .updatedAt(course.getUpdatedAt())
-            .daySchedules(DayScheduleMapper.toListResponse(
+            .daySchedules(DayScheduleMapper.toSummaryResponse(
                 course.getDaySchedules()))
             .build();
     }
@@ -43,6 +54,7 @@ public class MyCourseMapper {
             .startDate(course.getStartDate())
             .endDate(course.getEndDate())
             .memberCount(course.getMemberCount())
+            .courseId(course.getId())
             .build();
     }
 }

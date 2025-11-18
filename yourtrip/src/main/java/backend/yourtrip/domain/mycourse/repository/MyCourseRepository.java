@@ -1,6 +1,6 @@
 package backend.yourtrip.domain.mycourse.repository;
 
-import backend.yourtrip.domain.mycourse.entity.MyCourse;
+import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -15,4 +15,6 @@ public interface MyCourseRepository extends JpaRepository<MyCourse, Long> {
         WHERE c.id = :courseId
         """)
     Optional<MyCourse> findCourseWithDaySchedule(@Param("courseId") Long courseId);
+
+    boolean existsById(Long courseId);
 }

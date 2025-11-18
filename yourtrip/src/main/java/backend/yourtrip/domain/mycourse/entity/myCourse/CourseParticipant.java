@@ -1,6 +1,6 @@
-package backend.yourtrip.domain.mycourse.entity;
+package backend.yourtrip.domain.mycourse.entity.myCourse;
 
-import backend.yourtrip.domain.mycourse.entity.enums.CourseRole;
+import backend.yourtrip.domain.mycourse.entity.myCourse.enums.CourseRole;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.global.common.BaseEntity;
 import jakarta.persistence.Column;

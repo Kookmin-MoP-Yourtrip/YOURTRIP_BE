@@ -1,20 +1,9 @@
 package backend.yourtrip.domain.user.entity;
 
 import backend.yourtrip.global.common.BaseEntity;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import org.hibernate.annotations.SQLRestriction;
+import jakarta.persistence.*;
+import lombok.*;
+import org.hibernate.annotations.Where;
 
 @Getter
 @Builder(toBuilder = true)
@@ -22,7 +11,7 @@ import org.hibernate.annotations.SQLRestriction;
 @AllArgsConstructor
 @Entity
 @Table(name = "users")
-@SQLRestriction("deleted = false")
+@Where(clause = "deleted = false")
 public class User extends BaseEntity {
 
     @Id
@@ -31,17 +20,16 @@ public class User extends BaseEntity {
     private Long id;
 
     private String email;
-
     private String password;
-
     private String nickname;
 
+    // S3에 저장된 프로필 이미지 key (URL 저장도 가능)
     private String profileImageS3Key;
 
-    private boolean deleted;
+    @Builder.Default
+    private boolean deleted = false;
 
     private String refreshToken;
-
     private boolean emailVerified;
 
     @Enumerated(EnumType.STRING)
@@ -56,4 +44,24 @@ public class User extends BaseEntity {
 
     @Column(unique = true)
     private String socialId;
+
+    /** 프로필 이미지 URL 또는 S3 Key 변경 */
+    public void updateProfileImage(String profileUrl) {
+        this.profileImageS3Key = profileUrl;
+    }
+
+    /** 닉네임 변경 */
+    public void updateNickname(String nickname) {
+        this.nickname = nickname;
+    }
+
+    /** 비밀번호 변경 */
+    public void updatePassword(String encodedPassword) {
+        this.password = encodedPassword;
+    }
+
+    /** Soft delete 처리 */
+    public void deleteUser() {
+        this.deleted = true;
+    }
 }

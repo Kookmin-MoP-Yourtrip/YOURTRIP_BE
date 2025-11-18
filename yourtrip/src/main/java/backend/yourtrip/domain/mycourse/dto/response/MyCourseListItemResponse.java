@@ -6,6 +6,7 @@ import lombok.Builder;
 
 @Builder
 public record MyCourseListItemResponse(
+    Long courseId,
     String title,
     @Schema(description = "여행지")
     String location,

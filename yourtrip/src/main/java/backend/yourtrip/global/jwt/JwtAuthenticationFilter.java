@@ -1,5 +1,8 @@
 package backend.yourtrip.global.jwt;
 
+import backend.yourtrip.domain.user.entity.User;
+import backend.yourtrip.domain.user.repository.UserRepository;
+import backend.yourtrip.global.security.CustomUserDetails;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,22 +19,39 @@ import java.io.IOException;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain filterChain)
-            throws ServletException, IOException {
+        HttpServletResponse response,
+        FilterChain filterChain)
+        throws ServletException, IOException {
 
         String token = resolveToken(request);
 
         if (token != null && jwtTokenProvider.validateToken(token)) {
+
             Long userId = jwtTokenProvider.getUserId(token);
 
-            UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(userId, null, null);
-            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-            SecurityContextHolder.getContext().setAuthentication(authentication);
+            User user = userRepository.findById(userId)
+                .orElse(null);
+
+            if (user != null) {
+                CustomUserDetails userDetails = new CustomUserDetails(user);
+
+                UsernamePasswordAuthenticationToken authentication =
+                    new UsernamePasswordAuthenticationToken(
+                        userDetails,
+                        null,
+                        userDetails.getAuthorities()
+                    );
+
+                authentication.setDetails(
+                    new WebAuthenticationDetailsSource().buildDetails(request)
+                );
+
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+            }
         }
 
         filterChain.doFilter(request, response);
