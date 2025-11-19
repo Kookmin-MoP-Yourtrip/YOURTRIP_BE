@@ -51,4 +51,6 @@ public interface MyCourseService {
     MyCourseDetailResponse getMyCourseDetail(Long courseId);
 
     void forkCourse(Long userId, UploadCourse uploadCourse);
+
+    List<DayScheduleResponse> getAllDaySchedulesByCourse(Long courseId);
 }

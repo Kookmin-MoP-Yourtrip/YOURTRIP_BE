@@ -1,12 +1,13 @@
 package backend.yourtrip.domain.uploadcourse.service;
 
+import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import backend.yourtrip.domain.mycourse.service.MyCourseService;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
+import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListResponse;
-import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseSummaryResponse;
 import backend.yourtrip.domain.uploadcourse.entity.CourseKeyword;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
@@ -72,12 +73,15 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             savedUploadCourse.getKeywords().add(new CourseKeyword(savedUploadCourse, keyword));
         }
 
-        return new UploadCourseCreateResponse(savedUploadCourse.getId(), "코스 업로드 완료");
+        List<DayScheduleResponse> daySchedules = myCourseService.getAllDaySchedulesByCourse(
+            myCourse.getId());
+
+        return UploadCourseMapper.toCreateResponse(savedUploadCourse, myCourse, daySchedules);
     }
 
     @Override
-    @Transactional
-    public UploadCourseSummaryResponse getDetail(Long uploadCourseId) {
+    @Transactional(readOnly = true)
+    public UploadCourseDetailResponse getDetail(Long uploadCourseId) {
         UploadCourse uploadCourse = uploadCourseRepository.findWithMyCourseKeywords(
                 uploadCourseId)
             .orElseThrow(
@@ -85,8 +89,11 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
         uploadCourse.increaseViewCount(); //조회 수 증가
 
+        List<DayScheduleResponse> daySchedules = myCourseService.getAllDaySchedulesByCourse(
+            uploadCourse.getMyCourse().getId());
+
         return UploadCourseMapper.toDetailResponse(uploadCourse, getGetThumbnailUrl(
-            uploadCourse));
+            uploadCourse), daySchedules);
     }
 
     @Override

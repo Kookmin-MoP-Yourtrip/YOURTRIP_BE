@@ -1,13 +1,16 @@
 package backend.yourtrip.domain.uploadcourse.mapper;
 
+import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
+import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
+import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListItemResponse;
-import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseSummaryResponse;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.domain.user.entity.User;
+import java.util.List;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -36,9 +39,9 @@ public class UploadCourseMapper {
             .build();
     }
 
-    public static UploadCourseSummaryResponse toDetailResponse(UploadCourse uploadCourse,
-        String thumbnailUrl) {
-        return UploadCourseSummaryResponse.builder()
+    public static UploadCourseDetailResponse toDetailResponse(UploadCourse uploadCourse,
+        String thumbnailUrl, List<DayScheduleResponse> daySchedules) {
+        return UploadCourseDetailResponse.builder()
             .uploadCourseId(uploadCourse.getId())
             .title(uploadCourse.getTitle())
             .introduction(uploadCourse.getIntroduction())
@@ -51,6 +54,7 @@ public class UploadCourseMapper {
             .startDate(uploadCourse.getMyCourse().getStartDate())
             .endDate(uploadCourse.getMyCourse().getEndDate())
             .forkCount(uploadCourse.getForkCount())
+            .daySchedules(daySchedules)
             .build();
     }
 
@@ -66,6 +70,23 @@ public class UploadCourseMapper {
                 .map(courseKeyword -> courseKeyword.getKeywordType().getLabel())
                 .toList()
             )
+            .build();
+    }
+
+    public static UploadCourseCreateResponse toCreateResponse(UploadCourse uploadCourse,
+        MyCourse myCourse, List<DayScheduleResponse> daySchedules) {
+        return UploadCourseCreateResponse.builder()
+            .uploadCourseId(uploadCourse.getId())
+            .title(uploadCourse.getTitle())
+            .introduction(uploadCourse.getIntroduction())
+            .location(myCourse.getLocation())
+            .startDate(myCourse.getStartDate())
+            .endDate(myCourse.getEndDate())
+            .keywords(uploadCourse.getKeywords().stream()
+                .map(courseKeyword -> courseKeyword.getKeywordType().getLabel())
+                .toList()
+            )
+            .daySchedules(daySchedules)
             .build();
     }
 }

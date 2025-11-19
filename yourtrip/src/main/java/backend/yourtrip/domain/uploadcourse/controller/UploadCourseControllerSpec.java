@@ -3,8 +3,8 @@ package backend.yourtrip.domain.uploadcourse.controller;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
+import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListResponse;
-import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseSummaryResponse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.UploadCourseSortType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -181,7 +181,7 @@ public interface UploadCourseControllerSpec {
             responseCode = "200",
             description = "업로드 코스 상세 조회 성공",
             content = @Content(
-                schema = @Schema(implementation = UploadCourseSummaryResponse.class),
+                schema = @Schema(implementation = UploadCourseDetailResponse.class),
                 examples = @ExampleObject(
                     value = """
                             {
@@ -250,7 +250,7 @@ public interface UploadCourseControllerSpec {
             )
         )
     })
-    UploadCourseSummaryResponse getUploadCourseDetail(@Schema(example = "1") Long uploadCourseId);
+    UploadCourseDetailResponse getUploadCourseDetail(@Schema(example = "1") Long uploadCourseId);
 
     // ==========================
     //  코스 업로드
