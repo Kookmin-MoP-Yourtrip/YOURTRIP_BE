@@ -102,7 +102,6 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         List<UploadCourse> uploadCourses = switch (sortType) {
             case NEW -> uploadCourseRepository.findAllOrderByCreatedAtDesc();
             case POPULAR -> uploadCourseRepository.findAllOrderByViewCountDesc();
-//            default -> throw new BusinessException(UploadCourseErrorCode.INVALID_SORT_TYPE);
         };
 
         return new UploadCourseListResponse(uploadCourses.stream()
@@ -114,10 +113,18 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         );
     }
 
-    @Override
     @Transactional(readOnly = true)
-    public UploadCourseListResponse getPopularFive() {
-        List<UploadCourse> uploadCourses = uploadCourseRepository.findFiveOrderByViewCountDesc();
+    public UploadCourseListResponse getAllByKeywords(String keyword, List<KeywordType> tags,
+        UploadCourseSortType sortType) {
+        String pattern = (keyword == null || keyword.isBlank())
+            ? null
+            : "%" + keyword + "%";
+
+        List<UploadCourse> uploadCourses = switch (sortType) {
+            case NEW -> uploadCourseRepository.findAllByKeywordsOrderByCreatedAtDesc(pattern, tags);
+            case POPULAR ->
+                uploadCourseRepository.findAllByKeywordsOrderByViewCountDesc(pattern, tags);
+        };
 
         return new UploadCourseListResponse(uploadCourses.stream()
             .map(uploadCourse ->

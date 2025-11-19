@@ -5,6 +5,7 @@ import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListRespon
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListResponse;
+import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.domain.uploadcourse.entity.enums.UploadCourseSortType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -13,6 +14,7 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.multipart.MultipartFile;
@@ -159,7 +161,8 @@ public interface UploadCourseControllerSpec {
             )
         )
     })
-    UploadCourseListResponse getAllUploadCourses(UploadCourseSortType sortType);
+    UploadCourseListResponse getAllUploadCourses(String keyword, List<KeywordType> tags,
+        UploadCourseSortType sortType);
 
     // ==========================
     //  업로드 코스 상세 조회

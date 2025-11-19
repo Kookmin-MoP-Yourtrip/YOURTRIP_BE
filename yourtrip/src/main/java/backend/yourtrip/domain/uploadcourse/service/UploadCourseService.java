@@ -5,7 +5,9 @@ import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListRespon
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListResponse;
+import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.domain.uploadcourse.entity.enums.UploadCourseSortType;
+import java.util.List;
 import org.springframework.web.multipart.MultipartFile;
 
 public interface UploadCourseService {
@@ -19,5 +21,6 @@ public interface UploadCourseService {
 
     UploadCourseListResponse getAllList(UploadCourseSortType sortType);
 
-    UploadCourseListResponse getPopularFive();
+    UploadCourseListResponse getAllByKeywords(String keyword, List<KeywordType> tags,
+        UploadCourseSortType sortType);
 }

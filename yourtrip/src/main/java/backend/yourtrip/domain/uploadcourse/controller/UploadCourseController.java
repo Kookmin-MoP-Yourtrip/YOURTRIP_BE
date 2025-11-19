@@ -5,10 +5,12 @@ import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListRespon
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListResponse;
+import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.domain.uploadcourse.entity.enums.UploadCourseSortType;
 import backend.yourtrip.domain.uploadcourse.service.UploadCourseService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -44,9 +46,11 @@ public class UploadCourseController implements UploadCourseControllerSpec {
     // ==========================
     @GetMapping
     public UploadCourseListResponse getAllUploadCourses(
-        @RequestParam(defaultValue = "POPULAR") UploadCourseSortType sortType
+        @RequestParam(name = "keyword", required = false) String keyword,
+        @RequestParam(name = "tag", required = false) List<KeywordType> keywords,
+        @RequestParam(name = "sort", defaultValue = "POPULAR") UploadCourseSortType sortType
     ) {
-        return uploadCourseService.getAllList(sortType);
+        return uploadCourseService.getAllByKeywords(keyword, keywords, sortType);
     }
 
     // ==========================
@@ -68,11 +72,6 @@ public class UploadCourseController implements UploadCourseControllerSpec {
         @RequestPart(value = "thumbnailImage", required = false) MultipartFile thumbnailImage,
         @Valid @RequestPart(value = "request") UploadCourseCreateRequest request) {
         return uploadCourseService.createUploadCourse(request, thumbnailImage);
-    }
-
-    @GetMapping("/popular")
-    public UploadCourseListResponse getPopularFiveUploadCourses() {
-        return uploadCourseService.getPopularFive();
     }
 
 
