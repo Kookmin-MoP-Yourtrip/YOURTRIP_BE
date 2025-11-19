@@ -5,7 +5,7 @@ import java.util.List;
 public record DayScheduleResponse(
     Long dayScheduleId,
     int day,
-    List<PlaceListResponse> places
+    List<PlaceResponse> places
 ) {
 
 }

@@ -5,7 +5,7 @@ import java.util.List;
 import lombok.Builder;
 
 @Builder
-public record PlaceListResponse(
+public record PlaceResponse(
     Long placeId,
     String placeName,
     LocalTime startTime,
