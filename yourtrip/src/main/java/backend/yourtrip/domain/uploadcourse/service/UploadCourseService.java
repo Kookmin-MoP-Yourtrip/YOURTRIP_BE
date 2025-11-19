@@ -18,4 +18,6 @@ public interface UploadCourseService {
     UploadCourseDetailResponse getDetail(Long uploadCourseId);
 
     UploadCourseListResponse getAllList(UploadCourseSortType sortType);
+
+    UploadCourseListResponse getPopularFive();
 }

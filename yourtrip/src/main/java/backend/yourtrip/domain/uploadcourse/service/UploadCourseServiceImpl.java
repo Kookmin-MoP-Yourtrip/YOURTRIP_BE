@@ -114,6 +114,20 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         );
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public UploadCourseListResponse getPopularFive() {
+        List<UploadCourse> uploadCourses = uploadCourseRepository.findFiveOrderByViewCountDesc();
+
+        return new UploadCourseListResponse(uploadCourses.stream()
+            .map(uploadCourse ->
+                UploadCourseMapper.toListItemResponse(uploadCourse,
+                    getGetThumbnailUrl(uploadCourse))
+            )
+            .toList()
+        );
+    }
+
     private String getGetThumbnailUrl(UploadCourse uploadCourse) {
         String thumbnailUrl = null;
         if (uploadCourse.getThumbnailImageS3Key() != null) {

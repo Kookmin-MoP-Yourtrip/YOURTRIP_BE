@@ -34,6 +34,15 @@ public interface UploadCourseRepository extends JpaRepository<UploadCourse, Long
         """)
     List<UploadCourse> findAllOrderByViewCountDesc();
 
+    @Query("""
+            SELECT uc
+            FROM UploadCourse uc
+            JOIN FETCH uc.myCourse mc
+            ORDER BY uc.viewCount DESC
+            LIMIT 5
+        """)
+    List<UploadCourse> findFiveOrderByViewCountDesc();
+
     Optional<UploadCourse> findByMyCourse(MyCourse myCourse);
 
     @Query("""
@@ -43,5 +52,4 @@ public interface UploadCourseRepository extends JpaRepository<UploadCourse, Long
             WHERE uc.id = :uploadCourseId
         """)
     Optional<UploadCourse> findWithMyCourseById(Long uploadCourseId);
-
 }

@@ -70,5 +70,10 @@ public class UploadCourseController implements UploadCourseControllerSpec {
         return uploadCourseService.createUploadCourse(request, thumbnailImage);
     }
 
+    @GetMapping("/popular")
+    public UploadCourseListResponse getPopularFiveUploadCourses() {
+        return uploadCourseService.getPopularFive();
+    }
+
 
 }
