@@ -1,12 +1,11 @@
 package backend.yourtrip.domain.uploadcourse.service;
 
-import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import backend.yourtrip.domain.mycourse.service.MyCourseService;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
-import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
+import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseSummaryResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListResponse;
 import backend.yourtrip.domain.uploadcourse.entity.CourseKeyword;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
@@ -78,62 +77,43 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
     @Override
     @Transactional
-    public UploadCourseDetailResponse getDetail(Long uploadCourseId) {
-        UploadCourse uploadCourse = uploadCourseRepository.findUploadCourseWithMyCourseAndUserAndKeywords(
+    public UploadCourseSummaryResponse getDetail(Long uploadCourseId) {
+        UploadCourse uploadCourse = uploadCourseRepository.findWithMyCourseKeywords(
                 uploadCourseId)
             .orElseThrow(
                 () -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
 
-        List<DaySchedule> daySchedules = myCourseService.getDaySchedulesWithPlaces(
-            uploadCourse.getMyCourse().getId());
-
         uploadCourse.increaseViewCount(); //조회 수 증가
 
-        getThumbnailAndProfileUrl urls = getGetThumbnailAndProfileUrl(
-            uploadCourse);
-
-        return UploadCourseMapper.toDetailResponse(uploadCourse, daySchedules, urls.thumbnailUrl,
-            urls.profileUrl);
+        return UploadCourseMapper.toDetailResponse(uploadCourse, getGetThumbnailUrl(
+            uploadCourse));
     }
 
     @Override
     @Transactional(readOnly = true)
     public UploadCourseListResponse getAllList(UploadCourseSortType sortType) {
         List<UploadCourse> uploadCourses = switch (sortType) {
-            case NEW -> uploadCourseRepository.findAllWithUserOrerByCreatedAtDesc();
-            case POPULAR -> uploadCourseRepository.findAllWithUserOrderByViewCountDesc();
+            case NEW -> uploadCourseRepository.findAllOrderByCreatedAtDesc();
+            case POPULAR -> uploadCourseRepository.findAllOrderByViewCountDesc();
 //            default -> throw new BusinessException(UploadCourseErrorCode.INVALID_SORT_TYPE);
         };
 
         return new UploadCourseListResponse(uploadCourses.stream()
-            .map(uploadCourse -> {
-                getThumbnailAndProfileUrl urls = getGetThumbnailAndProfileUrl(uploadCourse);
-
-                return UploadCourseMapper.toListItemResponse(uploadCourse, urls.thumbnailUrl,
-                    urls.profileUrl);
-            })
+            .map(uploadCourse ->
+                UploadCourseMapper.toListItemResponse(uploadCourse,
+                    getGetThumbnailUrl(uploadCourse))
+            )
             .toList()
         );
     }
 
-    private record getThumbnailAndProfileUrl(String thumbnailUrl, String profileUrl) {
-
-    }
-
-    private getThumbnailAndProfileUrl getGetThumbnailAndProfileUrl(UploadCourse uploadCourse) {
+    private String getGetThumbnailUrl(UploadCourse uploadCourse) {
         String thumbnailUrl = null;
         if (uploadCourse.getThumbnailImageS3Key() != null) {
             thumbnailUrl = s3Service.getPresignedUrl(
                 uploadCourse.getThumbnailImageS3Key());//썸네일 프리사인드 URL 생성
         }
-
-        String profileUrl = null;
-        if (uploadCourse.getUser().getProfileImageS3Key() != null) {
-            profileUrl = s3Service.getPresignedUrl(
-                uploadCourse.getUser().getProfileImageS3Key());
-        }
-
-        return new getThumbnailAndProfileUrl(thumbnailUrl, profileUrl);
+        return thumbnailUrl;
     }
 
 }

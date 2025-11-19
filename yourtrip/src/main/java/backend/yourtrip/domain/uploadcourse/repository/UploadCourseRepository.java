@@ -12,28 +12,27 @@ public interface UploadCourseRepository extends JpaRepository<UploadCourse, Long
     @Query("""
             SELECT uc
             FROM UploadCourse uc
-            JOIN FETCH uc.user
             JOIN FETCH uc.myCourse
             LEFT JOIN FETCH uc.keywords kw
             WHERE uc.id = :uploadCourseId
         """)
-    Optional<UploadCourse> findUploadCourseWithMyCourseAndUserAndKeywords(Long uploadCourseId);
+    Optional<UploadCourse> findWithMyCourseKeywords(Long uploadCourseId);
 
     @Query("""
             SELECT uc
             FROM UploadCourse uc
-            JOIN FETCH uc.user
+            JOIN FETCH uc.keywords
             ORDER BY uc.createdAt DESC
         """)
-    List<UploadCourse> findAllWithUserOrerByCreatedAtDesc();
+    List<UploadCourse> findAllOrderByCreatedAtDesc();
 
     @Query("""
             SELECT uc
             FROM UploadCourse uc
-            JOIN FETCH uc.user
+            JOIN FETCH uc.keywords
             ORDER BY uc.viewCount DESC
         """)
-    List<UploadCourse> findAllWithUserOrderByViewCountDesc();
+    List<UploadCourse> findAllOrderByViewCountDesc();
 
     Optional<UploadCourse> findByMyCourse(MyCourse myCourse);
 

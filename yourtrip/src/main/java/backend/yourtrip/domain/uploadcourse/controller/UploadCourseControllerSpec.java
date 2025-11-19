@@ -3,7 +3,7 @@ package backend.yourtrip.domain.uploadcourse.controller;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
-import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
+import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseSummaryResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListResponse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.UploadCourseSortType;
 import io.swagger.v3.oas.annotations.Operation;
@@ -82,6 +82,84 @@ public interface UploadCourseControllerSpec {
         )
     })
     CourseKeywordListResponse getCourseKeywordList();
+
+    // ==========================
+    //   업로드 코스 목록 조회
+    // ==========================
+    @Operation(
+        summary = "업로드 코스 목록 조회(최신순/인기순 정렬)",
+        description = """
+            ### 제약조건
+            - 경로 변수
+                - 업로드 코스 ID(uploadCourseId): 존재하는 코스여야 함
+            - 쿼리 파라미터
+                - NEW(최신순): 업로드 코스 목록이 최신순으로 정렬되어 주어집니다.
+                - POPULAR(인기순): 업로드 코스 목록이 인기순으로 정렬되어 주어집니다. 인기순은 조회순 기반입니다.
+                아무 파라미터를 넘겨주지 않으면 인기순으로 정렬됩니다.
+            ### 에외 상황
+            - `INVALID_REQUEST_FIELD(400)`: 잘못된 정렬 기준이 주어진 경우(POPULAR, NEW 외의 값)
+            - 반환받는 image url들은 임시 url로 15분간만 유효합니다(보안상 문제), 로드한 이미지가 15분 뒤에 사라지는게 아니라 발급받은 url로 15분이 지난 후 로드를 시도하면 유효하지 않다는 뜻입니다.
+            """)
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "업로드 코스 목록 조회 성공",
+            content = @Content(
+                schema = @Schema(implementation = UploadCourseListResponse.class),
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "uploadCourses": [
+                            {
+                              "uploadCourseId": 2,
+                              "title": "개쩌는 경주 여행기",
+                              "location": "경주",
+                              "thumbnailImageUrl": "http://example.com",
+                              "heartCount": 0,
+                              "commentCount": 0,
+                              "viewCount": 0,
+                              "writerId": 1,
+                              "writerNickname": "string",
+                              "writerProfileUrl": null,
+                              "createdAt": "2025-11-11T01:56:56.170613"
+                            },
+                            {
+                              "uploadCourseId": 1,
+                              "title": "개쩌는 호주 여행기",
+                              "location": "호주",
+                              "thumbnailImageUrl": "http://example.com",
+                              "heartCount": 0,
+                              "commentCount": 0,
+                              "viewCount": 1,
+                              "writerId": 1,
+                              "writerNickname": "string",
+                              "writerProfileUrl": null,
+                              "createdAt": "2025-11-11T01:56:47.614249"
+                            }
+                          ]
+                        }
+                        """
+                )
+            )
+        ),
+        @ApiResponse(
+            responseCode = "400",
+            description = "잘못된 정렬 기준이 주어진 경우 (POPULAR, NEW 외의 값)",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "code": "INVALID_REQUEST_FIELD",
+                          "timestamp": "2025-11-11T00:00:44.7553392",
+                          "message": "요청 값을 바인딩할 수 없습니다."
+                        }
+                        """
+                )
+            )
+        )
+    })
+    UploadCourseListResponse getAllUploadCourses(UploadCourseSortType sortType);
 
     // ==========================
     //  코스 업로드
@@ -220,7 +298,7 @@ public interface UploadCourseControllerSpec {
             responseCode = "200",
             description = "업로드 코스 상세 조회 성공",
             content = @Content(
-                schema = @Schema(implementation = UploadCourseDetailResponse.class),
+                schema = @Schema(implementation = UploadCourseSummaryResponse.class),
                 examples = @ExampleObject(
                     value = """
                             {
@@ -289,84 +367,6 @@ public interface UploadCourseControllerSpec {
             )
         )
     })
-    UploadCourseDetailResponse getUploadCourseDetail(@Schema(example = "1") Long uploadCourseId);
-
-    // ==========================
-    //   업로드 코스 목록 조회
-    // ==========================
-    @Operation(
-        summary = "업로드 코스 목록 조회(최신순/인기순 정렬)",
-        description = """
-            ### 제약조건
-            - 경로 변수
-                - 업로드 코스 ID(uploadCourseId): 존재하는 코스여야 함
-            - 쿼리 파라미터
-                - NEW(최신순): 업로드 코스 목록이 최신순으로 정렬되어 주어집니다.
-                - POPULAR(인기순): 업로드 코스 목록이 인기순으로 정렬되어 주어집니다. 인기순은 조회순 기반입니다.
-                아무 파라미터를 넘겨주지 않으면 인기순으로 정렬됩니다.
-            ### 에외 상황
-            - `INVALID_REQUEST_FIELD(400)`: 잘못된 정렬 기준이 주어진 경우(POPULAR, NEW 외의 값)
-            - 반환받는 image url들은 임시 url로 15분간만 유효합니다(보안상 문제), 로드한 이미지가 15분 뒤에 사라지는게 아니라 발급받은 url로 15분이 지난 후 로드를 시도하면 유효하지 않다는 뜻입니다.
-            """)
-    @ApiResponses({
-        @ApiResponse(
-            responseCode = "200",
-            description = "업로드 코스 목록 조회 성공",
-            content = @Content(
-                schema = @Schema(implementation = UploadCourseListResponse.class),
-                examples = @ExampleObject(
-                    value = """
-                        {
-                          "uploadCourses": [
-                            {
-                              "uploadCourseId": 2,
-                              "title": "개쩌는 경주 여행기",
-                              "location": "경주",
-                              "thumbnailImageUrl": "http://example.com",
-                              "heartCount": 0,
-                              "commentCount": 0,
-                              "viewCount": 0,
-                              "writerId": 1,
-                              "writerNickname": "string",
-                              "writerProfileUrl": null,
-                              "createdAt": "2025-11-11T01:56:56.170613"
-                            },
-                            {
-                              "uploadCourseId": 1,
-                              "title": "개쩌는 호주 여행기",
-                              "location": "호주",
-                              "thumbnailImageUrl": "http://example.com",
-                              "heartCount": 0,
-                              "commentCount": 0,
-                              "viewCount": 1,
-                              "writerId": 1,
-                              "writerNickname": "string",
-                              "writerProfileUrl": null,
-                              "createdAt": "2025-11-11T01:56:47.614249"
-                            }
-                          ]
-                        }
-                        """
-                )
-            )
-        ),
-        @ApiResponse(
-            responseCode = "400",
-            description = "잘못된 정렬 기준이 주어진 경우 (POPULAR, NEW 외의 값)",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(
-                    value = """
-                        {
-                          "code": "INVALID_REQUEST_FIELD",
-                          "timestamp": "2025-11-11T00:00:44.7553392",
-                          "message": "요청 값을 바인딩할 수 없습니다."
-                        }
-                        """
-                )
-            )
-        )
-    })
-    UploadCourseListResponse getAllUploadCourses(UploadCourseSortType sortType);
+    UploadCourseSummaryResponse getUploadCourseDetail(@Schema(example = "1") Long uploadCourseId);
 
 }

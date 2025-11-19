@@ -3,7 +3,7 @@ package backend.yourtrip.domain.uploadcourse.controller;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
-import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
+import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseSummaryResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListResponse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.UploadCourseSortType;
 import backend.yourtrip.domain.uploadcourse.service.UploadCourseService;
@@ -40,6 +40,16 @@ public class UploadCourseController implements UploadCourseControllerSpec {
     }
 
     // ==========================
+    //   업로드 코스 목록 조회
+    // ==========================
+    @GetMapping
+    public UploadCourseListResponse getAllUploadCourses(
+        @RequestParam(defaultValue = "POPULAR") UploadCourseSortType sortType
+    ) {
+        return uploadCourseService.getAllList(sortType);
+    }
+
+    // ==========================
     //  코스 업로드
     // ==========================
     @Override
@@ -55,19 +65,9 @@ public class UploadCourseController implements UploadCourseControllerSpec {
     //  업로드 코스 상세 조회
     // ==========================
     @GetMapping("/{uploadCourseId}")
-    public UploadCourseDetailResponse getUploadCourseDetail(
+    public UploadCourseSummaryResponse getUploadCourseDetail(
         @PathVariable Long uploadCourseId) {
         return uploadCourseService.getDetail(uploadCourseId);
-    }
-
-    // ==========================
-    //   업로드 코스 목록 조회
-    // ==========================
-    @GetMapping
-    public UploadCourseListResponse getAllUploadCourses(
-        @RequestParam(defaultValue = "POPULAR") UploadCourseSortType sortType
-    ) {
-        return uploadCourseService.getAllList(sortType);
     }
 
 
