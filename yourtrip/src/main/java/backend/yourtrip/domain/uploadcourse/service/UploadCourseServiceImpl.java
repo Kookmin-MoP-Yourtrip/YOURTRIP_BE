@@ -5,8 +5,8 @@ import backend.yourtrip.domain.mycourse.service.MyCourseService;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
-import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseSummaryResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListResponse;
+import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseSummaryResponse;
 import backend.yourtrip.domain.uploadcourse.entity.CourseKeyword;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
@@ -47,7 +47,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         MultipartFile thumbnailImage) {
         MyCourse myCourse = myCourseService.getMyCourseById(request.myCourseId());
 
-        // 연동된 나의 코스가 이미 업로드됐을 때 예외 throw
+        // 나의 코스가 이미 업로드됐을 때 예외 throw
         uploadCourseRepository.findByMyCourse(myCourse)
             .ifPresent(existing -> {
                 throw new BusinessException(UploadCourseErrorCode.COURSE_ALREADY_UPLOAD);

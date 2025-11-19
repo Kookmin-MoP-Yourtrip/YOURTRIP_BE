@@ -3,8 +3,8 @@ package backend.yourtrip.domain.uploadcourse.controller;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
-import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseSummaryResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListResponse;
+import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseSummaryResponse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.UploadCourseSortType;
 import backend.yourtrip.domain.uploadcourse.service.UploadCourseService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -50,6 +50,15 @@ public class UploadCourseController implements UploadCourseControllerSpec {
     }
 
     // ==========================
+    //  업로드 코스 상세 조회
+    // ==========================
+    @GetMapping("/{uploadCourseId}")
+    public UploadCourseSummaryResponse getUploadCourseDetail(
+        @PathVariable Long uploadCourseId) {
+        return uploadCourseService.getDetail(uploadCourseId);
+    }
+
+    // ==========================
     //  코스 업로드
     // ==========================
     @Override
@@ -59,15 +68,6 @@ public class UploadCourseController implements UploadCourseControllerSpec {
         @RequestPart(value = "thumbnailImage", required = false) MultipartFile thumbnailImage,
         @Valid @RequestPart(value = "request") UploadCourseCreateRequest request) {
         return uploadCourseService.createUploadCourse(request, thumbnailImage);
-    }
-
-    // ==========================
-    //  업로드 코스 상세 조회
-    // ==========================
-    @GetMapping("/{uploadCourseId}")
-    public UploadCourseSummaryResponse getUploadCourseDetail(
-        @PathVariable Long uploadCourseId) {
-        return uploadCourseService.getDetail(uploadCourseId);
     }
 
 

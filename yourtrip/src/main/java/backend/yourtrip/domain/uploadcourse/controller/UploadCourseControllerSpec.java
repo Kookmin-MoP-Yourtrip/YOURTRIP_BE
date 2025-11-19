@@ -3,8 +3,8 @@ package backend.yourtrip.domain.uploadcourse.controller;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
-import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseSummaryResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListResponse;
+import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseSummaryResponse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.UploadCourseSortType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -162,6 +162,97 @@ public interface UploadCourseControllerSpec {
     UploadCourseListResponse getAllUploadCourses(UploadCourseSortType sortType);
 
     // ==========================
+    //  업로드 코스 상세 조회
+    // ==========================
+    @Operation(
+        summary = "업로드 코스 상세 조회",
+        description = """
+            ### 제약조건
+            - 경로 변수
+                - 업로드 코스 ID(uploadCourseId): 존재하는 코스여야 함
+            ### 에외 상황
+            - `UPLOAD_COURSE_NOT_FOUND(404)`: 업로드 코스가 존재하지 않는 경우 (잘못된 uploadCourseId가 주어진 경우)
+                        
+            - 반환받는 image url들은 임시 url로 15분간만 유효합니다(보안상 문제), 로드한 이미지가 15분 뒤에 사라지는게 아니라 발급받은 url로 15분이 지난 후 로드를 시도하면 유효하지 않다는 뜻입니다.
+
+            """)
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "업로드 코스 상세 조회 성공",
+            content = @Content(
+                schema = @Schema(implementation = UploadCourseSummaryResponse.class),
+                examples = @ExampleObject(
+                    value = """
+                            {
+                              "uploadCourseId": 1,
+                              "title": "개쩌는 경주 여행기",
+                              "location": "경주",
+                              "introduction": "술과 음식을 좋아하는 분들 안성맞춤 코스",
+                              "thumbnailImageUrl": "http://example.com",
+                              "keywords": [
+                                {
+                                  "label": "뚜벅이",
+                                  "code": "WALK"
+                                },
+                                {
+                                  "label": "맛집탐방",
+                                  "code": "FOOD"
+                                },
+                                {
+                                  "label": "힐링",
+                                  "code": "HEALING"
+                                }
+                              ],
+                              "heartCount": 0,
+                              "commentCount": 0,
+                              "viewCount": 1,
+                              "createdAt": "2025-11-11T01:33:02.47324",
+                              "writerId": 1,
+                              "writerNickname": "string",
+                              "writerProfileUrl": null,
+                              "daySchedules": [
+                                {
+                                  "dayScheduleId": 2,
+                                  "day": 2,
+                                  "places": []
+                                },
+                                {
+                                  "dayScheduleId": 1,
+                                  "day": 1,
+                                  "places": []
+                                },
+                                {
+                                  "dayScheduleId": 3,
+                                  "day": 3,
+                                  "places": []
+                                }
+                              ]
+                            }
+                        """
+                )
+            )
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "존재하지 않는 uploadCourseId가 경로변수로 주어졌을 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """ 
+                        {
+                          "code": "UPLOAD_COURSE_NOT_FOUND",
+                          "timestamp": "2025-11-11T00:00:44.7553392",
+                          "message": "업로드 코스를 찾을 수 없습니다."
+                        }
+                        """
+                )
+            )
+        )
+    })
+    UploadCourseSummaryResponse getUploadCourseDetail(@Schema(example = "1") Long uploadCourseId);
+
+    // ==========================
     //  코스 업로드
     // ==========================
     @Operation(
@@ -277,96 +368,5 @@ public interface UploadCourseControllerSpec {
             mediaType = MediaType.APPLICATION_JSON_VALUE,
             schema = @Schema(implementation = UploadCourseCreateRequest.class)
         )) UploadCourseCreateRequest request);
-
-    // ==========================
-    //  업로드 코스 상세 조회
-    // ==========================
-    @Operation(
-        summary = "업로드 코스 상세 조회",
-        description = """
-            ### 제약조건
-            - 경로 변수
-                - 업로드 코스 ID(uploadCourseId): 존재하는 코스여야 함
-            ### 에외 상황
-            - `UPLOAD_COURSE_NOT_FOUND(404)`: 업로드 코스가 존재하지 않는 경우 (잘못된 uploadCourseId가 주어진 경우)
-                        
-            - 반환받는 image url들은 임시 url로 15분간만 유효합니다(보안상 문제), 로드한 이미지가 15분 뒤에 사라지는게 아니라 발급받은 url로 15분이 지난 후 로드를 시도하면 유효하지 않다는 뜻입니다.
-
-            """)
-    @ApiResponses({
-        @ApiResponse(
-            responseCode = "200",
-            description = "업로드 코스 상세 조회 성공",
-            content = @Content(
-                schema = @Schema(implementation = UploadCourseSummaryResponse.class),
-                examples = @ExampleObject(
-                    value = """
-                            {
-                              "uploadCourseId": 1,
-                              "title": "개쩌는 경주 여행기",
-                              "location": "경주",
-                              "introduction": "술과 음식을 좋아하는 분들 안성맞춤 코스",
-                              "thumbnailImageUrl": "http://example.com",
-                              "keywords": [
-                                {
-                                  "label": "뚜벅이",
-                                  "code": "WALK"
-                                },
-                                {
-                                  "label": "맛집탐방",
-                                  "code": "FOOD"
-                                },
-                                {
-                                  "label": "힐링",
-                                  "code": "HEALING"
-                                }
-                              ],
-                              "heartCount": 0,
-                              "commentCount": 0,
-                              "viewCount": 1,
-                              "createdAt": "2025-11-11T01:33:02.47324",
-                              "writerId": 1,
-                              "writerNickname": "string",
-                              "writerProfileUrl": null,
-                              "daySchedules": [
-                                {
-                                  "dayScheduleId": 2,
-                                  "day": 2,
-                                  "places": []
-                                },
-                                {
-                                  "dayScheduleId": 1,
-                                  "day": 1,
-                                  "places": []
-                                },
-                                {
-                                  "dayScheduleId": 3,
-                                  "day": 3,
-                                  "places": []
-                                }
-                              ]
-                            }
-                        """
-                )
-            )
-        ),
-        @ApiResponse(
-            responseCode = "404",
-            description = "존재하지 않는 uploadCourseId가 경로변수로 주어졌을 때",
-            content = @Content(
-                mediaType = "application/json",
-                examples = @ExampleObject(
-                    value = """ 
-                        {
-                          "code": "UPLOAD_COURSE_NOT_FOUND",
-                          "timestamp": "2025-11-11T00:00:44.7553392",
-                          "message": "업로드 코스를 찾을 수 없습니다."
-                        }
-                        """
-                )
-            )
-        )
-    })
-    UploadCourseSummaryResponse getUploadCourseDetail(@Schema(example = "1") Long uploadCourseId);
 
 }
