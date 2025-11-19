@@ -68,4 +68,17 @@ public class PlaceMapper {
             .placeLocation(place.getPlaceLocation())
             .build();
     }
+
+    public static Place toCopyEntity(Place originalPlace, DaySchedule daySchedule) {
+        return Place.builder()
+            .daySchedule(daySchedule)
+            .name(originalPlace.getName())
+            .startTime(originalPlace.getStartTime())
+            .memo(originalPlace.getMemo())
+            .latitude(originalPlace.getLatitude())
+            .longitude(originalPlace.getLongitude())
+            .placeUrl(originalPlace.getPlaceUrl())
+            .placeLocation(originalPlace.getPlaceLocation())
+            .build();
+    }
 }

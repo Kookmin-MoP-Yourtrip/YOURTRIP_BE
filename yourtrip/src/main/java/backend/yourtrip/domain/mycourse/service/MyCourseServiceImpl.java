@@ -3,6 +3,7 @@ package backend.yourtrip.domain.mycourse.service;
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceUpdateRequest;
+import backend.yourtrip.domain.mycourse.dto.response.CourseForkResponse;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
@@ -18,6 +19,7 @@ import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.myCourse.CourseParticipant;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import backend.yourtrip.domain.mycourse.entity.myCourse.enums.CourseRole;
+import backend.yourtrip.domain.mycourse.entity.myCourse.enums.MyCourseType;
 import backend.yourtrip.domain.mycourse.entity.place.Place;
 import backend.yourtrip.domain.mycourse.entity.place.PlaceImage;
 import backend.yourtrip.domain.mycourse.mapper.CourseParticipantMapper;
@@ -30,6 +32,7 @@ import backend.yourtrip.domain.mycourse.repository.MyCourseRepository;
 import backend.yourtrip.domain.mycourse.repository.PlaceImageRepository;
 import backend.yourtrip.domain.mycourse.repository.PlaceRepository;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
+import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.BusinessException;
@@ -58,6 +61,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final UserService userService;
     private final S3Service s3Service;
     private final PlaceImageRepository placeImageRepository;
+    private final UploadCourseRepository uploadCourseRepository;
 
     @Override
     @Transactional
@@ -295,39 +299,55 @@ public class MyCourseServiceImpl implements MyCourseService {
         return MyCourseMapper.toDetailResponse(myCourse, role);
     }
 
-    // ========================================================
-    // 업로드 코스 → 나의 코스 복사 기능
-    // ========================================================
     @Override
     @Transactional
-    public void forkCourse(Long userId, UploadCourse uploadCourse) {
+    public CourseForkResponse forkCourse(Long uploadCourseId) {
+        UploadCourse uploadCourse = uploadCourseRepository.findWithMyCourseById(uploadCourseId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
 
-        User user = userService.getUser(userId);
-        MyCourse origin = uploadCourse.getMyCourse();   // 업로드 코스가 가진 MyCourse 참조
+        Long userId = userService.getCurrentUserId();
 
-        if (origin == null) {
-            throw new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND);
+        if (uploadCourse.getUser().getId().equals(userId)) {
+            throw new BusinessException(MyCourseErrorCode.CANNOT_FORK_OWN_COURSE);
         }
 
-        // 복제할 MyCourse 생성
-        MyCourse copied = MyCourse.builder()
-            .title(uploadCourse.getTitle())
-            .location(uploadCourse.getLocation())
-            .startDate(origin.getStartDate())
-            .endDate(origin.getEndDate())
-            .build();
+        MyCourse originalMyCourse = uploadCourse.getMyCourse();
 
-        myCourseRepository.save(copied);
+        uploadCourse.increaseForkCount();
 
-        // 참여자 생성 (owner = 현재 사용자)
+        MyCourse copyMyCourse = MyCourseMapper.toCopyEntity(uploadCourse.getMyCourse());
+        copyMyCourse.setType(MyCourseType.FORK);
+        MyCourse savedCourse = myCourseRepository.save(copyMyCourse);
+
+        //코스 참여자 생성
+        User user = userService.getUser(userId);
         courseParticipantRepository.save(
-            CourseParticipantMapper.toEntityWithOwner(user, copied)
+            CourseParticipantMapper.toEntityWithOwner(user, copyMyCourse)
         );
 
-        // 일차 자동 생성
-        int days = Period.between(origin.getStartDate(), origin.getEndDate()).getDays() + 1;
+        //일차별 일정 복사
+        int days =
+            Period.between(copyMyCourse.getStartDate(), copyMyCourse.getEndDate()).getDays() + 1;
         for (int i = 1; i <= days; i++) {
-            dayScheduleRepository.save(new DaySchedule(copied, i));
+            DaySchedule copiedDaySchedule = new DaySchedule(copyMyCourse, i);
+            dayScheduleRepository.save(copiedDaySchedule);
+
+            originalMyCourse.getDaySchedules().get(i - 1).getPlaces().forEach(originalPlace -> {
+                // 장소 복사
+                Place copiedPlace = PlaceMapper.toCopyEntity(originalPlace, copiedDaySchedule);
+                copiedDaySchedule.getPlaces().add(copiedPlace);
+
+                // 장소 이미지 복사
+                originalPlace.getPlaceImages().forEach(originalImage -> {
+                    PlaceImage copiedImage = new PlaceImage(
+                        copiedPlace,
+                        originalImage.getPlaceImageS3Key()
+                    );
+                    copiedPlace.getPlaceImages().add(copiedImage);
+                });
+            });
         }
+
+        return new CourseForkResponse(savedCourse.getId());
     }
 }

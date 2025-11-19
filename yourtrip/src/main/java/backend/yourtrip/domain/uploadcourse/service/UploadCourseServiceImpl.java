@@ -82,7 +82,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     @Override
     @Transactional(readOnly = true)
     public UploadCourseDetailResponse getDetail(Long uploadCourseId) {
-        UploadCourse uploadCourse = uploadCourseRepository.findWithMyCourseKeywords(
+        UploadCourse uploadCourse = uploadCourseRepository.findWithMyCourseAndKeywords(
                 uploadCourseId)
             .orElseThrow(
                 () -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));

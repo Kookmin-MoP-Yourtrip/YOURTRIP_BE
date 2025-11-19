@@ -19,6 +19,7 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.SQLRestriction;
 
 @Entity
@@ -36,8 +37,6 @@ public class MyCourse extends BaseEntity {
 
     private String location;
 
-    private int totalBudget;
-
     private int memberCount;
 
     private LocalDate startDate;
@@ -45,6 +44,7 @@ public class MyCourse extends BaseEntity {
     private LocalDate endDate;
 
     @Enumerated(EnumType.STRING)
+    @Setter
     private MyCourseType type;
 
     private boolean deleted;
@@ -68,12 +68,4 @@ public class MyCourse extends BaseEntity {
         daySchedules = new ArrayList<>();
         participants = new ArrayList<>();
     }
-
-    public void setType(MyCourseType type) {
-        this.type = type;
-    }
-
-//    public void updateBudget(int budget) {
-//        this.totalBudget += budget;
-//    }
 }

@@ -78,4 +78,8 @@ public class UploadCourse extends BaseEntity {
         this.viewCount += 1;
     }
 
+    public void increaseForkCount() {
+        this.forkCount += 1;
+    }
+
 }

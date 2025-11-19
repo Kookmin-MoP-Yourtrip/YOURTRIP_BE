@@ -12,7 +12,8 @@ public enum MyCourseErrorCode implements ErrorCode {
     ROLE_NOT_SPECIFY("코스 편집 역할이 지정되지 않았습니다.", HttpStatus.NOT_FOUND),
     DAY_SCHEDULE_NOT_FOUND("해당 일차 일정을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     PLACE_NOT_FOUND("해당 장소를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
-    PLACE_IMAGE_NOT_FOUND("해당 장소 이미지를 찾을 수 없습니다.", HttpStatus.NOT_FOUND);
+    PLACE_IMAGE_NOT_FOUND("해당 장소 이미지를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    CANNOT_FORK_OWN_COURSE("자신의 코스는 포크할 수 없습니다.", HttpStatus.BAD_REQUEST);
 
     private final String message;
     private final HttpStatus status;

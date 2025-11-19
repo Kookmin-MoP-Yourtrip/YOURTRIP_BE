@@ -57,4 +57,13 @@ public class MyCourseMapper {
             .courseId(course.getId())
             .build();
     }
+
+    public static MyCourse toCopyEntity(MyCourse originalMyCourse) {
+        return MyCourse.builder()
+            .title(originalMyCourse.getTitle())
+            .location(originalMyCourse.getLocation())
+            .startDate(originalMyCourse.getStartDate())
+            .endDate(originalMyCourse.getEndDate())
+            .build();
+    }
 }
