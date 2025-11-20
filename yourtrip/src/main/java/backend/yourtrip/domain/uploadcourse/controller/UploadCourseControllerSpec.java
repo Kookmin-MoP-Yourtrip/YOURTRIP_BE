@@ -434,4 +434,14 @@ public interface UploadCourseControllerSpec {
             schema = @Schema(implementation = UploadCourseCreateRequest.class)
         )) UploadCourseCreateRequest request);
 
+    // ==========================
+    //  내가 올린 업로드 코스 리스트
+    // ==========================
+    @Operation(
+        summary = "내가 올린 업로드 코스 리스트 조회",
+        description = "현재 로그인한 사용자가 업로드한 업로드 코스들의 목록을 최신순으로 조회합니다."
+    )
+    UploadCourseListResponse getMyUploadCourses();
+
+
 }

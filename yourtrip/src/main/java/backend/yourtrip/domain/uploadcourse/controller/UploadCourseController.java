@@ -76,5 +76,13 @@ public class UploadCourseController implements UploadCourseControllerSpec {
         return uploadCourseService.createUploadCourse(request, thumbnailImage);
     }
 
+    // ==========================
+    //  내가 올린 업로드 코스 리스트
+    // ==========================
+    @GetMapping("/me")
+    public UploadCourseListResponse getMyUploadCourses() {
+        return uploadCourseService.getMyUploadCourses();
+    }
+
 
 }
