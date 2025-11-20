@@ -19,8 +19,8 @@ public interface UploadCourseService {
 
     UploadCourseDetailResponse getDetail(Long uploadCourseId);
 
-    UploadCourseListResponse getAllList(UploadCourseSortType sortType);
-
-    UploadCourseListResponse getAllByKeywords(String keyword, List<KeywordType> tags,
+    UploadCourseListResponse getAllForSearch(String keyword, List<KeywordType> tags,
         UploadCourseSortType sortType);
+
+    UploadCourseListResponse getMyUploadCourses();
 }

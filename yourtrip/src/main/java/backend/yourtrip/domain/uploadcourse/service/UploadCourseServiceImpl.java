@@ -98,10 +98,16 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
     @Override
     @Transactional(readOnly = true)
-    public UploadCourseListResponse getAllList(UploadCourseSortType sortType) {
+    public UploadCourseListResponse getAllForSearch(String keyword, List<KeywordType> tags,
+        UploadCourseSortType sortType) {
+        String pattern = (keyword == null || keyword.isBlank())
+            ? null
+            : "%" + keyword + "%";
+
         List<UploadCourse> uploadCourses = switch (sortType) {
-            case NEW -> uploadCourseRepository.findAllOrderByCreatedAtDesc();
-            case POPULAR -> uploadCourseRepository.findAllOrderByViewCountDesc();
+            case NEW -> uploadCourseRepository.findAllByKeywordsOrderByCreatedAtDesc(pattern, tags);
+            case POPULAR ->
+                uploadCourseRepository.findAllByKeywordsOrderByViewCountDesc(pattern, tags);
         };
 
         return new UploadCourseListResponse(uploadCourses.stream()
@@ -113,18 +119,12 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         );
     }
 
+    @Override
     @Transactional(readOnly = true)
-    public UploadCourseListResponse getAllByKeywords(String keyword, List<KeywordType> tags,
-        UploadCourseSortType sortType) {
-        String pattern = (keyword == null || keyword.isBlank())
-            ? null
-            : "%" + keyword + "%";
-
-        List<UploadCourse> uploadCourses = switch (sortType) {
-            case NEW -> uploadCourseRepository.findAllByKeywordsOrderByCreatedAtDesc(pattern, tags);
-            case POPULAR ->
-                uploadCourseRepository.findAllByKeywordsOrderByViewCountDesc(pattern, tags);
-        };
+    public UploadCourseListResponse getMyUploadCourses() {
+        Long userId = userService.getCurrentUserId();
+        List<UploadCourse> uploadCourses = uploadCourseRepository.findAllByUserIdOrderByCreatedAtDesc(
+            userId);
 
         return new UploadCourseListResponse(uploadCourses.stream()
             .map(uploadCourse ->

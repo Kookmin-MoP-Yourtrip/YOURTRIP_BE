@@ -50,7 +50,7 @@ public class UploadCourseController implements UploadCourseControllerSpec {
         @RequestParam(name = "tag", required = false) List<KeywordType> keywords,
         @RequestParam(name = "sort", defaultValue = "POPULAR") UploadCourseSortType sortType
     ) {
-        return uploadCourseService.getAllByKeywords(keyword, keywords, sortType);
+        return uploadCourseService.getAllForSearch(keyword, keywords, sortType);
     }
 
     // ==========================

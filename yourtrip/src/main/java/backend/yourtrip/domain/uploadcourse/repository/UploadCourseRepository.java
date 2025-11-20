@@ -83,4 +83,13 @@ public interface UploadCourseRepository extends JpaRepository<UploadCourse, Long
         """)
     List<UploadCourse> findAllByKeywordsOrderByViewCountDesc(@Param("keyword") String keyword,
         @Param("keywords") List<KeywordType> keywords);
+
+    @Query("""
+            SELECT uc
+            FROM UploadCourse uc
+            LEFT JOIN FETCH uc.keywords kw
+            WHERE uc.user.id = :userId
+            ORDER BY uc.id DESC
+        """)
+    List<UploadCourse> findAllByUserIdOrderByCreatedAtDesc(Long userId);
 }
