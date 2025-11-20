@@ -44,6 +44,7 @@ public class UploadCourseController implements UploadCourseControllerSpec {
     // ==========================
     //   업로드 코스 목록 조회
     // ==========================
+    @Override
     @GetMapping
     public UploadCourseListResponse getAllUploadCourses(
         @RequestParam(name = "keyword", required = false) String keyword,
@@ -56,6 +57,7 @@ public class UploadCourseController implements UploadCourseControllerSpec {
     // ==========================
     //  업로드 코스 상세 조회
     // ==========================
+    @Override
     @GetMapping("/{uploadCourseId}")
     public UploadCourseDetailResponse getUploadCourseDetail(
         @PathVariable Long uploadCourseId) {

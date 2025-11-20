@@ -38,6 +38,7 @@ import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
+import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.s3.service.S3Service;
 import java.io.IOException;
 import java.time.LocalTime;
@@ -109,6 +110,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     public PlaceCreateResponse savePlace(Long courseId, Long dayId, PlaceCreateRequest request) {
         checkExistCourse(courseId);
         Long userId = userService.getCurrentUserId();
+        checkOwnedCourse(courseId, userId);
 
         DaySchedule daySchedule = dayScheduleRepository.findByIdAndUserId(userId, courseId,
                 dayId)
@@ -136,6 +138,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Transactional(readOnly = true)
     public DayScheduleResponse getPlaceListByDay(Long courseId, Long dayId) {
         checkExistCourse(courseId);
+        checkOwnedCourse(courseId, userService.getCurrentUserId());
 
         DaySchedule daySchedule = dayScheduleRepository.findByIdWithPlaces(courseId,
                 dayId)
@@ -158,6 +161,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Transactional(readOnly = true)
     public List<DayScheduleResponse> getAllDaySchedulesByCourse(Long courseId) {
         checkExistCourse(courseId);
+        checkOwnedCourse(courseId, userService.getCurrentUserId());
 
         List<DaySchedule> daySchedules = getDaySchedulesWithPlaces(courseId);
 
@@ -195,6 +199,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     public PlaceStartTimeUpdateResponse updatePlaceTime(Long courseId, Long dayId, Long placeId,
         LocalTime startTime) {
         checkExistCourse(courseId);
+        checkOwnedCourse(courseId, userService.getCurrentUserId());
         checkExistDaySchedule(dayId, courseId);
 
         getPlaceByIdAndDayId(placeId, dayId).setStartTime(startTime);
@@ -212,6 +217,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     public PlaceMemoUpdateResponse updatePlaceMemo(Long courseId, Long dayId, Long placeId,
         String memo) {
         checkExistCourse(courseId);
+        checkOwnedCourse(courseId, userService.getCurrentUserId());
         checkExistDaySchedule(dayId, courseId);
 
         getPlaceByIdAndDayId(placeId, dayId).setMemo(memo);
@@ -224,6 +230,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     public PlaceImageCreateResponse addPlaceImage(Long courseId, Long dayId, Long placeId,
         MultipartFile placeImage) {
         checkExistCourse(courseId);
+        checkOwnedCourse(courseId, userService.getCurrentUserId());
         checkExistDaySchedule(dayId, courseId);
         Place place = getPlaceByIdAndDayId(placeId, dayId);
 
@@ -246,6 +253,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     public PlaceUpdateResponse updatePlace(Long courseId, Long dayId, Long placeId,
         PlaceUpdateRequest request) {
         checkExistCourse(courseId);
+        checkOwnedCourse(courseId, userService.getCurrentUserId());
         checkExistDaySchedule(dayId, courseId);
         Place place = getPlaceByIdAndDayId(placeId, dayId);
 
@@ -258,6 +266,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Transactional
     public void deletePlaceImage(Long courseId, Long dayId, Long placeId, Long imageId) {
         checkExistCourse(courseId);
+        checkOwnedCourse(courseId, userService.getCurrentUserId());
         checkExistDaySchedule(dayId, courseId);
         Place place = getPlaceByIdAndDayId(placeId, dayId);
 
@@ -273,6 +282,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Transactional
     public void deletePlace(Long courseId, Long dayId, Long placeId) {
         checkExistCourse(courseId);
+        checkOwnedCourse(courseId, userService.getCurrentUserId());
         checkExistDaySchedule(dayId, courseId);
         Place place = getPlaceByIdAndDayId(placeId, dayId);
 
@@ -288,6 +298,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Transactional(readOnly = true)
     public MyCourseDetailResponse getMyCourseDetail(Long courseId) {
         Long userId = userService.getCurrentUserId();
+        checkOwnedCourse(courseId, userId);
 
         MyCourse myCourse = myCourseRepository.findCourseWithDaySchedule(courseId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
@@ -299,16 +310,23 @@ public class MyCourseServiceImpl implements MyCourseService {
         return MyCourseMapper.toDetailResponse(myCourse, role);
     }
 
+    private void checkOwnedCourse(Long courseId, Long userId) {
+        if (!courseParticipantRepository.existsByUser_IdAndCourse_Id(userId, courseId)) {
+            throw new BusinessException(MyCourseErrorCode.NOT_OWNED_COURSE);
+        }
+    }
+
     @Override
     @Transactional
     public CourseForkResponse forkCourse(Long uploadCourseId) {
         UploadCourse uploadCourse = uploadCourseRepository.findWithMyCourseById(uploadCourseId)
-            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
+            .orElseThrow(
+                () -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
 
         Long userId = userService.getCurrentUserId();
 
         if (uploadCourse.getUser().getId().equals(userId)) {
-            throw new BusinessException(MyCourseErrorCode.CANNOT_FORK_OWN_COURSE);
+            throw new BusinessException(MyCourseErrorCode.CANNOT_FORK_OWNED_COURSE);
         }
 
         MyCourse originalMyCourse = uploadCourse.getMyCourse();

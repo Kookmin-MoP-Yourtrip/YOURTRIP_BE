@@ -29,6 +29,8 @@ public interface UploadCourseControllerSpec {
         summary = "코스 키워드 목록 조회",
         description = """
               코스 업로드 시 선택할 수 있는 키워드 목록을 보여줍니다.
+              이동수단, 동행유형, 여행 분위기, 여행 기간, 예산에 해당하는 키워드들을 반환하도록 분류해놓았습니다.
+              업로드 코스 목록 조회 api 호출 시 여기서 반환받은 code값을 쿼리 파라미터로 넘기면 태그 기반 필터링이 가능합니다.
               
               ### 참고사항
               - travelMode: 이동수단
@@ -89,14 +91,17 @@ public interface UploadCourseControllerSpec {
     //   업로드 코스 목록 조회
     // ==========================
     @Operation(
-        summary = "업로드 코스 목록 조회(최신순/인기순 정렬)",
+        summary = "업로드 코스 목록 검색 및 조회(여행지/제목 기반 키워드 검색, 태그 기반 필터링, 최신순/인기순 정렬)",
         description = """
             ### 제약조건
             - 경로 변수
                 - 업로드 코스 ID(uploadCourseId): 존재하는 코스여야 함
             - 쿼리 파라미터
-                - NEW(최신순): 업로드 코스 목록이 최신순으로 정렬되어 주어집니다.
-                - POPULAR(인기순): 업로드 코스 목록이 인기순으로 정렬되어 주어집니다. 인기순은 조회순 기반입니다.
+                - keyword(선택): 여행지 또는 제목 기반 키워드 검색을 수행합니다. 파라미터 미포함 시 전체 조회됩니다.
+                - tags(선택, 복수 가능): 태그 기반 필터링을 수행합니다. **코스 키워드 목록 조회 API**로 받은 `code` 값만 배열에 담아 전송 (예: `"WALK"`, `"FOOD"`). 배열에 담긴 태그들 중 하나라도 포함된 업로드 코스들이 반환됩니다. 파라미터 미포함 시 태그 필터링이 적용되지 않습니다.
+                - sort: 업로드 코스 목록 정렬 기준을 설정합니다. (최신순/인기순). 파라미터 미포함 시 인기순이 디폴트로 적용됩니다. 
+                    - NEW(최신순): 업로드 코스 목록이 최신순으로 정렬되어 주어집니다.
+                    - POPULAR(인기순): 업로드 코스 목록이 인기순으로 정렬되어 주어집니다. 인기순은 조회순 기반입니다.
                 아무 파라미터를 넘겨주지 않으면 인기순으로 정렬됩니다.
             ### 에외 상황
             - `INVALID_REQUEST_FIELD(400)`: 잘못된 정렬 기준이 주어진 경우(POPULAR, NEW 외의 값)
@@ -117,26 +122,24 @@ public interface UploadCourseControllerSpec {
                               "title": "개쩌는 경주 여행기",
                               "location": "경주",
                               "thumbnailImageUrl": "http://example.com",
-                              "heartCount": 0,
-                              "commentCount": 0,
-                              "viewCount": 0,
-                              "writerId": 1,
-                              "writerNickname": "string",
-                              "writerProfileUrl": null,
-                              "createdAt": "2025-11-11T01:56:56.170613"
+                              "forkCount": 10,
+                              "keywords": [
+                                "뚜벅이",
+                                "맛집탐방",
+                                "힐링"
+                              ]
                             },
                             {
                               "uploadCourseId": 1,
                               "title": "개쩌는 호주 여행기",
                               "location": "호주",
                               "thumbnailImageUrl": "http://example.com",
-                              "heartCount": 0,
-                              "commentCount": 0,
-                              "viewCount": 1,
-                              "writerId": 1,
-                              "writerNickname": "string",
-                              "writerProfileUrl": null,
-                              "createdAt": "2025-11-11T01:56:47.614249"
+                              "forkCount": 15,
+                              "keywords": [
+                                "뚜벅이",
+                                "맛집탐방",
+                                "힐링"
+                              ]
                             }
                           ]
                         }
@@ -170,14 +173,12 @@ public interface UploadCourseControllerSpec {
     @Operation(
         summary = "업로드 코스 상세 조회",
         description = """
+            - 반환받는 image url들은 임시 url로 15분간만 유효합니다(보안상 문제), 로드한 이미지가 15분 뒤에 사라지는게 아니라 발급받은 url로 15분이 지난 후 로드를 시도하면 유효하지 않다는 뜻입니다.
             ### 제약조건
             - 경로 변수
                 - 업로드 코스 ID(uploadCourseId): 존재하는 코스여야 함
             ### 에외 상황
             - `UPLOAD_COURSE_NOT_FOUND(404)`: 업로드 코스가 존재하지 않는 경우 (잘못된 uploadCourseId가 주어진 경우)
-                        
-            - 반환받는 image url들은 임시 url로 15분간만 유효합니다(보안상 문제), 로드한 이미지가 15분 뒤에 사라지는게 아니라 발급받은 url로 15분이 지난 후 로드를 시도하면 유효하지 않다는 뜻입니다.
-
             """)
     @ApiResponses({
         @ApiResponse(
@@ -187,51 +188,62 @@ public interface UploadCourseControllerSpec {
                 schema = @Schema(implementation = UploadCourseDetailResponse.class),
                 examples = @ExampleObject(
                     value = """
+                        {
+                          "uploadCourseId": 1,
+                          "title": "경주 인생샷 1일 코스",
+                          "location": "경주",
+                          "introduction": "황리단길부터 첨성대까지, 인생샷 남기기 좋은 스팟만 모았어요.",
+                          "thumbnailImageUrl": "http://example.com/thumbnail.jpg",
+                          "startDate": "2025-03-01",
+                          "endDate": "2025-03-01",
+                          "forkCount": 4,
+                          "keywords": [
+                            "힐링",
+                            "뚜벅이",
+                            "혼자"
+                          ],
+                          "daySchedules": [
                             {
-                              "uploadCourseId": 1,
-                              "title": "개쩌는 경주 여행기",
-                              "location": "경주",
-                              "introduction": "술과 음식을 좋아하는 분들 안성맞춤 코스",
-                              "thumbnailImageUrl": "http://example.com",
-                              "keywords": [
+                              "dayScheduleId": 1,
+                              "day": 1,
+                              "places": [
                                 {
-                                  "label": "뚜벅이",
-                                  "code": "WALK"
+                                  "placeId": 1,
+                                  "placeName": "황리단길 카페 거리",
+                                  "startTime": "10:30:00",
+                                  "memo": "감성 카페 골목 산책",
+                                  "latitude": 35.8375,
+                                  "longitude": 129.2123,
+                                  "placeUrl": "http://place.map.kakao.com/26338954",
+                                  "placeLocation": "경북 경주시 포석로 인근",
+                                  "placeImages": [
+                                    {
+                                      "placeId": 1,
+                                      "placeImageId": 1,
+                                      "imageUrl": "http://example.com/image1.jpg"
+                                    },
+                                    {
+                                      "placeId": 1,
+                                      "placeImageId": 2,
+                                      "imageUrl": "http://example.com/image2.jpg"
+                                    }
+                                  ]
                                 },
                                 {
-                                  "label": "맛집탐방",
-                                  "code": "FOOD"
-                                },
-                                {
-                                  "label": "힐링",
-                                  "code": "HEALING"
-                                }
-                              ],
-                              "heartCount": 0,
-                              "commentCount": 0,
-                              "viewCount": 1,
-                              "createdAt": "2025-11-11T01:33:02.47324",
-                              "writerId": 1,
-                              "writerNickname": "string",
-                              "writerProfileUrl": null,
-                              "daySchedules": [
-                                {
-                                  "dayScheduleId": 2,
-                                  "day": 2,
-                                  "places": []
-                                },
-                                {
-                                  "dayScheduleId": 1,
-                                  "day": 1,
-                                  "places": []
-                                },
-                                {
-                                  "dayScheduleId": 3,
-                                  "day": 3,
-                                  "places": []
+                                  "placeId": 2,
+                                  "placeName": "첨성대 야경",
+                                  "startTime": "19:30:00",
+                                  "memo": "야경 사진 스팟",
+                                  "latitude": 35.8341,
+                                  "longitude": 129.2185,
+                                  "placeUrl": "http://place.map.kakao.com/12345678",
+                                  "placeLocation": "경북 경주시 인왕동",
+                                  "placeImages": []
                                 }
                               ]
                             }
+                          ]
+                        }
                         """
                 )
             )
@@ -282,10 +294,60 @@ public interface UploadCourseControllerSpec {
                 schema = @Schema(implementation = UploadCourseCreateResponse.class),
                 examples = @ExampleObject(
                     value = """
+                        {
+                          "uploadCourseId": 1,
+                          "title": "경주 인생샷 1일 코스",
+                          "location": "경주",
+                          "introduction": "황리단길부터 첨성대까지, 인생샷 남기기 좋은 스팟만 모았어요.",
+                          "startDate": "2025-03-01",
+                          "endDate": "2025-03-01",
+                          "keywords": [
+                            "힐링",
+                            "뚜벅이",
+                            "혼자"
+                          ],
+                          "daySchedules": [
                             {
-                              "uploadCourseId": 5,
-                              "message": "코스 업로드 완료"
+                              "dayScheduleId": 1,
+                              "day": 1,
+                              "places": [
+                                {
+                                  "placeId": 1,
+                                  "placeName": "황리단길 카페 거리",
+                                  "startTime": "10:30:00",
+                                  "memo": "감성 카페 골목 산책",
+                                  "latitude": 35.8375,
+                                  "longitude": 129.2123,
+                                  "placeUrl": "http://place.map.kakao.com/26338954",
+                                  "placeLocation": "경북 경주시 포석로 인근",
+                                  "placeImages": [
+                                    {
+                                      "placeId": 1,
+                                      "placeImageId": 1,
+                                      "imageUrl": "http://example.com/image1.jpg"
+                                    },
+                                    {
+                                      "placeId": 1,
+                                      "placeImageId": 2,
+                                      "imageUrl": "http://example.com/image2.jpg"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "placeId": 2,
+                                  "placeName": "첨성대 야경",
+                                  "startTime": "19:30:00",
+                                  "memo": "야경 사진 스팟",
+                                  "latitude": 35.8341,
+                                  "longitude": 129.2185,
+                                  "placeUrl": "http://place.map.kakao.com/12345678",
+                                  "placeLocation": "경북 경주시 인왕동",
+                                  "placeImages": []
+                                }
+                              ]
                             }
+                          ]
+                        }
                         """
                 )
             )
