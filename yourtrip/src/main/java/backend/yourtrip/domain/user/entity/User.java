@@ -19,17 +19,20 @@ public class User extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(unique = true, nullable = false)
     private String email;
+
     private String password;
+
     private String nickname;
 
-    // S3에 저장된 프로필 이미지 key (URL 저장도 가능)
     private String profileImageS3Key;
 
     @Builder.Default
     private boolean deleted = false;
 
     private String refreshToken;
+
     private boolean emailVerified;
 
     @Enumerated(EnumType.STRING)
@@ -45,7 +48,11 @@ public class User extends BaseEntity {
     @Column(unique = true)
     private String socialId;
 
-    /** 프로필 이미지 URL 또는 S3 Key 변경 */
+    public String getProfileImageUrl() {
+        return this.profileImageS3Key;
+    }
+
+    /** 프로필 이미지 URL 변경 */
     public void updateProfileImage(String profileUrl) {
         this.profileImageS3Key = profileUrl;
     }
