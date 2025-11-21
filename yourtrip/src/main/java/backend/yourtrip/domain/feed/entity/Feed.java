@@ -42,6 +42,9 @@ public class Feed extends BaseEntity {
     @OneToMany(mappedBy = "feed", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Hashtag> hashtags = new ArrayList<>();
 
+    @OneToMany(mappedBy = "feed", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<FeedMedia> mediaList = new ArrayList<>();
+
     @Column(name = "commentCount", nullable = false, columnDefinition = "int default 0")
     private int commentCount;
 
@@ -100,5 +103,10 @@ public class Feed extends BaseEntity {
 
     public void decreaseCommentCount() {
         this.commentCount -= 1;
+    }
+
+    public void updateMediaList(List<FeedMedia> newMediaList) {
+        mediaList.clear();
+        mediaList.addAll(newMediaList);
     }
 }

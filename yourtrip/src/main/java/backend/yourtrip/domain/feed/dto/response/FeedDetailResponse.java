@@ -17,6 +17,14 @@ public record FeedDetailResponse(
         int commentCount,
         int heartCount,
         int viewCount,
-        Long uploadCourseId
+        Long uploadCourseId,
+        List<MediaResponse> mediaList
 ) {
+    @Builder
+    public record MediaResponse(
+            Long mediaId,
+            String mediaUrl,
+            String mediaType,
+            int displayOrder
+    ) {}
 }

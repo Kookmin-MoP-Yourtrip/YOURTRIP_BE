@@ -7,17 +7,21 @@ import backend.yourtrip.domain.feed.dto.response.FeedCommentListResponse;
 import backend.yourtrip.domain.feed.entity.Comment;
 import backend.yourtrip.domain.feed.entity.Feed;
 import backend.yourtrip.domain.user.entity.User;
-import lombok.AccessLevel;
-import lombok.NoArgsConstructor;
+import backend.yourtrip.global.s3.service.S3Service;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
-@NoArgsConstructor(access = AccessLevel.PRIVATE)
+@Component
+@RequiredArgsConstructor
 public class CommentMapper {
 
-    public static Comment toEntity(Feed feed, User user, FeedCommentCreateRequest request) {
+    private final S3Service s3Service;
+
+    public Comment toEntity(Feed feed, User user, FeedCommentCreateRequest request) {
         return Comment.builder()
                 .feed(feed)
                 .user(user)
@@ -25,22 +29,29 @@ public class CommentMapper {
                 .build();
     }
 
-    public static FeedCommentDetailResponse toDetailResponse(Comment comment) {
+    public FeedCommentDetailResponse toDetailResponse(Comment comment) {
+
+        String profileImageUrl = null;
+        User user = comment.getUser();
+        if (user != null && user.getProfileImageS3Key() != null && !user.getProfileImageS3Key().isBlank()) {
+            profileImageUrl = s3Service.getPresignedUrl(user.getProfileImageS3Key());
+        }
+
         return FeedCommentDetailResponse.builder()
                 .feedCommentId(comment.getId())
                 .feedId(comment.getFeed().getId())
                 .userId(comment.getUser().getId())
                 .nickname(comment.getUser().getNickname())
-                .profileImageUrl(comment.getUser().getProfileImageS3Key())
+                .profileImageUrl(profileImageUrl)
                 .sentence(comment.getSentence())
                 .createdAt(comment.getCreatedAt())
                 .updatedAt(comment.getUpdatedAt())
                 .build();
     }
 
-    public static FeedCommentListResponse toListResponse(Page<Comment> commentPage) {
+    public FeedCommentListResponse toListResponse(Page<Comment> commentPage) {
         List<FeedCommentDetailResponse> comments = commentPage.getContent().stream()
-                .map(CommentMapper::toDetailResponse)
+                .map(this::toDetailResponse)
                 .collect(Collectors.toList());
 
         return FeedCommentListResponse.builder()
