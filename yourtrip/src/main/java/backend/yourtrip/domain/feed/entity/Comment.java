@@ -4,13 +4,11 @@ import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.global.common.BaseEntity;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.FeedCommentErrorCode;
-import backend.yourtrip.global.exception.errorCode.FeedErrorCode;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import software.amazon.awssdk.services.s3.endpoints.internal.Value;
 
 @Entity
 @Getter

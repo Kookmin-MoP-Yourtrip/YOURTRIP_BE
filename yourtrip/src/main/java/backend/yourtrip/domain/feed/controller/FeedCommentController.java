@@ -7,8 +7,6 @@ import backend.yourtrip.domain.feed.dto.response.FeedCommentCreateResponse;
 import backend.yourtrip.domain.feed.dto.response.FeedCommentListResponse;
 import backend.yourtrip.domain.feed.dto.response.FeedCommentUpdateResponse;
 import backend.yourtrip.domain.feed.service.FeedCommentService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
