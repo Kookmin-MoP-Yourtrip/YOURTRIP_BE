@@ -32,6 +32,7 @@ public class FeedCommentServiceImpl implements FeedCommentService{
     private final CommentRepository commentRepository;
     private final FeedRepository feedRepository;
     private final UserService userService;
+    private final CommentMapper commentMapper;
 
     @Override
     @Transactional
@@ -47,7 +48,7 @@ public class FeedCommentServiceImpl implements FeedCommentService{
         Long userId = userService.getCurrentUserId();
         User user = userService.getUser(userId);
 
-        Comment comment = CommentMapper.toEntity(feed, user, request);
+        Comment comment = commentMapper.toEntity(feed, user, request);
         Comment savedComment = commentRepository.save(comment);
 
         feed.increaseCommentCount();
@@ -65,7 +66,7 @@ public class FeedCommentServiceImpl implements FeedCommentService{
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<Comment> commentPage = commentRepository.findByFeedIdAndDeletedFalse(feedId, pageable);
 
-        return CommentMapper.toListResponse(commentPage);
+        return commentMapper.toListResponse(commentPage);
     }
 
     @Override
