@@ -5,6 +5,7 @@ import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceMemoRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceStartTimeRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceUpdateRequest;
+import backend.yourtrip.domain.mycourse.dto.response.CourseForkResponse;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
@@ -235,6 +236,22 @@ public interface MyCourseControllerSpec {
                         """
                 )
             )
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "소유하지 않은 코스에 접근할 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "timestamp": "2025-11-10T11:00:00",
+                          "code": "NOT_OWNED_COURSE",
+                          "message": "해당 코스에 대한 접근 권한이 없습니다."
+                        }
+                        """
+                )
+            )
         )
     })
     MyCourseDetailResponse getMyCourse(@Schema(example = "1") Long courseId);
@@ -328,6 +345,22 @@ public interface MyCourseControllerSpec {
                     )
                 }
             )
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "소유하지 않은 코스에 접근할 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "timestamp": "2025-11-10T11:00:00",
+                          "code": "NOT_OWNED_COURSE",
+                          "message": "해당 코스에 대한 접근 권한이 없습니다."
+                        }
+                        """
+                )
+            )
         )
     })
     DayScheduleResponse getDaySchedule(@Schema(example = "1") Long courseId,
@@ -411,6 +444,22 @@ public interface MyCourseControllerSpec {
                           "timestamp": "2025-11-10T11:00:00",
                           "code": "DAY_SCHEDULE_NOT_FOUND",
                           "message": "해당 일차 일정을 찾을 수 없습니다."
+                        }
+                        """
+                )
+            )
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "소유하지 않은 코스에 접근할 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "timestamp": "2025-11-10T11:00:00",
+                          "code": "NOT_OWNED_COURSE",
+                          "message": "해당 코스에 대한 접근 권한이 없습니다."
                         }
                         """
                 )
@@ -520,6 +569,22 @@ public interface MyCourseControllerSpec {
                     )
                 }
             )
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "소유하지 않은 코스에 접근할 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "timestamp": "2025-11-10T11:00:00",
+                          "code": "NOT_OWNED_COURSE",
+                          "message": "해당 코스에 대한 접근 권한이 없습니다."
+                        }
+                        """
+                )
+            )
         )
     })
     PlaceUpdateResponse updatePlace(
@@ -587,6 +652,22 @@ public interface MyCourseControllerSpec {
                             """
                     )
                 }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "소유하지 않은 코스에 접근할 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "timestamp": "2025-11-10T11:00:00",
+                          "code": "NOT_OWNED_COURSE",
+                          "message": "해당 코스에 대한 접근 권한이 없습니다."
+                        }
+                        """
+                )
             )
         )
     })
@@ -688,6 +769,22 @@ public interface MyCourseControllerSpec {
                     )
                 }
             )
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "소유하지 않은 코스에 접근할 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "timestamp": "2025-11-10T11:00:00",
+                          "code": "NOT_OWNED_COURSE",
+                          "message": "해당 코스에 대한 접근 권한이 없습니다."
+                        }
+                        """
+                )
+            )
         )
     })
     PlaceStartTimeUpdateResponse updatePlaceTime(
@@ -768,6 +865,22 @@ public interface MyCourseControllerSpec {
                             """
                     )
                 }
+            )
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "소유하지 않은 코스에 접근할 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "timestamp": "2025-11-10T11:00:00",
+                          "code": "NOT_OWNED_COURSE",
+                          "message": "해당 코스에 대한 접근 권한이 없습니다."
+                        }
+                        """
+                )
             )
         )
     })
@@ -872,6 +985,22 @@ public interface MyCourseControllerSpec {
                         """
                 )
             )
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "소유하지 않은 코스에 접근할 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "timestamp": "2025-11-10T11:00:00",
+                          "code": "NOT_OWNED_COURSE",
+                          "message": "해당 코스에 대한 접근 권한이 없습니다."
+                        }
+                        """
+                )
+            )
         )
     })
     PlaceImageCreateResponse addPlaceImage(
@@ -968,6 +1097,22 @@ public interface MyCourseControllerSpec {
                         """
                 )
             )
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "소유하지 않은 코스에 접근할 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "timestamp": "2025-11-10T11:00:00",
+                          "code": "NOT_OWNED_COURSE",
+                          "message": "해당 코스에 대한 접근 권한이 없습니다."
+                        }
+                        """
+                )
+            )
         )
     })
     void deletePlaceImage(
@@ -976,4 +1121,19 @@ public interface MyCourseControllerSpec {
         @Schema(example = "1") Long placeId,
         @Schema(example = "1") Long placeImageId);
 
+
+    @Operation(summary = "코스 fork", description = """
+        ### 설명
+        - 업로드된 다른 사용자의 코스를 내 코스로 포크(fork)합니다
+        - 포크된 코스는 내 코스 목록에서 확인할 수 있으며, 내 코스와 동일하게 수정 및 삭제가 가능합니다.
+        - 경로 변수에 uploadCourseId를 넣어서 해당 코스를 포크합니다.
+        ### 제약조건
+        - 경로 변수
+            - 업로드된 코스 ID(uploadCourseId): 존재하는 업로드된 코스여야 함
+        ### ⚠ 예외상황
+        - `UPLOADED_COURSE_NOT_FOUND(404)`: 업로드된 코스가 존재하지 않는 경우 (잘못된 uploadCourseId가 주어진 경우)
+        - `CANNOT_FORK_OWNED_COURSE(400)`: 자신이 업로드한 코스는 포크할 수 없습니다.
+        """
+    )
+    CourseForkResponse forkCourse(@Schema(example = "1") Long uploadCourseId);
 }

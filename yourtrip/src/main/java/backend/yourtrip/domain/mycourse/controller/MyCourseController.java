@@ -5,6 +5,7 @@ import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceMemoRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceStartTimeRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceUpdateRequest;
+import backend.yourtrip.domain.mycourse.dto.response.CourseForkResponse;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseDetailResponse;
@@ -174,6 +175,15 @@ public class MyCourseController implements MyCourseControllerSpec {
         @PathVariable Long imageId
     ) {
         myCourseService.deletePlaceImage(courseId, dayId, placeId, imageId);
+    }
+
+    // ========================================================
+    // 업로드 코스 → 나의 코스 복사 (코스 포크)
+    // ========================================================
+    @PostMapping("/fork/upload-courses/{uploadCourseId}")
+    @ResponseStatus(HttpStatus.CREATED)
+    public CourseForkResponse forkCourse(@PathVariable Long uploadCourseId) {
+        return myCourseService.forkCourse(uploadCourseId);
     }
 
 }

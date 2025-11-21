@@ -26,7 +26,9 @@ public interface CourseParticipantRepository extends JpaRepository<CoursePartici
             WHERE p.user.id = :userId
                 AND p.course.id = :courseId
         """)
-    Optional<CourseRole> findRole(Long userId, Long courseId);
+    Optional<CourseRole> findRole(@Param("userId") Long userId, @Param("courseId") Long courseId);
+
+    boolean existsByUser_IdAndCourse_Id(Long userId, Long courseId);
 
 
 }

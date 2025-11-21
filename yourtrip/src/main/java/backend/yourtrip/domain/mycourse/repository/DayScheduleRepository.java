@@ -37,6 +37,7 @@ public interface DayScheduleRepository extends JpaRepository<DaySchedule, Long> 
         where ds.id = :dayId
             and ds.course.id = :courseId
         order by p.id
+                
         """)
     Optional<DaySchedule> findByIdWithPlaces(@Param("courseId") Long courseId,
         @Param("dayId") Long daId);

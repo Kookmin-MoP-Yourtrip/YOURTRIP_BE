@@ -60,6 +60,8 @@ public class UploadCourse extends BaseEntity {
 
     private String location;
 
+    private int forkCount;
+
     @Builder
     public UploadCourse(String title, String introduction, String thumbnailImageS3Key,
         MyCourse myCourse, User user, String location) {
@@ -74,6 +76,10 @@ public class UploadCourse extends BaseEntity {
 
     public void increaseViewCount() {
         this.viewCount += 1;
+    }
+
+    public void increaseForkCount() {
+        this.forkCount += 1;
     }
 
 }

@@ -1,6 +1,6 @@
 package backend.yourtrip.domain.uploadcourse.service;
 
-import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
+import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import backend.yourtrip.domain.mycourse.service.MyCourseService;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
@@ -48,7 +48,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         MultipartFile thumbnailImage) {
         MyCourse myCourse = myCourseService.getMyCourseById(request.myCourseId());
 
-        // 연동된 나의 코스가 이미 업로드됐을 때 예외 throw
+        // 나의 코스가 이미 업로드됐을 때 예외 throw
         uploadCourseRepository.findByMyCourse(myCourse)
             .ifPresent(existing -> {
                 throw new BusinessException(UploadCourseErrorCode.COURSE_ALREADY_UPLOAD);
@@ -73,67 +73,75 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             savedUploadCourse.getKeywords().add(new CourseKeyword(savedUploadCourse, keyword));
         }
 
-        return new UploadCourseCreateResponse(savedUploadCourse.getId(), "코스 업로드 완료");
-    }
+        List<DayScheduleResponse> daySchedules = myCourseService.getAllDaySchedulesByCourse(
+            myCourse.getId());
 
-    @Override
-    @Transactional
-    public UploadCourseDetailResponse getDetail(Long uploadCourseId) {
-        UploadCourse uploadCourse = uploadCourseRepository.findUploadCourseWithMyCourseAndUserAndKeywords(
-                uploadCourseId)
-            .orElseThrow(
-                () -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
-
-        List<DaySchedule> daySchedules = myCourseService.getDaySchedulesWithPlaces(
-            uploadCourse.getMyCourse().getId());
-
-        uploadCourse.increaseViewCount(); //조회 수 증가
-
-        getThumbnailAndProfileUrl urls = getGetThumbnailAndProfileUrl(
-            uploadCourse);
-
-        return UploadCourseMapper.toDetailResponse(uploadCourse, daySchedules, urls.thumbnailUrl,
-            urls.profileUrl);
+        return UploadCourseMapper.toCreateResponse(savedUploadCourse, myCourse, daySchedules);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public UploadCourseListResponse getAllList(UploadCourseSortType sortType) {
+    public UploadCourseDetailResponse getDetail(Long uploadCourseId) {
+        UploadCourse uploadCourse = uploadCourseRepository.findWithMyCourseAndKeywords(
+                uploadCourseId)
+            .orElseThrow(
+                () -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
+
+        uploadCourse.increaseViewCount(); //조회 수 증가
+
+        List<DayScheduleResponse> daySchedules = myCourseService.getAllDaySchedulesByCourse(
+            uploadCourse.getMyCourse().getId());
+
+        return UploadCourseMapper.toDetailResponse(uploadCourse, getGetThumbnailUrl(
+            uploadCourse), daySchedules);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UploadCourseListResponse getAllForSearch(String keyword, List<KeywordType> tags,
+        UploadCourseSortType sortType) {
+        String pattern = (keyword == null || keyword.isBlank())
+            ? null
+            : "%" + keyword + "%";
+
         List<UploadCourse> uploadCourses = switch (sortType) {
-            case NEW -> uploadCourseRepository.findAllWithUserOrerByCreatedAtDesc();
-            case POPULAR -> uploadCourseRepository.findAllWithUserOrderByViewCountDesc();
-//            default -> throw new BusinessException(UploadCourseErrorCode.INVALID_SORT_TYPE);
+            case NEW -> uploadCourseRepository.findAllByKeywordsOrderByCreatedAtDesc(pattern, tags);
+            case POPULAR ->
+                uploadCourseRepository.findAllByKeywordsOrderByViewCountDesc(pattern, tags);
         };
 
         return new UploadCourseListResponse(uploadCourses.stream()
-            .map(uploadCourse -> {
-                getThumbnailAndProfileUrl urls = getGetThumbnailAndProfileUrl(uploadCourse);
-
-                return UploadCourseMapper.toListItemResponse(uploadCourse, urls.thumbnailUrl,
-                    urls.profileUrl);
-            })
+            .map(uploadCourse ->
+                UploadCourseMapper.toListItemResponse(uploadCourse,
+                    getGetThumbnailUrl(uploadCourse))
+            )
             .toList()
         );
     }
 
-    private record getThumbnailAndProfileUrl(String thumbnailUrl, String profileUrl) {
+    @Override
+    @Transactional(readOnly = true)
+    public UploadCourseListResponse getMyUploadCourses() {
+        Long userId = userService.getCurrentUserId();
+        List<UploadCourse> uploadCourses = uploadCourseRepository.findAllByUserIdOrderByCreatedAtDesc(
+            userId);
 
+        return new UploadCourseListResponse(uploadCourses.stream()
+            .map(uploadCourse ->
+                UploadCourseMapper.toListItemResponse(uploadCourse,
+                    getGetThumbnailUrl(uploadCourse))
+            )
+            .toList()
+        );
     }
 
-    private getThumbnailAndProfileUrl getGetThumbnailAndProfileUrl(UploadCourse uploadCourse) {
+    private String getGetThumbnailUrl(UploadCourse uploadCourse) {
         String thumbnailUrl = null;
         if (uploadCourse.getThumbnailImageS3Key() != null) {
             thumbnailUrl = s3Service.getPresignedUrl(
                 uploadCourse.getThumbnailImageS3Key());//썸네일 프리사인드 URL 생성
         }
-
-        String profileUrl = null;
-        if (uploadCourse.getUser().getProfileImageS3Key() != null) {
-            profileUrl = s3Service.getPresignedUrl(
-                uploadCourse.getUser().getProfileImageS3Key());
-        }
-
-        return new getThumbnailAndProfileUrl(thumbnailUrl, profileUrl);
+        return thumbnailUrl;
     }
 
 }

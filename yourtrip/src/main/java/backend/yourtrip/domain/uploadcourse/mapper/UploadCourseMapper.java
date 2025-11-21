@@ -1,12 +1,12 @@
 package backend.yourtrip.domain.uploadcourse.mapper;
 
-import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
+import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
+import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListItemResponse;
-import backend.yourtrip.domain.uploadcourse.entity.CourseKeyword;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.domain.user.entity.User;
@@ -40,42 +40,53 @@ public class UploadCourseMapper {
     }
 
     public static UploadCourseDetailResponse toDetailResponse(UploadCourse uploadCourse,
-        List<DaySchedule> daySchedules, String presignedUrl, String profileUrl) {
+        String thumbnailUrl, List<DayScheduleResponse> daySchedules) {
         return UploadCourseDetailResponse.builder()
             .uploadCourseId(uploadCourse.getId())
             .title(uploadCourse.getTitle())
             .introduction(uploadCourse.getIntroduction())
-            .thumbnailImageUrl(presignedUrl)
+            .thumbnailImageUrl(thumbnailUrl)
             .keywords(uploadCourse.getKeywords().stream()
-                .map(CourseKeyword::getKeywordType)
+                .map(courseKeyword -> courseKeyword.getKeywordType().getLabel())
                 .toList()
             )
             .location(uploadCourse.getLocation())
-            .heartCount(uploadCourse.getHeartCount())
-            .commentCount(uploadCourse.getCommentCount())
-            .viewCount(uploadCourse.getViewCount())
-            .createdAt(uploadCourse.getCreatedAt())
-            .writerId(uploadCourse.getUser().getId())
-            .writerNickname(uploadCourse.getUser().getNickname())
-            .writerProfileUrl(profileUrl)
-//            .daySchedules(DayScheduleMapper.toListResponse(daySchedules))
+            .startDate(uploadCourse.getMyCourse().getStartDate())
+            .endDate(uploadCourse.getMyCourse().getEndDate())
+            .forkCount(uploadCourse.getForkCount())
+            .daySchedules(daySchedules)
             .build();
     }
 
     public static UploadCourseListItemResponse toListItemResponse(UploadCourse uploadCourse,
-        String thumbnailUrl, String profileUrl) {
+        String thumbnailUrl) {
         return UploadCourseListItemResponse.builder()
             .uploadCourseId(uploadCourse.getId())
             .title(uploadCourse.getTitle())
             .location(uploadCourse.getLocation())
             .thumbnailImageUrl(thumbnailUrl)
-            .heartCount(uploadCourse.getHeartCount())
-            .commentCount(uploadCourse.getCommentCount())
-            .viewCount(uploadCourse.getViewCount())
-            .writerId(uploadCourse.getUser().getId())
-            .writerNickname(uploadCourse.getUser().getNickname())
-            .writerProfileUrl(profileUrl)
-            .createdAt(uploadCourse.getCreatedAt())
+            .forkCount(uploadCourse.getForkCount())
+            .keywords(uploadCourse.getKeywords().stream()
+                .map(courseKeyword -> courseKeyword.getKeywordType().getLabel())
+                .toList()
+            )
+            .build();
+    }
+
+    public static UploadCourseCreateResponse toCreateResponse(UploadCourse uploadCourse,
+        MyCourse myCourse, List<DayScheduleResponse> daySchedules) {
+        return UploadCourseCreateResponse.builder()
+            .uploadCourseId(uploadCourse.getId())
+            .title(uploadCourse.getTitle())
+            .introduction(uploadCourse.getIntroduction())
+            .location(myCourse.getLocation())
+            .startDate(myCourse.getStartDate())
+            .endDate(myCourse.getEndDate())
+            .keywords(uploadCourse.getKeywords().stream()
+                .map(courseKeyword -> courseKeyword.getKeywordType().getLabel())
+                .toList()
+            )
+            .daySchedules(daySchedules)
             .build();
     }
 }
