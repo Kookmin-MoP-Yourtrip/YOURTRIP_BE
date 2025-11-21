@@ -41,12 +41,53 @@ public interface FeedControllerSpec {
           - 미디어 파일(mediaFiles): 필수, 최소 1개 이상
           - 지원 파일 형식: png, jpeg, jpg, webp, mp4, mov, webm
 
-          ### Swagger 사용법
-          - mediaFiles: 파일 선택 버튼으로 여러 이미지/영상 선택 가능 (다중 선택)
-          - request: JSON 형식으로 피드 정보 입력
+          ### FormData 전송 구조
+          **중요: 반드시 아래 key 이름을 정확히 맞춰서 전송해야 합니다**
+
+          ```javascript
+          const formData = new FormData();
+
+          // 1. mediaFiles: 이미지/영상 파일 (필수, 다중 가능)
+          formData.append('mediaFiles', file1);  // File 객체
+          formData.append('mediaFiles', file2);  // 여러 파일 추가 가능
+
+          // 2. request: JSON 데이터 (Blob으로 변환 필요)
+          const requestData = {
+            title: "제주도 여행",
+            location: "제주도",
+            content: "정말 좋았어요!",
+            hashtags: ["제주도", "여행", "바다"],
+            uploadCourseId: 1  // 선택사항
+          };
+
+          formData.append('request', new Blob(
+            [JSON.stringify(requestData)],
+            { type: 'application/json' }
+          ));
+
+          // 3. 전송
+          fetch('/api/feeds', {
+            method: 'POST',
+            body: formData
+          });
+          ```
+
+          ### Swagger UI 사용법
+          1. **mediaFiles**: "파일 선택" 버튼으로 이미지/영상 선택 (다중 선택 가능)
+          2. **request**: 아래 JSON 형식으로 입력
+             ```json
+             {
+               "title": "제주도 여행",
+               "location": "제주도",
+               "content": "정말 좋았어요!",
+               "hashtags": ["제주도", "여행"],
+               "uploadCourseId": 1
+             }
+             ```
 
           ### ⚠ 예외상황
-          - `INVALID_REQUEST_FIELD(400)`: 필드 유효성 오류(필수값 누락, 파일 형식  오류 등)
+          - `INVALID_REQUEST_FIELD(400)`: 필드 유효성 오류(필수값 누락, 파일 형식 오류 등)
+          - `FAIL_UPLOAD_FILE(503)`: 파일 업로드 실패
           """
     )
     @ApiResponses({
@@ -441,10 +482,60 @@ public interface FeedControllerSpec {
               - mediaFiles: 선택, 새로운 파일을 업로드하면 기존 미디어가 모두 삭제 되고 새로운 미디어로 교체됩니다.
               - mediaFiles를 보내지 않으면 기존 미디어가 유지됩니다.
 
+          ### FormData 전송 구조
+          **중요: 반드시 아래 key 이름을 정확히 맞춰서 전송해야 합니다**
+
+          ```javascript
+          const formData = new FormData();
+
+          // 1. mediaFiles: 이미지/영상 파일 (선택사항)
+          // 주의: 새 파일을 추가하면 기존 미디어가 모두 삭제되고 교체됩니다
+          // 주의: 미디어를 유지하려면 mediaFiles를 전송하지 마세요
+          formData.append('mediaFiles', newFile1);
+          formData.append('mediaFiles', newFile2);
+
+          // 2. request: JSON 데이터 (필수)
+          const requestData = {
+            title: "수정된 제목",
+            location: "수정된 위치",
+            content: "수정된 내용",
+            hashtags: ["새태그"],
+            uploadCourseId: null  // null 가능
+          };
+
+          formData.append('request', new Blob(
+            [JSON.stringify(requestData)],
+            { type: 'application/json' }
+          ));
+
+          // 3. 전송
+          fetch('/api/feeds/{feedId}', {
+            method: 'PUT',
+            body: formData
+          });
+          ```
+
+          ### Swagger UI 사용법
+          1. **mediaFiles**: 새 미디어로 교체하려면 파일 선택 (선택사항)
+             - 선택하지 않으면 기존 미디어 유지
+             - 선택하면 기존 미디어 전체 삭제 후 새 미디어로 교체
+          2. **request**: 수정할 정보를 JSON 형식으로 입력
+             ```json
+             {
+               "title": "수정된 제목",
+               "location": "수정된 위치",
+               "content": "수정된 내용",
+               "hashtags": ["새태그"],
+               "uploadCourseId": 1
+             }
+             ```
+
           ### ⚠ 예외상황
           - `FEED_NOT_FOUND(404)`: 피드가 존재하지 않는 경우
-          - `INVALID_REQUEST_FIELD(400)`: 필드 유효성 오류
-          - `UNAUTHORIZED(403)`: 본인의 피드가 아닌 경우 수정 불가
+          - `FEED_UPDATE_NOT_AUTHORIZED(403)`: 본인의 피드가 아닌 경우 수정 불가
+          - `UPLOAD_COURSE_NOT_FOUND(404)`: 업로드 코스를 찾을 수 없음
+          - `UPLOAD_COURSE_FORBIDDEN(403)`: 업로드 코스 권한 없음
+          - `FAIL_UPLOAD_FILE(503)`: 파일 업로드 실패
           """
     )
     @ApiResponses({

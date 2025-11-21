@@ -17,8 +17,10 @@ import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.FeedErrorCode;
 import backend.yourtrip.global.exception.errorCode.FeedResponseCode;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
+import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.s3.service.S3Service;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +30,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FeedServiceImpl implements FeedService {
@@ -59,7 +62,7 @@ public class FeedServiceImpl implements FeedService {
         if (request.uploadCourseId() != null) {
 
             uploadCourse = uploadCourseRepository.findById(request.uploadCourseId())
-                    .orElseThrow(() -> new BusinessException(FeedErrorCode.UPLOAD_COURSE_NOT_FOUND));
+                    .orElseThrow(() -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
 
             if (!uploadCourse.getUser().getId().equals(userId)) {
                 throw new BusinessException(FeedErrorCode.UPLOAD_COURSE_FORBIDDEN);
@@ -207,12 +210,12 @@ public class FeedServiceImpl implements FeedService {
         }
 
         if (mediaFiles != null) {
-            // 기존 미디어 삭제 (S3에서도 삭제)
             for (FeedMedia media : feed.getMediaList()) {
                 try {
                     s3Service.deleteFile(media.getMediaS3Key());
                 } catch (Exception e) {
-                    // 로그 남기고 계속 진행
+                    log.warn("S3 파일 삭제 실패 - feedId: {}, mediaId: {}, s3Key: {}, error: {}",
+                            feed.getId(), media.getId(), media.getMediaS3Key(), e.getMessage(), e);
                 }
             }
 

@@ -43,6 +43,7 @@ public class Feed extends BaseEntity {
     private List<Hashtag> hashtags = new ArrayList<>();
 
     @OneToMany(mappedBy = "feed", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("displayOrder ASC")
     private List<FeedMedia> mediaList = new ArrayList<>();
 
     @Column(name = "commentCount", nullable = false, columnDefinition = "int default 0")
