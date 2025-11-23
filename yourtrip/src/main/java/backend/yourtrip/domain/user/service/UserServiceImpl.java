@@ -13,15 +13,6 @@ import backend.yourtrip.global.exception.errorCode.UserErrorCode;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
 import backend.yourtrip.global.mail.service.MailService;
 import backend.yourtrip.global.s3.service.S3Service;
-import java.io.IOException;
-import java.time.LocalDateTime;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-
 import backend.yourtrip.global.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -29,6 +20,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @RequiredArgsConstructor
 @Service
@@ -39,6 +35,7 @@ public class UserServiceImpl implements UserService {
 
     private final JwtTokenProvider jwtTokenProvider;
     private final MailService mailService;
+    private final S3Service s3Service;
 
     private final Map<String, String> verificationCodes = new ConcurrentHashMap<>();
     private final Map<String, LocalDateTime> codeExpiry = new ConcurrentHashMap<>();
@@ -46,7 +43,6 @@ public class UserServiceImpl implements UserService {
     private final Map<String, String> tempPasswords = new ConcurrentHashMap<>();
 
     private static final int CODE_EXPIRY_MINUTES = 5;
-    private final S3Service s3Service;
 
     @Override
     public void sendVerificationCode(String email) {
@@ -61,9 +57,6 @@ public class UserServiceImpl implements UserService {
         mailService.sendVerificationMail(email, code);
 
         System.out.println("[인증번호 전송 완료] " + email);
-//        verificationCodes.put(email, "123");
-//        codeExpiry.put(email, LocalDateTime.now().plusMinutes(CODE_EXPIRY_MINUTES));
-
     }
 
     @Override
@@ -98,7 +91,6 @@ public class UserServiceImpl implements UserService {
 
         String encoded = passwordEncoder.encode(password);
         tempPasswords.put(email, encoded);
-        System.out.println("[비밀번호 임시 저장 완료] " + email);
     }
 
     @Transactional
@@ -119,6 +111,7 @@ public class UserServiceImpl implements UserService {
         }
 
         String profileImageS3Key;
+
         if (profileImage != null) {
             try {
                 profileImageS3Key = s3Service.uploadFile(profileImage).key();
@@ -145,10 +138,9 @@ public class UserServiceImpl implements UserService {
         verificationCodes.remove(email);
         codeExpiry.remove(email);
 
-        System.out.println("[회원가입 완료] " + user.getEmail());
+        String presigned = s3Service.getPresignedUrl(user.getProfileImageS3Key());
 
-        String profileUrl = s3Service.getPresignedUrl(user.getProfileImageS3Key());
-        return UserMapper.toSignupResponse(user, profileUrl);
+        return UserMapper.toSignupResponse(user, presigned);
     }
 
     @Transactional
@@ -164,7 +156,7 @@ public class UserServiceImpl implements UserService {
         String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail());
         String refreshToken = jwtTokenProvider.createRefreshToken(user.getId(), user.getEmail());
 
-        user = user.toBuilder().refreshToken(refreshToken).build();
+        user = user.withRefreshToken(refreshToken);
         userRepository.save(user);
 
         return new UserLoginResponse(user.getId(), user.getNickname(), accessToken);
@@ -173,6 +165,7 @@ public class UserServiceImpl implements UserService {
     @Transactional(readOnly = true)
     @Override
     public UserLoginResponse refresh(String refreshToken) {
+
         if (!jwtTokenProvider.validateToken(refreshToken)) {
             throw new BusinessException(UserErrorCode.INVALID_REFRESH_TOKEN);
         }
@@ -189,6 +182,7 @@ public class UserServiceImpl implements UserService {
         }
 
         String newAccessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail());
+
         return new UserLoginResponse(user.getId(), user.getNickname(), newAccessToken);
     }
 
@@ -202,9 +196,9 @@ public class UserServiceImpl implements UserService {
     @Override
     public Long getCurrentUserId() {
         Object principal = SecurityContextHolder.getContext()
-                .getAuthentication() != null
-                ? SecurityContextHolder.getContext().getAuthentication().getPrincipal()
-                : null;
+            .getAuthentication() != null
+            ? SecurityContextHolder.getContext().getAuthentication().getPrincipal()
+            : null;
 
         if (principal instanceof CustomUserDetails userDetails) {
             return userDetails.getUserId();
@@ -212,34 +206,20 @@ public class UserServiceImpl implements UserService {
         throw new BusinessException(UserErrorCode.USER_NOT_FOUND);
     }
 
-    // =========================================================
-    // 비밀번호 찾기 1단계 - 이메일로 인증번호 발송
-    // =========================================================
     @Override
     public void findPasswordSendEmail(String email) {
-
-        // 가입된 이메일인지 체크
-        User user = userRepository.findByEmail(email)
+        userRepository.findByEmail(email)
             .orElseThrow(() -> new BusinessException(UserErrorCode.EMAIL_NOT_FOUND));
 
-        // 인증번호 생성
         String code = String.format("%06d", new Random().nextInt(1_000_000));
-
         verificationCodes.put(email, code);
         codeExpiry.put(email, LocalDateTime.now().plusMinutes(CODE_EXPIRY_MINUTES));
 
-        // 메일 발송
         mailService.sendVerificationMail(email, code);
-
-        System.out.println("[비밀번호 찾기 인증번호 발송 완료] " + email + " / code=" + code);
     }
 
-    // =========================================================
-    // 비밀번호 찾기 2단계 - 인증번호 검증
-    // =========================================================
     @Override
     public void findPasswordVerify(String email, String code) {
-
         String stored = verificationCodes.get(email);
         LocalDateTime expiry = codeExpiry.get(email);
 
@@ -255,19 +235,12 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(UserErrorCode.INVALID_VERIFICATION_CODE);
         }
 
-        // 비밀번호 재설정 플로우에서도 verifiedEmails 사용
         verifiedEmails.add(email);
-
-        System.out.println("[비밀번호 찾기 이메일 인증 완료] " + email);
     }
 
-    // =========================================================
-    // 비밀번호 찾기 3단계 - 비밀번호 재설정
-    // =========================================================
     @Override
     public void resetPassword(String email, String newPassword) {
 
-        // 인증 이메일인지 확인
         if (!verifiedEmails.contains(email)) {
             throw new BusinessException(UserErrorCode.EMAIL_NOT_VERIFIED);
         }
@@ -275,21 +248,16 @@ public class UserServiceImpl implements UserService {
         User user = userRepository.findByEmail(email)
             .orElseThrow(() -> new BusinessException(UserErrorCode.EMAIL_NOT_FOUND));
 
-        // 비밀번호 검증
         if (newPassword == null || newPassword.isBlank() || newPassword.length() < 8) {
             throw new BusinessException(UserErrorCode.INVALID_REQUEST_FIELD);
         }
 
-        // 업데이트
         String encoded = passwordEncoder.encode(newPassword);
-        user = user.toBuilder().password(encoded).build();
+        user = user.withPassword(encoded);
         userRepository.save(user);
 
-        // 메모리 데이터 정리
         verificationCodes.remove(email);
         codeExpiry.remove(email);
         verifiedEmails.remove(email);
-
-        System.out.println("[비밀번호 재설정 완료] " + email);
     }
 }

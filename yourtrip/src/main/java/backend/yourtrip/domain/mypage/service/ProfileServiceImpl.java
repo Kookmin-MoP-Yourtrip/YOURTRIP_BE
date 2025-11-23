@@ -14,7 +14,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
-
 import java.io.IOException;
 
 @Service
@@ -32,17 +31,18 @@ public class ProfileServiceImpl implements ProfileService {
         Long userId = userService.getCurrentUserId();
         User user = userService.getUser(userId);
 
+        String url = s3Service.getPresignedUrl(user.getProfileImageS3Key());
+
         return new ProfileResponse(
             user.getEmail(),
             user.getNickname(),
-            user.getProfileImageUrl()
+            url
         );
     }
 
     @Override
     @Transactional
     public ProfileImageResponse updateProfileImage(MultipartFile file) {
-
         if (file == null || file.isEmpty()) {
             throw new BusinessException(MypageErrorCode.INVALID_PROFILE_IMAGE);
         }
@@ -50,16 +50,18 @@ public class ProfileServiceImpl implements ProfileService {
         Long userId = userService.getCurrentUserId();
         User user = userService.getUser(userId);
 
-        String uploadedUrl;
         try {
-            uploadedUrl = s3Service.uploadFile(file).url();
+            String key = s3Service.uploadFile(file).key();
+
+            user = user.withProfileImage(key);
+            userRepository.save(user);
+
+            String presigned = s3Service.getPresignedUrl(key);
+            return new ProfileImageResponse(presigned);
+
         } catch (IOException e) {
             throw new BusinessException(MypageErrorCode.PROFILE_IMAGE_UPLOAD_FAILED);
         }
-
-        user.updateProfileImage(uploadedUrl);
-
-        return new ProfileImageResponse(uploadedUrl);
     }
 
     @Override
@@ -77,13 +79,13 @@ public class ProfileServiceImpl implements ProfileService {
         Long userId = userService.getCurrentUserId();
         User user = userService.getUser(userId);
 
-        user.updateNickname(nickname);
+        user = user.withNickname(nickname);
+        userRepository.save(user);
     }
 
     @Override
     @Transactional
     public void changePassword(PasswordChangeRequest request) {
-
         Long userId = userService.getCurrentUserId();
         User user = userService.getUser(userId);
 
@@ -95,12 +97,14 @@ public class ProfileServiceImpl implements ProfileService {
             throw new BusinessException(MypageErrorCode.NEW_PASSWORD_INVALID);
         }
 
-        user.updatePassword(passwordEncoder.encode(request.newPassword()));
+        user = user.withPassword(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
     }
 
     @Override
     @Transactional
     public void deleteUser() {
+
         Long userId = userService.getCurrentUserId();
         User user = userService.getUser(userId);
 
@@ -108,6 +112,7 @@ public class ProfileServiceImpl implements ProfileService {
             throw new BusinessException(MypageErrorCode.ALREADY_DELETED_USER);
         }
 
-        user.deleteUser();
+        user = user.withDeleted();
+        userRepository.save(user);
     }
 }

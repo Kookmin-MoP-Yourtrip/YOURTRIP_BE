@@ -48,27 +48,37 @@ public class User extends BaseEntity {
     @Column(unique = true)
     private String socialId;
 
+    public User withRefreshToken(String refreshToken) {
+        return this.toBuilder()
+            .refreshToken(refreshToken)
+            .build();
+    }
+
+    public User withProfileImage(String s3Key) {
+        return this.toBuilder()
+            .profileImageS3Key(s3Key)
+            .build();
+    }
+
+    public User withNickname(String nickname) {
+        return this.toBuilder()
+            .nickname(nickname)
+            .build();
+    }
+
+    public User withPassword(String encodedPassword) {
+        return this.toBuilder()
+            .password(encodedPassword)
+            .build();
+    }
+
+    public User withDeleted() {
+        return this.toBuilder()
+            .deleted(true)
+            .build();
+    }
+
     public String getProfileImageUrl() {
         return this.profileImageS3Key;
-    }
-
-    /** 프로필 이미지 URL 변경 */
-    public void updateProfileImage(String profileUrl) {
-        this.profileImageS3Key = profileUrl;
-    }
-
-    /** 닉네임 변경 */
-    public void updateNickname(String nickname) {
-        this.nickname = nickname;
-    }
-
-    /** 비밀번호 변경 */
-    public void updatePassword(String encodedPassword) {
-        this.password = encodedPassword;
-    }
-
-    /** Soft delete 처리 */
-    public void deleteUser() {
-        this.deleted = true;
     }
 }
