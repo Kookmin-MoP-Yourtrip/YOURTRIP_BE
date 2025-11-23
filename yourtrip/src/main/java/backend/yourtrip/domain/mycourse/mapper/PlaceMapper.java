@@ -87,7 +87,7 @@ public class PlaceMapper {
         return Place.builder()
             .name(placeDto.placeName())
             .startTime(placeDto.startTime())
-            .placeLocation(placeDto.placeLocation())
+            .placeLocation(placeDto.placeLocation()) //TODO: 카카오가 준 placeLocation으로 변경 필요
             .memo(placeDto.memo())
             .daySchedule(daySchedule)
             .build();
