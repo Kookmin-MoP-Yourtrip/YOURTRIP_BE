@@ -15,7 +15,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.multipart.MultipartFile;
-
 import java.util.List;
 
 @Tag(name = "Feed API", description = "피드 관련 API")
@@ -29,13 +28,12 @@ public interface FeedControllerSpec {
             description = """
           ### 설명
           - 새로운 피드를 생성합니다.
-          - 제목, 위치, 내용, 해시태그, 업로드할 코스 ID, 미디어 파일을 입력받습니 다.
+          - 위치, 내용, 미디어 파일을 입력받습니다.
           - 미디어 파일은 최소 1개 이상 필수로 업로드해야 합니다.
 
           ### 제약조건
-          - 제목(title): 필수 입력
-          - 위치(location): 필수 입력
-          - 내용(content): 필수 입력
+          - 위치(location): 선택
+          - 내용(content): 선택
           - 해시태그(hashtags): 선택 (빈 배열 가능)
           - 업로드 코스 ID(uploadCourseId): 선택
           - 미디어 파일(mediaFiles): 필수, 최소 1개 이상

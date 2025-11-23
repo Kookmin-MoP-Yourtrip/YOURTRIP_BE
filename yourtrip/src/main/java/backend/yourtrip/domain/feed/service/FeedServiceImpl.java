@@ -48,11 +48,8 @@ public class FeedServiceImpl implements FeedService {
     @Transactional
     public FeedCreateResponse saveFeed(FeedCreateRequest request, List<MultipartFile> mediaFiles) {
 
-        if (request.title() == null || request.title().isBlank()) {
-            throw new BusinessException(FeedErrorCode.FEED_TITLE_REQUIRED);
-        }
-        if (request.content() == null || request.content().isBlank()) {
-            throw new BusinessException(FeedErrorCode.FEED_CONTENT_REQUIRED);
+        if (mediaFiles == null || mediaFiles.isEmpty()) {
+            throw new BusinessException(FeedErrorCode.MEDIA_FILES_REQUIRED);
         }
 
         Long userId = userService.getCurrentUserId();
