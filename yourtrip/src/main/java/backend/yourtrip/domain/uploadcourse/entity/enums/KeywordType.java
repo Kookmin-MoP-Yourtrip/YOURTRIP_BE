@@ -73,9 +73,9 @@ public enum KeywordType {
         "budget"
     );
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    public static String buildKeywordsJson(List<KeywordType> selectedKeywords) {
+        ObjectMapper objectMapper = new ObjectMapper();
 
-    public String buildKeywordsJson(List<KeywordType> selectedKeywords) {
         // 선택된 키워드를 빠르게 조회하기 위한 Set 생성
         Set<KeywordType> selectedSet = new HashSet<>(selectedKeywords);
 
