@@ -41,7 +41,10 @@ import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto;
+import backend.yourtrip.global.gemini.dto.GeminiCourseDto.PlaceDto;
 import backend.yourtrip.global.gemini.service.GeminiService;
+import backend.yourtrip.global.kakao.KakaoLocalClient;
+import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
 import backend.yourtrip.global.s3.service.S3Service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -72,6 +75,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final PlaceRepository placeRepository;
     private final PlaceImageRepository placeImageRepository;
     private final UploadCourseRepository uploadCourseRepository;
+    private final KakaoLocalClient kakaoLocalClient;
 
     @Override
     @Transactional
@@ -390,7 +394,7 @@ public class MyCourseServiceImpl implements MyCourseService {
         try {
             courseDto = objectMapper.readValue(json, GeminiCourseDto.class);
         } catch (JsonProcessingException e) {
-            log.error("Gemini에서 받은 JSON 파싱 실패: {}", e.getMessage());
+            log.error("Gemini에서 받은 JSON 파싱 실패: {}", json, e);
             throw new BusinessException(MyCourseErrorCode.JSON_TRANSFORMATION_FAILED);
         }
 
@@ -413,10 +417,32 @@ public class MyCourseServiceImpl implements MyCourseService {
                 Place place = placeRepository.save(
                     PlaceMapper.toEntityFromGeminiDto(placeDto, daySchedule));
 
+                updatePlaceFromKakao(request, placeDto, place);
+
                 daySchedule.getPlaces().add(place);
             }
         }
 
         return new AICourseCreateResponse(myCourse.getId());
+    }
+
+    private void updatePlaceFromKakao(AICourseCreateRequest request, PlaceDto placeDto,
+        Place place) {
+        Document doc = kakaoLocalClient.findBestPlace(placeDto.placeName(),
+            request.location(), placeDto.placeLocation());
+
+        if (doc == null) {
+            return;
+        }
+
+        //카카오 응답 -> 엔티티 필드에 매핑
+        String placeLocation = doc.road_address_name() != null && !doc.road_address_name().isBlank()
+            ? doc.road_address_name()
+            : doc.address_name();
+        String placeUrl = doc.place_url();
+        double longitude = Double.parseDouble(doc.x());
+        double latitude = Double.parseDouble(doc.y());
+
+        place.updateKakaoPlace(placeLocation, placeUrl, latitude, longitude);
     }
 }

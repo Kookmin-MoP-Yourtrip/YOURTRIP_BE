@@ -80,4 +80,12 @@ public class Place extends BaseEntity {
         this.placeUrl = request.placeUrl();
         this.placeLocation = request.placeLocation();
     }
+
+    public void updateKakaoPlace(String placeLocation, String placeUrl, Double latitude,
+        Double longitude) {
+        this.placeLocation = placeLocation;
+        this.placeUrl = placeUrl;
+        this.latitude = latitude;
+        this.longitude = longitude;
+    }
 }
