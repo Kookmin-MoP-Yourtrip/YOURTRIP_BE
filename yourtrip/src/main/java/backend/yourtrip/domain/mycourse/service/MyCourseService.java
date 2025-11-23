@@ -1,8 +1,10 @@
 package backend.yourtrip.domain.mycourse.service;
 
+import backend.yourtrip.domain.mycourse.dto.request.AICourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceUpdateRequest;
+import backend.yourtrip.domain.mycourse.dto.response.AICourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.CourseForkResponse;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
@@ -53,4 +55,6 @@ public interface MyCourseService {
     CourseForkResponse forkCourse(Long uploadCourseId);
 
     List<DayScheduleResponse> getAllDaySchedulesByCourse(Long courseId);
+
+    AICourseCreateResponse createAICourse(AICourseCreateRequest request);
 }

@@ -14,16 +14,16 @@ public class GeminiService {
 
     private final Client geminiClient;
 
-    public String generateTravelCourse(String location, int days, List<KeywordType> keywords) {
+    public String generateAICourse(String location, int days, List<KeywordType> keywords) {
         String prompt = """
              당신은 한국인 여행자를 위한 전문 여행 코스 플래너 AI입니다.
              사용자의 선호도와 여행 정보를 바탕으로, 하루 단위로 잘 쪼개진 동선 최적화 여행 일정을 설계하세요.
-                        
+
              [입력 정보]
              - 여행지(도시/지역): %s
              - 여행 기간(일 수): %d
              - 여행 선호도 키워드(카테고리별 JSON): %s
-                        
+
 
             [여행 선호도 키워드 사용 방법]
             - 제공된 JSON은 다음과 같은 형식을 가집니다.
@@ -45,8 +45,7 @@ public class GeminiService {
               1. 아래 JSON 스키마에 맞게만 응답하고, 자연어 설명 문장은 절대 포함하지 마세요.
 
               {
-                "location": "여행지 테마 (예: 서울 감성 여행)",
-                "title": "여행 코스 제목 (문자열)",
+                "title": "여행지 테마 (예: 서울 감성 여행)",
                 "daySchedules": [
                   {
                     "day": 1,
@@ -87,6 +86,31 @@ public class GeminiService {
             16. "placeLocation"은 가능한 한 실제로 존재할 법한 도로명 주소 또는 지번 주소 형식으로 작성하세요.
                   (예: "서울특별시 종로구 사직로 161" 또는 "경상북도 경주시 황남동 123-1")
                 "placeName"과 "placeLocation"만으로도 지도 검색 API에서 해당 장소를 찾을 수 있도록, 장소 이름과 주소를 구체적으로 작성하세요.
+            17. "memo"를 제외한 모든 필드에는 null 및 빈 문자열이 허용되지 않습니다.
+
+             [출력 형식 예시]
+             {
+               "title": "서울 북촌 한옥마을 산책 투어",
+               "daySchedules": [
+                 {
+                   "day": 1,
+                   "places": [
+                     {
+                       "placeName": "경복궁",
+                       "startTime": "09:30",
+                       "placeLocation": "서울특별시 종로구 사직로 161",
+                       "memo": "조선 왕조의 역사를 느낄 수 있는 대표적인 궁궐입니다."
+                     },
+                     {
+                       "placeName": "북촌 한옥마을",
+                       "startTime": "11:30",
+                       "placeLocation": "서울특별시 종로구 계동길 37",
+                       "memo": "전통 한옥의 아름다움을 감상하며 산책하기 좋은 곳입니다."
+                     }
+                   ]
+                 }
+               ]
+             }
             """.formatted(
             location,
             days,

@@ -1,10 +1,12 @@
 package backend.yourtrip.domain.mycourse.controller;
 
+import backend.yourtrip.domain.mycourse.dto.request.AICourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceMemoRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceStartTimeRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceUpdateRequest;
+import backend.yourtrip.domain.mycourse.dto.response.AICourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.CourseForkResponse;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
@@ -166,6 +168,7 @@ public class MyCourseController implements MyCourseControllerSpec {
     // ==========================
     // 장소 이미지 삭제
     // =========================
+    @Override
     @DeleteMapping("/{courseId}/days/{dayId}/places/{placeId}/images/{imageId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deletePlaceImage(
@@ -180,10 +183,18 @@ public class MyCourseController implements MyCourseControllerSpec {
     // ========================================================
     // 업로드 코스 → 나의 코스 복사 (코스 포크)
     // ========================================================
+    @Override
     @PostMapping("/fork/upload-courses/{uploadCourseId}")
     @ResponseStatus(HttpStatus.CREATED)
     public CourseForkResponse forkCourse(@PathVariable Long uploadCourseId) {
         return myCourseService.forkCourse(uploadCourseId);
+    }
+
+    @PostMapping("/ai")
+    @ResponseStatus(HttpStatus.CREATED)
+    public AICourseCreateResponse createAICourse(
+        @Valid @RequestBody AICourseCreateRequest request) {
+        return myCourseService.createAICourse(request);
     }
 
 }

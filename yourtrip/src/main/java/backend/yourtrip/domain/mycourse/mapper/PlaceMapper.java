@@ -7,6 +7,7 @@ import backend.yourtrip.domain.mycourse.dto.response.PlaceResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.place.Place;
+import backend.yourtrip.global.gemini.dto.GeminiCourseDto.PlaceDto;
 import java.util.List;
 import java.util.Objects;
 import lombok.AccessLevel;
@@ -79,6 +80,16 @@ public class PlaceMapper {
             .longitude(originalPlace.getLongitude())
             .placeUrl(originalPlace.getPlaceUrl())
             .placeLocation(originalPlace.getPlaceLocation())
+            .build();
+    }
+
+    public static Place toEntityFromGeminiDto(PlaceDto placeDto, DaySchedule daySchedule) {
+        return Place.builder()
+            .name(placeDto.placeName())
+            .startTime(placeDto.startTime())
+            .placeLocation(placeDto.placeLocation())
+            .memo(placeDto.memo())
+            .daySchedule(daySchedule)
             .build();
     }
 }

@@ -1,8 +1,10 @@
 package backend.yourtrip.domain.mycourse.service;
 
+import backend.yourtrip.domain.mycourse.dto.request.AICourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceUpdateRequest;
+import backend.yourtrip.domain.mycourse.dto.response.AICourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.CourseForkResponse;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
@@ -19,7 +21,6 @@ import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.myCourse.CourseParticipant;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import backend.yourtrip.domain.mycourse.entity.myCourse.enums.CourseRole;
-import backend.yourtrip.domain.mycourse.entity.myCourse.enums.MyCourseType;
 import backend.yourtrip.domain.mycourse.entity.place.Place;
 import backend.yourtrip.domain.mycourse.entity.place.PlaceImage;
 import backend.yourtrip.domain.mycourse.mapper.CourseParticipantMapper;
@@ -39,7 +40,11 @@ import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
+import backend.yourtrip.global.gemini.dto.GeminiCourseDto;
+import backend.yourtrip.global.gemini.service.GeminiService;
 import backend.yourtrip.global.s3.service.S3Service;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.LocalTime;
 import java.time.Period;
@@ -55,12 +60,16 @@ import org.springframework.web.multipart.MultipartFile;
 @Slf4j
 public class MyCourseServiceImpl implements MyCourseService {
 
+    private final UserService userService;
+    private final S3Service s3Service;
+    private final GeminiService geminiService;
+
+    private final ObjectMapper objectMapper;
+
     private final MyCourseRepository myCourseRepository;
     private final CourseParticipantRepository courseParticipantRepository;
     private final DayScheduleRepository dayScheduleRepository;
     private final PlaceRepository placeRepository;
-    private final UserService userService;
-    private final S3Service s3Service;
     private final PlaceImageRepository placeImageRepository;
     private final UploadCourseRepository uploadCourseRepository;
 
@@ -334,7 +343,6 @@ public class MyCourseServiceImpl implements MyCourseService {
         uploadCourse.increaseForkCount();
 
         MyCourse copyMyCourse = MyCourseMapper.toCopyEntity(uploadCourse.getMyCourse());
-        copyMyCourse.setType(MyCourseType.FORK);
         MyCourse savedCourse = myCourseRepository.save(copyMyCourse);
 
         //코스 참여자 생성
@@ -367,5 +375,48 @@ public class MyCourseServiceImpl implements MyCourseService {
         }
 
         return new CourseForkResponse(savedCourse.getId());
+    }
+
+    @Transactional
+    public AICourseCreateResponse createAICourse(AICourseCreateRequest request) {
+        int days =
+            Period.between(request.startDate(), request.endDate()).getDays() + 1;
+
+        //gemini 호출해서 json 문자열 받기
+        String json = geminiService.generateAICourse(request.location(), days, request.keywords());
+
+        //json -> dto 바이딩
+        GeminiCourseDto courseDto;
+        try {
+            courseDto = objectMapper.readValue(json, GeminiCourseDto.class);
+        } catch (JsonProcessingException e) {
+            log.error("Gemini에서 받은 JSON 파싱 실패: {}", e.getMessage());
+            throw new BusinessException(MyCourseErrorCode.JSON_TRANSFORMATION_FAILED);
+        }
+
+        //myCourse 생성
+        MyCourse myCourse = myCourseRepository.save(
+            MyCourseMapper.toAICourseEntity(request, courseDto));
+
+        //courseParticipant 생성
+        User user = userService.getUser(userService.getCurrentUserId());
+        courseParticipantRepository.save(CourseParticipantMapper.toEntityWithOwner(user, myCourse));
+
+        //daySchedule, place 생성
+        for (GeminiCourseDto.DayScheduleDto dayScheduleDto : courseDto.daySchedules()) {
+            DaySchedule daySchedule = dayScheduleRepository.save(
+                new DaySchedule(myCourse, dayScheduleDto.day()));
+            myCourse.getDaySchedules().add(daySchedule);
+
+            //각 place 저장
+            for (GeminiCourseDto.PlaceDto placeDto : dayScheduleDto.places()) {
+                Place place = placeRepository.save(
+                    PlaceMapper.toEntityFromGeminiDto(placeDto, daySchedule));
+
+                daySchedule.getPlaces().add(place);
+            }
+        }
+
+        return new AICourseCreateResponse(myCourse.getId());
     }
 }

@@ -97,7 +97,7 @@ public enum KeywordType {
             return objectMapper.writerWithDefaultPrettyPrinter()
                 .writeValueAsString(result);
         } catch (JsonProcessingException e) {
-            log.warn("keywords JSON 변환 실패: {}, 변환 map: {}", e.getMessage(), result);
+            log.error("ekeywords JSON 변환 실패: {}, 변환 map: {}", e.getMessage(), result);
             throw new BusinessException(MyCourseErrorCode.JSON_TRANSFORMATION_FAILED);
         }
     }
