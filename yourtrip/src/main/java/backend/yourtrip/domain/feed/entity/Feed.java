@@ -30,13 +30,13 @@ public class Feed extends BaseEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "title", nullable = false, length = 100)
+    @Column(name = "title", length = 100)
     private String title;
 
-    @Column(name = "location", nullable = false, length = 50)
+    @Column(name = "location", length = 50)
     private String location;
 
-    @Column(name = "content", nullable = false, length = 1000)
+    @Column(name = "content", length = 1000)
     private String content;
 
     @OneToMany(mappedBy = "feed", cascade = CascadeType.ALL, orphanRemoval = true)

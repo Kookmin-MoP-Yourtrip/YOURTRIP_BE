@@ -29,7 +29,7 @@ public class FeedController implements FeedControllerSpec{
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public FeedCreateResponse createFeed(
-            @RequestPart(value = "mediaFiles") List<MultipartFile> mediaFiles,
+            @RequestPart(value = "mediaFiles", required = false) List<MultipartFile> mediaFiles,
             @Valid @RequestPart(value = "request") FeedCreateRequest request) {
         return feedService.saveFeed(request, mediaFiles);
     }

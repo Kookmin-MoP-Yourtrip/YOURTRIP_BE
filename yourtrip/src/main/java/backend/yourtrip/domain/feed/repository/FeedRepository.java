@@ -33,6 +33,7 @@ public interface FeedRepository extends JpaRepository<Feed, Long> {
         FROM Feed f
         WHERE f.title LIKE CONCAT('%', :keyword, '%')
                  OR f.location LIKE CONCAT('%', :keyword, '%')
+                 OR f.content LIKE CONCAT('%', :keyword, '%')
         """)
     Page<Feed> findByKeyword(@Param("keyword") String keyword, Pageable pageable);
 }
