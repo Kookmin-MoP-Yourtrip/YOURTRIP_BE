@@ -159,8 +159,16 @@ public class UserServiceImpl implements UserService {
         user = user.withRefreshToken(refreshToken);
         userRepository.save(user);
 
-        return new UserLoginResponse(user.getId(), user.getNickname(), accessToken);
+        String profileUrl = s3Service.getPresignedUrl(user.getProfileImageS3Key());
+
+        return new UserLoginResponse(
+            user.getId(),
+            user.getNickname(),
+            profileUrl,
+            accessToken
+        );
     }
+
 
     @Transactional(readOnly = true)
     @Override
@@ -181,9 +189,10 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(UserErrorCode.NOT_MATCH_REFRESH_TOKEN);
         }
 
+        String profileUrl = s3Service.getPresignedUrl(user.getProfileImageS3Key());
         String newAccessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail());
 
-        return new UserLoginResponse(user.getId(), user.getNickname(), newAccessToken);
+        return new UserLoginResponse(user.getId(), user.getNickname(), profileUrl, newAccessToken);
     }
 
     @Transactional(readOnly = true)

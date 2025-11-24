@@ -17,12 +17,18 @@ public class UserMapper {
             user.getEmail(),
             user.getNickname(),
             imageUrl,
-            user.getCreatedAt().toString()
+            user.getCreatedAt()
         );
     }
 
-    public static UserLoginResponse toLoginResponse(User user, String accessToken) {
-        return new UserLoginResponse(user.getId(), user.getNickname(), accessToken);
+
+    public static UserLoginResponse toLoginResponse(User user, String profileImageUrl, String accessToken) {
+        return new UserLoginResponse(
+            user.getId(),
+            user.getNickname(),
+            profileImageUrl,
+            accessToken
+        );
     }
 
     public static User toKakaoTemp(String kakaoId, String email) {

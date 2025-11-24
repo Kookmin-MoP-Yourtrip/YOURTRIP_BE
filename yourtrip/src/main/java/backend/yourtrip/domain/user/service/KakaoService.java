@@ -49,12 +49,20 @@ public class KakaoService {
 
         if (existing != null) {
             String at = jwtTokenProvider.createAccessToken(existing.getId(), existing.getEmail());
+            String profileUrl = s3Service.getPresignedUrl(existing.getProfileImageS3Key());
+
             return new KakaoLoginInitResponse(
                 "EXISTING",
                 kakaoId,
                 safeEmail,
-                new UserLoginResponse(existing.getId(), existing.getNickname(), at)
+                new UserLoginResponse(
+                    existing.getId(),
+                    existing.getNickname(),
+                    profileUrl,
+                    at
+                )
             );
+
         }
 
         userRepository.findBySocialId(kakaoId)
@@ -92,6 +100,14 @@ public class KakaoService {
         temp = userRepository.save(temp.toBuilder().refreshToken(rt).build());
 
         log.info("[KakaoService] USER 전환 완료: {} ({})", temp.getNickname(), temp.getEmail());
-        return new UserLoginResponse(temp.getId(), temp.getNickname(), at);
+
+        String profileUrl = s3Service.getPresignedUrl(temp.getProfileImageS3Key());
+
+        return new UserLoginResponse(
+            temp.getId(),
+            temp.getNickname(),
+            profileUrl,
+            at
+        );
     }
 }

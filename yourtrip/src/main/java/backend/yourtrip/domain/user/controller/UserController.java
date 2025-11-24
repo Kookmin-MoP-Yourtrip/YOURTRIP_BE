@@ -187,68 +187,71 @@ public class UserController {
     @Operation(
         summary = "프로필 등록(최종 회원가입 완료)",
         description = """
-            ### 제약조건
-            - 닉네임: **1~20자**
-            - multipart/form-data 타입으로 프로필 이미지 업로드합니다, 미선택 시 서버에 저장한 기본 프사 이미지가 지정됨
-            - 반환받는 image url은 임시 url로 15분간만 유효합니다(보안상 문제), 로드한 이미지가 15분 뒤에 사라지는게 아니라 발급받은 url로 15분이 지난 후 로드를 시도하면 유효하지 않다는 뜻입니다.
-            - png, jpeg, jpg, webp, mp4, quicktime, webm 타입만 업로드 가능합니다.
-            - 비밀번호가 **사전 설정(3단계)** 되어 있어야 최종 회원 생성이 됩니다.
-            ### 예외상황 / 에러코드
-            - `EMAIL_NOT_VERIFIED(400)`: 이메일 인증 미완료.
-            - `INVALID_REQUEST_FIELD(400)`: 닉네임 규칙 위반/필드 누락.
-            - `USER_NOT_FOUND(404)`: 내부 임시 정보 미존재 등으로 가입 완료 불가.
-            - `EMAIL_ALREADY_EXIST(400)`: 경합 상황에서 동일 이메일이 이미 가입 완료된 경우.
-            ### 테스트 방법
-            1. **POST** `/api/users/profile`
-            2. 요청 예시:
-            ```json
-            {
-              "email": "newuser@example.com",
-              "nickname": "여행러버",
-              "profileImageUrl": "https://cdn.example.com/profile.png"
-            }
-            ```
-            3. 정상: **201 Created** + 가입 사용자 정보 반환.
-            4. 응답 예시:
-            ```json
-            {
-              "userId": 1,
-              "email": "newuser@example.com",
-              "nickname": "여행러버",
-              "createdAt": "2025-11-11T10:06:00"
-            }
-            ```
-            """
+        ### 제약조건
+        - 닉네임: **1~20자**
+        - multipart/form-data 타입으로 프로필 이미지 업로드합니다, 미선택 시 서버에 저장한 기본 프사 이미지가 지정됨
+        - 반환받는 image url은 임시 url로 15분간만 유효합니다(보안상 문제)
+        - png, jpeg, jpg, webp, mp4, quicktime, webm 타입만 업로드 가능합니다.
+        - 비밀번호가 **사전 설정(3단계)** 되어 있어야 최종 회원 생성이 됩니다.
+
+        ### 예외상황 / 에러코드
+        - `EMAIL_NOT_VERIFIED(400)`: 이메일 인증 미완료.
+        - `INVALID_REQUEST_FIELD(400)`: 닉네임 규칙 위반/필드 누락.
+        - `USER_NOT_FOUND(404)`: 내부 임시 정보 미존재 등으로 가입 완료 불가.
+        - `EMAIL_ALREADY_EXIST(400)`: 경합 상황에서 동일 이메일이 이미 가입 완료된 경우.
+
+        ### 테스트 방법
+        1. **POST** `/api/users/profile`
+        2. 요청 예시:
+        ```json
+        {
+          "email": "newuser@example.com",
+          "nickname": "여행러버"
+        }
+        ```
+        3. 정상: **201 Created** + 가입 사용자 정보 반환.
+        4. 응답 예시:
+        ```json
+        {
+          "userId": 1,
+          "email": "newuser@example.com",
+          "nickname": "여행러버",
+          "profileImageUrl": "https://yourtrip-bucket.s3.ap-northeast-2.amazonaws.com/default-profile.png",
+          "createdAt": "2025-11-11T10:06:00"
+        }
+        ```
+        """
     )
     @ApiResponses({
         @ApiResponse(responseCode = "201", description = "가입 완료",
             content = @Content(schema = @Schema(implementation = UserSignupResponse.class),
                 examples = @ExampleObject(value = """
-                    {
-                      "userId": 1,
-                      "email": "newuser@example.com",
-                      "nickname": "여행러버",
-                      "createdAt": "2025-11-11T10:06:00"
-                    }
-                    """))),
+                {
+                  "userId": 1,
+                  "email": "newuser@example.com",
+                  "nickname": "여행러버",
+                  "profileImageUrl": "https://yourtrip-bucket.s3.ap-northeast-2.amazonaws.com/default-profile.png",
+                  "createdAt": "2025-11-11T10:06:00"
+                }
+                """))),
         @ApiResponse(responseCode = "400", description = "미인증/필드 오류/중복",
             content = @Content(mediaType = "application/json",
                 examples = @ExampleObject(value = """
-                    {
-                      "timestamp": "2025-11-11T10:06:30",
-                      "code": "EMAIL_NOT_VERIFIED",
-                      "message": "이메일 인증이 완료되지 않았습니다."
-                    }
-                    """))),
+                {
+                  "timestamp": "2025-11-11T10:06:30",
+                  "code": "EMAIL_NOT_VERIFIED",
+                  "message": "이메일 인증이 완료되지 않았습니다."
+                }
+                """))),
         @ApiResponse(responseCode = "404", description = "임시 가입 정보 없음",
             content = @Content(mediaType = "application/json",
                 examples = @ExampleObject(value = """
-                    {
-                      "timestamp": "2025-11-11T10:06:40",
-                      "code": "USER_NOT_FOUND",
-                      "message": "사용자를 찾을 수 없습니다."
-                    }
-                    """)))
+                {
+                  "timestamp": "2025-11-11T10:06:40",
+                  "code": "USER_NOT_FOUND",
+                  "message": "사용자를 찾을 수 없습니다."
+                }
+                """)))
     })
     @PostMapping(value = "/profile", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
@@ -256,9 +259,9 @@ public class UserController {
         @RequestPart(value = "profileImage", required = false) MultipartFile profileImage,
         @Parameter(content = @Content(
             mediaType = MediaType.APPLICATION_JSON_VALUE,
-            schema = @Schema(implementation = ProfileCreateRequest.class)
-        ))
+            schema = @Schema(implementation = ProfileCreateRequest.class)))
         @RequestPart(value = "request") ProfileCreateRequest request) {
+
         return userService.completeSignup(request, profileImage);
     }
 
@@ -268,48 +271,60 @@ public class UserController {
     @Operation(
         summary = "이메일 로그인",
         description = """
-            ### 제약조건
-            - **email**/**password** 모두 필수입니다.
-            ### 예외상황 / 에러코드
-            - `EMAIL_NOT_FOUND(400)`: 가입되지 않은 이메일.
-            - `NOT_MATCH_PASSWORD(400)`: 비밀번호 불일치.
-            ### 테스트 방법
-            1. **POST** `/api/users/login`
-            2. 요청 예시:
-            ```json
-            { "email": "newuser@example.com", "password": "Abcd1234!" }
-            ```
-            3. 정상: **200 OK** + Access Token 반환.
-            4. 응답 예시:
-            ```json
-            {
-              "userId": 1,
-              "nickname": "여행러버",
-              "accessToken": "eyJhbGciOi..."
-            }
-            ```
-            - Swagger의 **Authorize** 버튼에 `Bearer {accessToken}` 입력 후 인증이 필요한 API 호출 가능.
-            """
+        ### 제약조건
+        - **email**/**password** 모두 필수입니다.
+        ### 예외상황 / 에러코드
+        - `EMAIL_NOT_FOUND(400)`: 가입되지 않은 이메일.
+        - `NOT_MATCH_PASSWORD(400)`: 비밀번호 불일치.
+        ### 테스트 방법
+        1. **POST** `/api/users/login`
+        2. 요청 예시:
+        ```json
+        { "email": "newuser@example.com", "password": "Abcd1234!" }
+        ```
+        3. 정상: **200 OK** + Access Token + 프로필 이미지 URL 반환.
+        4. 응답 예시:
+        ```json
+        {
+          "userId": 1,
+          "nickname": "여행러버",
+          "profileImageUrl": "https://yourtrip-bucket.s3.ap-northeast-2.amazonaws.com/profile/default-profile.png",
+          "accessToken": "eyJhbGciOi..."
+        }
+        ```
+        - Swagger의 **Authorize** 버튼에 `Bearer {accessToken}` 입력 후 인증 필요한 API 호출 가능.
+        """
     )
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "로그인 성공",
-            content = @Content(schema = @Schema(implementation = UserLoginResponse.class))),
+            content = @Content(
+                schema = @Schema(implementation = UserLoginResponse.class),
+                examples = @ExampleObject(value = """
+                {
+                  "userId": 1,
+                  "nickname": "여행러버",
+                  "profileImageUrl": "https://yourtrip-bucket.s3.ap-northeast-2.amazonaws.com/profile/default-profile.png",
+                  "accessToken": "eyJhbGciOi..."
+                }
+                """)
+            )
+        ),
         @ApiResponse(responseCode = "400", description = "이메일/비밀번호 오류",
             content = @Content(mediaType = "application/json", examples = {
                 @ExampleObject(name = "이메일 없음", value = """
-                    {
-                      "timestamp": "2025-11-11T10:08:00",
-                      "code": "EMAIL_NOT_FOUND",
-                      "message": "존재하지 않는 이메일입니다."
-                    }
-                    """),
+                {
+                  "timestamp": "2025-11-11T10:08:00",
+                  "code": "EMAIL_NOT_FOUND",
+                  "message": "존재하지 않는 이메일입니다."
+                }
+                """),
                 @ExampleObject(name = "비밀번호 불일치", value = """
-                    {
-                      "timestamp": "2025-11-11T10:08:10",
-                      "code": "NOT_MATCH_PASSWORD",
-                      "message": "비밀번호가 일치하지 않습니다."
-                    }
-                    """)
+                {
+                  "timestamp": "2025-11-11T10:08:10",
+                  "code": "NOT_MATCH_PASSWORD",
+                  "message": "비밀번호가 일치하지 않습니다."
+                }
+                """)
             }))
     })
     @PostMapping("/login")
