@@ -1,10 +1,12 @@
 package backend.yourtrip.domain.mycourse.controller;
 
+import backend.yourtrip.domain.mycourse.dto.request.AICourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceMemoRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceStartTimeRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceUpdateRequest;
+import backend.yourtrip.domain.mycourse.dto.response.AICourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.CourseForkResponse;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.MyCourseCreateResponse;
@@ -265,7 +267,7 @@ public interface MyCourseControllerSpec {
             ### 설명
             - 특정 코스의 특정 일차에 해당하는 장소 리스트를 조회합니다. (피그마에서 일차별로 탭 누르는 화면)
             - 앞서 나의 코스 단건 조회 API에서 제공된 dayId를 경로 변수에 넣어서 해당 일차의 장소들을 불러옵니다.
-            - 장소의 latitude, longitude가 null인 경우, 수기로 추가된 장소입니다.
+            - 장소의 latitude, longitude, placeUrl이 null로 반환된 경우, 수기로 추가되었거나 ai가 생성한 코스 중 카카오맵 장소 검색 결과가 없는 장소입니다.
             - 반환받는 image url들은 임시 url로 15분간만 유효합니다(보안상 문제), 로드한 이미지가 15분 뒤에 사라지는게 아니라 발급받은 url로 15분이 지난 후 로드를 시도하면 유효하지 않다는 뜻입니다.
 
             ### 제약조건
@@ -1126,7 +1128,8 @@ public interface MyCourseControllerSpec {
         ### 설명
         - 업로드된 다른 사용자의 코스를 내 코스로 포크(fork)합니다
         - 포크된 코스는 내 코스 목록에서 확인할 수 있으며, 내 코스와 동일하게 수정 및 삭제가 가능합니다.
-        - 경로 변수에 uploadCourseId를 넣어서 해당 코스를 포크합니다.
+        - 경로 변수에 fork할 업로드 코스 id(uploadCourseId)를 넣어서 해당 코스를 포크합니다.
+        - 생성된 나의 코스 ID가 반환됩니다.
         ### 제약조건
         - 경로 변수
             - 업로드된 코스 ID(uploadCourseId): 존재하는 업로드된 코스여야 함
@@ -1136,4 +1139,28 @@ public interface MyCourseControllerSpec {
         """
     )
     CourseForkResponse forkCourse(@Schema(example = "1") Long uploadCourseId);
+
+    @Operation(summary = "AI 코스 생성", description = """
+        ### 설명
+        - AI를 활용하여 맞춤형 여행 코스를 생성합니다.
+        - 사용자가 원하는 여행지, 여행 일자, 태그들을 입력하면 AI가 이를 바탕으로 최적의 여행 코스를 생성합니다.
+        - 생성된 코스는 내 코스 목록에서 확인할 수 있으며, 필요에 따라 수정 및 삭제가 가능합니다.
+        - 생성된 나의 코스 ID가 반환됩니다.
+        - ai가 생성한 장소를 바탕으로 백엔드 내부에서 카카오맵 검색을 통해 위경도와 placeUrl을 받아와서 나의 코스에 저장하는 구조인데
+            간혹 카카오맵에서 장소 검색 결과가 없는 경우 latitude, longitude, placeUrl이 null로 저장될 수 있습니다. (수기로 장소 등록한 것이랑 똑같이 처리하면 될듯)
+        - AI가 코스를 생성하는데 약간의 시간이 소요됩니다.
+        - 종종 코스 생성에 실패하는 경우가 생기는데 다시 시도하면 성공할 확률이 높습니다.
+        ### 제약조건
+        - 요청 값
+            - 여행지(location): 필수 입력
+            - 여행 기간(startDate, endDate): 필수 입력, endDate는 startDate 이후여야 함
+            - 선호 활동(preferredActivities): 선택 입력
+        ### ⚠ 예외상황
+        - `INVALID_REQUEST_FIELD(400)`: 필수 필드 값 누락, 등록되지 않는 태그 값, 날짜 범위 오류 등
+        - `JSON_TRANSFORMATION_FAILED(503)`: AI 코스 생성에 실패했을 때
+        """
+    )
+    AICourseCreateResponse createAICourse(AICourseCreateRequest request);
+
+
 }

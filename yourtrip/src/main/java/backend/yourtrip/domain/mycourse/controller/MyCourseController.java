@@ -190,6 +190,10 @@ public class MyCourseController implements MyCourseControllerSpec {
         return myCourseService.forkCourse(uploadCourseId);
     }
 
+    // ========================================================
+    // AI 코스 생성
+    // ========================================================
+    @Override
     @PostMapping("/ai")
     @ResponseStatus(HttpStatus.CREATED)
     public AICourseCreateResponse createAICourse(
