@@ -36,13 +36,13 @@ public enum KeywordType {
     ACTIVITY("mood", "액티비티"),
     FOOD("mood", "맛집탐방"),
     SENSIBILITY("mood", "감성"),
-    CULTURE("mood", "문화·전시"),
+    CULTURE("mood", "문화/전시"),
     NATURE("mood", "자연"),
     SHOPPING("mood", "쇼핑"),
 
     // 여행기간
     ONE_DAY("duration", "하루"),
-    TWO_DAYS("duration", "1박2일"),
+    TWO_DAYS("duration", "1박 2일"),
     WEEKEND("duration", "주말"),
     LONG("duration", "장기"),
 

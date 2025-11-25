@@ -54,16 +54,14 @@ public interface UploadCourseRepository extends JpaRepository<UploadCourse, Long
                    OR uc.location LIKE :keyword
                    OR uc.title LIKE :keyword)
               AND (:keywords IS NULL
-                   OR EXISTS (
-                        SELECT 1
-                        FROM CourseKeyword ck
-                        WHERE ck.uploadCourse = uc
-                          AND ck.keywordType IN :keywords
-                   ))
+                   OR (SELECT COUNT(DISTINCT ck.keywordType)
+                       FROM CourseKeyword ck
+                       WHERE ck.uploadCourse = uc
+                         AND ck.keywordType IN :keywords) = :keywordsCount)
             ORDER BY uc.id DESC
         """)
     List<UploadCourse> findAllByKeywordsOrderByCreatedAtDesc(@Param("keyword") String keyword,
-        @Param("keywords") List<KeywordType> keywords);
+        @Param("keywords") List<KeywordType> keywords, @Param("keywordsCount") int keywordsCount);
 
     @Query("""
             SELECT DISTINCT uc
@@ -73,16 +71,14 @@ public interface UploadCourseRepository extends JpaRepository<UploadCourse, Long
                    OR uc.location LIKE :keyword
                    OR uc.title LIKE :keyword)
               AND (:keywords IS NULL
-                   OR EXISTS (
-                        SELECT 1
-                        FROM CourseKeyword ck
-                        WHERE ck.uploadCourse = uc
-                          AND ck.keywordType IN :keywords
-                   ))
+                 OR (SELECT COUNT(DISTINCT ck.keywordType)
+                   FROM CourseKeyword ck
+                   WHERE ck.uploadCourse = uc
+                     AND ck.keywordType IN :keywords) = :keywordsCount)
             ORDER BY uc.viewCount DESC
         """)
     List<UploadCourse> findAllByKeywordsOrderByViewCountDesc(@Param("keyword") String keyword,
-        @Param("keywords") List<KeywordType> keywords);
+        @Param("keywords") List<KeywordType> keywords, @Param("keywordsCount") int keywordsCount);
 
     @Query("""
             SELECT uc

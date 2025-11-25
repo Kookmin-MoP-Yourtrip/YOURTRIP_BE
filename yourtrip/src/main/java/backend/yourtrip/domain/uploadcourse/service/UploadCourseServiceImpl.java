@@ -105,9 +105,11 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             : "%" + keyword + "%";
 
         List<UploadCourse> uploadCourses = switch (sortType) {
-            case NEW -> uploadCourseRepository.findAllByKeywordsOrderByCreatedAtDesc(pattern, tags);
+            case NEW -> uploadCourseRepository.findAllByKeywordsOrderByCreatedAtDesc(pattern, tags,
+                tags.size());
             case POPULAR ->
-                uploadCourseRepository.findAllByKeywordsOrderByViewCountDesc(pattern, tags);
+                uploadCourseRepository.findAllByKeywordsOrderByViewCountDesc(pattern, tags,
+                    tags.size());
         };
 
         return new UploadCourseListResponse(uploadCourses.stream()
