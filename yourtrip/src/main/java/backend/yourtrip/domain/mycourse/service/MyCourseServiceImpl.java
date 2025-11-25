@@ -435,7 +435,7 @@ public class MyCourseServiceImpl implements MyCourseService {
             return;
         }
 
-        //카카오 응답 -> 엔티티 필드에 매핑
+        //placeLocation, placeUrl, longitude, latitude 업데이트
         String placeLocation = doc.road_address_name() != null && !doc.road_address_name().isBlank()
             ? doc.road_address_name()
             : doc.address_name();

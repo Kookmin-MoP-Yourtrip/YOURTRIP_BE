@@ -9,8 +9,7 @@ public record GeminiCourseDto(String title, List<DayScheduleDto> daySchedules) {
 
     }
 
-    public record PlaceDto(String placeName, LocalTime startTime, String placeLocation,
-                           String memo) {
+    public record PlaceDto(String placeName, LocalTime startTime, String placeLocation) {
 
     }
 
