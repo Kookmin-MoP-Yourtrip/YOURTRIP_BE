@@ -430,9 +430,9 @@ public class MyCourseServiceImpl implements MyCourseService {
     private void updatePlaceFromKakao(AICourseCreateRequest request, PlaceDto placeDto,
         Place place) {
         Document doc = kakaoLocalClient.findBestPlace(placeDto.placeName(),
-            request.location(), placeDto.placeLocation());
+            request.location());
 
-        if (doc == null) {
+        if (doc == null) { //적절한 장소가 카카오맵에 검색되지 않음
             return;
         }
 

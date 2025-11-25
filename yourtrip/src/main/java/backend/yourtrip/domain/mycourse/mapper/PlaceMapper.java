@@ -87,7 +87,6 @@ public class PlaceMapper {
         return Place.builder()
             .placeName(placeDto.placeName())
             .startTime(placeDto.startTime())
-            .placeLocation(placeDto.placeLocation())
             .daySchedule(daySchedule)
             .build();
     }
