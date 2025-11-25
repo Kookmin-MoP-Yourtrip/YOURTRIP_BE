@@ -388,13 +388,14 @@ public class MyCourseServiceImpl implements MyCourseService {
 
         //gemini 호출해서 json 문자열 받기
         String json = geminiService.generateAICourse(request.location(), days, request.keywords());
+        log.info(json);
 
         //json -> dto 바이딩
         GeminiCourseDto courseDto;
         try {
             courseDto = objectMapper.readValue(json, GeminiCourseDto.class);
         } catch (JsonProcessingException e) {
-            log.error("Gemini에서 받은 JSON 파싱 실패: {}", json, e);
+            log.error("Gemini에서 받은 JSON 파싱 실패", e);
             throw new BusinessException(MyCourseErrorCode.JSON_TRANSFORMATION_FAILED);
         }
 
@@ -435,7 +436,8 @@ public class MyCourseServiceImpl implements MyCourseService {
             return;
         }
 
-        //placeLocation, placeUrl, longitude, latitude 업데이트
+        //placeName, placeLocation, placeUrl, longitude, latitude 업데이트
+        String placeName = doc.place_name();
         String placeLocation = doc.road_address_name() != null && !doc.road_address_name().isBlank()
             ? doc.road_address_name()
             : doc.address_name();
@@ -443,6 +445,6 @@ public class MyCourseServiceImpl implements MyCourseService {
         double longitude = Double.parseDouble(doc.x());
         double latitude = Double.parseDouble(doc.y());
 
-        place.updateKakaoPlace(placeLocation, placeUrl, latitude, longitude);
+        place.updateKakaoPlace(placeName, placeLocation, placeUrl, latitude, longitude);
     }
 }

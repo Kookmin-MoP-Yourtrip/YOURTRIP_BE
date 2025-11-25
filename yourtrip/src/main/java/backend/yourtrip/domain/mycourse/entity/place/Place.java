@@ -38,7 +38,7 @@ public class Place extends BaseEntity {
     @JoinColumn(name = "day_schedule_id")
     private DaySchedule daySchedule;
 
-    private String name;
+    private String placeName;
 
     @Setter
     private LocalTime startTime;
@@ -60,10 +60,10 @@ public class Place extends BaseEntity {
     private List<PlaceImage> placeImages;
 
     @Builder
-    public Place(DaySchedule daySchedule, String name, LocalTime startTime, String memo,
+    public Place(DaySchedule daySchedule, String placeName, LocalTime startTime, String memo,
         double latitude, double longitude, String placeUrl, String placeLocation) {
         this.daySchedule = daySchedule;
-        this.name = name;
+        this.placeName = placeName;
         this.startTime = startTime;
         this.memo = memo;
         this.latitude = latitude;
@@ -74,15 +74,17 @@ public class Place extends BaseEntity {
     }
 
     public void updatePlace(PlaceUpdateRequest request) {
-        this.name = request.placeName();
+        this.placeName = request.placeName();
         this.latitude = request.latitude();
         this.longitude = request.longitude();
         this.placeUrl = request.placeUrl();
         this.placeLocation = request.placeLocation();
     }
 
-    public void updateKakaoPlace(String placeLocation, String placeUrl, Double latitude,
+    public void updateKakaoPlace(String placeName, String placeLocation, String placeUrl,
+        Double latitude,
         Double longitude) {
+        this.placeName = placeName;
         this.placeLocation = placeLocation;
         this.placeUrl = placeUrl;
         this.latitude = latitude;

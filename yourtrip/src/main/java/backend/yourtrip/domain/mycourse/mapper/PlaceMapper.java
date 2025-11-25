@@ -18,7 +18,7 @@ public class PlaceMapper {
 
     public static Place toEntity(PlaceCreateRequest request, DaySchedule daySchedule) {
         return Place.builder()
-            .name(request.placeName())
+            .placeName(request.placeName())
             .latitude(request.latitude())
             .longitude(request.longitude())
             .placeUrl(request.placeUrl())
@@ -35,7 +35,7 @@ public class PlaceMapper {
 
         return PlaceResponse.builder()
             .placeId(place.getId())
-            .placeName(place.getName())
+            .placeName(place.getPlaceName())
             .startTime(place.getStartTime())
             .memo(place.getMemo())
             .latitude(place.getLatitude())
@@ -49,7 +49,7 @@ public class PlaceMapper {
     public static PlaceCreateResponse toCreateResponse(Place place) {
         return PlaceCreateResponse.builder()
             .placeId(place.getId())
-            .placeName(place.getName())
+            .placeName(place.getPlaceName())
             .latitude(place.getLatitude())
             .longitude(place.getLongitude())
             .placeUrl(place.getPlaceUrl())
@@ -62,7 +62,7 @@ public class PlaceMapper {
     public static PlaceUpdateResponse toUpdateResponse(Place place) {
         return PlaceUpdateResponse.builder()
             .placeId(place.getId())
-            .placeName(place.getName())
+            .placeName(place.getPlaceName())
             .latitude(place.getLatitude())
             .longitude(place.getLongitude())
             .placeUrl(place.getPlaceUrl())
@@ -73,7 +73,7 @@ public class PlaceMapper {
     public static Place toCopyEntity(Place originalPlace, DaySchedule daySchedule) {
         return Place.builder()
             .daySchedule(daySchedule)
-            .name(originalPlace.getName())
+            .placeName(originalPlace.getPlaceName())
             .startTime(originalPlace.getStartTime())
             .memo(originalPlace.getMemo())
             .latitude(originalPlace.getLatitude())
@@ -85,9 +85,9 @@ public class PlaceMapper {
 
     public static Place toEntityFromGeminiDto(PlaceDto placeDto, DaySchedule daySchedule) {
         return Place.builder()
-            .name(placeDto.placeName())
+            .placeName(placeDto.placeName())
             .startTime(placeDto.startTime())
-            .placeLocation(placeDto.placeLocation()) //TODO: 카카오가 준 placeLocation으로 변경 필요
+            .placeLocation(placeDto.placeLocation())
             .daySchedule(daySchedule)
             .build();
     }

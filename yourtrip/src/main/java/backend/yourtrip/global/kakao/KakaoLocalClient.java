@@ -31,7 +31,7 @@ public class KakaoLocalClient {
      */
     public KakaoSearchResponse.Document findBestPlace(String placeName, String placeLocation,
         String placeAddress) {
-        String keyword = placeName + " " + placeLocation;
+        String keyword = placeLocation + " " + placeName;
         KakaoSearchResponse response = searchPlace(keyword, 5); //최대 5개의 후보 장소 가져오기
 
         List<Document> docs = response.documents();
