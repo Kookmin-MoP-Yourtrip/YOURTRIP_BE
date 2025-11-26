@@ -4,10 +4,12 @@ import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
 import backend.yourtrip.domain.feed.dto.request.FeedUpdateRequest;
 import backend.yourtrip.domain.feed.dto.response.*;
 import backend.yourtrip.domain.feed.entity.Feed;
+import backend.yourtrip.domain.feed.entity.FeedLike;
 import backend.yourtrip.domain.feed.entity.FeedMedia;
 import backend.yourtrip.domain.feed.entity.Hashtag;
 import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
 import backend.yourtrip.domain.feed.mapper.FeedMapper;
+import backend.yourtrip.domain.feed.repository.FeedLikeRepository;
 import backend.yourtrip.domain.feed.repository.FeedRepository;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
@@ -29,6 +31,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -40,6 +43,7 @@ public class FeedServiceImpl implements FeedService {
     private final UploadCourseRepository uploadCourseRepository;
     private final FeedMapper feedMapper;
     private final S3Service s3Service;
+    private final FeedLikeRepository feedLikeRepository;
 
     // ======================================
     // 1. 피드 생성
@@ -117,7 +121,16 @@ public class FeedServiceImpl implements FeedService {
 
         feed.increaseViewCount();
 
-        return feedMapper.toDetailResponse(feed);
+        boolean isLiked = false;
+        try {
+            Long currentUserId = userService.getCurrentUserId();
+            User currentUser = userService.getUser(currentUserId);
+            isLiked = feedLikeRepository.existsByUserAndFeed(currentUser, feed);
+        } catch (Exception e) {
+            log.warn("좋아요 여부 확인 실패 - feedId: {}, error: {}", feedId, e.getMessage());
+        }
+
+        return feedMapper.toDetailResponse(feed, isLiked);
     }
 
     // ======================================
@@ -257,6 +270,43 @@ public class FeedServiceImpl implements FeedService {
         }
 
         feed.delete();
+    }
+
+    // ======================================
+    // 8. 좋아요 토글
+    // ======================================
+    @Override
+    @Transactional
+    public FeedLikeResponse toggleLike(Long feedId, Long userId) {
+
+        Feed feed = feedRepository.findById(feedId)
+                .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
+
+        User user = userService.getUser(userId);
+
+        Optional<FeedLike> existingLike = feedLikeRepository.findByUserAndFeed(user, feed);
+
+        boolean isLiked;
+
+        if (existingLike.isPresent()) {
+            feedLikeRepository.delete(existingLike.get());
+            feed.decreaseHeartCount();
+            isLiked = false;
+        } else {
+            FeedLike feedLike = FeedLike.builder()
+                    .user(user)
+                    .feed(feed)
+                    .build();
+            feedLikeRepository.save(feedLike);
+            feed.increaseHeartCount();
+            isLiked = true;
+        }
+
+        return FeedLikeResponse.builder()
+                .feedId(feedId)
+                .isLiked(isLiked)
+                .heartCount(feed.getHeartCount())
+                .build();
     }
 
     // ======================================

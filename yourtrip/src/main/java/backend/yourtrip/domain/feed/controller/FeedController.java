@@ -6,6 +6,7 @@ import backend.yourtrip.domain.feed.dto.request.FeedUpdateRequest;
 import backend.yourtrip.domain.feed.dto.response.*;
 import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
 import backend.yourtrip.domain.feed.service.FeedService;
+import backend.yourtrip.domain.user.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -21,6 +22,7 @@ import java.util.List;
 public class FeedController implements FeedControllerSpec{
 
     private final FeedService feedService;
+    private final UserService userService;
 
     // ==========================
     //  피드 생성
@@ -102,6 +104,15 @@ public class FeedController implements FeedControllerSpec{
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteFeed(@PathVariable Long feedId) {
         feedService.deleteFeed(feedId);
+    }
+
+    // ==========================
+    //  피드 좋아요 토글
+    // ==========================
+    @PostMapping("/{feedId}/like")
+    public FeedLikeResponse toggleFeedLike(@PathVariable Long feedId) {
+        Long userId = userService.getCurrentUserId();
+        return feedService.toggleLike(feedId, userId);
     }
 }
 
