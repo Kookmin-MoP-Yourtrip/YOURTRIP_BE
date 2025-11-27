@@ -67,8 +67,16 @@ public class SecurityConfig {
 
                 // Upload-courses GET 허용
                 .requestMatchers(
+                    HttpMethod.GET, "/api/upload-courses/me"
+                ).authenticated()
+
+                .requestMatchers(
                     HttpMethod.GET, "/api/upload-courses/**"
                 ).permitAll()
+
+                .requestMatchers(
+                    HttpMethod.GET, "/api/feeds/users/*"
+                ).authenticated()
 
                 // 피드 전체 조회 허용 (비로그인)
                 .requestMatchers(
