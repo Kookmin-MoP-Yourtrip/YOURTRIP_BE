@@ -63,6 +63,8 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             } catch (IOException e) {
                 throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
             }
+        } else {
+            thumbnailS3Key = "default-upload-course-thumbnail.png";
         }
 
         UploadCourse savedUploadCourse = uploadCourseRepository.save(
@@ -100,6 +102,10 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     @Transactional(readOnly = true)
     public UploadCourseListResponse getAllForSearch(String keyword, List<KeywordType> tags,
         UploadCourseSortType sortType) {
+        if (tags == null) {
+            tags = List.of();
+        }
+        
         String pattern = (keyword == null || keyword.isBlank())
             ? null
             : "%" + keyword + "%";
