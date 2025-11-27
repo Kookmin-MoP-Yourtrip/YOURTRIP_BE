@@ -109,10 +109,11 @@ public class FeedController implements FeedControllerSpec{
     // ==========================
     //  피드 좋아요 토글
     // ==========================
+    @Override
     @PostMapping("/{feedId}/like")
+    @ResponseStatus(HttpStatus.CREATED)
     public FeedLikeResponse toggleFeedLike(@PathVariable Long feedId) {
-        Long userId = userService.getCurrentUserId();
-        return feedService.toggleLike(feedId, userId);
+        return feedService.toggleLike(feedId);
     }
 }
 

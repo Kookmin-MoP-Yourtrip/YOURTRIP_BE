@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
@@ -83,7 +84,8 @@ public interface FeedControllerSpec {
           ### ⚠ 예외상황
           - `INVALID_REQUEST_FIELD(400)`: 필드 유효성 오류(필수값 누락, 파일 형식 오류 등)
           - `FAIL_UPLOAD_FILE(503)`: 파일 업로드 실패
-          """
+          """,
+          security = @SecurityRequirement(name = "JWT")
     )
     @ApiResponses({
             @ApiResponse(
@@ -502,6 +504,7 @@ public interface FeedControllerSpec {
           - `UPLOAD_COURSE_FORBIDDEN(403)`: 업로드 코스 권한 없음
           - `FAIL_UPLOAD_FILE(503)`: 파일 업로드 실패
           """
+         ,security = @SecurityRequirement(name = "JWT")
     )
     @ApiResponses({
             @ApiResponse(
@@ -575,7 +578,8 @@ public interface FeedControllerSpec {
               ### ⚠ 예외상황
               - `FEED_NOT_FOUND(404)`: 피드가 존재하지 않는 경우
               - `UNAUTHORIZED(403)`: 본인의 피드가 아닌 경우 삭제 불가
-              """
+              """,
+            security = @SecurityRequirement(name = "JWT")
     )
     @ApiResponses({
             @ApiResponse(
@@ -622,7 +626,8 @@ public interface FeedControllerSpec {
         - `FEED_NOT_FOUND(404)`: 피드가 존재하지 않는 경우
         - `USER_NOT_FOUND(404)`: 유저가 존재하지 않는 경우
         - `UNAUTHORIZED(401)`: 로그인하지 않은 경우
-        """
+        """,
+        security = @SecurityRequirement(name = "JWT")
     )
     @ApiResponses({
             @ApiResponse(

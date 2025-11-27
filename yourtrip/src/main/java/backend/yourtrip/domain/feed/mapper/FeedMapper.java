@@ -16,6 +16,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Component
@@ -140,6 +141,21 @@ public class FeedMapper {
             feedPage.getTotalElements(),
             feedPage.hasNext(),
             feedPage.hasPrevious()
+        );
+    }
+
+    public FeedListResponse toListResponse(Page<Feed> feedPage, Set<Long> likedFeedIds) {
+        List<FeedDetailResponse> responses = feedPage.getContent().stream()
+                .map(feed -> toDetailResponse(feed, likedFeedIds.contains(feed.getId())))
+                .toList();
+
+        return new FeedListResponse(
+                responses,
+                feedPage.getNumber(),
+                feedPage.getTotalPages(),
+                feedPage.getTotalElements(),
+                feedPage.hasNext(),
+                feedPage.hasPrevious()
         );
     }
 }

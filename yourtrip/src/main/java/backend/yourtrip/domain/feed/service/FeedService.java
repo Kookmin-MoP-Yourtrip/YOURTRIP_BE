@@ -21,5 +21,5 @@ public interface FeedService {
 
     void deleteFeed(Long feedId);
 
-    FeedLikeResponse toggleLike(Long feedId, Long userId);
+    FeedLikeResponse toggleLike(Long feedId);
 }
