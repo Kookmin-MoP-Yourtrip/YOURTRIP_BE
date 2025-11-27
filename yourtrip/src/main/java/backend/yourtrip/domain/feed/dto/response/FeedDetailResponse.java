@@ -17,6 +17,7 @@ public record FeedDetailResponse(
         int commentCount,
         int heartCount,
         int viewCount,
+        boolean isLiked,
         Long uploadCourseId,
         List<MediaResponse> mediaList
 ) {

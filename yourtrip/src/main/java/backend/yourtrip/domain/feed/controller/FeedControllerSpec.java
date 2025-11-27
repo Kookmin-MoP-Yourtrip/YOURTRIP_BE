@@ -2,10 +2,7 @@ package backend.yourtrip.domain.feed.controller;
 
 import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
 import backend.yourtrip.domain.feed.dto.request.FeedUpdateRequest;
-import backend.yourtrip.domain.feed.dto.response.FeedCreateResponse;
-import backend.yourtrip.domain.feed.dto.response.FeedDetailResponse;
-import backend.yourtrip.domain.feed.dto.response.FeedListResponse;
-import backend.yourtrip.domain.feed.dto.response.FeedUpdateResponse;
+import backend.yourtrip.domain.feed.dto.response.*;
 import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -13,6 +10,7 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
@@ -86,7 +84,8 @@ public interface FeedControllerSpec {
           ### ⚠ 예외상황
           - `INVALID_REQUEST_FIELD(400)`: 필드 유효성 오류(필수값 누락, 파일 형식 오류 등)
           - `FAIL_UPLOAD_FILE(503)`: 파일 업로드 실패
-          """
+          """,
+          security = @SecurityRequirement(name = "JWT")
     )
     @ApiResponses({
             @ApiResponse(
@@ -110,36 +109,6 @@ public interface FeedControllerSpec {
                     content = @Content(
                             mediaType = "application/json",
                             examples = {
-                                    @ExampleObject(
-                                            name = "제목 미입력",
-                                            value = """
-                          {
-                            "timestamp": "2025-11-21T10:00:00",
-                            "code": "INVALID_REQUEST_FIELD",
-                            "message": "title: 제목은 필수 입력 항목입니다."
-                          }
-                          """
-                                    ),
-                                    @ExampleObject(
-                                            name = "위치 미입력",
-                                            value = """
-                          {
-                            "timestamp": "2025-11-21T10:00:00",
-                            "code": "INVALID_REQUEST_FIELD",
-                            "message": "location: 위치는 필수 입력 항목입니다."
-                          }
-                          """
-                                    ),
-                                    @ExampleObject(
-                                            name = "내용 미입력",
-                                            value = """
-                          {
-                            "timestamp": "2025-11-21T10:00:00",
-                            "code": "INVALID_REQUEST_FIELD",
-                            "message": "content: 내용은 필수 입력 항목입니다."
-                          }
-                          """
-                                    ),
                                     @ExampleObject(
                                             name = "미디어 파일 미업로드",
                                             value = """
@@ -535,6 +504,7 @@ public interface FeedControllerSpec {
           - `UPLOAD_COURSE_FORBIDDEN(403)`: 업로드 코스 권한 없음
           - `FAIL_UPLOAD_FILE(503)`: 파일 업로드 실패
           """
+         ,security = @SecurityRequirement(name = "JWT")
     )
     @ApiResponses({
             @ApiResponse(
@@ -608,7 +578,8 @@ public interface FeedControllerSpec {
               ### ⚠ 예외상황
               - `FEED_NOT_FOUND(404)`: 피드가 존재하지 않는 경우
               - `UNAUTHORIZED(403)`: 본인의 피드가 아닌 경우 삭제 불가
-              """
+              """,
+            security = @SecurityRequirement(name = "JWT")
     )
     @ApiResponses({
             @ApiResponse(
@@ -633,4 +604,64 @@ public interface FeedControllerSpec {
             )
     })
     void deleteFeed(@Schema(example = "1") Long feedId);
+
+    // ==========================
+    //  피드 좋아요 토글
+    // ==========================
+    @Operation(
+            summary = "피드 좋아요 토글",
+            description = """
+        ### 설명
+        - 피드에 좋아요를 추가하거나 취소합니다.
+        - 이미 좋아요를 누른 상태에서 다시 호출하면 좋아요가 취소됩니다.
+        - 좋아요를 누르지 않은 상태에서 호출하면 좋아요가 추가됩니다.
+        - 현재 로그인한 유저의 좋아요만 토글할 수 있습니다.
+
+        ### 제약조건
+        - 경로 변수
+            - 피드 ID(feedId): 존재하는 피드여야 함
+        - 인증 필요: 로그인한 유저만 좋아요를 누를 수 있습니다.
+
+        ### ⚠ 예외상황
+        - `FEED_NOT_FOUND(404)`: 피드가 존재하지 않는 경우
+        - `USER_NOT_FOUND(404)`: 유저가 존재하지 않는 경우
+        - `UNAUTHORIZED(401)`: 로그인하지 않은 경우
+        """,
+        security = @SecurityRequirement(name = "JWT")
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "좋아요 토글 성공",
+                    content = @Content(
+                            schema = @Schema(implementation = FeedLikeResponse.class),
+                            examples = @ExampleObject(
+                                    value = """
+                    {
+                      "feedId": 123,
+                      "isLiked": true,
+                      "heartCount": 45
+                    }
+                    """
+                            )
+                    )
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "피드를 찾을 수 없음",
+                    content = @Content(
+                            mediaType = "application/json",
+                            examples = @ExampleObject(
+                                    value = """
+                    {
+                      "timestamp": "2025-11-21T10:00:00",
+                      "code": "FEED_NOT_FOUND",
+                      "message": "피드를 찾을 수 없습니다."
+                    }
+                    """
+                            )
+                    )
+            )
+    })
+    FeedLikeResponse toggleFeedLike(@Schema(example = "1") Long feedId);
 }

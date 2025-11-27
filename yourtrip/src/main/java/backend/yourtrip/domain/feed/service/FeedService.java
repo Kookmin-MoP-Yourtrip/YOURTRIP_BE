@@ -20,4 +20,6 @@ public interface FeedService {
     FeedUpdateResponse updateFeed(Long feedId, FeedUpdateRequest request, List<MultipartFile> mediaFiles);
 
     void deleteFeed(Long feedId);
+
+    FeedLikeResponse toggleLike(Long feedId);
 }

@@ -4,10 +4,12 @@ import backend.yourtrip.domain.feed.dto.request.FeedCreateRequest;
 import backend.yourtrip.domain.feed.dto.request.FeedUpdateRequest;
 import backend.yourtrip.domain.feed.dto.response.*;
 import backend.yourtrip.domain.feed.entity.Feed;
+import backend.yourtrip.domain.feed.entity.FeedLike;
 import backend.yourtrip.domain.feed.entity.FeedMedia;
 import backend.yourtrip.domain.feed.entity.Hashtag;
 import backend.yourtrip.domain.feed.entity.enums.FeedSortType;
 import backend.yourtrip.domain.feed.mapper.FeedMapper;
+import backend.yourtrip.domain.feed.repository.FeedLikeRepository;
 import backend.yourtrip.domain.feed.repository.FeedRepository;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
@@ -27,8 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -40,6 +42,7 @@ public class FeedServiceImpl implements FeedService {
     private final UploadCourseRepository uploadCourseRepository;
     private final FeedMapper feedMapper;
     private final S3Service s3Service;
+    private final FeedLikeRepository feedLikeRepository;
 
     // ======================================
     // 1. 피드 생성
@@ -117,7 +120,16 @@ public class FeedServiceImpl implements FeedService {
 
         feed.increaseViewCount();
 
-        return feedMapper.toDetailResponse(feed);
+        boolean isLiked = false;
+        try {
+            Long currentUserId = userService.getCurrentUserId();
+            User currentUser = userService.getUser(currentUserId);
+            isLiked = feedLikeRepository.existsByUserAndFeed(currentUser, feed);
+        } catch (BusinessException e) {
+            log.debug("비로그인 사용자의 피드 조회 - feedId: {}", feedId);
+        }
+
+        return feedMapper.toDetailResponse(feed, isLiked);
     }
 
     // ======================================
@@ -130,7 +142,24 @@ public class FeedServiceImpl implements FeedService {
         Pageable pageable = PageRequest.of(page, size, getSort(sortType));
         Page<Feed> feeds = feedRepository.findAll(pageable);
 
-        return feedMapper.toListResponse(feeds);
+        Set<Long> likedFeedIds = new HashSet<>();
+        try {
+            Long currentUserId = userService.getCurrentUserId();
+            User currentUser = userService.getUser(currentUserId);
+
+            List<Long> feedIds = feeds.getContent().stream()
+                    .map(Feed::getId)
+                    .toList();
+
+            likedFeedIds = feedLikeRepository.findByUserAndFeed_IdIn(currentUser, feedIds)
+                    .stream()
+                    .map(feedLike -> feedLike.getFeed().getId())
+                    .collect(Collectors.toSet());
+        } catch (BusinessException e) {
+            log.warn("비로그인 사용자의 피드 목록 조회");
+        }
+
+        return feedMapper.toListResponse(feeds, likedFeedIds);
     }
     private Sort getSort(FeedSortType sortType) {
         return switch (sortType) {
@@ -150,7 +179,24 @@ public class FeedServiceImpl implements FeedService {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
         Page<Feed> feeds = feedRepository.findByUser_Id(userId, pageable);
-        return feedMapper.toListResponse(feeds);
+
+        Set<Long> likedFeedIds = new HashSet<>();
+        try {
+            Long currentUserId = userService.getCurrentUserId();
+            User currentUser = userService.getUser(currentUserId);
+
+            List<Long> feedIds = feeds.getContent().stream()
+                    .map(Feed::getId)
+                    .toList();
+
+            likedFeedIds = feedLikeRepository.findByUserAndFeed_IdIn(currentUser, feedIds)
+                    .stream()
+                    .map(feedLike -> feedLike.getFeed().getId())
+                    .collect(Collectors.toSet());
+        } catch (BusinessException e) {
+            log.warn("비로그인 사용자의 피드 목록 조회");
+        }
+        return feedMapper.toListResponse(feeds, likedFeedIds);
     }
 
     // ======================================
@@ -163,7 +209,24 @@ public class FeedServiceImpl implements FeedService {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<Feed> feeds = feedRepository.findByKeyword(keyword, pageable);
 
-        return feedMapper.toListResponse(feeds);
+        Set<Long> likedFeedIds = new HashSet<>();
+        try {
+            Long currentUserId = userService.getCurrentUserId();
+            User currentUser = userService.getUser(currentUserId);
+
+            List<Long> feedIds = feeds.getContent().stream()
+                    .map(Feed::getId)
+                    .toList();
+
+            likedFeedIds = feedLikeRepository.findByUserAndFeed_IdIn(currentUser, feedIds)
+                    .stream()
+                    .map(feedLike -> feedLike.getFeed().getId())
+                    .collect(Collectors.toSet());
+        } catch (BusinessException e) {
+            log.warn("비로그인 사용자의 피드 목록 조회");
+        }
+
+        return feedMapper.toListResponse(feeds, likedFeedIds);
     }
 
     // ======================================
@@ -257,6 +320,43 @@ public class FeedServiceImpl implements FeedService {
         }
 
         feed.delete();
+    }
+
+    // ======================================
+    // 8. 좋아요 토글
+    // ======================================
+    @Override
+    @Transactional
+    public FeedLikeResponse toggleLike(Long feedId) {
+
+        Feed feed = feedRepository.findById(feedId)
+                .orElseThrow(() -> new BusinessException(FeedErrorCode.FEED_NOT_FOUND));
+
+        Long userId = userService.getCurrentUserId();
+        User user = userService.getUser(userId);
+
+        int deletedCount = feedLikeRepository.deleteByUserAndFeed(user, feed);
+
+        boolean isLiked;
+
+        if (deletedCount > 0) {
+            feed.decreaseHeartCount();
+            isLiked = false;
+        } else {
+            FeedLike feedLike = FeedLike.builder()
+                    .user(user)
+                    .feed(feed)
+                    .build();
+            feedLikeRepository.save(feedLike);
+            feed.increaseHeartCount();
+            isLiked = true;
+        }
+
+        return FeedLikeResponse.builder()
+                .feedId(feedId)
+                .isLiked(isLiked)
+                .heartCount(feed.getHeartCount())
+                .build();
     }
 
     // ======================================

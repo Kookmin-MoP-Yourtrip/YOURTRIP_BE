@@ -17,7 +17,7 @@ public record FeedCreateRequest(
         @Schema(description = "피드 해시태그", example = "[\"경주\", \"여행\", \"맛집\"]")
         List<String> hashtags,
 
-        @Schema(description = "피드 관련 업로드 코스 ID(선택 사항)", nullable = true)
+        @Schema(description = "피드 관련 업로드 코스 ID(선택 사항)", example = "1", nullable = true)
         Long uploadCourseId
 ) {
 }

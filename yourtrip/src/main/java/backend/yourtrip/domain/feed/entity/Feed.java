@@ -110,4 +110,14 @@ public class Feed extends BaseEntity {
         mediaList.clear();
         mediaList.addAll(newMediaList);
     }
+
+    public void increaseHeartCount() {
+        this.heartCount += 1;
+    }
+
+    public void decreaseHeartCount() {
+        if (this.heartCount > 0) {
+            this.heartCount -= 1;
+        }
+    }
 }

@@ -70,6 +70,11 @@ public class SecurityConfig {
                     HttpMethod.GET, "/api/upload-courses/**"
                 ).permitAll()
 
+                // 피드 전체 조회 허용 (비로그인)
+                .requestMatchers(
+                        HttpMethod.GET, "/api/feeds/**"
+                ).permitAll()
+
                 // 나머지는 인증 필요
                 .anyRequest().authenticated()
             )
