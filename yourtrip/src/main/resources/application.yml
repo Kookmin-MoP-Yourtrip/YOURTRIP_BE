@@ -57,7 +57,9 @@ kakao:
     client-id: ${KAKAO_CLIENT_ID}
     client-secret: ${KAKAO_CLIENT_SECRET}
     redirect-uri: http://localhost:8080/api/users/login/kakao/callback
-
+  api-key: ${KAKAO_API_KEY}
+  local:
+    base-url: "https://dapi.kakao.com"
 
 server:
   forward-headers-strategy: framework
@@ -69,7 +71,6 @@ server:
     # key-store-type: ${KEY_TYPE}
     # key-store-password: ${KEY_PASS}
 
-
 s3:
   bucket: ${S3_BUCKET}
   region: ap-northeast-2
@@ -78,3 +79,6 @@ s3:
 
   access-key: ${AWS_ACCESS_KEY}
   secret-key: ${AWS_SECRET_KEY}
+
+gemini:
+  api-key: ${GEMINI_API_KEY}
