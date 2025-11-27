@@ -1,13 +1,17 @@
 package backend.yourtrip.global.kakao;
 
+import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
+import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 @Component
 @RequiredArgsConstructor
@@ -25,7 +29,7 @@ public class KakaoLocalClient {
                 .build())
             .retrieve()
             .bodyToMono(KakaoSearchResponse.class)
-            .block();
+            .block(Duration.ofSeconds(20)); //20초 타임아웃
     }
 
     /**
@@ -33,17 +37,27 @@ public class KakaoLocalClient {
      */
     public KakaoSearchResponse.Document findBestPlace(String placeName, String placeLocation) {
         String keyword = placeLocation + " " + placeName;
-        KakaoSearchResponse response = searchPlace(keyword, 5); //최대 5개의 후보 장소 가져오기
+        try {
+            KakaoSearchResponse response = searchPlace(keyword, 5); //최대 5개의 후보 장소 가져오기
 
-        List<Document> docs = response.documents();
-        if (docs == null || docs.isEmpty()) { //적절한 장소가 검색되지 않으면 null 리턴
-            return null;
+            if (response == null) {
+                return null;
+            }
+
+            List<Document> docs = response.documents();
+            if (docs == null || docs.isEmpty()) { //적절한 장소가 검색되지 않으면 null 리턴
+                return null;
+            }
+
+            // 점수가 가장 높은 장소 선택
+            return docs.stream()
+                .max(Comparator.comparingInt(doc -> score(doc, placeName, placeLocation)))
+                .orElse(null);
+        } catch (WebClientResponseException e) {
+            log.error("Kakao search API error: {} - {}", e.getStatusCode(),
+                e.getResponseBodyAsString());
+            throw new BusinessException(MyCourseErrorCode.KAKAO_API_FAILED);
         }
-
-        // 점수가 가장 높은 장소 선택
-        return docs.stream()
-            .max(Comparator.comparingInt(doc -> score(doc, placeName, placeLocation)))
-            .orElse(null);
     }
 
     private int score(Document doc, String placeName, String placeLocation) {
