@@ -68,16 +68,21 @@ public class ProfileServiceImpl implements ProfileService {
     @Transactional
     public void updateNickname(String nickname) {
 
+        Long userId = userService.getCurrentUserId();
+        User user = userService.getUser(userId);
+
         if (nickname == null || nickname.trim().isEmpty() || nickname.length() > 20) {
             throw new BusinessException(MypageErrorCode.INVALID_NICKNAME);
+        }
+
+        // 자기 자신이면 변경할 필요 없음
+        if (nickname.equals(user.getNickname())) {
+            return;
         }
 
         if (userRepository.existsByNickname(nickname)) {
             throw new BusinessException(MypageErrorCode.NICKNAME_DUPLICATED);
         }
-
-        Long userId = userService.getCurrentUserId();
-        User user = userService.getUser(userId);
 
         user = user.withNickname(nickname);
         userRepository.save(user);
@@ -120,10 +125,20 @@ public class ProfileServiceImpl implements ProfileService {
     @Transactional(readOnly = true)
     public void checkNickname(String nickname) {
 
+        Long userId = userService.getCurrentUserId();
+        User user = userService.getUser(userId);
+
+        // 닉네임 유효성 검사
         if (nickname == null || nickname.trim().isEmpty() || nickname.length() > 20) {
             throw new BusinessException(MypageErrorCode.INVALID_NICKNAME);
         }
 
+        // 자기 자신의 닉네임이면 중복 아님
+        if (nickname.equals(user.getNickname())) {
+            return;
+        }
+
+        // 다른 사람 닉네임과 중복 여부 검사
         if (userRepository.existsByNickname(nickname)) {
             throw new BusinessException(MypageErrorCode.NICKNAME_DUPLICATED);
         }
