@@ -214,4 +214,9 @@ public class ProfileController {
     public void deleteUser() {
         profileService.deleteUser();
     }
+
+    @GetMapping("/nickname/check")
+    public void checkNickname(@RequestParam String nickname) {
+        profileService.checkNickname(nickname);
+    }
 }

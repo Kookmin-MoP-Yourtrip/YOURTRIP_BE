@@ -17,4 +17,6 @@ public interface ProfileService {
     void changePassword(PasswordChangeRequest request);
 
     void deleteUser();
+
+    void checkNickname(String nickname);
 }

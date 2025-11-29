@@ -115,4 +115,17 @@ public class ProfileServiceImpl implements ProfileService {
         user = user.withDeleted();
         userRepository.save(user);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void checkNickname(String nickname) {
+
+        if (nickname == null || nickname.trim().isEmpty() || nickname.length() > 20) {
+            throw new BusinessException(MypageErrorCode.INVALID_NICKNAME);
+        }
+
+        if (userRepository.existsByNickname(nickname)) {
+            throw new BusinessException(MypageErrorCode.NICKNAME_DUPLICATED);
+        }
+    }
 }
