@@ -269,8 +269,23 @@ public class FeedServiceImpl implements FeedService {
             }
         }
 
-        if (mediaFiles != null) {
+        // 미디어 갱신 로직
+        if (mediaFiles != null || (request.keepMediaIds() != null && !request.keepMediaIds().isEmpty())) {
+
+            // 1. 유지할 미디어와 삭제할 미디어 분리
+            List<FeedMedia> mediaToKeep = new ArrayList<>();
+            List<FeedMedia> mediaToDelete = new ArrayList<>();
+
             for (FeedMedia media : feed.getMediaList()) {
+                if (request.keepMediaIds() != null && request.keepMediaIds().contains(media.getId())) {
+                    mediaToKeep.add(media);
+                } else {
+                    mediaToDelete.add(media);
+                }
+            }
+
+            // 2. 삭제할 미디어만 S3에서 삭제
+            for (FeedMedia media : mediaToDelete) {
                 try {
                     s3Service.deleteFile(media.getMediaS3Key());
                 } catch (Exception e) {
@@ -279,27 +294,45 @@ public class FeedServiceImpl implements FeedService {
                 }
             }
 
-            // 새 미디어 업로드 및 추가
+            // 3. 새로운 미디어 업로드
             List<FeedMedia> newMediaList = new ArrayList<>();
-            for (int i = 0; i < mediaFiles.size(); i++) {
-                MultipartFile file = mediaFiles.get(i);
-                try {
-                    S3Service.UploadResult result = s3Service.uploadFile(file);
-                    String s3Key = result.key();
-                    FeedMedia.MediaType mediaType = determineMediaType(s3Key);
-                    FeedMedia feedMedia = FeedMedia.builder()
-                            .feed(feed)
-                            .mediaS3Key(s3Key)
-                            .mediaType(mediaType)
-                            .displayOrder(i)
-                            .build();
-                    newMediaList.add(feedMedia);
-                } catch (IOException e) {
-                    throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+            int displayOrder = 0;
+
+            // 3-1. 유지할 미디어 먼저 추가 (displayOrder 재정렬)
+            for (FeedMedia media : mediaToKeep) {
+                FeedMedia keepMedia = FeedMedia.builder()
+                        .feed(feed)
+                        .mediaS3Key(media.getMediaS3Key())
+                        .mediaType(media.getMediaType())
+                        .displayOrder(displayOrder++)
+                        .build();
+                newMediaList.add(keepMedia);
+            }
+
+            // 3-2. 새로 업로드된 미디어 추가
+            if (mediaFiles != null && !mediaFiles.isEmpty()) {
+                for (MultipartFile file : mediaFiles) {
+                    try {
+                        S3Service.UploadResult result = s3Service.uploadFile(file);
+                        String s3Key = result.key();
+                        FeedMedia.MediaType mediaType = determineMediaType(s3Key);
+                        FeedMedia feedMedia = FeedMedia.builder()
+                                .feed(feed)
+                                .mediaS3Key(s3Key)
+                                .mediaType(mediaType)
+                                .displayOrder(displayOrder++)
+                                .build();
+                        newMediaList.add(feedMedia);
+                    } catch (IOException e) {
+                        throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+                    }
                 }
             }
+
+            // 4. 미디어 리스트 업데이트
             feed.updateMediaList(newMediaList);
         }
+
         return new FeedUpdateResponse(feed.getId(), FeedResponseCode.FEED_UPDATED.getMessage());
     }
 
