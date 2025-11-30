@@ -39,6 +39,10 @@ public class FeedMedia extends BaseEntity {
         this.displayOrder = displayOrder;
     }
 
+    public void updateDisplayOrder(int displayOrder) {
+        this.displayOrder = displayOrder;
+    }
+
     public enum MediaType {
         IMAGE, VIDEO
     }

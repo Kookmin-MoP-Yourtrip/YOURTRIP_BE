@@ -269,37 +269,90 @@ public class FeedServiceImpl implements FeedService {
             }
         }
 
-        if (mediaFiles != null) {
-            for (FeedMedia media : feed.getMediaList()) {
-                try {
-                    s3Service.deleteFile(media.getMediaS3Key());
-                } catch (Exception e) {
-                    log.warn("S3 파일 삭제 실패 - feedId: {}, mediaId: {}, s3Key: {}, error: {}",
-                            feed.getId(), media.getId(), media.getMediaS3Key(), e.getMessage(), e);
+        List<Long> keepMediaIds = request.keepMediaIds();
+
+        if (keepMediaIds == null) {
+            // keepMediaIds가 null이면 기존 방식 (전체 교체)
+            if (mediaFiles != null) {
+                // 기존 미디어 전체 삭제
+                for (FeedMedia media : feed.getMediaList()) {
+                    try {
+                        s3Service.deleteFile(media.getMediaS3Key());
+                    } catch (Exception e) {
+                        log.warn("S3 파일 삭제 실패 - feedId: {}, mediaId: {}, s3Key: {}, error: {}",
+                                feed.getId(), media.getId(), media.getMediaS3Key(), e.getMessage(), e);
+                    }
+                }
+
+                // 새 미디어 업로드
+                List<FeedMedia> newMediaList = new ArrayList<>();
+                for (int i = 0; i < mediaFiles.size(); i++) {
+                    MultipartFile file = mediaFiles.get(i);
+                    try {
+                        S3Service.UploadResult result = s3Service.uploadFile(file);
+                        String s3Key = result.key();
+                        FeedMedia.MediaType mediaType = determineMediaType(s3Key);
+                        FeedMedia feedMedia = FeedMedia.builder()
+                                .feed(feed)
+                                .mediaS3Key(s3Key)
+                                .mediaType(mediaType)
+                                .displayOrder(i)
+                                .build();
+                        newMediaList.add(feedMedia);
+                    } catch (IOException e) {
+                        throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+                    }
+                }
+                feed.updateMediaList(newMediaList);
+            }
+        } else {
+            // keepMediaIds가 제공되면 부분 업데이트
+            List<FeedMedia> currentMediaList = new ArrayList<>(feed.getMediaList());
+            List<FeedMedia> keptMediaList = new ArrayList<>();
+
+            // 1. keepMediaIds에 있는 기존 미디어만 유지, 나머지는 S3에서 삭제
+            for (FeedMedia media : currentMediaList) {
+                if (keepMediaIds.contains(media.getId())) {
+                    keptMediaList.add(media);
+                } else {
+                    // S3에서 삭제
+                    try {
+                        s3Service.deleteFile(media.getMediaS3Key());
+                    } catch (Exception e) {
+                        log.warn("S3 파일 삭제 실패 - feedId: {}, mediaId: {}, s3Key: {}, error: {}",
+                                feed.getId(), media.getId(), media.getMediaS3Key(), e.getMessage(), e);
+                    }
                 }
             }
 
-            // 새 미디어 업로드 및 추가
-            List<FeedMedia> newMediaList = new ArrayList<>();
-            for (int i = 0; i < mediaFiles.size(); i++) {
-                MultipartFile file = mediaFiles.get(i);
-                try {
-                    S3Service.UploadResult result = s3Service.uploadFile(file);
-                    String s3Key = result.key();
-                    FeedMedia.MediaType mediaType = determineMediaType(s3Key);
-                    FeedMedia feedMedia = FeedMedia.builder()
-                            .feed(feed)
-                            .mediaS3Key(s3Key)
-                            .mediaType(mediaType)
-                            .displayOrder(i)
-                            .build();
-                    newMediaList.add(feedMedia);
-                } catch (IOException e) {
-                    throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+            // 2. 새 미디어 업로드 및 추가
+            if (mediaFiles != null && !mediaFiles.isEmpty()) {
+                for (MultipartFile file : mediaFiles) {
+                    try {
+                        S3Service.UploadResult result = s3Service.uploadFile(file);
+                        String s3Key = result.key();
+                        FeedMedia.MediaType mediaType = determineMediaType(s3Key);
+                        FeedMedia feedMedia = FeedMedia.builder()
+                                .feed(feed)
+                                .mediaS3Key(s3Key)
+                                .mediaType(mediaType)
+                                .displayOrder(0) // 임시값
+                                .build();
+                        keptMediaList.add(feedMedia);
+                    } catch (IOException e) {
+                        throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+                    }
                 }
             }
-            feed.updateMediaList(newMediaList);
+
+            // 3. displayOrder 재정렬
+            for (int i = 0; i < keptMediaList.size(); i++) {
+                keptMediaList.get(i).updateDisplayOrder(i);
+            }
+
+            feed.updateMediaList(keptMediaList);
         }
+
         return new FeedUpdateResponse(feed.getId(), FeedResponseCode.FEED_UPDATED.getMessage());
     }
 
