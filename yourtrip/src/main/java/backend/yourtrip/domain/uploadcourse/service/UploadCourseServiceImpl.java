@@ -75,7 +75,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             savedUploadCourse.getKeywords().add(new CourseKeyword(savedUploadCourse, keyword));
         }
 
-        List<DayScheduleResponse> daySchedules = myCourseService.getAllDaySchedulesByCourse(
+        List<DayScheduleResponse> daySchedules = myCourseService.getAllDaySchedulesByOwnedCourse(
             myCourse.getId());
 
         return UploadCourseMapper.toCreateResponse(savedUploadCourse, myCourse, daySchedules);
@@ -105,7 +105,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         if (tags == null) {
             tags = List.of();
         }
-        
+
         String pattern = (keyword == null || keyword.isBlank())
             ? null
             : "%" + keyword + "%";

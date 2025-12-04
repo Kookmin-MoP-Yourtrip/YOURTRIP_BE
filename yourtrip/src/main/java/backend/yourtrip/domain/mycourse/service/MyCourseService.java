@@ -54,6 +54,8 @@ public interface MyCourseService {
 
     CourseForkResponse forkCourse(Long uploadCourseId);
 
+    List<DayScheduleResponse> getAllDaySchedulesByOwnedCourse(Long courseId);
+
     List<DayScheduleResponse> getAllDaySchedulesByCourse(Long courseId);
 
     AICourseCreateResponse createAICourse(AICourseCreateRequest request);

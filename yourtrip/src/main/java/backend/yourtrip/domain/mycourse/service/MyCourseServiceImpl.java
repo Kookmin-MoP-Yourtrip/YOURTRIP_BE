@@ -172,9 +172,33 @@ public class MyCourseServiceImpl implements MyCourseService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<DayScheduleResponse> getAllDaySchedulesByCourse(Long courseId) {
+    public List<DayScheduleResponse> getAllDaySchedulesByOwnedCourse(Long courseId) {
         checkExistCourse(courseId);
         checkOwnedCourse(courseId, userService.getCurrentUserId());
+
+        List<DaySchedule> daySchedules = getDaySchedulesWithPlaces(courseId);
+
+        return daySchedules.stream()
+            .map(daySchedule -> {
+                List<PlaceImageResponse> imageIdAndUrls = daySchedule.getPlaces().stream()
+                    .flatMap(place -> place.getPlaceImages().stream()
+                        .map(placeImage -> new PlaceImageResponse(
+                            place.getId(),
+                            placeImage.getId(),
+                            s3Service.getPresignedUrl(placeImage.getPlaceImageS3Key())
+                        ))
+                    )
+                    .toList();
+
+                return DayScheduleMapper.toDayScheduleResponse(daySchedule, imageIdAndUrls);
+            })
+            .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DayScheduleResponse> getAllDaySchedulesByCourse(Long courseId) {
+        checkExistCourse(courseId);
 
         List<DaySchedule> daySchedules = getDaySchedulesWithPlaces(courseId);
 
