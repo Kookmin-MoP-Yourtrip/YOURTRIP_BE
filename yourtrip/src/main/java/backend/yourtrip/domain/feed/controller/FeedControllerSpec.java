@@ -446,46 +446,45 @@ public interface FeedControllerSpec {
           - 경로 변수
               - 피드 ID(feedId): 존재하는 피드여야 함
           - 요청 값
-              - mediaFiles: 선택, 새로운 파일을 업로드하면 기존 미디어가 모두 삭제 되고 새로운 미디어로 교체됩니다.
-              - mediaFiles를 보내지 않으면 기존 미디어가 유지됩니다.
-
+              - mediaFiles: 선택, 새로 업로드할 미디어 파일
+              - keepMediaIds: 선택, 기존 미디어 중 유지할 미디어 ID 리스트
+              - keepMediaIds에 포함된 기존 미디어는 유지되고, 포함되지 않은 미디어는 S3에서 삭제됩니다.
+              - 최종 미디어 순서: 유지된 기존 미디어 → 새로 업로드된 미디어
+                    
           ### FormData 전송 구조
           **중요: 반드시 아래 key 이름을 정확히 맞춰서 전송해야 합니다**
 
           ```javascript
-          const formData = new FormData();
+            const formData = new FormData();
 
-          // 1. mediaFiles: 이미지/영상 파일 (선택사항)
-          // 주의: 새 파일을 추가하면 기존 미디어가 모두 삭제되고 교체됩니다
-          // 주의: 미디어를 유지하려면 mediaFiles를 전송하지 마세요
-          formData.append('mediaFiles', newFile1);
-          formData.append('mediaFiles', newFile2);
+            // 1. mediaFiles: 새로 추가할 이미지/영상 파일 (선택사항)
+            formData.append('mediaFiles', newFile1);
+            formData.append('mediaFiles', newFile2);
 
-          // 2. request: JSON 데이터 (필수)
-          const requestData = {
-            title: "수정된 제목",
-            location: "수정된 위치",
-            content: "수정된 내용",
-            hashtags: ["새태그"],
-            uploadCourseId: null  // null 가능
-          };
+            // 2. request: JSON 데이터 (필수)
+            const requestData = {
+              title: "수정된 제목",
+              location: "수정된 위치",
+              content: "수정된 내용",
+              hashtags: ["새태그"],
+              uploadCourseId: 1,
+              keepMediaIds: [1, 3]  // 기존 미디어 ID 1, 3 유지 (선택사항)
+            };
 
-          formData.append('request', new Blob(
-            [JSON.stringify(requestData)],
-            { type: 'application/json' }
-          ));
+            formData.append('request', new Blob(
+              [JSON.stringify(requestData)],
+              { type: 'application/json' }
+            ));
 
-          // 3. 전송
-          fetch('/api/feeds/{feedId}', {
-            method: 'PUT',
-            body: formData
-          });
+            // 3. 전송
+            fetch('/api/feeds/{feedId}', {
+              method: 'PUT',
+              body: formData
+            });
           ```
 
           ### Swagger UI 사용법
-          1. **mediaFiles**: 새 미디어로 교체하려면 파일 선택 (선택사항)
-             - 선택하지 않으면 기존 미디어 유지
-             - 선택하면 기존 미디어 전체 삭제 후 새 미디어로 교체
+          1. **mediaFiles**: 새로 추가할 파일 선택 (선택사항)
           2. **request**: 수정할 정보를 JSON 형식으로 입력
              ```json
              {
@@ -493,9 +492,15 @@ public interface FeedControllerSpec {
                "location": "수정된 위치",
                "content": "수정된 내용",
                "hashtags": ["새태그"],
-               "uploadCourseId": 1
+               "uploadCourseId": 1,
+               "keepMediaIds": [1, 3]
              }
              ```
+          ## 사용 예시
+          - **기존 이미지 1, 3 유지 + 새 이미지 추가**: `keepMediaIds: [1, 3]`, mediaFiles 업로드
+          - **모든 기존 이미지 삭제 + 새 이미지만**: `keepMediaIds: []` 또는 생략, mediaFiles 업로드
+          - **기존 이미지만 유지 (새 이미지 없음)**: `keepMediaIds: [1, 2, 3]`, mediaFiles 생략
+          - **텍스트만 수정 (이미지 변경 없음)**: keepMediaIds와 mediaFiles 모두 생략
 
           ### ⚠ 예외상황
           - `FEED_NOT_FOUND(404)`: 피드가 존재하지 않는 경우

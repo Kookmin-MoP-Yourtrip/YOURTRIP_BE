@@ -7,6 +7,7 @@ public record FeedUpdateRequest(
         String location,
         String content,
         List<String> hashtags,
-        Long uploadCourseId
+        Long uploadCourseId,
+        List<Long> keepMediaIds
 ) {
 }
