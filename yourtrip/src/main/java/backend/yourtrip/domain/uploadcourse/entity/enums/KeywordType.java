@@ -48,7 +48,7 @@ public enum KeywordType {
 
     // 예산
     COST_EFFECTIVE("budget", "가성비"),
-    NORMAL("budget", "보통"),
+    NORMAL("budget", "평균예산"),
     PREMIUM("budget", "프리미엄");
 
     private final String category;
