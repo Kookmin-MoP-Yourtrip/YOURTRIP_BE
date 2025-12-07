@@ -1,0 +1,84 @@
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: ${DB_DDL_AUTO}
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_EMAIL}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+jwt:
+  secret: ${JWT_SECRET}
+
+logging:
+  level:
+    org.hibernate.SQL: debug
+    org.springdoc: debug
+    org.springframework.web: info
+    org.springframework.security: DEBUG
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    operationsSorter: method
+    displayRequestDuration: true
+    persistAuthorization: true
+  override-with-generic-response: false
+
+kakao:
+  auth:
+    client-id: ${KAKAO_CLIENT_ID}
+    client-secret: ${KAKAO_CLIENT_SECRET}
+    redirect-uri: http://localhost:8080/api/users/login/kakao/callback
+  api-key: ${KAKAO_API_KEY}
+  local:
+    base-url: "https://dapi.kakao.com"
+
+server:
+  forward-headers-strategy: framework
+  port: 8080
+  address: 0.0.0.0
+  ssl:
+    enabled: false
+    # key-store: ${KEY_STORE}
+    # key-store-type: ${KEY_TYPE}
+    # key-store-password: ${KEY_PASS}
+
+s3:
+  bucket: ${S3_BUCKET}
+  region: ap-northeast-2
+  allowed-content-types: image/png,image/jpeg,image/webp,image/jpg,video/mp4,video/quicktime,video/webm
+  max-size-bytes: 10485760 # 10MB
+
+  access-key: ${AWS_ACCESS_KEY}
+  secret-key: ${AWS_SECRET_KEY}
+
+gemini:
+  api-key: ${GEMINI_API_KEY}
