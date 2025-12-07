@@ -269,4 +269,15 @@ public class UserServiceImpl implements UserService {
         codeExpiry.remove(email);
         verifiedEmails.remove(email);
     }
+
+    @Override
+    @Transactional
+    public void logout() {
+        Long userId = getCurrentUserId();
+        User user = getUser(userId);
+
+        // Refresh Token 무효화
+        user = user.withRefreshToken(null);
+        userRepository.save(user);
+    }
 }

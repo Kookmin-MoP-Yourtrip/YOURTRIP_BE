@@ -738,4 +738,91 @@ public class UserController {
         return kakaoService.complete(request.kakaoId(), request.nickname(),
             profileImage);
     }
+
+    // =========================================================
+// 7. 로그아웃
+// =========================================================
+    @Operation(
+        summary = "로그아웃",
+        description = """
+        ### 기능 설명
+        - 서버에 **저장된 Refresh Token을 삭제**하여 로그아웃 처리합니다.
+        - Access Token은 서버에서 저장하지 않으므로 삭제할 수 없으며,
+          **클라이언트에서 직접 폐기해야 합니다.**
+        
+        ### 제약조건
+        - Authorization 헤더에 **Bearer AccessToken** 필요
+        - Access Token이 만료되었을 경우: `UNAUTHORIZED` 발생 가능
+        - Refresh Token은 따로 보내지 않음 (서버가 현재 사용자 식별 후 서버 저장 토큰 삭제)
+        
+        ### 예외상황 / 에러코드
+        - `USER_NOT_FOUND(404)` : 인증 정보 문제로 사용자 식별 실패
+        - `UNAUTHORIZED(401)` : Access Token 미전달 또는 만료
+        
+        ### 테스트 방법
+        1. 로그인 API를 호출해 Access Token을 발급받습니다.
+        2. Swagger 상단의 **Authorize** 버튼에  
+           `Bearer {accessToken}` 입력하여 인증합니다.
+        3. **POST** `/api/users/logout` 호출
+        4. 정상: 200 OK (본문 없음)
+        5. 로그아웃 이후:
+           - Refresh Token은 DB에서 삭제됨
+           - Access Token으로 요청 시 만료 전까지는 “401”이 아닐 수 있으나,  
+             Refresh Token이 없으므로 재발급 불가 -> 재로그인 필요
+        
+        ### 응답 예시
+        #### 정상 응답 (200)
+        ```json
+        (본문 없음)
+        ```
+
+        #### 예외 응답 (401)
+        ```json
+        {
+          "timestamp": "2025-11-20T10:00:00",
+          "code": "UNAUTHORIZED",
+          "message": "인증 정보가 유효하지 않습니다."
+        }
+        ```
+
+        #### 예외 응답 (404)
+        ```json
+        {
+          "timestamp": "2025-11-20T10:00:10",
+          "code": "USER_NOT_FOUND",
+          "message": "사용자를 찾을 수 없습니다."
+        }
+        ```
+        """
+    )
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "로그아웃 성공(본문 없음)"),
+        @ApiResponse(responseCode = "401", description = "Access Token 누락/만료",
+            content = @Content(mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                {
+                  "timestamp": "2025-11-20T10:00:00",
+                  "code": "UNAUTHORIZED",
+                  "message": "인증 정보가 유효하지 않습니다."
+                }
+                """)
+            )
+        ),
+        @ApiResponse(responseCode = "404", description = "사용자 정보 없음",
+            content = @Content(mediaType = "application/json",
+                examples = @ExampleObject(value = """
+                {
+                  "timestamp": "2025-11-20T10:00:10",
+                  "code": "USER_NOT_FOUND",
+                  "message": "사용자를 찾을 수 없습니다."
+                }
+                """)
+            )
+        )
+    })
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.OK)
+    public void logout() {
+        userService.logout();
+    }
 }

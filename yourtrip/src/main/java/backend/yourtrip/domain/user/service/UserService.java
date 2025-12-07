@@ -30,4 +30,6 @@ public interface UserService {
     User getUser(Long userId);
 
     Long getCurrentUserId();
+
+    void logout();
 }
