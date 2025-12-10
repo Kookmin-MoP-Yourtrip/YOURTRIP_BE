@@ -278,6 +278,8 @@ cd YOURTRIP_BE
    - MAIL_EMAIL, MAIL_PASSWORD
    - AWS_ACCESS_KEY, AWS_SECRET_KEY
    - KAKAO_CLIENT_ID, KAKAO_SECRET etc.
+   - S3_BUCKET
+   - GEMINI_API_KEY
   3. EC2에서는 8080 포트 사용, Swagger는 /swagger-ui.html
   ```
 
