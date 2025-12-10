@@ -283,7 +283,7 @@ cd YOURTRIP_BE
 
 ## 📎 기타 자료
 
-#### 🎥 시연 영상: (https://drive.google.com/file/d/1G-Yke7Jxho4Y-MWeT2oGBE6q2hJp-3Ed/view)
+#### 🎥 시연 영상: (https://drive.google.com/file/d/1MirNvxI5y35qS9tPtCIv9aWd2Gv4REeS/view)
 
 #### 📑 발표 자료(PPT): 업데이트 예정
 
