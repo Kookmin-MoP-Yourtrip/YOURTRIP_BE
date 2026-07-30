@@ -58,11 +58,7 @@ public class SecurityConfig {
                     // 비밀번호 찾기
                     "/api/users/password/find/email",
                     "/api/users/password/find/verify",
-                    "/api/users/password/find/reset",
-
-                    // 카카오
-                    "/api/users/login/kakao/callback",
-                    "/api/users/login/kakao/complete"
+                    "/api/users/password/find/reset"
                 ).permitAll()
 
                 // Upload-courses GET 허용

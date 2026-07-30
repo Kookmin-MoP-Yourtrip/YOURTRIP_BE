@@ -53,10 +53,6 @@ springdoc:
   override-with-generic-response: false
 
 kakao:
-  auth:
-    client-id: ${KAKAO_CLIENT_ID}
-    client-secret: ${KAKAO_CLIENT_SECRET}
-    redirect-uri: http://localhost:8080/api/users/login/kakao/callback
   api-key: ${KAKAO_API_KEY}
   local:
     base-url: "https://dapi.kakao.com"
@@ -67,9 +63,6 @@ server:
   address: 0.0.0.0
   ssl:
     enabled: false
-    # key-store: ${KEY_STORE}
-    # key-store-type: ${KEY_TYPE}
-    # key-store-password: ${KEY_PASS}
 
 s3:
   bucket: ${S3_BUCKET}

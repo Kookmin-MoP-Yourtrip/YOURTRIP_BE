@@ -40,14 +40,6 @@ public class User extends BaseEntity {
     @Builder.Default
     private UserRole role = UserRole.USER;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    @Builder.Default
-    private AuthProvider provider = AuthProvider.LOCAL;
-
-    @Column(unique = true)
-    private String socialId;
-
     public User withRefreshToken(String refreshToken) {
         return this.toBuilder()
             .refreshToken(refreshToken)
