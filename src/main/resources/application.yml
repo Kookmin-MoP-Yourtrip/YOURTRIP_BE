@@ -31,6 +31,21 @@ spring:
       max-file-size: 10MB
       max-request-size: 10MB
 
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      # 기본값(60초)로 두면 Redis 지연 시 요청 스레드가 60초씩 묶여 스레드 풀이 고갈된다.
+      timeout: 1000ms
+      connect-timeout: 1000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          # max-wait 기본값은 무한대기이므로 반드시 명시한다.
+          max-wait: 1000ms
+
 jwt:
   secret: ${JWT_SECRET}
 

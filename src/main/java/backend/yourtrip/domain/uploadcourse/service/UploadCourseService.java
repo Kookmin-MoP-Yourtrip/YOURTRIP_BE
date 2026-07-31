@@ -23,4 +23,6 @@ public interface UploadCourseService {
         UploadCourseSortType sortType);
 
     UploadCourseListResponse getMyUploadCourses();
+
+    UploadCourseListResponse getPopularCourses(KeywordType theme);
 }

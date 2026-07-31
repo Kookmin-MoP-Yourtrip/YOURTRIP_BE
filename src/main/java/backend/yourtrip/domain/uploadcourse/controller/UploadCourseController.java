@@ -84,5 +84,15 @@ public class UploadCourseController implements UploadCourseControllerSpec {
         return uploadCourseService.getMyUploadCourses();
     }
 
+    // ==========================
+    //  인기 코스 상위 5개 조회
+    // ==========================
+    @Override
+    @GetMapping("/popular")
+    public UploadCourseListResponse getPopularCourses(
+        @RequestParam(name = "theme", required = false) KeywordType theme
+    ) {
+        return uploadCourseService.getPopularCourses(theme);
+    }
 
 }

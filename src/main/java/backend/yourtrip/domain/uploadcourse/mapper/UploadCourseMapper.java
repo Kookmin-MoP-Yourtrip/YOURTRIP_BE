@@ -2,6 +2,7 @@ package backend.yourtrip.domain.uploadcourse.mapper;
 
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
+import backend.yourtrip.domain.uploadcourse.dto.cache.CourseListItemCacheItem;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
@@ -70,6 +71,31 @@ public class UploadCourseMapper {
                 .map(courseKeyword -> courseKeyword.getKeywordType().getLabel())
                 .toList()
             )
+            .build();
+    }
+
+    public static CourseListItemCacheItem toCourseListItemCacheItem(UploadCourse uploadCourse) {
+        return new CourseListItemCacheItem(
+            uploadCourse.getId(),
+            uploadCourse.getTitle(),
+            uploadCourse.getLocation(),
+            uploadCourse.getThumbnailImageS3Key(),
+            uploadCourse.getForkCount(),
+            uploadCourse.getKeywords().stream()
+                .map(courseKeyword -> courseKeyword.getKeywordType().getLabel())
+                .toList()
+        );
+    }
+
+    public static UploadCourseListItemResponse toListItemResponse(CourseListItemCacheItem item,
+        String thumbnailUrl) {
+        return UploadCourseListItemResponse.builder()
+            .uploadCourseId(item.uploadCourseId())
+            .title(item.title())
+            .location(item.location())
+            .thumbnailImageUrl(thumbnailUrl)
+            .forkCount(item.forkCount())
+            .keywords(item.keywords())
             .build();
     }
 
