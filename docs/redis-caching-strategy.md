@@ -79,14 +79,11 @@
 - [x] 1-3. Lettuce pool 설정 추가 (`max-active`, `max-wait` 등 — `max-wait` 기본값 무한대기 방지)
 - [x] 1-4. `.env.example`에 `REDIS_HOST`, `REDIS_PORT` 추가
 
-**추가 개선점**
-- `docker-compose.yml`의 Redis 컨테이너에 `requirepass`(인증)가 설정되어 있지 않고, `application.yml`에도 `spring.data.redis.password`가 없다. 로컬 개발 환경에서는 문제가 없지만, 운영 배포 시 (예: AWS ElastiCache, 또는 외부에서 접근 가능한 Redis) 인증 없이 노출되면 임의의 클라이언트가 캐시 데이터를 읽거나 `FLUSHALL` 등으로 서비스에 영향을 줄 수 있다. 배포 전에 `REDIS_PASSWORD` 환경변수 및 `spring.data.redis.password` 설정, 네트워크 수준 접근 제한(VPC/보안그룹)을 검토해야 한다.
-
 ### 2. 공통 캐시 인프라
-- [ ] 2-1. `RedisConfig`에 `RedisTemplate<String,String>` 빈만 추가
-- [ ] 2-2. `RedisConfig`에 `RedisCacheManager` 추가 (캐시 이름/TTL만 정의, 아직 사용처 없음)
-- [ ] 2-3. `CacheErrorHandler` 구현 및 등록 (fail-open, WARN 로그 포함)
-- [ ] 2-4. `GenericJackson2JsonRedisSerializer`에 `JavaTimeModule` 등록 확인
+- [x] 2-1. `RedisConfig`에 `RedisTemplate<String,String>` 빈만 추가
+- [x] 2-2. `RedisConfig`에 `RedisCacheManager` 추가 (캐시 이름/TTL만 정의, 아직 사용처 없음)
+- [x] 2-3. `CacheErrorHandler` 구현 및 등록 (fail-open, WARN 로그 포함)
+- [x] 2-4. `GenericJackson2JsonRedisSerializer`에 `JavaTimeModule` 등록 확인
 
 ### 3. 인기 상위 5개 목록 — 읽기 경로부터 단계적으로
 - [ ] 3-1. Repository에 상위 5개 ID만 조회하는 쿼리 추가 (캐싱 없이 기능만)
@@ -131,3 +128,19 @@
 - **검색어/태그 조합 캐싱** — 조합이 사실상 무한해 캐시 키가 폭발하고 히트율이 떨어진다.
 - **기존 목록 API 페이징** — API 스펙 변경이라 FE 협의가 필요하므로 별도 작업으로 분리한다.
 - **서킷 브레이커(Resilience4j)** — fail-open + 짧은 타임아웃으로 이번 목표는 충족된다. 추후 검토 대상.
+
+## 향후 계획 — Redis 고가용성(Master-Replica)
+
+현재는 `docker-compose.yml`에 정의된 단일 Redis 인스턴스로 구성되어 있다. 이 캐시는 원본이 항상 DB에 있는 **순수 캐시**([설계 원칙](#설계-원칙) 참고)이므로 인스턴스가 죽어도 데이터 정합성 자체는 깨지지 않는다. 다만 단일 인스턴스가 재시작/장애로 초기화되면 **캐시가 한 번에 전부 비워져서, [설계 원칙 4번](#설계-원칙)에서 방어하려는 콜드 스타트 스탬피드 상황이 그대로 재현**된다는 가용성 문제가 남는다.
+
+- **목표**: Master-Replica 구성(추후 Sentinel 등으로 자동 failover까지 확장)으로 마스터 장애 시에도 레플리카가 캐시를 계속 서빙하게 해, 캐시가 전면적으로 비워지는 빈도와 그로 인한 DB 부하 스파이크를 줄인다.
+- **적용 시점**: 이번 체크리스트(0~8) 범위 밖이며, 별도 작업으로 분리해 추후 진행한다. 구체적인 구성 방식(Docker Compose 기반 Sentinel, 관리형 Redis 서비스 전환 등)은 착수 시점에 다시 논의한다.
+
+### 현재 구조가 이 계획에 미치는 영향 (사전 검토)
+
+현재까지 만든 코드/설정은 이 계획을 막지 않는다. [RedisConfig.java](../src/main/java/backend/yourtrip/global/config/RedisConfig.java)의 `redisTemplate`, `redisCacheManager` 빈은 모두 Spring Boot가 `spring.data.redis.*` 프로퍼티로 자동 구성해주는 `RedisConnectionFactory`를 주입받아 쓸 뿐, 연결 토폴로지(단일 노드/Sentinel/Cluster)를 코드 어디에서도 직접 알지 않는다. 즉 **`RedisConfig`, `RedisCacheErrorHandler`는 Master-Replica 전환 시 수정할 필요가 없다** — 아래 항목들은 기존 것을 고치는 게 아니라 새로 추가하는 작업이다.
+
+- **Sentinel 없이 master + replica만 두는 구성은 진짜 HA가 아니다.** Lettuce/Spring은 master 장애를 자동 감지해 replica를 승격시켜주지 않는다. 자동 failover가 목표라면 최소 3대(quorum 확보용 홀수)의 Sentinel이 함께 필요하며, `application.yml`의 `spring.data.redis.host`/`port`(단일 노드 전용)를 `spring.data.redis.sentinel.master`/`sentinel.nodes`로 교체해야 한다 — 이 교체만으로 Spring Boot가 Sentinel-aware 커넥션을 자동 구성하므로 Java 코드 변경은 불필요하다.
+- `docker-compose.yml`에는 현재 `redis` 서비스 하나만 정의되어 있다. `--replicaof` 옵션을 가진 replica 서비스, (Sentinel을 쓴다면) sentinel 서비스들을 추가하면 되고 기존 `redis` 서비스 정의와 충돌하지 않는다.
+- 읽기 트래픽까지 replica로 분산하려면 Lettuce `ReadFrom` 설정이 별도로 필요하다(기본값은 읽기/쓰기 모두 master로만 라우팅). 조회수 카운터(`INCR`/`SADD`, 5단계에서 추가 예정)는 쓰기이므로 이 설정과 무관하게 항상 master로 간다.
+- [0번 섹션 추가 개선점](#0-사전-준비)에 이미 기록한 볼륨 미설정 이슈도 함께 고려한다 — replica가 재기동될 때 마스터의 영속 데이터가 없으면 매번 풀 리싱크(전체 데이터 재동기화) 비용이 발생한다.
