@@ -86,12 +86,14 @@
 - [x] 2-4. `GenericJackson2JsonRedisSerializer`에 `JavaTimeModule` 등록 확인
 
 ### 3. 인기 상위 5개 목록 — 읽기 경로부터 단계적으로
-- [ ] 3-1. Repository에 상위 5개 ID만 조회하는 쿼리 추가 (캐싱 없이 기능만)
-- [ ] 3-2. Repository에 ID 목록으로 `LEFT JOIN FETCH` 조회하는 쿼리 추가
-- [ ] 3-3. `GET /api/upload-courses/popular` API 추가 (캐싱 없이 DB 직접 조회로 우선 동작 확인)
-- [ ] 3-4. `PopularCourseCacheItem` 캐시 DTO 추가 (S3 key 보관)
-- [ ] 3-5. 캐시 조회/저장 로직 추가 (콜드 스타트 락 없는 단순 버전)
-- [ ] 3-6. 콜드 스타트 스탬피드 방지용 분산 락 추가
+- [x] 3-1. Repository에 상위 5개 ID만 조회하는 쿼리 추가 (캐싱 없이 기능만)
+- [x] 3-2. Repository에 ID 목록으로 `LEFT JOIN FETCH` 조회하는 쿼리 추가
+- [x] 3-3. `GET /api/upload-courses/popular` API 추가 (캐싱 없이 DB 직접 조회로 우선 동작 확인)
+- [x] 3-4. `PopularCourseCacheItem` 캐시 DTO 추가 (S3 key 보관) — 실제로는 인기 목록 전용이 아닌 범용 콘텐츠 캐시로 설계해 `CourseListItemCacheItem`으로 명명(자세한 내용은 [TASK-3.md](tasks/TASK-3.md) 참고)
+- [x] 3-5. 캐시 조회/저장 로직 추가 (콜드 스타트 락 없는 단순 버전) — 랭킹/아이템 캐시 이원화 구조로 구현, 아이템 캐시는 MGET 배치 조회로 구현(개별 GET 반복은 벤치마크에서 성능 저하 확인돼 폐기)
+- [x] 3-6. 콜드 스타트 스탬피드 방지용 분산 락 추가 — `SET NX EX` + Lua 스크립트 기반 비교-삭제 해제로 구현, 동시요청 50건에서 DB 쿼리 1회로 수렴하는 것을 실측 확인(자세한 내용은 [TASK-3.md](tasks/TASK-3.md) 참고)
+- [ ] 3-7. `view_count` 컬럼에 인덱스 추가 — 랭킹 쿼리(`ORDER BY view_count DESC LIMIT 5`)가 인덱스 없이 매번 전체 스캔+정렬을 하고 있음을 확인(`\di upload_course*`로 PK/unique 제약 외 인덱스 없음 확인). 데이터가 5,000건일 땐 안 드러나다가 50만 건 벤치마크에서 쿼리 1건당 1.7~2.5초까지 걸리는 것으로 실측 확인됨 — 데이터量에 비례해 커지는 비용을 인덱스로 없앤다(자세한 내용은 [TASK-3.md](tasks/TASK-3.md) 참고)
+- [ ] 3-8. 서버 기동 시 인기 목록(전체+테마 7종, 8개 캐시 키) 웜업 추가 — `ApplicationReadyEvent`로 부팅 직후 랭킹 쿼리를 미리 실행해 캐시를 채워둔다. 3-7과는 해결하는 문제가 다르다: 3-7(인덱스)은 "데이터量에 비례하는 쿼리 비용"을, 3-8(웜업)은 "서버 재기동 직후 Hibernate/JVM이 이 쿼리 경로를 처음 실행할 때 드는 고정 비용(수백 ms~1초 이상)"을 없앤다 — 3,000건처럼 적은 데이터에서도 콜드스타트 직후엔 이 고정 비용 때문에 느렸던 것을 실측으로 확인함(자세한 내용은 [TASK-3.md](tasks/TASK-3.md) 참고). 콜드 스타트 분산 락(3-6)을 대체하는 게 아니라 보강하는 용도 — Redis만 단독으로 재시작되는 경우엔 앱이 재기동되지 않아 웜업이 다시 실행되지 않으므로, 그 경우엔 여전히 3-6의 락이 유일한 방어선이다
 
 ### 4. 상세 조회 캐싱
 - [ ] 4-1. `UploadCourseDetailCacheItem` 캐시 DTO 추가 (S3 key 보관, 장소 이미지 포함)
