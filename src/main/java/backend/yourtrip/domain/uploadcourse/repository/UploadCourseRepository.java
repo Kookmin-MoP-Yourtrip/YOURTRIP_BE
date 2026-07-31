@@ -5,6 +5,7 @@ import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -88,4 +89,24 @@ public interface UploadCourseRepository extends JpaRepository<UploadCourse, Long
             ORDER BY uc.id DESC
         """)
     List<UploadCourse> findAllByUserIdOrderByCreatedAtDesc(Long userId);
+
+    @Query("""
+            SELECT uc.id
+            FROM UploadCourse uc
+            WHERE (:theme IS NULL
+                   OR EXISTS (
+                       SELECT 1 FROM CourseKeyword ck
+                       WHERE ck.uploadCourse = uc AND ck.keywordType = :theme
+                   ))
+            ORDER BY uc.viewCount DESC
+        """)
+    List<Long> findPopularCourseIds(@Param("theme") KeywordType theme, Pageable pageable);
+
+    @Query("""
+            SELECT DISTINCT uc
+            FROM UploadCourse uc
+            LEFT JOIN FETCH uc.keywords
+            WHERE uc.id IN :ids
+        """)
+    List<UploadCourse> findAllByIdInWithKeywords(@Param("ids") List<Long> ids);
 }

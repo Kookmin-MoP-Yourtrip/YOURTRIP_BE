@@ -32,6 +32,10 @@ public class RedisConfig implements CachingConfigurer {
     private static final Duration POPULAR_COURSES_TTL = Duration.ofMinutes(30);
     // 상세 캐시 기본 TTL — 실제 적용 시점에는 동시 만료를 피하기 위해 ± jitter가 더해진다.
     private static final Duration COURSE_DETAIL_TTL = Duration.ofMinutes(5);
+    // 코스 콘텐츠(엔티티 ID 단위) 캐시 TTL — 거의 안 바뀌는 read-heavy 데이터라 넉넉하게 잡는다.
+    // 정합성은 이 TTL이 아니라 콘텐츠 변경 이벤트 발생 시의 write-through(cache.put)로 보장한다.
+    // public: 아이템 캐시를 파이프라인으로 직접 쓰는 UploadCourseServiceImpl에서도 동일 TTL을 적용해야 해서 공유한다.
+    public static final Duration COURSE_LIST_ITEM_TTL = Duration.ofHours(2);
 
     private final RedisCacheErrorHandler redisCacheErrorHandler;
 
@@ -46,6 +50,20 @@ public class RedisConfig implements CachingConfigurer {
         return redisTemplate;
     }
 
+    /**
+     * 캐시 값(JSON) 배치 조회(MGET) 전용 템플릿. RedisCacheManager와 동일한 값 직렬화(GenericJackson2Json)를 써서
+     * 캐시에 저장된 값을 그대로 읽어올 수 있다. Spring Cache 추상화(Cache 인터페이스)는 다중 키 조회를 지원하지 않아
+     * 코스 여러 건을 한 번에 조회해야 하는 아이템 캐시 배치 읽기에 별도로 사용한다.
+     */
+    @Bean
+    public RedisTemplate<String, Object> cacheValueRedisTemplate(RedisConnectionFactory connectionFactory) {
+        RedisTemplate<String, Object> redisTemplate = new RedisTemplate<>();
+        redisTemplate.setConnectionFactory(connectionFactory);
+        redisTemplate.setKeySerializer(new StringRedisSerializer());
+        redisTemplate.setValueSerializer(cacheValueSerializer());
+        return redisTemplate;
+    }
+
     @Bean
     public RedisCacheManager redisCacheManager(RedisConnectionFactory connectionFactory) {
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
@@ -55,7 +73,8 @@ public class RedisConfig implements CachingConfigurer {
 
         Map<String, RedisCacheConfiguration> cacheConfigurations = Map.of(
                 "popularCourses", defaultConfig.entryTtl(POPULAR_COURSES_TTL),
-                "courseDetail", defaultConfig.entryTtl(COURSE_DETAIL_TTL)
+                "courseDetail", defaultConfig.entryTtl(COURSE_DETAIL_TTL),
+                "courseListItem", defaultConfig.entryTtl(COURSE_LIST_ITEM_TTL)
         );
 
         return RedisCacheManager.builder(connectionFactory)

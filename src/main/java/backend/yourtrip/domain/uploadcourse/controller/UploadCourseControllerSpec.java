@@ -443,5 +443,71 @@ public interface UploadCourseControllerSpec {
     )
     UploadCourseListResponse getMyUploadCourses();
 
+    // ==========================
+    //  인기 코스 상위 5개 조회
+    // ==========================
+    @Operation(
+        summary = "인기 코스 상위 5개 조회 (홈 화면 전체/테마별 인기 코스)",
+        description = """
+            홈 화면에 노출되는 "요즘 뜨는 인기 코스"(전체)와 "테마별 인기 코스"(테마 탭)를 하나의 API로 처리합니다.
+            조회수(viewCount) 기준 상위 5개만 반환하며, 페이지네이션은 지원하지 않습니다.
+
+            ### 쿼리 파라미터
+            - theme(선택): 여행 분위기(mood) 키워드 코드 하나만 전달합니다(예: `"FOOD"`, `"HEALING"`). **코스 키워드 목록 조회 API**의 `mood` 카테고리 코드만 허용됩니다.
+                - 파라미터 미포함 시 전체 코스 기준 인기 top5가 반환됩니다.
+                - mood 카테고리가 아닌 코드(travelMode/companionType/duration/budget)를 전달하면 400 에러가 발생합니다.
+
+            ### 예외 상황
+            - `INVALID_THEME_TYPE(400)`: mood 카테고리가 아닌 theme 값이 주어진 경우
+            """
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "인기 코스 상위 5개 조회 성공",
+            content = @Content(
+                schema = @Schema(implementation = UploadCourseListResponse.class),
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "uploadCourses": [
+                            {
+                              "uploadCourseId": 3,
+                              "title": "대전 맛도리 빵집 투어",
+                              "location": "대전 유성구, 중구",
+                              "thumbnailImageUrl": "http://example.com",
+                              "forkCount": 112,
+                              "keywords": [
+                                "뚜벅이",
+                                "맛집탐방",
+                                "쇼핑",
+                                "가성비"
+                              ]
+                            }
+                          ]
+                        }
+                        """
+                )
+            )
+        ),
+        @ApiResponse(
+            responseCode = "400",
+            description = "mood 카테고리가 아닌 theme 값이 주어진 경우",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "code": "INVALID_THEME_TYPE",
+                          "timestamp": "2025-11-11T00:00:44.7553392",
+                          "message": "올바르지 않은 테마입니다."
+                        }
+                        """
+                )
+            )
+        )
+    })
+    UploadCourseListResponse getPopularCourses(
+        @Parameter(description = "mood 카테고리 키워드 코드", example = "FOOD") KeywordType theme);
 
 }
