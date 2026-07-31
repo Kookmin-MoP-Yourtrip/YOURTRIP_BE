@@ -39,6 +39,10 @@ CLAUDE.md
 .claude/
 .env
 
+# 로컬 개발용 시드 데이터 (사용자/코스/일정/장소 샘플). .worktreeinclude가
+# gitignore된 파일로 전제하고 복사 대상에 포함하고 있으나 규칙이 누락돼 있어 추가.
+src/main/resources/data.sql
+
 ### Terraform ###
 terraform/.terraform/
 terraform/*.tfstate
