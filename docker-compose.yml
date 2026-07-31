@@ -3,7 +3,7 @@ services:
     image: redis:7-alpine
     container_name: yourtrip-redis
     ports:
-      - "6379:6379"
+      - "6479:6379"
     # allkeys-lru: 순수 캐시 용도(원본은 항상 DB)이므로 메모리 초과 시
     # noeviction(기본값)처럼 쓰기 실패를 내지 않고 오래된 키부터 자동 축출한다.
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
