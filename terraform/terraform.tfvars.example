@@ -1,0 +1,8 @@
+# terraform/terraform.tfvars 로 복사한 뒤 실제 값을 채워 사용한다.
+# (terraform.tfvars는 git에 커밋하지 않는다)
+
+aws_region = "ap-northeast-2" # application.yml의 s3.region 하드코딩 값과 반드시 일치시킬 것
+bucket_name = ""               # 전역 고유해야 함 (예: yourtrip-media-<본인식별자>)
+iam_user_name = "yourtrip-s3-app-user"
+grant_list_bucket = false
+bucket_force_destroy = false
