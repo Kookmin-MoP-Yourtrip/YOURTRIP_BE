@@ -1,0 +1,8 @@
+# .gitignore된 항목 중 실행/빌드에 필요한 설정·데이터 파일만 새 worktree에 복사한다.
+# .idea, .gradle, build/, out/, bin/ 같은 IDE 상태·빌드 캐시는 제외한다:
+#  - .idea는 절대경로가 박혀 있어 다른 경로의 worktree에 복사하면 오히려 깨진 설정이 된다.
+#  - .gradle/build/out/bin은 재빌드 시 자동 재생성되는 캐시라 복사 비용만 낭비된다.
+.env
+CLAUDE.md
+.claude/
+src/main/resources/data.sql
