@@ -72,10 +72,13 @@
 - `docker-compose.yml`에 영속성 볼륨(`volumes`)을 설정하지 않았다. 컨테이너가 재시작되거나 삭제되면 캐시 데이터가 전부 휘발된다. 순수 캐시 용도(원본은 항상 DB)라 서비스 정합성에는 문제가 없지만, 로컬 개발 중 반복적으로 캐시 값을 확인하려는 상황에서는 재기동마다 초기화된다는 점을 인지해야 한다. 필요하면 named volume(`redis-data:/data`) + `appendonly yes`를 추가하는 것을 검토할 수 있다.
 
 ### 1. Redis 연결 설정
-- [ ] 1-1. `application.yml`에 `spring.data.redis` 접속 정보(host/port)만 추가
-- [ ] 1-2. `timeout`/`connect-timeout` 1초로 설정 (기본 60초의 위험성: Redis 지연 시 요청 스레드가 60초씩 묶여 스레드 풀이 고갈됨)
-- [ ] 1-3. Lettuce pool 설정 추가 (`max-active`, `max-wait` 등 — `max-wait` 기본값 무한대기 방지)
-- [ ] 1-4. `.env.example`에 `REDIS_HOST`, `REDIS_PORT` 추가
+- [x] 1-1. `application.yml`에 `spring.data.redis` 접속 정보(host/port)만 추가
+- [x] 1-2. `timeout`/`connect-timeout` 1초로 설정 (기본 60초의 위험성: Redis 지연 시 요청 스레드가 60초씩 묶여 스레드 풀이 고갈됨)
+- [x] 1-3. Lettuce pool 설정 추가 (`max-active`, `max-wait` 등 — `max-wait` 기본값 무한대기 방지)
+- [x] 1-4. `.env.example`에 `REDIS_HOST`, `REDIS_PORT` 추가
+
+**추가 개선점**
+- `docker-compose.yml`의 Redis 컨테이너에 `requirepass`(인증)가 설정되어 있지 않고, `application.yml`에도 `spring.data.redis.password`가 없다. 로컬 개발 환경에서는 문제가 없지만, 운영 배포 시 (예: AWS ElastiCache, 또는 외부에서 접근 가능한 Redis) 인증 없이 노출되면 임의의 클라이언트가 캐시 데이터를 읽거나 `FLUSHALL` 등으로 서비스에 영향을 줄 수 있다. 배포 전에 `REDIS_PASSWORD` 환경변수 및 `spring.data.redis.password` 설정, 네트워크 수준 접근 제한(VPC/보안그룹)을 검토해야 한다.
 
 ### 2. 공통 캐시 인프라
 - [ ] 2-1. `RedisConfig`에 `RedisTemplate<String,String>` 빈만 추가
