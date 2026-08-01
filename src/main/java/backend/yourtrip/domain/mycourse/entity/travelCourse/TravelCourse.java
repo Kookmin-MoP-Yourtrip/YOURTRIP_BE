@@ -64,7 +64,7 @@ public class TravelCourse extends BaseEntity {
     /** 업로드 코스용 사본이 이미 만들어졌는지 여부(중복 업로드 방지) */
     private boolean uploaded;
 
-    @OneToMany(mappedBy = "course")
+    @OneToMany(mappedBy = "course", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("day ASC")
     private List<DaySchedule> daySchedules;
 
