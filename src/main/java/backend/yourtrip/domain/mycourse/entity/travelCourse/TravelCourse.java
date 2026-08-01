@@ -83,4 +83,11 @@ public class TravelCourse extends BaseEntity {
     public void markAsUploaded() {
         this.uploaded = true;
     }
+
+    public void updateCourseInfo(String title, String location, LocalDate startDate, LocalDate endDate) {
+        this.title = title;
+        this.location = location;
+        this.startDate = startDate;
+        this.endDate = endDate;
+    }
 }

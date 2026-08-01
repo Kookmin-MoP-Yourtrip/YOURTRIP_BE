@@ -53,7 +53,7 @@ public class UploadCourse extends BaseEntity {
 
     private boolean deleted;
 
-    @OneToMany(mappedBy = "uploadCourse", cascade = CascadeType.PERSIST)
+    @OneToMany(mappedBy = "uploadCourse", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<CourseKeyword> keywords;
 
     private String location;
@@ -80,4 +80,13 @@ public class UploadCourse extends BaseEntity {
         this.forkCount += 1;
     }
 
+    public void updateUploadCourseInfo(String title, String introduction, String location,
+        String thumbnailImageS3Key) {
+        this.title = title;
+        this.introduction = introduction;
+        this.location = location;
+        if (thumbnailImageS3Key != null) {
+            this.thumbnailImageS3Key = thumbnailImageS3Key;
+        }
+    }
 }
