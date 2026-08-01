@@ -13,9 +13,7 @@ public record MyCourseListItemResponse(
     @Schema(description = "여행 시작 날짜")
     LocalDate startDate,
     @Schema(description = "여행 종료 날짜")
-    LocalDate endDate,
-    @Schema(example = "1", description = "코스 편집 인원 수")
-    int memberCount
+    LocalDate endDate
 ) {
 
 }

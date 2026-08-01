@@ -9,8 +9,7 @@ public record MyCourseCreateResponse(
     String title,
     String location,
     LocalDate startDate,
-    LocalDate endDate,
-    int memberCount
+    LocalDate endDate
 ) {
 
 }

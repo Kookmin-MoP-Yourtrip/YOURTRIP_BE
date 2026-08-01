@@ -1,6 +1,5 @@
 package backend.yourtrip.domain.uploadcourse.repository;
 
-import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import java.util.List;
@@ -15,11 +14,11 @@ public interface UploadCourseRepository extends JpaRepository<UploadCourse, Long
     @Query("""
             SELECT uc
             FROM UploadCourse uc
-            JOIN FETCH uc.myCourse
+            JOIN FETCH uc.travelCourse
             LEFT JOIN FETCH uc.keywords kw
             WHERE uc.id = :uploadCourseId
         """)
-    Optional<UploadCourse> findWithMyCourseAndKeywords(Long uploadCourseId);
+    Optional<UploadCourse> findWithTravelCourseAndKeywords(Long uploadCourseId);
 
     @Query("""
             SELECT uc
@@ -37,15 +36,13 @@ public interface UploadCourseRepository extends JpaRepository<UploadCourse, Long
         """)
     List<UploadCourse> findAllOrderByViewCountDesc();
 
-    Optional<UploadCourse> findByMyCourse(MyCourse myCourse);
-
     @Query("""
             SELECT uc
             FROM UploadCourse uc
-            JOIN FETCH uc.myCourse mc
+            JOIN FETCH uc.travelCourse tc
             WHERE uc.id = :uploadCourseId
         """)
-    Optional<UploadCourse> findWithMyCourseById(Long uploadCourseId);
+    Optional<UploadCourse> findWithTravelCourseById(Long uploadCourseId);
 
     @Query("""
             SELECT DISTINCT uc

@@ -1,7 +1,7 @@
 package backend.yourtrip.domain.uploadcourse.service;
 
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
-import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
+import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
 import backend.yourtrip.domain.mycourse.service.MyCourseService;
 import backend.yourtrip.domain.uploadcourse.dto.cache.CourseListItemCacheItem;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
@@ -94,13 +94,9 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     @Transactional
     public UploadCourseCreateResponse createUploadCourse(UploadCourseCreateRequest request,
         MultipartFile thumbnailImage) {
-        MyCourse myCourse = myCourseService.getMyCourseById(request.myCourseId());
-
-        // 나의 코스가 이미 업로드됐을 때 예외 throw
-        uploadCourseRepository.findByMyCourse(myCourse)
-            .ifPresent(existing -> {
-                throw new BusinessException(UploadCourseErrorCode.COURSE_ALREADY_UPLOAD);
-            });
+        // 원본 소유권 검증 + 중복 업로드 체크 + 원본과 독립된 사본(TravelCourse) 딥카피를 한 번에 수행.
+        // 이 호출이 실패하면(소유권 없음/이미 업로드됨) 아래 S3 업로드를 아예 시도하지 않는다(fail-fast).
+        TravelCourse hiddenCopy = myCourseService.createHiddenUploadCopy(request.myCourseId());
 
         User user = userService.getUser(userService.getCurrentUserId());
 
@@ -116,7 +112,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         }
 
         UploadCourse savedUploadCourse = uploadCourseRepository.save(
-            UploadCourseMapper.toEntity(request, myCourse, user, thumbnailS3Key));
+            UploadCourseMapper.toEntity(request, hiddenCopy, user, thumbnailS3Key));
 
         //업로드 코스에 키워드 연동
         for (KeywordType keyword : request.keywords()) {
@@ -124,15 +120,15 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         }
 
         List<DayScheduleResponse> daySchedules = myCourseService.getAllDaySchedulesByOwnedCourse(
-            myCourse.getId());
+            hiddenCopy.getId());
 
-        return UploadCourseMapper.toCreateResponse(savedUploadCourse, myCourse, daySchedules);
+        return UploadCourseMapper.toCreateResponse(savedUploadCourse, hiddenCopy, daySchedules);
     }
 
     @Override
     @Transactional(readOnly = true)
     public UploadCourseDetailResponse getDetail(Long uploadCourseId) {
-        UploadCourse uploadCourse = uploadCourseRepository.findWithMyCourseAndKeywords(
+        UploadCourse uploadCourse = uploadCourseRepository.findWithTravelCourseAndKeywords(
                 uploadCourseId)
             .orElseThrow(
                 () -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
@@ -140,7 +136,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         uploadCourse.increaseViewCount(); //조회 수 증가
 
         List<DayScheduleResponse> daySchedules = myCourseService.getAllDaySchedulesByCourse(
-            uploadCourse.getMyCourse().getId());
+            uploadCourse.getTravelCourse().getId());
 
         return UploadCourseMapper.toDetailResponse(uploadCourse, getGetThumbnailUrl(
             uploadCourse), daySchedules);
