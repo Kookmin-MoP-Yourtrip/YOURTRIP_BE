@@ -603,20 +603,6 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             travelCourse.getDaySchedules().remove(ds);
         }
 
-        // 5. 캐시 삭제/초기화 (Fail-Open)
-        try {
-            Cache cache = cacheManager.getCache(COURSE_LIST_ITEM_CACHE);
-            if (cache != null) {
-                cache.evict(uploadCourseId.toString());
-            }
-            Cache popularCache = cacheManager.getCache(POPULAR_COURSES_CACHE);
-            if (popularCache != null) {
-                popularCache.clear();
-            }
-        } catch (Exception e) {
-            log.warn("수정 중 캐시 삭제 실패. uploadCourseId={}", uploadCourseId, e);
-        }
-
         List<DayScheduleResponse> updatedDaySchedules = myCourseService.getAllDaySchedulesByCourse(travelCourse.getId());
         return UploadCourseMapper.toDetailResponse(uploadCourse, getGetThumbnailUrl(uploadCourse), updatedDaySchedules);
     }
