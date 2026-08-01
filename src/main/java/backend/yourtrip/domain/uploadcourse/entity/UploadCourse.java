@@ -1,6 +1,6 @@
 package backend.yourtrip.domain.uploadcourse.entity;
 
-import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
+import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.global.common.BaseEntity;
 import jakarta.persistence.CascadeType;
@@ -34,7 +34,7 @@ public class UploadCourse extends BaseEntity {
 
     @OneToOne
     @JoinColumn(name = "course_id")
-    private MyCourse myCourse;
+    private TravelCourse travelCourse;
 
     @ManyToOne
     @JoinColumn(name = "user_id")
@@ -46,8 +46,6 @@ public class UploadCourse extends BaseEntity {
     private String introduction;
 
     private String thumbnailImageS3Key;
-
-    private int commentCount;
 
     private int heartCount;
 
@@ -64,11 +62,11 @@ public class UploadCourse extends BaseEntity {
 
     @Builder
     public UploadCourse(String title, String introduction, String thumbnailImageS3Key,
-        MyCourse myCourse, User user, String location) {
+        TravelCourse travelCourse, User user, String location) {
         this.title = title;
         this.introduction = introduction;
         this.thumbnailImageS3Key = thumbnailImageS3Key;
-        this.myCourse = myCourse;
+        this.travelCourse = travelCourse;
         this.user = user;
         this.location = location;
         keywords = new ArrayList<>();

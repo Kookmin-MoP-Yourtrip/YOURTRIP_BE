@@ -1,7 +1,7 @@
 package backend.yourtrip.domain.mycourse.entity.dayschedule;
 
-import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import backend.yourtrip.domain.mycourse.entity.place.Place;
+import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
 import backend.yourtrip.global.common.BaseEntity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -33,7 +33,7 @@ public class DaySchedule extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "course_id")
-    private MyCourse course;
+    private TravelCourse course;
 
     private int day;
 
@@ -42,7 +42,7 @@ public class DaySchedule extends BaseEntity {
     private List<Place> places;
 
     @Builder
-    public DaySchedule(MyCourse course, int day) {
+    public DaySchedule(TravelCourse course, int day) {
         this.course = course;
         this.day = day;
         places = new ArrayList<>();

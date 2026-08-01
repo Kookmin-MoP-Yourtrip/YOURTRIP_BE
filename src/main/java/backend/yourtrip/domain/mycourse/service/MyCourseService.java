@@ -16,7 +16,7 @@ import backend.yourtrip.domain.mycourse.dto.response.PlaceMemoUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
-import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
+import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
 import java.time.LocalTime;
 import java.util.List;
 import org.springframework.web.multipart.MultipartFile;
@@ -28,8 +28,6 @@ public interface MyCourseService {
     PlaceCreateResponse savePlace(Long courseId, Long dayId, PlaceCreateRequest request);
 
     MyCourseListResponse getMyCourseList();
-
-    MyCourse getMyCourseById(Long courseId);
 
     List<DaySchedule> getDaySchedulesWithPlaces(Long courseId);
 
@@ -59,4 +57,6 @@ public interface MyCourseService {
     List<DayScheduleResponse> getAllDaySchedulesByCourse(Long courseId);
 
     AICourseCreateResponse createAICourse(AICourseCreateRequest request);
+
+    TravelCourse createHiddenUploadCopy(Long myCourseId);
 }

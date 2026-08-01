@@ -60,7 +60,6 @@ public interface MyCourseControllerSpec {
                           "location": "경주",
                           "startDate": "2025-10-31",
                           "endDate": "2025-11-02"
-                          "memberCount": 1
                         }
                         """
                 )
@@ -134,7 +133,7 @@ public interface MyCourseControllerSpec {
     @Operation(summary = "나의 코스 목록 조회", description = """
         ### 설명
         - 내가 생성한 코스들의 요약 정보를 가장 최근에 수정한 순서대로 조회합니다.
-        - 각 코스의 ID, 제목, 여행지, 여행 기간, 편집 인원 수를 포함합니다.
+        - 각 코스의 ID, 제목, 여행지, 여행 기간을 포함합니다.
         """)
     @ApiResponses({
         @ApiResponse(
@@ -151,16 +150,14 @@ public interface MyCourseControllerSpec {
                               "title": "개쩌는 호주 여행기",
                               "location": "호주",
                               "startDate": "2025-10-31",
-                              "endDate": "2025-11-02",
-                              "memberCount": 1
+                              "endDate": "2025-11-02"
                             },
                             {
                               "courseId": 2,
                               "title": "개쩌는 경주 여행기",
                               "location": "경주",
                               "startDate": "2025-10-31",
-                              "endDate": "2025-11-02",
-                              "memberCount": 1
+                              "endDate": "2025-11-02"
                             }
                           ]
                         """
@@ -178,8 +175,8 @@ public interface MyCourseControllerSpec {
         - 특정 코스의 상세 정보를 조회합니다.
         - 나의 코스 편집 페이지에서 상단의 배너 정보와 일차별 일정 조회, 장소 추가 api 등에 사용될 dayId의 리스트가 제공됩니다.
         - 나의 코스 목록 조회에서 반환된 코스 ID를 경로변수에 넘겨줍니다.
-        - 코스의 ID, 제목, 여행지, 여행 기간, 편집 인원 수, 여행 기간, 내 역할(OWNER/PARTICIPANT), 마지막 수정시간, 일차별 일정 요약 정보를 포함합니다.
-        - role: 코스 최초 생성자는 OWNER, 초대받은 참여자는 PARTICIPANT, OWNER인 사람만 코스 초대 버튼과 업로드 버튼이 보여야 합니다.
+        - 코스의 ID, 제목, 여행지, 여행 기간, 마지막 수정시간, 일차별 일정 요약 정보를 포함합니다.
+        - 코스는 항상 생성자 본인만 소유합니다(코스 공동 편집/참여자 초대 기능 없음).
         - daySchedules: 각 일차를 나타내는 고유 ID(dayId)와 몇 일차인지(day)를 포함합니다. dayId는 일차별 장소 리스트 조회 api에 사용됩니다.
         ### 제약조건
         - 경로 변수
@@ -201,8 +198,6 @@ public interface MyCourseControllerSpec {
                           "location": "경주",
                           "startDate": "2025-10-31",
                           "endDate": "2025-11-02",
-                          "memberCount": 1,
-                          "role": "OWNER",
                           "updatedAt": "2025-11-10T11:00:00",
                           "daySchedules": [
                             {

@@ -18,20 +18,17 @@ import backend.yourtrip.domain.mycourse.dto.response.PlaceMemoUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeUpdateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
-import backend.yourtrip.domain.mycourse.entity.myCourse.CourseParticipant;
-import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
-import backend.yourtrip.domain.mycourse.entity.myCourse.enums.CourseRole;
 import backend.yourtrip.domain.mycourse.entity.place.Place;
 import backend.yourtrip.domain.mycourse.entity.place.PlaceImage;
-import backend.yourtrip.domain.mycourse.mapper.CourseParticipantMapper;
+import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
+import backend.yourtrip.domain.mycourse.entity.travelCourse.enums.TravelCourseType;
 import backend.yourtrip.domain.mycourse.mapper.DayScheduleMapper;
-import backend.yourtrip.domain.mycourse.mapper.MyCourseMapper;
 import backend.yourtrip.domain.mycourse.mapper.PlaceMapper;
-import backend.yourtrip.domain.mycourse.repository.CourseParticipantRepository;
+import backend.yourtrip.domain.mycourse.mapper.TravelCourseMapper;
 import backend.yourtrip.domain.mycourse.repository.DayScheduleRepository;
-import backend.yourtrip.domain.mycourse.repository.MyCourseRepository;
 import backend.yourtrip.domain.mycourse.repository.PlaceImageRepository;
 import backend.yourtrip.domain.mycourse.repository.PlaceRepository;
+import backend.yourtrip.domain.mycourse.repository.TravelCourseRepository;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
@@ -69,8 +66,7 @@ public class MyCourseServiceImpl implements MyCourseService {
 
     private final ObjectMapper objectMapper;
 
-    private final MyCourseRepository myCourseRepository;
-    private final CourseParticipantRepository courseParticipantRepository;
+    private final TravelCourseRepository travelCourseRepository;
     private final DayScheduleRepository dayScheduleRepository;
     private final PlaceRepository placeRepository;
     private final PlaceImageRepository placeImageRepository;
@@ -80,38 +76,31 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Override
     @Transactional
     public MyCourseCreateResponse saveCourse(MyCourseCreateRequest request) {
-        Long userId = userService.getCurrentUserId();
-        User user = userService.getUser(userId);
+        User user = userService.getUser(userService.getCurrentUserId());
 
         //코스 생성
-        MyCourse myCourse = MyCourseMapper.toEntity(request);
-        MyCourse savedCourse = myCourseRepository.save(myCourse);
-
-        //코스 참여자 생성
-        courseParticipantRepository.save(
-            CourseParticipantMapper.toEntityWithOwner(user, myCourse)
-        );
+        TravelCourse travelCourse = TravelCourseMapper.toEntity(request, user);
+        TravelCourse savedCourse = travelCourseRepository.save(travelCourse);
 
         //일차 생성
         int days = Period.between(request.startDate(), request.endDate()).getDays() + 1;
         for (int i = 1; i <= days; i++) {
-            dayScheduleRepository.save(new DaySchedule(myCourse, i));
+            dayScheduleRepository.save(new DaySchedule(travelCourse, i));
         }
 
-        return MyCourseMapper.toCreateResponse(savedCourse);
+        return TravelCourseMapper.toCreateResponse(savedCourse);
     }
 
     @Override
     @Transactional(readOnly = true)
     public MyCourseListResponse getMyCourseList() {
         Long userId = userService.getCurrentUserId();
-        // 해당 유저가 참여 중인 CourseParticipant 목록 조회 (course updatedAt 순)
-        List<CourseParticipant> courseParticipants = courseParticipantRepository.findByUserOrderByCourseUpdatedAtDesc(
-            userService.getUser(userId));
+        // 업로드 코스 뒤에 숨은 사본(UPLOADED 타입)은 목록에서 제외
+        List<TravelCourse> courses = travelCourseRepository.findByUser_IdAndTypeNotOrderByUpdatedAtDesc(
+            userId, TravelCourseType.UPLOADED);
 
-        List<MyCourseListItemResponse> listItems = courseParticipants.stream()
-            .map(CourseParticipant::getCourse)
-            .map(MyCourseMapper::toListItemResponse)
+        List<MyCourseListItemResponse> listItems = courses.stream()
+            .map(TravelCourseMapper::toListItemResponse)
             .toList();
 
         return new MyCourseListResponse(listItems);
@@ -132,13 +121,6 @@ public class MyCourseServiceImpl implements MyCourseService {
         Place savedPlace = placeRepository.save(PlaceMapper.toEntity(request, daySchedule));
 
         return PlaceMapper.toCreateResponse(savedPlace);
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public MyCourse getMyCourseById(Long courseId) {
-        return myCourseRepository.findById(courseId)
-            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
     }
 
     @Override
@@ -220,7 +202,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     }
 
     private void checkExistCourse(Long courseId) {
-        if (!myCourseRepository.existsById(courseId)) {
+        if (!travelCourseRepository.existsById(courseId)) {
             throw new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND);
         }
     }
@@ -337,56 +319,36 @@ public class MyCourseServiceImpl implements MyCourseService {
         Long userId = userService.getCurrentUserId();
         checkOwnedCourse(courseId, userId);
 
-        MyCourse myCourse = myCourseRepository.findCourseWithDaySchedule(courseId)
+        TravelCourse travelCourse = travelCourseRepository.findCourseWithDaySchedule(courseId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
 
-        CourseRole role = courseParticipantRepository.findRole(userId,
-                courseId)
-            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.ROLE_NOT_SPECIFY));
-
-        return MyCourseMapper.toDetailResponse(myCourse, role);
+        return TravelCourseMapper.toDetailResponse(travelCourse);
     }
 
     private void checkOwnedCourse(Long courseId, Long userId) {
-        if (!courseParticipantRepository.existsByUser_IdAndCourse_Id(userId, courseId)) {
+        if (!travelCourseRepository.existsByIdAndUser_Id(courseId, userId)) {
             throw new BusinessException(MyCourseErrorCode.NOT_OWNED_COURSE);
         }
     }
 
-    @Override
-    @Transactional
-    public CourseForkResponse forkCourse(Long uploadCourseId) {
-        UploadCourse uploadCourse = uploadCourseRepository.findWithMyCourseById(uploadCourseId)
-            .orElseThrow(
-                () -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
+    /**
+     * fork/업로드 사본 생성에 공용으로 쓰이는 딥카피 헬퍼.
+     * TravelCourse 본체 + 참여자(소유자) + 일차별 DaySchedule/Place/PlaceImage를 전부 새 PK로 복제한다.
+     * PlaceImage는 S3 key 문자열만 복사하고 실제 S3 오브젝트는 원본과 공유한다.
+     */
+    private TravelCourse copyMyCourseWithSchedule(TravelCourse original, User user,
+        TravelCourseType type) {
+        TravelCourse copyTravelCourse = TravelCourseMapper.toCopyEntity(original, type, user);
+        TravelCourse savedCourse = travelCourseRepository.save(copyTravelCourse);
 
-        Long userId = userService.getCurrentUserId();
-
-        if (uploadCourse.getUser().getId().equals(userId)) {
-            throw new BusinessException(MyCourseErrorCode.CANNOT_FORK_OWNED_COURSE);
-        }
-
-        MyCourse originalMyCourse = uploadCourse.getMyCourse();
-
-        uploadCourse.increaseForkCount();
-
-        MyCourse copyMyCourse = MyCourseMapper.toCopyEntity(uploadCourse.getMyCourse());
-        MyCourse savedCourse = myCourseRepository.save(copyMyCourse);
-
-        //코스 참여자 생성
-        User user = userService.getUser(userId);
-        courseParticipantRepository.save(
-            CourseParticipantMapper.toEntityWithOwner(user, copyMyCourse)
-        );
-
-        //일차별 일정 복사
         int days =
-            Period.between(copyMyCourse.getStartDate(), copyMyCourse.getEndDate()).getDays() + 1;
+            Period.between(copyTravelCourse.getStartDate(), copyTravelCourse.getEndDate())
+                .getDays() + 1;
         for (int i = 1; i <= days; i++) {
-            DaySchedule copiedDaySchedule = new DaySchedule(copyMyCourse, i);
+            DaySchedule copiedDaySchedule = new DaySchedule(copyTravelCourse, i);
             dayScheduleRepository.save(copiedDaySchedule);
 
-            originalMyCourse.getDaySchedules().get(i - 1).getPlaces().forEach(originalPlace -> {
+            original.getDaySchedules().get(i - 1).getPlaces().forEach(originalPlace -> {
                 // 장소 복사
                 Place copiedPlace = PlaceMapper.toCopyEntity(originalPlace, copiedDaySchedule);
                 copiedDaySchedule.getPlaces().add(copiedPlace);
@@ -402,7 +364,53 @@ public class MyCourseServiceImpl implements MyCourseService {
             });
         }
 
-        return new CourseForkResponse(savedCourse.getId());
+        return savedCourse;
+    }
+
+    @Override
+    @Transactional
+    public CourseForkResponse forkCourse(Long uploadCourseId) {
+        UploadCourse uploadCourse = uploadCourseRepository.findWithTravelCourseById(uploadCourseId)
+            .orElseThrow(
+                () -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
+
+        Long userId = userService.getCurrentUserId();
+
+        if (uploadCourse.getUser().getId().equals(userId)) {
+            throw new BusinessException(MyCourseErrorCode.CANNOT_FORK_OWNED_COURSE);
+        }
+
+        User user = userService.getUser(userId);
+
+        uploadCourse.increaseForkCount();
+
+        TravelCourse copyTravelCourse = copyMyCourseWithSchedule(uploadCourse.getTravelCourse(),
+            user, TravelCourseType.FORK);
+
+        return new CourseForkResponse(copyTravelCourse.getId());
+    }
+
+    @Override
+    @Transactional
+    public TravelCourse createHiddenUploadCopy(Long myCourseId) {
+        checkExistCourse(myCourseId);
+        Long userId = userService.getCurrentUserId();
+        checkOwnedCourse(myCourseId, userId);
+
+        TravelCourse original = travelCourseRepository.findCourseWithDaySchedule(myCourseId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
+
+        if (original.isUploaded()) {
+            throw new BusinessException(UploadCourseErrorCode.COURSE_ALREADY_UPLOAD);
+        }
+
+        User user = userService.getUser(userId);
+        TravelCourse hiddenCopy = copyMyCourseWithSchedule(original, user,
+            TravelCourseType.UPLOADED);
+
+        original.markAsUploaded();
+
+        return hiddenCopy;
     }
 
     @Transactional
@@ -423,19 +431,16 @@ public class MyCourseServiceImpl implements MyCourseService {
             throw new BusinessException(MyCourseErrorCode.JSON_TRANSFORMATION_FAILED);
         }
 
-        //myCourse 생성
-        MyCourse myCourse = myCourseRepository.save(
-            MyCourseMapper.toAICourseEntity(request, courseDto));
-
-        //courseParticipant 생성
+        //travelCourse 생성
         User user = userService.getUser(userService.getCurrentUserId());
-        courseParticipantRepository.save(CourseParticipantMapper.toEntityWithOwner(user, myCourse));
+        TravelCourse travelCourse = travelCourseRepository.save(
+            TravelCourseMapper.toAICourseEntity(request, courseDto, user));
 
         //daySchedule, place 생성
         for (GeminiCourseDto.DayScheduleDto dayScheduleDto : courseDto.daySchedules()) {
             DaySchedule daySchedule = dayScheduleRepository.save(
-                new DaySchedule(myCourse, dayScheduleDto.day()));
-            myCourse.getDaySchedules().add(daySchedule);
+                new DaySchedule(travelCourse, dayScheduleDto.day()));
+            travelCourse.getDaySchedules().add(daySchedule);
 
             //각 place 저장
             for (GeminiCourseDto.PlaceDto placeDto : dayScheduleDto.places()) {
@@ -448,7 +453,7 @@ public class MyCourseServiceImpl implements MyCourseService {
             }
         }
 
-        return new AICourseCreateResponse(myCourse.getId());
+        return new AICourseCreateResponse(travelCourse.getId());
     }
 
     private void updatePlaceFromKakao(AICourseCreateRequest request, PlaceDto placeDto,
