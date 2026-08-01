@@ -90,4 +90,15 @@ public class Place extends BaseEntity {
         this.latitude = latitude;
         this.longitude = longitude;
     }
+
+    public void updatePlaceInfo(String placeName, LocalTime startTime, String memo,
+        double latitude, double longitude, String placeUrl, String placeLocation) {
+        this.placeName = placeName;
+        this.startTime = startTime;
+        this.memo = memo;
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.placeUrl = placeUrl;
+        this.placeLocation = placeLocation;
+    }
 }
