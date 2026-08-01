@@ -8,6 +8,15 @@ group = 'backend'
 version = '0.0.1-SNAPSHOT'
 description = 'yourtrip'
 
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+    testCompileOnly {
+        extendsFrom testAnnotationProcessor
+    }
+}
+
 repositories {
     mavenCentral()
 }
