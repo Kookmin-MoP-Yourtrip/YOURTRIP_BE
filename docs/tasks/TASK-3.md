@@ -232,7 +232,27 @@ fail-open 검증(Redis 중단 상태 테스트) 중, 코스가 실제로 존재�
 - **3-7 (`view_count` 인덱스 추가)**: 데이터量에 비례하는 비용을 없앤다.
 - **3-8 (서버 기동 시 웜업)**: 재기동 직후의 고정 비용을 없앤다 — `ApplicationReadyEvent`로 부팅 시점(아무도 안 기다리는 때)에 이 쿼리 경로를 미리 한 번 실행해 Hibernate/JVM/커넥션 풀을 데워두고 캐시도 미리 채운다.
 
-두 항목 다 3-6의 분산 락을 대체하지 않는다 — Redis만 단독으로 재시작되는 경우(앱은 안 죽음)엔 웜업이 재실행되지 않으므로, 그 경우엔 여전히 3-6의 락이 유일한 방어선이다. 3-7/3-8은 아직 미착수 상태로 체크리스트에 남겨뒀다.
+두 항목 다 3-6의 분산 락을 대체하지 않는다 — Redis만 단독으로 재시작되는 경우(앱은 안 죽음)엔 웜업이 재실행되지 않으므로, 그 경우엔 여전히 3-6의 락이 유일한 방어선이다.
+
+### 3-7. `view_count` 인덱스 추가 — 구현 및 검증
+
+**구현**: `UploadCourse` 엔티티에 `@Table(indexes = @Index(name = "idx_upload_course_view_count", columnList = "view_count"))`를 추가했다. 컬럼 하나짜리 단일 인덱스로 충분하다고 판단한 이유는, PostgreSQL B-tree 인덱스는 양방향(backward) 스캔이 가능해 `ORDER BY view_count DESC`에도 오름차순 인덱스가 그대로 쓰이기 때문이다(별도 DESC 인덱스 불필요 — 아래 `EXPLAIN ANALYZE` 결과의 `Index Scan Backward`가 이를 보여준다).
+
+**운영 반영 방식에 대한 결정**: 이 레포에는 Flyway/Liquibase 같은 마이그레이션 도구가 없고, 스키마는 `spring.jpa.hibernate.ddl-auto`(환경변수 `DB_DDL_AUTO`)에 전적으로 의존한다. 로컬(`.env`)은 `DB_DDL_AUTO=create`라 앱 재기동 시 엔티티 애너테이션만으로 인덱스가 자동 생성·검증되지만, 운영 권장값(`.env.example`)은 `DB_DDL_AUTO=validate`다. Hibernate의 `validate` 모드는 테이블/컬럼 존재 여부만 확인하고 **인덱스 존재 여부는 아예 검증 대상이 아니며 생성도 하지 않는다** — 즉 엔티티 애너테이션만으로는 운영 DB에 인덱스가 생기지 않는다.
+
+이번 작업 범위에서는 실제 운영 DB에 접근해 DDL을 실행하지 않고(마이그레이션 도구를 새로 도입하는 것도 이번 범위 밖으로 판단), 운영 반영에 필요한 DDL만 기록해둔다.
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_upload_course_view_count
+    ON upload_course (view_count);
+```
+
+- `CONCURRENTLY`를 쓰는 이유: 일반 `CREATE INDEX`는 인덱스를 만드는 동안 테이블에 `ACCESS EXCLUSIVE` 락을 걸어 그 사이 모든 읽기/쓰기가 막힌다. 운영 테이블(트래픽이 있는 상태)에 인덱스를 추가할 때는 이 락을 피하기 위해 `CONCURRENTLY`를 써야 한다.
+- `CONCURRENTLY`는 트랜잭션 블록 안에서 실행할 수 없다 — 단독 문장으로, 트랜잭션을 감싸지 않는 도구(`psql` 등)에서 직접 실행해야 한다.
+
+**로컬 검증 결과**:
+- `./gradlew bootRun`(`DB_DDL_AUTO=create`) 재기동 후 `pg_indexes`로 확인한 결과, `upload_course` 테이블에 `idx_upload_course_view_count`가 정상 생성됨을 확인했다(부팅 로그에도 `create index idx_upload_course_view_count` 실행 확인).
+- `EXPLAIN ANALYZE SELECT upload_course_id FROM upload_course ORDER BY view_count DESC LIMIT 5;` 실행 결과, 실행계획이 `Index Scan Backward using idx_upload_course_view_count`로 이 인덱스를 실제로 사용함을 확인했다. 로컬 DB가 현재 0건이라(`data.sql` 미커밋) `Seq Scan`과의 실측 성능 차이 비교는 이번엔 하지 않았다 — 이미 3-6 벤치마크에서 인덱스 부재로 인한 50만 건 스캔 비용(쿼리당 1.7~2.5초)을 확인해뒀으므로, 이번 검증의 목적은 "인덱스가 실제로 생성되고 옵티마이저가 선택하는지" 확인으로 충분하다고 판단했다.
 
 ### 다음 측정 예정
 
