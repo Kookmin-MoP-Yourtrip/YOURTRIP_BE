@@ -1,6 +1,6 @@
 # TASK-3. 인기 코스 상위 5개 목록 캐싱
 
-> [redis-caching-strategy.md](../redis-caching-strategy.md) 3번 섹션("인기 상위 5개 목록 — 읽기 경로부터 단계적으로")에 대응하는 작업 기록. 체크리스트 자체는 원문서를 따르되, 이 문서는 **설계 과정에서 오간 논의와 그 근거**를 포트폴리오용으로 남긴다.
+> [redis-caching-strategy.md](../CACHING-ROADMAP.md) 3번 섹션("인기 상위 5개 목록 — 읽기 경로부터 단계적으로")에 대응하는 작업 기록. 체크리스트 자체는 원문서를 따르되, 이 문서는 **설계 과정에서 오간 논의와 그 근거**를 포트폴리오용으로 남긴다.
 
 ## 배경
 
@@ -261,12 +261,6 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_upload_course_view_count
 - **새 캐시-쓰기 코드를 만들지 않은 이유**: `getPopularCourses`는 이미 랭킹 캐시 조회 → 미스 시 분산 락 → DB 조회 → `writeRankingCache` → 아이템 캐시 채우기까지 한 메서드 안에 다 갖고 있다. 이걸 그대로 8번 호출하면 랭킹 캐시뿐 아니라 아이템 캐시(코스 제목/썸네일 등)까지 부수적으로 채워지고, 락 획득/해제·fail-open도 전부 기존 코드를 그대로 재사용하게 된다. 원문서 체크리스트 문구("인기 목록 웜업")는 랭킹 캐시만 지칭하는 것으로도 읽히지만, 기존 프로덕션 경로를 그대로 타는 이 방식이 새 코드 없이 더 안전하다고 판단해 아이템 캐시까지 함께 채우는 쪽으로 범위를 넓혔다.
 - **`ApplicationReadyEvent`를 택한 이유**: 이 레포의 유일한 부팅 훅 선례(`TestUserInitializer`)는 `ApplicationRunner`를 구현하지만, `ApplicationReadyEvent`는 애플리케이션 컨텍스트가 완전히 준비된 뒤(요청을 받을 준비가 된 시점) 발행되는 이벤트라 "캐시를 미리 데워둔다"는 웜업의 의도와 의미상 더 맞아떨어진다고 판단했다. 두 방식 모두 부팅 마지막 단계에서 실행되어 타이밍상 실질적 차이는 크지 않다.
 - **개별 테마를 try-catch로 감싼 이유**: `getPopularCourses` 내부의 Redis 관련 예외는 이미 fail-open 처리돼 있지만, DB 예외까지 전파되면 `ApplicationReadyEvent` 리스너의 예외가 애플리케이션 부팅 자체를 실패시킬 수 있다. 웜업은 순수 최적화이므로 한 테마가 실패해도 나머지 7개와 앱 부팅에는 영향이 없어야 한다. `@SpringBootTest`를 쓰는 `YourtripApplicationTests`(레포에 유일한 컨텍스트 로드 테스트)도 이 경로를 그대로 타게 되므로, 이 방어가 테스트 안정성에도 필요하다.
-
-**로컬 검증 결과**:
-- 캐시를 비운 상태(재기동 직전 `KEYS *` 확인 결과 관련 키 없음)에서 `./gradlew bootRun` 후, 부팅 로그에 `인기 목록 캐시 웜업 완료: 8/8건 성공`이 첫 API 요청 이전에 찍히는 것을 확인했다.
-- `redis-cli KEYS "*"`로 `popularCourses::ALL`, `popularCourses::FOOD` 등 정확히 8개 랭킹 캐시 키가 생성됐음을 확인했다(`popularCourses::{ALL, HEALING, ACTIVITY, FOOD, SENSIBILITY, CULTURE, NATURE, SHOPPING}`). `popularCourses::ALL`의 TTL은 1757초로 `RedisConfig`의 `POPULAR_COURSES_TTL`(30분=1800초)과 일치했다.
-- 아이템 캐시(`courseListItem`)는 이번 검증에서는 0건이었는데, 로컬 DB가 현재 0건(`data.sql` 미커밋)이라 `getPopularCourses`가 빈 ID 목록을 반환해 채울 아이템 자체가 없었기 때문이다 — 구현 오류가 아니라 데이터가 없는 로컬 환경의 자연스러운 결과다.
-- Playwright MCP로 재기동 직후(첫 API 호출) `GET /api/upload-courses/popular`(theme 없음, `theme=FOOD`)를 각각 호출해 정상 200 응답을 확인했고, 두 요청 전후 애플리케이션 로그를 비교해 **DB 쿼리 로그가 전혀 추가되지 않았음**을 확인했다 — 웜업 덕분에 첫 요청부터 캐시 히트 경로만 탄다는 것을 실측으로 확인했다(3-8이 만드는 변화의 핵심).
 
 ### 다음 측정 예정
 
