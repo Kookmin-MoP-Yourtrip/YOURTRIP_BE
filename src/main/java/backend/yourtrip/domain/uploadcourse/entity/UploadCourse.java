@@ -47,8 +47,6 @@ public class UploadCourse extends BaseEntity {
 
     private String thumbnailImageS3Key;
 
-    private int commentCount;
-
     private int heartCount;
 
     private int viewCount;
