@@ -1,8 +1,15 @@
 package backend.yourtrip.domain.uploadcourse.mapper;
 
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
+import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
+import backend.yourtrip.domain.mycourse.entity.place.Place;
+import backend.yourtrip.domain.mycourse.entity.place.PlaceImage;
 import backend.yourtrip.domain.uploadcourse.dto.cache.CourseListItemCacheItem;
+import backend.yourtrip.domain.uploadcourse.dto.cache.DayScheduleCacheItem;
+import backend.yourtrip.domain.uploadcourse.dto.cache.PlaceCacheItem;
+import backend.yourtrip.domain.uploadcourse.dto.cache.PlaceImageCacheItem;
+import backend.yourtrip.domain.uploadcourse.dto.cache.UploadCourseDetailCacheItem;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
@@ -57,6 +64,72 @@ public class UploadCourseMapper {
             .forkCount(uploadCourse.getForkCount())
             .daySchedules(daySchedules)
             .build();
+    }
+
+    public static UploadCourseDetailResponse toDetailResponse(UploadCourseDetailCacheItem item,
+        String thumbnailUrl, List<DayScheduleResponse> daySchedules) {
+        return UploadCourseDetailResponse.builder()
+            .uploadCourseId(item.uploadCourseId())
+            .title(item.title())
+            .introduction(item.introduction())
+            .thumbnailImageUrl(thumbnailUrl)
+            .keywords(item.keywords())
+            .location(item.location())
+            .startDate(item.startDate())
+            .endDate(item.endDate())
+            .forkCount(item.forkCount())
+            .daySchedules(daySchedules)
+            .build();
+    }
+
+    public static UploadCourseDetailCacheItem toDetailCacheItem(UploadCourse uploadCourse,
+        List<DaySchedule> daySchedules) {
+        return new UploadCourseDetailCacheItem(
+            uploadCourse.getId(),
+            uploadCourse.getTitle(),
+            uploadCourse.getIntroduction(),
+            uploadCourse.getLocation(),
+            uploadCourse.getThumbnailImageS3Key(),
+            uploadCourse.getMyCourse().getStartDate(),
+            uploadCourse.getMyCourse().getEndDate(),
+            uploadCourse.getForkCount(),
+            uploadCourse.getKeywords().stream()
+                .map(courseKeyword -> courseKeyword.getKeywordType().getLabel())
+                .toList(),
+            daySchedules.stream().map(UploadCourseMapper::toDayScheduleCacheItem).toList()
+        );
+    }
+
+    private static DayScheduleCacheItem toDayScheduleCacheItem(DaySchedule daySchedule) {
+        return new DayScheduleCacheItem(
+            daySchedule.getId(),
+            daySchedule.getDay(),
+            daySchedule.getPlaces().stream().map(UploadCourseMapper::toPlaceCacheItem).toList()
+        );
+    }
+
+    private static PlaceCacheItem toPlaceCacheItem(Place place) {
+        return new PlaceCacheItem(
+            place.getId(),
+            place.getPlaceName(),
+            place.getStartTime(),
+            place.getMemo(),
+            place.getLatitude(),
+            place.getLongitude(),
+            place.getPlaceUrl(),
+            place.getPlaceLocation(),
+            place.getPlaceImages().stream()
+                .map(placeImage -> toPlaceImageCacheItem(place, placeImage))
+                .toList()
+        );
+    }
+
+    private static PlaceImageCacheItem toPlaceImageCacheItem(Place place, PlaceImage placeImage) {
+        return new PlaceImageCacheItem(
+            place.getId(),
+            placeImage.getId(),
+            placeImage.getPlaceImageS3Key()
+        );
     }
 
     public static UploadCourseListItemResponse toListItemResponse(UploadCourse uploadCourse,
