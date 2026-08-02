@@ -1,6 +1,7 @@
 package backend.yourtrip.domain.uploadcourse.controller;
 
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
+import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseUpdateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
@@ -509,5 +510,47 @@ public interface UploadCourseControllerSpec {
     })
     UploadCourseListResponse getPopularCourses(
         @Parameter(description = "mood 카테고리 키워드 코드", example = "FOOD") KeywordType theme);
+
+    // ==========================
+    //  업로드 코스 통합 수정
+    // ==========================
+    @Operation(
+        summary = "업로드 코스 통합 수정",
+        description = """
+            업로드 코스의 정보(제목, 소개, 위치, 시작/종료일, 썸네일 이미지, 키워드, 일차별 일정 및 장소 사진)를 단일 API로 통합 수정합니다.
+
+            ### 제약조건
+            - 경로 변수: uploadCourseId (수정할 업로드 코스 PK)
+            - 작성자 본인만 수정 가능 (타인의 코스 수정 시 403 FORBIDDEN 반환)
+            - thumbnailImage: 선택사항. 전달 시 기존 썸네일을 삭제하고 신규 썸네일로 교체합니다. 미전달 시 기존 썸네일이 유지됩니다.
+            - placeImages: 선택사항. 장소별 신규 첨부 사진 파일 목록 (0부터 시작하는 인덱스로 DTO의 newImageIndex와 매핑)
+            - DTO 내 기존 dayScheduleId, placeId, placeImageId를 포함하여 전달하면 해당 엔티티를 갱신합니다. 포함되지 않은 기존 엔티티는 삭제 처리되며, id가 null인 신규 항목은 새로 추가됩니다.
+            """
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "업로드 코스 수정 성공",
+            content = @Content(schema = @Schema(implementation = UploadCourseDetailResponse.class))
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "본인이 업로드한 코스가 아닌 경우",
+            content = @Content(mediaType = "application/json")
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "업로드 코스를 찾을 수 없는 경우",
+            content = @Content(mediaType = "application/json")
+        )
+    })
+    UploadCourseDetailResponse updateUploadCourse(
+        @Schema(example = "1") Long uploadCourseId,
+        MultipartFile thumbnailImage,
+        List<MultipartFile> placeImages,
+        @Parameter(content = @Content(
+            mediaType = MediaType.APPLICATION_JSON_VALUE,
+            schema = @Schema(implementation = UploadCourseUpdateRequest.class)
+        )) UploadCourseUpdateRequest request);
 
 }

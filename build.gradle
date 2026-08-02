@@ -12,6 +12,9 @@ configurations {
     compileOnly {
         extendsFrom annotationProcessor
     }
+    testCompileOnly {
+        extendsFrom testAnnotationProcessor
+    }
 }
 
 repositories {
@@ -42,6 +45,8 @@ dependencies {
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'org.postgresql:postgresql'
     annotationProcessor 'org.projectlombok:lombok'
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
@@ -50,6 +55,14 @@ dependencies {
     implementation platform('software.amazon.awssdk:bom:2.25.30') // 최신 안정판으로 맞추기
     implementation 'software.amazon.awssdk:s3'
     implementation 'com.google.genai:google-genai:1.28.0'
+}
+
+compileJava {
+    options.annotationProcessorPath = configurations.annotationProcessor
+}
+
+compileTestJava {
+    options.annotationProcessorPath = configurations.testAnnotationProcessor
 }
 
 tasks.named('test') {

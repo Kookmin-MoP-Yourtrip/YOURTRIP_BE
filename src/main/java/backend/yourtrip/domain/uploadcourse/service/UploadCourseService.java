@@ -1,6 +1,7 @@
 package backend.yourtrip.domain.uploadcourse.service;
 
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
+import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseUpdateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
@@ -25,4 +26,8 @@ public interface UploadCourseService {
     UploadCourseListResponse getMyUploadCourses();
 
     UploadCourseListResponse getPopularCourses(KeywordType theme);
+
+    UploadCourseDetailResponse updateUploadCourse(Long uploadCourseId,
+        UploadCourseUpdateRequest request, MultipartFile thumbnailImage,
+        List<MultipartFile> placeImages);
 }

@@ -4,14 +4,20 @@ import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceImageResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
-import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
+import backend.yourtrip.domain.mycourse.entity.place.Place;
+import backend.yourtrip.domain.mycourse.entity.place.PlaceImage;
+import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
 import backend.yourtrip.domain.mycourse.mapper.DayScheduleMapper;
 import backend.yourtrip.domain.mycourse.service.MyCourseService;
 import backend.yourtrip.domain.uploadcourse.dto.cache.CourseListItemCacheItem;
 import backend.yourtrip.domain.uploadcourse.dto.cache.DayScheduleCacheItem;
 import backend.yourtrip.domain.uploadcourse.dto.cache.PlaceCacheItem;
 import backend.yourtrip.domain.uploadcourse.dto.cache.UploadCourseDetailCacheItem;
+import backend.yourtrip.domain.uploadcourse.dto.request.DayScheduleUpdateRequest;
+import backend.yourtrip.domain.uploadcourse.dto.request.PlaceImageUpdateRequest;
+import backend.yourtrip.domain.uploadcourse.dto.request.PlaceUpdateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
+import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseUpdateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
@@ -34,10 +40,14 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
@@ -117,13 +127,9 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     @Transactional
     public UploadCourseCreateResponse createUploadCourse(UploadCourseCreateRequest request,
         MultipartFile thumbnailImage) {
-        MyCourse myCourse = myCourseService.getMyCourseById(request.myCourseId());
-
-        // 나의 코스가 이미 업로드됐을 때 예외 throw
-        uploadCourseRepository.findByMyCourse(myCourse)
-            .ifPresent(existing -> {
-                throw new BusinessException(UploadCourseErrorCode.COURSE_ALREADY_UPLOAD);
-            });
+        // 원본 소유권 검증 + 중복 업로드 체크 + 원본과 독립된 사본(TravelCourse) 딥카피를 한 번에 수행.
+        // 이 호출이 실패하면(소유권 없음/이미 업로드됨) 아래 S3 업로드를 아예 시도하지 않는다(fail-fast).
+        TravelCourse hiddenCopy = myCourseService.createHiddenUploadCopy(request.myCourseId());
 
         User user = userService.getUser(userService.getCurrentUserId());
 
@@ -139,7 +145,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         }
 
         UploadCourse savedUploadCourse = uploadCourseRepository.save(
-            UploadCourseMapper.toEntity(request, myCourse, user, thumbnailS3Key));
+            UploadCourseMapper.toEntity(request, hiddenCopy, user, thumbnailS3Key));
 
         //업로드 코스에 키워드 연동
         for (KeywordType keyword : request.keywords()) {
@@ -147,9 +153,9 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         }
 
         List<DayScheduleResponse> daySchedules = myCourseService.getAllDaySchedulesByOwnedCourse(
-            myCourse.getId());
+            hiddenCopy.getId());
 
-        return UploadCourseMapper.toCreateResponse(savedUploadCourse, myCourse, daySchedules);
+        return UploadCourseMapper.toCreateResponse(savedUploadCourse, hiddenCopy, daySchedules);
     }
 
     @Override
@@ -162,7 +168,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
                 buildDaySchedulesFromCache(cached.daySchedules()));
         }
 
-        UploadCourse uploadCourse = uploadCourseRepository.findWithMyCourseAndKeywords(
+        UploadCourse uploadCourse = uploadCourseRepository.findWithTravelCourseAndKeywords(
                 uploadCourseId)
             .orElseThrow(
                 () -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
@@ -170,7 +176,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         uploadCourse.increaseViewCount(); //조회 수 증가 (readOnly 트랜잭션 버그로 실제 반영은 안 됨 — 5번 섹션에서 교체 예정)
 
         List<DaySchedule> daySchedules = myCourseService.getDaySchedulesWithPlaces(
-            uploadCourse.getMyCourse().getId());
+            uploadCourse.getTravelCourse().getId());
 
         writeDetailCache(uploadCourseId,
             UploadCourseMapper.toDetailCacheItem(uploadCourse, daySchedules));
@@ -618,4 +624,149 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         return thumbnailUrl;
     }
 
+    @Override
+    @Transactional
+    public UploadCourseDetailResponse updateUploadCourse(Long uploadCourseId,
+        UploadCourseUpdateRequest request, MultipartFile thumbnailImage,
+        List<MultipartFile> placeImages) {
+        UploadCourse uploadCourse = uploadCourseRepository.findWithTravelCourseAndKeywords(uploadCourseId)
+            .orElseThrow(() -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
+
+        Long currentUserId = userService.getCurrentUserId();
+        if (!uploadCourse.getUser().getId().equals(currentUserId)) {
+            throw new BusinessException(UploadCourseErrorCode.NOT_OWNED_UPLOAD_COURSE);
+        }
+
+        // 1. 썸네일 이미지 업데이트 (신규 이미지 첨부 시 기존 S3 파일 삭제 후 저장)
+        String newThumbnailS3Key = uploadCourse.getThumbnailImageS3Key();
+        if (thumbnailImage != null && !thumbnailImage.isEmpty()) {
+            if (newThumbnailS3Key != null && !"default-upload-course-thumbnail.png".equals(newThumbnailS3Key)) {
+                s3Service.deleteFile(newThumbnailS3Key);
+            }
+            try {
+                newThumbnailS3Key = s3Service.uploadFile(thumbnailImage).key();
+            } catch (IOException e) {
+                throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+            }
+        }
+
+        // 2. UploadCourse 정보 및 키워드 갱신
+        uploadCourse.updateUploadCourseInfo(request.title(), request.introduction(), request.location(), newThumbnailS3Key);
+
+        uploadCourse.getKeywords().clear();
+        if (request.keywords() != null) {
+            for (KeywordType keyword : request.keywords()) {
+                uploadCourse.getKeywords().add(new CourseKeyword(uploadCourse, keyword));
+            }
+        }
+
+        // 3. TravelCourse 정보 갱신
+        TravelCourse travelCourse = uploadCourse.getTravelCourse();
+        travelCourse.updateCourseInfo(request.title(), request.location(), request.startDate(), request.endDate());
+
+        // 4. DaySchedule, Place, PlaceImage 매칭 및 동기화 (갱신/추가/삭제)
+        List<DaySchedule> existingDaySchedules = myCourseService.getDaySchedulesWithPlaces(travelCourse.getId());
+
+        Map<Long, DaySchedule> existingDayMap = existingDaySchedules.stream()
+            .collect(Collectors.toMap(DaySchedule::getId, Function.identity()));
+
+        Map<Long, Place> existingPlaceMap = existingDaySchedules.stream()
+            .flatMap(ds -> ds.getPlaces().stream())
+            .collect(Collectors.toMap(Place::getId, Function.identity()));
+
+        Map<Long, PlaceImage> existingImageMap = existingDaySchedules.stream()
+            .flatMap(ds -> ds.getPlaces().stream())
+            .flatMap(p -> p.getPlaceImages().stream())
+            .collect(Collectors.toMap(PlaceImage::getId, Function.identity()));
+
+        Set<Long> requestedDayIds = new HashSet<>();
+        Set<Long> requestedPlaceIds = new HashSet<>();
+        Set<Long> requestedImageIds = new HashSet<>();
+
+        if (request.daySchedules() != null) {
+            for (DayScheduleUpdateRequest dayDto : request.daySchedules()) {
+                DaySchedule daySchedule;
+                if (dayDto.dayScheduleId() != null && existingDayMap.containsKey(dayDto.dayScheduleId())) {
+                    daySchedule = existingDayMap.get(dayDto.dayScheduleId());
+                    requestedDayIds.add(daySchedule.getId());
+                } else {
+                    daySchedule = new DaySchedule(travelCourse, dayDto.day());
+                    travelCourse.getDaySchedules().add(daySchedule);
+                }
+
+                if (dayDto.places() != null) {
+                    for (PlaceUpdateRequest placeDto : dayDto.places()) {
+                        Place place;
+                        if (placeDto.placeId() != null && existingPlaceMap.containsKey(placeDto.placeId())) {
+                            place = existingPlaceMap.get(placeDto.placeId());
+                            place.updatePlaceInfo(placeDto.placeName(), placeDto.startTime(), placeDto.memo(),
+                                placeDto.latitude(), placeDto.longitude(), placeDto.placeUrl(), placeDto.placeLocation());
+                            requestedPlaceIds.add(place.getId());
+                        } else {
+                            place = Place.builder()
+                                .daySchedule(daySchedule)
+                                .placeName(placeDto.placeName())
+                                .startTime(placeDto.startTime())
+                                .memo(placeDto.memo())
+                                .latitude(placeDto.latitude())
+                                .longitude(placeDto.longitude())
+                                .placeUrl(placeDto.placeUrl())
+                                .placeLocation(placeDto.placeLocation())
+                                .build();
+                            daySchedule.getPlaces().add(place);
+                        }
+
+                        if (placeDto.placeImages() != null) {
+                            for (PlaceImageUpdateRequest imgDto : placeDto.placeImages()) {
+                                if (imgDto.placeImageId() != null && existingImageMap.containsKey(imgDto.placeImageId())) {
+                                    requestedImageIds.add(imgDto.placeImageId());
+                                } else if (imgDto.newImageIndex() != null && placeImages != null
+                                    && imgDto.newImageIndex() >= 0 && imgDto.newImageIndex() < placeImages.size()) {
+                                    MultipartFile newFile = placeImages.get(imgDto.newImageIndex());
+                                    if (newFile != null && !newFile.isEmpty()) {
+                                        try {
+                                            String imageS3Key = s3Service.uploadFile(newFile).key();
+                                            place.getPlaceImages().add(new PlaceImage(place, imageS3Key));
+                                        } catch (IOException e) {
+                                            throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 요청에 포함되지 않은 기존 장소 이미지 삭제 (S3 및 DB)
+                        List<PlaceImage> imagesToRemove = place.getPlaceImages().stream()
+                            .filter(img -> img.getId() != null && !requestedImageIds.contains(img.getId()))
+                            .toList();
+                        for (PlaceImage img : imagesToRemove) {
+                            s3Service.deleteFile(img.getPlaceImageS3Key());
+                            place.getPlaceImages().remove(img);
+                        }
+                    }
+                }
+
+                // 요청에 포함되지 않은 기존 장소 삭제 (S3 및 DB)
+                List<Place> placesToRemove = daySchedule.getPlaces().stream()
+                    .filter(p -> p.getId() != null && !requestedPlaceIds.contains(p.getId()))
+                    .toList();
+                for (Place p : placesToRemove) {
+                    p.getPlaceImages().forEach(img -> s3Service.deleteFile(img.getPlaceImageS3Key()));
+                    daySchedule.getPlaces().remove(p);
+                }
+            }
+        }
+
+        // 요청에 포함되지 않은 기존 일차 삭제 (S3 및 DB)
+        List<DaySchedule> daysToRemove = travelCourse.getDaySchedules().stream()
+            .filter(ds -> ds.getId() != null && !requestedDayIds.contains(ds.getId()))
+            .toList();
+        for (DaySchedule ds : daysToRemove) {
+            ds.getPlaces().forEach(p -> p.getPlaceImages().forEach(img -> s3Service.deleteFile(img.getPlaceImageS3Key())));
+            travelCourse.getDaySchedules().remove(ds);
+        }
+
+        List<DayScheduleResponse> updatedDaySchedules = myCourseService.getAllDaySchedulesByCourse(travelCourse.getId());
+        return UploadCourseMapper.toDetailResponse(uploadCourse, getGetThumbnailUrl(uploadCourse), updatedDaySchedules);
+    }
 }

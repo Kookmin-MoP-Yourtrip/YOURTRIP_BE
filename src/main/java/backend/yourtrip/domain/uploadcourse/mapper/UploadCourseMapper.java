@@ -2,9 +2,9 @@ package backend.yourtrip.domain.uploadcourse.mapper;
 
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
-import backend.yourtrip.domain.mycourse.entity.myCourse.MyCourse;
 import backend.yourtrip.domain.mycourse.entity.place.Place;
 import backend.yourtrip.domain.mycourse.entity.place.PlaceImage;
+import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
 import backend.yourtrip.domain.uploadcourse.dto.cache.CourseListItemCacheItem;
 import backend.yourtrip.domain.uploadcourse.dto.cache.DayScheduleCacheItem;
 import backend.yourtrip.domain.uploadcourse.dto.cache.PlaceCacheItem;
@@ -35,13 +35,13 @@ public class UploadCourseMapper {
             .build();
     }
 
-    public static UploadCourse toEntity(UploadCourseCreateRequest request, MyCourse myCourse,
-        User user, String thumbnailS3Key) {
+    public static UploadCourse toEntity(UploadCourseCreateRequest request,
+        TravelCourse travelCourse, User user, String thumbnailS3Key) {
         return UploadCourse.builder()
             .title(request.title())
             .introduction(request.introduction())
-            .location(myCourse.getLocation())
-            .myCourse(myCourse)
+            .location(travelCourse.getLocation())
+            .travelCourse(travelCourse)
             .user(user)
             .thumbnailImageS3Key(thumbnailS3Key)
             .build();
@@ -59,8 +59,8 @@ public class UploadCourseMapper {
                 .toList()
             )
             .location(uploadCourse.getLocation())
-            .startDate(uploadCourse.getMyCourse().getStartDate())
-            .endDate(uploadCourse.getMyCourse().getEndDate())
+            .startDate(uploadCourse.getTravelCourse().getStartDate())
+            .endDate(uploadCourse.getTravelCourse().getEndDate())
             .forkCount(uploadCourse.getForkCount())
             .daySchedules(daySchedules)
             .build();
@@ -90,8 +90,8 @@ public class UploadCourseMapper {
             uploadCourse.getIntroduction(),
             uploadCourse.getLocation(),
             uploadCourse.getThumbnailImageS3Key(),
-            uploadCourse.getMyCourse().getStartDate(),
-            uploadCourse.getMyCourse().getEndDate(),
+            uploadCourse.getTravelCourse().getStartDate(),
+            uploadCourse.getTravelCourse().getEndDate(),
             uploadCourse.getForkCount(),
             uploadCourse.getKeywords().stream()
                 .map(courseKeyword -> courseKeyword.getKeywordType().getLabel())
@@ -173,14 +173,14 @@ public class UploadCourseMapper {
     }
 
     public static UploadCourseCreateResponse toCreateResponse(UploadCourse uploadCourse,
-        MyCourse myCourse, List<DayScheduleResponse> daySchedules) {
+        TravelCourse travelCourse, List<DayScheduleResponse> daySchedules) {
         return UploadCourseCreateResponse.builder()
             .uploadCourseId(uploadCourse.getId())
             .title(uploadCourse.getTitle())
             .introduction(uploadCourse.getIntroduction())
-            .location(myCourse.getLocation())
-            .startDate(myCourse.getStartDate())
-            .endDate(myCourse.getEndDate())
+            .location(travelCourse.getLocation())
+            .startDate(travelCourse.getStartDate())
+            .endDate(travelCourse.getEndDate())
             .keywords(uploadCourse.getKeywords().stream()
                 .map(courseKeyword -> courseKeyword.getKeywordType().getLabel())
                 .toList()

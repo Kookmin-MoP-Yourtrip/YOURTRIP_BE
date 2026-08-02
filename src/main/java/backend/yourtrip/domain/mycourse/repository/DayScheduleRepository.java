@@ -13,8 +13,7 @@ public interface DayScheduleRepository extends JpaRepository<DaySchedule, Long> 
             SELECT ds
             FROM DaySchedule ds
             JOIN ds.course c
-            JOIN c.participants p
-            WHERE p.user.id = :userId
+            WHERE c.user.id = :userId
                 AND c.id = :courseId
                 AND ds.id = :dayId
         """)

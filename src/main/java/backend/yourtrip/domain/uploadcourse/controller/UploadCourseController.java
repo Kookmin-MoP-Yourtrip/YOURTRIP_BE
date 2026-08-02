@@ -1,6 +1,7 @@
 package backend.yourtrip.domain.uploadcourse.controller;
 
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseCreateRequest;
+import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseUpdateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.CourseKeywordListResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseCreateResponse;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
@@ -17,6 +18,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -93,6 +95,19 @@ public class UploadCourseController implements UploadCourseControllerSpec {
         @RequestParam(name = "theme", required = false) KeywordType theme
     ) {
         return uploadCourseService.getPopularCourses(theme);
+    }
+
+    // ==========================
+    //  업로드 코스 통합 수정
+    // ==========================
+    @Override
+    @PutMapping(value = "/{uploadCourseId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public UploadCourseDetailResponse updateUploadCourse(
+        @PathVariable Long uploadCourseId,
+        @RequestPart(value = "thumbnailImage", required = false) MultipartFile thumbnailImage,
+        @RequestPart(value = "placeImages", required = false) List<MultipartFile> placeImages,
+        @Valid @RequestPart(value = "request") UploadCourseUpdateRequest request) {
+        return uploadCourseService.updateUploadCourse(uploadCourseId, request, thumbnailImage, placeImages);
     }
 
 }
