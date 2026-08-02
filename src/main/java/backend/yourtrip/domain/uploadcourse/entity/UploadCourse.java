@@ -9,10 +9,12 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.AccessLevel;
@@ -24,6 +26,7 @@ import org.hibernate.annotations.SQLRestriction;
 @Entity
 @Getter
 @SQLRestriction("deleted = false")
+@Table(indexes = @Index(name = "idx_upload_course_view_count", columnList = "view_count"))
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UploadCourse extends BaseEntity {
 

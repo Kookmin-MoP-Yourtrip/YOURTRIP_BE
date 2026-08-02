@@ -1,6 +1,6 @@
 # TASK-3. 인기 코스 상위 5개 목록 캐싱
 
-> [redis-caching-strategy.md](../redis-caching-strategy.md) 3번 섹션("인기 상위 5개 목록 — 읽기 경로부터 단계적으로")에 대응하는 작업 기록. 체크리스트 자체는 원문서를 따르되, 이 문서는 **설계 과정에서 오간 논의와 그 근거**를 포트폴리오용으로 남긴다.
+> [redis-caching-strategy.md](../CACHING-ROADMAP.md) 3번 섹션("인기 상위 5개 목록 — 읽기 경로부터 단계적으로")에 대응하는 작업 기록. 체크리스트 자체는 원문서를 따르되, 이 문서는 **설계 과정에서 오간 논의와 그 근거**를 포트폴리오용으로 남긴다.
 
 ## 배경
 
@@ -232,7 +232,35 @@ fail-open 검증(Redis 중단 상태 테스트) 중, 코스가 실제로 존재�
 - **3-7 (`view_count` 인덱스 추가)**: 데이터量에 비례하는 비용을 없앤다.
 - **3-8 (서버 기동 시 웜업)**: 재기동 직후의 고정 비용을 없앤다 — `ApplicationReadyEvent`로 부팅 시점(아무도 안 기다리는 때)에 이 쿼리 경로를 미리 한 번 실행해 Hibernate/JVM/커넥션 풀을 데워두고 캐시도 미리 채운다.
 
-두 항목 다 3-6의 분산 락을 대체하지 않는다 — Redis만 단독으로 재시작되는 경우(앱은 안 죽음)엔 웜업이 재실행되지 않으므로, 그 경우엔 여전히 3-6의 락이 유일한 방어선이다. 3-7/3-8은 아직 미착수 상태로 체크리스트에 남겨뒀다.
+두 항목 다 3-6의 분산 락을 대체하지 않는다 — Redis만 단독으로 재시작되는 경우(앱은 안 죽음)엔 웜업이 재실행되지 않으므로, 그 경우엔 여전히 3-6의 락이 유일한 방어선이다.
+
+### 3-7. `view_count` 인덱스 추가 — 구현 및 검증
+
+**구현**: `UploadCourse` 엔티티에 `@Table(indexes = @Index(name = "idx_upload_course_view_count", columnList = "view_count"))`를 추가했다. 컬럼 하나짜리 단일 인덱스로 충분하다고 판단한 이유는, PostgreSQL B-tree 인덱스는 양방향(backward) 스캔이 가능해 `ORDER BY view_count DESC`에도 오름차순 인덱스가 그대로 쓰이기 때문이다(별도 DESC 인덱스 불필요 — 아래 `EXPLAIN ANALYZE` 결과의 `Index Scan Backward`가 이를 보여준다).
+
+**운영 반영 방식에 대한 결정**: 이 레포에는 Flyway/Liquibase 같은 마이그레이션 도구가 없고, 스키마는 `spring.jpa.hibernate.ddl-auto`(환경변수 `DB_DDL_AUTO`)에 전적으로 의존한다. 로컬(`.env`)은 `DB_DDL_AUTO=create`라 앱 재기동 시 엔티티 애너테이션만으로 인덱스가 자동 생성·검증되지만, 운영 권장값(`.env.example`)은 `DB_DDL_AUTO=validate`다. Hibernate의 `validate` 모드는 테이블/컬럼 존재 여부만 확인하고 **인덱스 존재 여부는 아예 검증 대상이 아니며 생성도 하지 않는다** — 즉 엔티티 애너테이션만으로는 운영 DB에 인덱스가 생기지 않는다.
+
+이번 작업 범위에서는 실제 운영 DB에 접근해 DDL을 실행하지 않고(마이그레이션 도구를 새로 도입하는 것도 이번 범위 밖으로 판단), 운영 반영에 필요한 DDL만 기록해둔다.
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_upload_course_view_count
+    ON upload_course (view_count);
+```
+
+- `CONCURRENTLY`를 쓰는 이유: 일반 `CREATE INDEX`는 인덱스를 만드는 동안 테이블에 `ACCESS EXCLUSIVE` 락을 걸어 그 사이 모든 읽기/쓰기가 막힌다. 운영 테이블(트래픽이 있는 상태)에 인덱스를 추가할 때는 이 락을 피하기 위해 `CONCURRENTLY`를 써야 한다.
+- `CONCURRENTLY`는 트랜잭션 블록 안에서 실행할 수 없다 — 단독 문장으로, 트랜잭션을 감싸지 않는 도구(`psql` 등)에서 직접 실행해야 한다.
+
+**로컬 검증 결과**:
+- `./gradlew bootRun`(`DB_DDL_AUTO=create`) 재기동 후 `pg_indexes`로 확인한 결과, `upload_course` 테이블에 `idx_upload_course_view_count`가 정상 생성됨을 확인했다(부팅 로그에도 `create index idx_upload_course_view_count` 실행 확인).
+- `EXPLAIN ANALYZE SELECT upload_course_id FROM upload_course ORDER BY view_count DESC LIMIT 5;` 실행 결과, 실행계획이 `Index Scan Backward using idx_upload_course_view_count`로 이 인덱스를 실제로 사용함을 확인했다. 로컬 DB가 현재 0건이라(`data.sql` 미커밋) `Seq Scan`과의 실측 성능 차이 비교는 이번엔 하지 않았다 — 이미 3-6 벤치마크에서 인덱스 부재로 인한 50만 건 스캔 비용(쿼리당 1.7~2.5초)을 확인해뒀으므로, 이번 검증의 목적은 "인덱스가 실제로 생성되고 옵티마이저가 선택하는지" 확인으로 충분하다고 판단했다.
+
+### 3-8. 서버 기동 시 인기 목록 웜업 — 구현 및 검증
+
+**구현**: `domain/uploadcourse/initializer/PopularCourseCacheWarmer`를 새로 추가했다. `@EventListener(ApplicationReadyEvent.class)`로 부팅 완료 시점에 `null`(전체) + `KeywordType.findByCategory("mood")` 7종, 총 8개 테마를 순회하며 기존 `UploadCourseService.getPopularCourses(theme)`를 그대로 호출한다.
+
+- **새 캐시-쓰기 코드를 만들지 않은 이유**: `getPopularCourses`는 이미 랭킹 캐시 조회 → 미스 시 분산 락 → DB 조회 → `writeRankingCache` → 아이템 캐시 채우기까지 한 메서드 안에 다 갖고 있다. 이걸 그대로 8번 호출하면 랭킹 캐시뿐 아니라 아이템 캐시(코스 제목/썸네일 등)까지 부수적으로 채워지고, 락 획득/해제·fail-open도 전부 기존 코드를 그대로 재사용하게 된다. 원문서 체크리스트 문구("인기 목록 웜업")는 랭킹 캐시만 지칭하는 것으로도 읽히지만, 기존 프로덕션 경로를 그대로 타는 이 방식이 새 코드 없이 더 안전하다고 판단해 아이템 캐시까지 함께 채우는 쪽으로 범위를 넓혔다.
+- **`ApplicationReadyEvent`를 택한 이유**: 이 레포의 유일한 부팅 훅 선례(`TestUserInitializer`)는 `ApplicationRunner`를 구현하지만, `ApplicationReadyEvent`는 애플리케이션 컨텍스트가 완전히 준비된 뒤(요청을 받을 준비가 된 시점) 발행되는 이벤트라 "캐시를 미리 데워둔다"는 웜업의 의도와 의미상 더 맞아떨어진다고 판단했다. 두 방식 모두 부팅 마지막 단계에서 실행되어 타이밍상 실질적 차이는 크지 않다.
+- **개별 테마를 try-catch로 감싼 이유**: `getPopularCourses` 내부의 Redis 관련 예외는 이미 fail-open 처리돼 있지만, DB 예외까지 전파되면 `ApplicationReadyEvent` 리스너의 예외가 애플리케이션 부팅 자체를 실패시킬 수 있다. 웜업은 순수 최적화이므로 한 테마가 실패해도 나머지 7개와 앱 부팅에는 영향이 없어야 한다. `@SpringBootTest`를 쓰는 `YourtripApplicationTests`(레포에 유일한 컨텍스트 로드 테스트)도 이 경로를 그대로 타게 되므로, 이 방어가 테스트 안정성에도 필요하다.
 
 ### 다음 측정 예정
 
@@ -247,6 +275,12 @@ fail-open 검증(Redis 중단 상태 테스트) 중, 코스가 실제로 존재�
 **개선 아이디어**: "조건에 맞는 ID를 찾는 것"과 "그 ID들의 콘텐츠를 조립하는 것"을 분리하는 이번 섹션의 패턴을 검색 API에도 적용할 수 있다. `LEFT JOIN FETCH`로 풀 엔티티를 한 번에 가져오는 대신 ID만 조회하는 쿼리로 바꾸고, 콘텐츠는 `courseListItem` 캐시에서 배치 조회(`multiGet`)하면 된다. 인기 코스는 어떤 검색 조건에서도 상위권에 자주 등장하므로, 검색 결과에 이미 인기 목록 캐싱으로 채워진 코스가 포함될 확률이 낮지 않다. "조건 매칭" 자체는 조합이 무한해 여전히 캐싱할 수 없지만(문서의 "범위에서 제외한 것"과 동일한 이유), 콘텐츠 조립 부분만큼은 기존 캐시 히트로 DB 부하를 줄일 수 있다.
 
 **왜 지금 하지 않는가**: 검색 API의 리포지토리 쿼리 구조 자체를 바꾸는 작업이라 이번 섹션(`/popular` 전용) 범위를 벗어난다. 검색 API는 페이지네이션도 없는 상태라(별도 범위 제외 항목) 그쪽 개선과 묶어서 검토하는 게 합리적일 수 있다.
+
+### 3-9. 아이템 캐시 타입 정보 유실 버그 수정 (4번 섹션 작업 중 소급 발견)
+
+3-5에서 구현한 아이템 캐시(`readItemCache`)가 `GenericJackson2JsonRedisSerializer`의 타입 정보 유실 문제로 오류 없이 항상 캐시 미스로 동작하고 있었을 가능성이 높다는 것을, 4번 섹션(상세 캐시) 작업 중 우연히 발견해 함께 수정했다. 발견 경위와 원인 분석은 [TASK-4.md](TASK-4.md)의 "발견한 버그" 절에 자세히 기록했다 — 같은 원인이 상세 캐시에서는 예외를 던지는 방식으로, 아이템 캐시에서는 조용히 미스 처리되는 방식으로 각각 드러났다.
+
+**수정**: `readItemCache`/`writeItemCache`/`writeItemCacheBatch`를 `CacheManager` 경유 대신, 캐시별 타입을 명시한 `Jackson2JsonRedisSerializer<CourseListItemCacheItem>`로 원시 Redis 커맨드(`MGET`/`SET`)를 직접 다루도록 교체했다. 실제 코스를 업로드하고 `/popular` API를 연속 호출해, 2번째 호출부터 `findAllByIdInWithKeywords` 쿼리가 발생하지 않음을 로그로 확인했다.
 
 ## 진행 방식 원칙
 

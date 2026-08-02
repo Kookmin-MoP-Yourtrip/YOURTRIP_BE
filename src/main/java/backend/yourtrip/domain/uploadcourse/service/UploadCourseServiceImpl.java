@@ -1,12 +1,18 @@
 package backend.yourtrip.domain.uploadcourse.service;
 
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
-import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
-import backend.yourtrip.domain.mycourse.service.MyCourseService;
-import backend.yourtrip.domain.uploadcourse.dto.cache.CourseListItemCacheItem;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceImageResponse;
+import backend.yourtrip.domain.mycourse.dto.response.PlaceResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.place.Place;
 import backend.yourtrip.domain.mycourse.entity.place.PlaceImage;
+import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
+import backend.yourtrip.domain.mycourse.mapper.DayScheduleMapper;
+import backend.yourtrip.domain.mycourse.service.MyCourseService;
+import backend.yourtrip.domain.uploadcourse.dto.cache.CourseListItemCacheItem;
+import backend.yourtrip.domain.uploadcourse.dto.cache.DayScheduleCacheItem;
+import backend.yourtrip.domain.uploadcourse.dto.cache.PlaceCacheItem;
+import backend.yourtrip.domain.uploadcourse.dto.cache.UploadCourseDetailCacheItem;
 import backend.yourtrip.domain.uploadcourse.dto.request.DayScheduleUpdateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.request.PlaceImageUpdateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.request.PlaceUpdateRequest;
@@ -29,7 +35,9 @@ import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.config.RedisConfig;
 import backend.yourtrip.global.s3.service.S3Service;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -50,7 +58,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.data.redis.core.types.Expiration;
 import org.springframework.data.redis.connection.RedisStringCommands.SetOption;
-import org.springframework.data.redis.serializer.RedisSerializer;
+import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -62,6 +70,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
     private static final String POPULAR_COURSES_CACHE = "popularCourses";
     private static final String COURSE_LIST_ITEM_CACHE = "courseListItem";
+    private static final String COURSE_DETAIL_CACHE = "courseDetail";
     private static final String ALL_THEME_CACHE_KEY = "ALL";
     private static final String RANKING_LOCK_KEY_PREFIX = "lock:popularCourses:";
     private static final Duration RANKING_LOCK_TTL = Duration.ofSeconds(5);
@@ -94,6 +103,19 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private final CacheManager cacheManager;
     private final RedisTemplate<String, String> redisTemplate;
     private final RedisTemplate<String, Object> cacheValueRedisTemplate;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * GenericJackson2JsonRedisSerializer(RedisConfig.cacheValueSerializer())는 값에 타입 정보(@class)를
+     * 심지 않아, 캐시 히트 시 원래 레코드 타입이 아닌 LinkedHashMap으로 역직렬화되는 문제가 있었다
+     * (courseDetail 캐시에서 IllegalStateException으로 실측 확인, courseListItem은 instanceof 체크가
+     * 조용히 항상 실패하는 방식으로 같은 문제를 겪고 있었다). 캐시 값 타입을 이미 알고 있는 경우
+     * 굳이 타입 힌트에 의존할 필요가 없으므로, 캐시별로 타입을 명시한 Jackson2JsonRedisSerializer를
+     * 즉석에서 만들어 쓴다.
+     */
+    private <T> Jackson2JsonRedisSerializer<T> cacheSerializer(Class<T> type) {
+        return new Jackson2JsonRedisSerializer<>(objectMapper, type);
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -139,18 +161,28 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     @Override
     @Transactional(readOnly = true)
     public UploadCourseDetailResponse getDetail(Long uploadCourseId) {
+        UploadCourseDetailCacheItem cached = readDetailCache(uploadCourseId);
+        if (cached != null) {
+            return UploadCourseMapper.toDetailResponse(cached,
+                getThumbnailUrlFromDetailCache(cached),
+                buildDaySchedulesFromCache(cached.daySchedules()));
+        }
+
         UploadCourse uploadCourse = uploadCourseRepository.findWithTravelCourseAndKeywords(
                 uploadCourseId)
             .orElseThrow(
                 () -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
 
-        uploadCourse.increaseViewCount(); //조회 수 증가
+        uploadCourse.increaseViewCount(); //조회 수 증가 (readOnly 트랜잭션 버그로 실제 반영은 안 됨 — 5번 섹션에서 교체 예정)
 
-        List<DayScheduleResponse> daySchedules = myCourseService.getAllDaySchedulesByCourse(
+        List<DaySchedule> daySchedules = myCourseService.getDaySchedulesWithPlaces(
             uploadCourse.getTravelCourse().getId());
 
+        writeDetailCache(uploadCourseId,
+            UploadCourseMapper.toDetailCacheItem(uploadCourse, daySchedules));
+
         return UploadCourseMapper.toDetailResponse(uploadCourse, getGetThumbnailUrl(
-            uploadCourse), daySchedules);
+            uploadCourse), buildDaySchedulesFromEntities(daySchedules));
     }
 
     @Override
@@ -369,16 +401,21 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         try {
             // 코스 개수(최대 5건)만큼 개별 GET을 반복하면 왕복이 그만큼 누적돼 벤치마크에서
             // 실측으로 확인된 지연 문제였다 — MGET으로 한 번에 배치 조회해 왕복을 1회로 줄인다.
-            List<String> keys = ids.stream()
-                .map(id -> COURSE_LIST_ITEM_CACHE + "::" + id)
-                .toList();
-            List<Object> values = cacheValueRedisTemplate.opsForValue().multiGet(keys);
-            if (values == null) {
+            byte[][] keys = ids.stream()
+                .map(id -> itemCacheKeyBytes(id))
+                .toArray(byte[][]::new);
+            List<byte[]> rawValues = cacheValueRedisTemplate.execute(
+                (RedisCallback<List<byte[]>>) connection -> connection.stringCommands()
+                    .mGet(keys));
+            if (rawValues == null) {
                 return result;
             }
+            Jackson2JsonRedisSerializer<CourseListItemCacheItem> serializer =
+                cacheSerializer(CourseListItemCacheItem.class);
             for (int i = 0; i < ids.size(); i++) {
-                if (values.get(i) instanceof CourseListItemCacheItem item) {
-                    result.put(ids.get(i), item);
+                byte[] raw = rawValues.get(i);
+                if (raw != null) {
+                    result.put(ids.get(i), serializer.deserialize(raw));
                 }
             }
         } catch (Exception e) {
@@ -391,14 +428,17 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
     /**
      * 콘텐츠 변경 이벤트(fork로 인한 forkCount 증가 등) 발생 시 코스 1건만 즉시 write-through할 때 사용한다.
-     * 1건짜리 쓰기는 파이프라인으로 묶을 대상이 없어 CacheManager를 그대로 쓴다.
      */
     private void writeItemCache(Long uploadCourseId, CourseListItemCacheItem item) {
         try {
-            Cache cache = cacheManager.getCache(COURSE_LIST_ITEM_CACHE);
-            if (cache != null) {
-                cache.put(uploadCourseId.toString(), item);
-            }
+            byte[] key = itemCacheKeyBytes(uploadCourseId);
+            byte[] value = cacheSerializer(CourseListItemCacheItem.class).serialize(item);
+            long ttlSeconds = RedisConfig.COURSE_LIST_ITEM_TTL.getSeconds();
+            cacheValueRedisTemplate.execute((RedisCallback<Object>) connection -> {
+                connection.stringCommands()
+                    .set(key, value, Expiration.seconds(ttlSeconds), SetOption.upsert());
+                return null;
+            });
         } catch (Exception e) {
             // fail-open: 캐시 저장 실패해도 이미 조회된 응답은 정상 반환한다
             log.warn("아이템 캐시 저장 실패. uploadCourseId={}", uploadCourseId, e);
@@ -411,23 +451,19 @@ public class UploadCourseServiceImpl implements UploadCourseService {
      * 개별 SET을 반복하면 정상 상황에서도 왕복이 누적되고, Redis 장애 시에는 타임아웃(1초)이 건수만큼
      * 곱해져 응답이 수 초 단위로 늘어지는 문제가 실측으로 확인됐다.
      */
-    @SuppressWarnings("unchecked")
     private void writeItemCacheBatch(Map<Long, CourseListItemCacheItem> items) {
         if (items.isEmpty()) {
             return;
         }
         try {
-            RedisSerializer<String> keySerializer =
-                (RedisSerializer<String>) cacheValueRedisTemplate.getKeySerializer();
-            RedisSerializer<Object> valueSerializer =
-                (RedisSerializer<Object>) cacheValueRedisTemplate.getValueSerializer();
+            Jackson2JsonRedisSerializer<CourseListItemCacheItem> serializer =
+                cacheSerializer(CourseListItemCacheItem.class);
             long ttlSeconds = RedisConfig.COURSE_LIST_ITEM_TTL.getSeconds();
 
             cacheValueRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
                 for (Map.Entry<Long, CourseListItemCacheItem> entry : items.entrySet()) {
-                    byte[] key = keySerializer.serialize(
-                        COURSE_LIST_ITEM_CACHE + "::" + entry.getKey());
-                    byte[] value = valueSerializer.serialize(entry.getValue());
+                    byte[] key = itemCacheKeyBytes(entry.getKey());
+                    byte[] value = serializer.serialize(entry.getValue());
                     connection.stringCommands()
                         .set(key, value, Expiration.seconds(ttlSeconds), SetOption.upsert());
                 }
@@ -439,11 +475,138 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         }
     }
 
+    private byte[] itemCacheKeyBytes(Long uploadCourseId) {
+        return (COURSE_LIST_ITEM_CACHE + "::" + uploadCourseId).getBytes(StandardCharsets.UTF_8);
+    }
+
     private String getThumbnailUrlFromCacheItem(CourseListItemCacheItem item) {
         if (item.thumbnailImageS3Key() == null) {
             return null;
         }
         return s3Service.getPresignedUrl(item.thumbnailImageS3Key());
+    }
+
+    // ==========================
+    //  3단계: 상세 캐시 (코스ID별 상세 콘텐츠 - 일차/장소/장소이미지 포함)
+    // ==========================
+
+    // RedisConfig의 RedisCacheManager("courseDetail" 캐시, GenericJackson2JsonRedisSerializer 경유)를
+    // 쓰지 않는 이유: 그 직렬화기는 타입 정보(@class)를 심지 않아 Cache.get(key, Class)가
+    // IllegalStateException을 던진다(실측 확인, cacheSerializer() 주석 참고). courseListItem과
+    // 동일하게 타입을 명시한 Jackson2JsonRedisSerializer로 원시 Redis 커맨드를 직접 다룬다.
+    //
+    // TTL은 courseListItem과 동일하게 RedisConfig.COURSE_LIST_ITEM_TTL(2시간)을 그대로 재사용한다.
+    // 처음엔 5분으로 잡았으나, 상세 캐시가 담는 필드(title/location/thumbnail/forkCount/keywords + 일정)가
+    // courseListItem이 담는 필드와 변경 빈도 면에서 다를 게 없다는 점(업로드 후 수정 API가 없어 사실상
+    // 정적이고, 유일하게 바뀌는 forkCount는 6-2에서 evict로 별도 처리될 예정)을 재검토해 늘렸다.
+    // 5분은 이 콘텐츠의 실제 변경 빈도에 비해 과도하게 짧아 DB 부하 절감 효과를 스스로 깎아먹고
+    // 있었다 — TTL은 데이터 변경 빈도에 맞춰야 한다는 일반적인 캐싱 원칙에 따른 조정이다.
+
+    /**
+     * 랭킹/아이템 캐시와 동일하게 jitter나 락 없이 단순 cache-aside로 구현한다.
+     * 상세 캐시는 "쓰기 시점 = 사용자가 그 코스를 조회한 시점"이라 정상 트래픽에서는
+     * 코스별 만료 시각이 자연 분산되고, 키가 코스ID별로 흩어져 있어 랭킹 캐시처럼
+     * 미스 순간 요청 전체가 한 키로 몰리는 취약점도 없다(자세한 근거는 CACHING-ROADMAP.md
+     * 4번 섹션 "추가 개선점" 참고).
+     */
+    private UploadCourseDetailCacheItem readDetailCache(Long uploadCourseId) {
+        try {
+            byte[] raw = cacheValueRedisTemplate.execute((RedisCallback<byte[]>) connection ->
+                connection.stringCommands().get(detailCacheKeyBytes(uploadCourseId)));
+            if (raw == null) {
+                return null;
+            }
+            return cacheSerializer(UploadCourseDetailCacheItem.class).deserialize(raw);
+        } catch (Exception e) {
+            // fail-open: Redis 장애/지연 시 캐시가 없는 것으로 취급하고 DB 조회로 폴백한다
+            log.warn("상세 캐시 조회 실패, DB로 폴백합니다. uploadCourseId={}", uploadCourseId, e);
+            return null;
+        }
+    }
+
+    private void writeDetailCache(Long uploadCourseId, UploadCourseDetailCacheItem item) {
+        try {
+            byte[] key = detailCacheKeyBytes(uploadCourseId);
+            byte[] value = cacheSerializer(UploadCourseDetailCacheItem.class).serialize(item);
+            cacheValueRedisTemplate.execute((RedisCallback<Object>) connection -> {
+                connection.stringCommands().set(key, value,
+                    Expiration.seconds(RedisConfig.COURSE_LIST_ITEM_TTL.getSeconds()),
+                    SetOption.upsert());
+                return null;
+            });
+        } catch (Exception e) {
+            // fail-open: 캐시 저장에 실패해도 이미 조회된 응답은 정상 반환한다
+            log.warn("상세 캐시 저장 실패. uploadCourseId={}", uploadCourseId, e);
+        }
+    }
+
+    private byte[] detailCacheKeyBytes(Long uploadCourseId) {
+        return (COURSE_DETAIL_CACHE + "::" + uploadCourseId).getBytes(StandardCharsets.UTF_8);
+    }
+
+    private String getThumbnailUrlFromDetailCache(UploadCourseDetailCacheItem item) {
+        if (item.thumbnailImageS3Key() == null) {
+            return null;
+        }
+        return s3Service.getPresignedUrl(item.thumbnailImageS3Key());
+    }
+
+    /**
+     * 캐시 히트 경로 전용 — 캐시 DTO(S3 key)를 응답 DTO(presigned URL)로 조립한다.
+     * 매 호출마다 새 URL을 발급해, "URL은 캐싱하지 않고 응답 조립 시점에 생성"하는 설계 원칙을 지킨다.
+     */
+    private List<DayScheduleResponse> buildDaySchedulesFromCache(
+        List<DayScheduleCacheItem> cachedDaySchedules) {
+        return cachedDaySchedules.stream()
+            .map(day -> new DayScheduleResponse(
+                day.dayScheduleId(),
+                day.day(),
+                day.places().stream()
+                    .map(place -> PlaceResponse.builder()
+                        .placeId(place.placeId())
+                        .placeName(place.placeName())
+                        .startTime(place.startTime())
+                        .memo(place.memo())
+                        .latitude(place.latitude())
+                        .longitude(place.longitude())
+                        .placeUrl(place.placeUrl())
+                        .placeLocation(place.placeLocation())
+                        .placeImages(place.placeImages().stream()
+                            .map(image -> new PlaceImageResponse(
+                                image.placeId(),
+                                image.placeImageId(),
+                                s3Service.getPresignedUrl(image.placeImageS3Key())
+                            ))
+                            .toList())
+                        .build())
+                    .toList()
+            ))
+            .toList();
+    }
+
+    /**
+     * 캐시 미스 경로 전용 — 방금 DB에서 읽은 엔티티로 응답 DTO를 직접 조립한다.
+     * myCourseService.getAllDaySchedulesByCourse(...)를 다시 호출하지 않는 이유: 그 메서드는 내부에서
+     * checkExistCourse + getDaySchedulesWithPlaces를 재실행해 같은 쿼리를 두 번 타게 된다. 캐시 DTO를
+     * 만들기 위해 이미 getDaySchedulesWithPlaces로 엔티티를 받아왔으므로, 그 결과를 그대로 재사용한다.
+     */
+    private List<DayScheduleResponse> buildDaySchedulesFromEntities(
+        List<DaySchedule> daySchedules) {
+        return daySchedules.stream()
+            .map(daySchedule -> {
+                List<PlaceImageResponse> imageIdAndUrls = daySchedule.getPlaces().stream()
+                    .flatMap(place -> place.getPlaceImages().stream()
+                        .map(placeImage -> new PlaceImageResponse(
+                            place.getId(),
+                            placeImage.getId(),
+                            s3Service.getPresignedUrl(placeImage.getPlaceImageS3Key())
+                        ))
+                    )
+                    .toList();
+
+                return DayScheduleMapper.toDayScheduleResponse(daySchedule, imageIdAndUrls);
+            })
+            .toList();
     }
 
     private void validateThemeIsMoodOrNull(KeywordType theme) {

@@ -42,14 +42,11 @@
 
 5. **fail-open은 짧은 타임아웃과 반드시 세트로 적용한다.** Lettuce의 기본 command timeout은 60초다. Redis가 완전히 죽은 게 아니라 응답이 느려지는 상황에서는 예외가 발생하지 않아 fail-open이 동작하지 않고, 요청 스레드가 60초씩 묶여 스레드 풀이 고갈된다. 즉 **타임아웃 없는 fail-open은 사실상 무의미**하다. 타임아웃을 짧게(1초) 설정해야 fail-open이 실질적으로 작동한다.
 
-6. **갱신 주기**: 조회수 DB 동기화 10분(= 인기 목록 실질 갱신 주기), 인기 목록 안전망 TTL 30분(스케줄러가 멈췄을 때 대비), 상세 캐시 TTL 5분(± jitter 60초로 동시 만료 회피). 조회수는 API 응답에 노출되지 않으므로 사용자가 지연을 인지할 수 없는 수준이다.
+6. **갱신 주기**: 조회수 DB 동기화 10분(= 인기 목록 실질 갱신 주기), 인기 목록 안전망 TTL 30분(스케줄러가 멈췄을 때 대비), 상세 캐시 TTL 2시간(아이템 캐시와 동일, jitter 없음 — 자세한 재검토 근거는 [TASK-4.md](tasks/TASK-4.md) 참고). 조회수는 API 응답에 노출되지 않으므로 사용자가 지연을 인지할 수 없는 수준이다.
 
-## 문서 작성 원칙 — 개선점 기록
+## 문서 작성 원칙
 
-작업 진행 중 이번 체크리스트 항목의 범위를 벗어나지만 개발 시 참고할 만한 개선점(설정 미비, 잠재 리스크, 향후 강화가 필요한 사항 등)을 발견하면, **코드를 임의로 고치지 않고** 다음 두 곳에 동시에 남긴다.
-
-1. 사용자에게 답변으로 알린다.
-2. 해당 체크리스트 항목(`### N. ...`) 바로 아래에 `**추가 개선점**` 하위 섹션을 추가해 같은 내용을 기록한다.
+이 로드맵과, 섹션별 상세 기록(`docs/tasks/TASK-N.md`)을 나눠 쓰는 규칙은 [.claude/rules/roadmap-and-task-docs.md](../.claude/rules/roadmap-and-task-docs.md)를 따른다. 이 문서에는 체크리스트만 남기고, 설계 논의·발견한 버그·성능 측정 결과 같은 상세 내용은 해당 섹션의 TASK 파일에 적는다.
 
 ## 적용 원칙 (진행 방식)
 
@@ -66,12 +63,12 @@
 ## 적용 체크리스트
 
 ### 0. 사전 준비
+
+> 발견한 개선점은 [TASK-0.md](tasks/TASK-0.md) 참고.
+
 - [x] 0-1. `build.gradle`에 `spring-boot-starter-data-redis`, `commons-pool2` 의존성만 추가
 - [x] 0-2. `docker-compose.yml` 작성 (redis:7-alpine, maxmemory 정책 포함)
 - [x] 0-3. `docker compose up -d` 후 `redis-cli ping`으로 로컬 기동 확인
-
-**추가 개선점**
-- `docker-compose.yml`에 영속성 볼륨(`volumes`)을 설정하지 않았다. 컨테이너가 재시작되거나 삭제되면 캐시 데이터가 전부 휘발된다. 순수 캐시 용도(원본은 항상 DB)라 서비스 정합성에는 문제가 없지만, 로컬 개발 중 반복적으로 캐시 값을 확인하려는 상황에서는 재기동마다 초기화된다는 점을 인지해야 한다. 필요하면 named volume(`redis-data:/data`) + `appendonly yes`를 추가하는 것을 검토할 수 있다.
 
 ### 1. Redis 연결 설정
 - [x] 1-1. `application.yml`에 `spring.data.redis` 접속 정보(host/port)만 추가
@@ -86,19 +83,27 @@
 - [x] 2-4. `GenericJackson2JsonRedisSerializer`에 `JavaTimeModule` 등록 확인
 
 ### 3. 인기 상위 5개 목록 — 읽기 경로부터 단계적으로
+
+> 설계 논의, 발견한 버그, 성능 측정 결과의 전체 기록은 [TASK-3.md](tasks/TASK-3.md) 참고.
+
 - [x] 3-1. Repository에 상위 5개 ID만 조회하는 쿼리 추가 (캐싱 없이 기능만)
 - [x] 3-2. Repository에 ID 목록으로 `LEFT JOIN FETCH` 조회하는 쿼리 추가
 - [x] 3-3. `GET /api/upload-courses/popular` API 추가 (캐싱 없이 DB 직접 조회로 우선 동작 확인)
-- [x] 3-4. `PopularCourseCacheItem` 캐시 DTO 추가 (S3 key 보관) — 실제로는 인기 목록 전용이 아닌 범용 콘텐츠 캐시로 설계해 `CourseListItemCacheItem`으로 명명(자세한 내용은 [TASK-3.md](tasks/TASK-3.md) 참고)
-- [x] 3-5. 캐시 조회/저장 로직 추가 (콜드 스타트 락 없는 단순 버전) — 랭킹/아이템 캐시 이원화 구조로 구현, 아이템 캐시는 MGET 배치 조회로 구현(개별 GET 반복은 벤치마크에서 성능 저하 확인돼 폐기)
-- [x] 3-6. 콜드 스타트 스탬피드 방지용 분산 락 추가 — `SET NX EX` + Lua 스크립트 기반 비교-삭제 해제로 구현, 동시요청 50건에서 DB 쿼리 1회로 수렴하는 것을 실측 확인(자세한 내용은 [TASK-3.md](tasks/TASK-3.md) 참고)
-- [ ] 3-7. `view_count` 컬럼에 인덱스 추가 — 랭킹 쿼리(`ORDER BY view_count DESC LIMIT 5`)가 인덱스 없이 매번 전체 스캔+정렬을 하고 있음을 확인(`\di upload_course*`로 PK/unique 제약 외 인덱스 없음 확인). 데이터가 5,000건일 땐 안 드러나다가 50만 건 벤치마크에서 쿼리 1건당 1.7~2.5초까지 걸리는 것으로 실측 확인됨 — 데이터量에 비례해 커지는 비용을 인덱스로 없앤다(자세한 내용은 [TASK-3.md](tasks/TASK-3.md) 참고)
-- [ ] 3-8. 서버 기동 시 인기 목록(전체+테마 7종, 8개 캐시 키) 웜업 추가 — `ApplicationReadyEvent`로 부팅 직후 랭킹 쿼리를 미리 실행해 캐시를 채워둔다. 3-7과는 해결하는 문제가 다르다: 3-7(인덱스)은 "데이터量에 비례하는 쿼리 비용"을, 3-8(웜업)은 "서버 재기동 직후 Hibernate/JVM이 이 쿼리 경로를 처음 실행할 때 드는 고정 비용(수백 ms~1초 이상)"을 없앤다 — 3,000건처럼 적은 데이터에서도 콜드스타트 직후엔 이 고정 비용 때문에 느렸던 것을 실측으로 확인함(자세한 내용은 [TASK-3.md](tasks/TASK-3.md) 참고). 콜드 스타트 분산 락(3-6)을 대체하는 게 아니라 보강하는 용도 — Redis만 단독으로 재시작되는 경우엔 앱이 재기동되지 않아 웜업이 다시 실행되지 않으므로, 그 경우엔 여전히 3-6의 락이 유일한 방어선이다
+- [x] 3-4. `CourseListItemCacheItem` 캐시 DTO 추가 (S3 key 보관)
+- [x] 3-5. 캐시 조회/저장 로직 추가 (콜드 스타트 락 없는 단순 버전, 랭킹/아이템 캐시 이원화 구조)
+- [x] 3-6. 콜드 스타트 스탬피드 방지용 분산 락 추가
+- [x] 3-7. `view_count` 컬럼에 인덱스 추가
+- [x] 3-8. 서버 기동 시 인기 목록(전체+테마 7종, 8개 캐시 키) 웜업 추가
+- [x] 3-9. 아이템 캐시가 타입 정보 유실로 항상 미스 처리되던 버그 수정 (4번 섹션 작업 중 소급 발견)
 
 ### 4. 상세 조회 캐싱
-- [ ] 4-1. `UploadCourseDetailCacheItem` 캐시 DTO 추가 (S3 key 보관, 장소 이미지 포함)
-- [ ] 4-2. TTL jitter 포함한 캐시 조회/저장 로직 추가
-- [ ] 4-3. `getDetail`에 캐시 조회 연결 (이 시점까지는 조회수 로직은 건드리지 않음)
+
+> 설계 논의, 발견한 버그, 성능 측정 결과의 전체 기록은 [TASK-4.md](tasks/TASK-4.md) 참고.
+
+- [x] 4-1. `UploadCourseDetailCacheItem`/`DayScheduleCacheItem`/`PlaceCacheItem`/`PlaceImageCacheItem` 캐시 DTO 추가
+- [x] 4-2. 캐시 조회/저장 로직 추가
+- [x] 4-3. `getDetail`에 캐시 조회 연결
+- [x] 4-4. Before/After 성능 측정 (단일 인기 코스 반복 조회 vs 여러 코스 혼합 조회)
 
 ### 5. 조회수 Redis 카운터
 - [ ] 5-1. `INCR` + `SADD` 기반 카운터 증가 로직 추가 (try-catch로 Redis 장애 격리)
@@ -109,9 +114,12 @@
 - [ ] 5-6. 스케줄러에 refresh-ahead(캐시 evict 대신 put) 연결
 
 ### 6. 캐시 무효화 연결
+
+> dev 브랜치 병합 배경과 알려진 gap은 [TASK-6.md](tasks/TASK-6.md) 참고.
+
 - [ ] 6-1. 코스 업로드 시 인기 목록 evict
 - [ ] 6-2. fork 시 해당 코스 상세 캐시 evict
-- [ ] 6-3. 원본 일정/장소 수정 시 업로드된 코스라면 상세 캐시 evict
+- [ ] 6-3. 업로드 코스 직접 수정(`PUT /api/upload-courses/{id}`) 시 상세/아이템 캐시 evict 또는 write-through
 
 ### 7. 안정성 검증
 - [ ] 7-1. 캐시 히트 시 SQL 로그가 발생하지 않는지 확인 (목록/상세 각각)
@@ -145,4 +153,4 @@
 - **Sentinel 없이 master + replica만 두는 구성은 진짜 HA가 아니다.** Lettuce/Spring은 master 장애를 자동 감지해 replica를 승격시켜주지 않는다. 자동 failover가 목표라면 최소 3대(quorum 확보용 홀수)의 Sentinel이 함께 필요하며, `application.yml`의 `spring.data.redis.host`/`port`(단일 노드 전용)를 `spring.data.redis.sentinel.master`/`sentinel.nodes`로 교체해야 한다 — 이 교체만으로 Spring Boot가 Sentinel-aware 커넥션을 자동 구성하므로 Java 코드 변경은 불필요하다.
 - `docker-compose.yml`에는 현재 `redis` 서비스 하나만 정의되어 있다. `--replicaof` 옵션을 가진 replica 서비스, (Sentinel을 쓴다면) sentinel 서비스들을 추가하면 되고 기존 `redis` 서비스 정의와 충돌하지 않는다.
 - 읽기 트래픽까지 replica로 분산하려면 Lettuce `ReadFrom` 설정이 별도로 필요하다(기본값은 읽기/쓰기 모두 master로만 라우팅). 조회수 카운터(`INCR`/`SADD`, 5단계에서 추가 예정)는 쓰기이므로 이 설정과 무관하게 항상 master로 간다.
-- [0번 섹션 추가 개선점](#0-사전-준비)에 이미 기록한 볼륨 미설정 이슈도 함께 고려한다 — replica가 재기동될 때 마스터의 영속 데이터가 없으면 매번 풀 리싱크(전체 데이터 재동기화) 비용이 발생한다.
+- [TASK-0.md](tasks/TASK-0.md)에 이미 기록한 볼륨 미설정 이슈도 함께 고려한다 — replica가 재기동될 때 마스터의 영속 데이터가 없으면 매번 풀 리싱크(전체 데이터 재동기화) 비용이 발생한다.
