@@ -22,7 +22,9 @@ import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.config.RedisConfig;
 import backend.yourtrip.global.s3.service.S3Service;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -39,7 +41,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.data.redis.core.types.Expiration;
 import org.springframework.data.redis.connection.RedisStringCommands.SetOption;
-import org.springframework.data.redis.serializer.RedisSerializer;
+import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -83,6 +85,18 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private final CacheManager cacheManager;
     private final RedisTemplate<String, String> redisTemplate;
     private final RedisTemplate<String, Object> cacheValueRedisTemplate;
+    private final ObjectMapper objectMapper;
+
+    /**
+     * GenericJackson2JsonRedisSerializer(RedisConfig.cacheValueSerializer())는 값에 타입 정보(@class)를
+     * 심지 않아, 캐시 히트 시 원래 레코드 타입이 아닌 LinkedHashMap으로 역직렬화되는 문제가 있었다
+     * (courseListItem은 instanceof 체크가 조용히 항상 실패하는 방식으로 이 문제를 겪고 있었다 —
+     * 예외가 없어 지금까지 드러나지 않았다). 캐시 값 타입을 이미 알고 있는 경우 굳이 타입 힌트에
+     * 의존할 필요가 없으므로, 캐시별로 타입을 명시한 Jackson2JsonRedisSerializer를 즉석에서 만들어 쓴다.
+     */
+    private <T> Jackson2JsonRedisSerializer<T> cacheSerializer(Class<T> type) {
+        return new Jackson2JsonRedisSerializer<>(objectMapper, type);
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -362,16 +376,21 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         try {
             // 코스 개수(최대 5건)만큼 개별 GET을 반복하면 왕복이 그만큼 누적돼 벤치마크에서
             // 실측으로 확인된 지연 문제였다 — MGET으로 한 번에 배치 조회해 왕복을 1회로 줄인다.
-            List<String> keys = ids.stream()
-                .map(id -> COURSE_LIST_ITEM_CACHE + "::" + id)
-                .toList();
-            List<Object> values = cacheValueRedisTemplate.opsForValue().multiGet(keys);
-            if (values == null) {
+            byte[][] keys = ids.stream()
+                .map(id -> itemCacheKeyBytes(id))
+                .toArray(byte[][]::new);
+            List<byte[]> rawValues = cacheValueRedisTemplate.execute(
+                (RedisCallback<List<byte[]>>) connection -> connection.stringCommands()
+                    .mGet(keys));
+            if (rawValues == null) {
                 return result;
             }
+            Jackson2JsonRedisSerializer<CourseListItemCacheItem> serializer =
+                cacheSerializer(CourseListItemCacheItem.class);
             for (int i = 0; i < ids.size(); i++) {
-                if (values.get(i) instanceof CourseListItemCacheItem item) {
-                    result.put(ids.get(i), item);
+                byte[] raw = rawValues.get(i);
+                if (raw != null) {
+                    result.put(ids.get(i), serializer.deserialize(raw));
                 }
             }
         } catch (Exception e) {
@@ -384,14 +403,17 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
     /**
      * 콘텐츠 변경 이벤트(fork로 인한 forkCount 증가 등) 발생 시 코스 1건만 즉시 write-through할 때 사용한다.
-     * 1건짜리 쓰기는 파이프라인으로 묶을 대상이 없어 CacheManager를 그대로 쓴다.
      */
     private void writeItemCache(Long uploadCourseId, CourseListItemCacheItem item) {
         try {
-            Cache cache = cacheManager.getCache(COURSE_LIST_ITEM_CACHE);
-            if (cache != null) {
-                cache.put(uploadCourseId.toString(), item);
-            }
+            byte[] key = itemCacheKeyBytes(uploadCourseId);
+            byte[] value = cacheSerializer(CourseListItemCacheItem.class).serialize(item);
+            long ttlSeconds = RedisConfig.COURSE_LIST_ITEM_TTL.getSeconds();
+            cacheValueRedisTemplate.execute((RedisCallback<Object>) connection -> {
+                connection.stringCommands()
+                    .set(key, value, Expiration.seconds(ttlSeconds), SetOption.upsert());
+                return null;
+            });
         } catch (Exception e) {
             // fail-open: 캐시 저장 실패해도 이미 조회된 응답은 정상 반환한다
             log.warn("아이템 캐시 저장 실패. uploadCourseId={}", uploadCourseId, e);
@@ -404,23 +426,19 @@ public class UploadCourseServiceImpl implements UploadCourseService {
      * 개별 SET을 반복하면 정상 상황에서도 왕복이 누적되고, Redis 장애 시에는 타임아웃(1초)이 건수만큼
      * 곱해져 응답이 수 초 단위로 늘어지는 문제가 실측으로 확인됐다.
      */
-    @SuppressWarnings("unchecked")
     private void writeItemCacheBatch(Map<Long, CourseListItemCacheItem> items) {
         if (items.isEmpty()) {
             return;
         }
         try {
-            RedisSerializer<String> keySerializer =
-                (RedisSerializer<String>) cacheValueRedisTemplate.getKeySerializer();
-            RedisSerializer<Object> valueSerializer =
-                (RedisSerializer<Object>) cacheValueRedisTemplate.getValueSerializer();
+            Jackson2JsonRedisSerializer<CourseListItemCacheItem> serializer =
+                cacheSerializer(CourseListItemCacheItem.class);
             long ttlSeconds = RedisConfig.COURSE_LIST_ITEM_TTL.getSeconds();
 
             cacheValueRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
                 for (Map.Entry<Long, CourseListItemCacheItem> entry : items.entrySet()) {
-                    byte[] key = keySerializer.serialize(
-                        COURSE_LIST_ITEM_CACHE + "::" + entry.getKey());
-                    byte[] value = valueSerializer.serialize(entry.getValue());
+                    byte[] key = itemCacheKeyBytes(entry.getKey());
+                    byte[] value = serializer.serialize(entry.getValue());
                     connection.stringCommands()
                         .set(key, value, Expiration.seconds(ttlSeconds), SetOption.upsert());
                 }
@@ -430,6 +448,10 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             // fail-open: 캐시 저장 실패해도 이미 조회된 응답은 정상 반환한다
             log.warn("아이템 캐시 배치 저장 실패. ids={}", items.keySet(), e);
         }
+    }
+
+    private byte[] itemCacheKeyBytes(Long uploadCourseId) {
+        return (COURSE_LIST_ITEM_CACHE + "::" + uploadCourseId).getBytes(StandardCharsets.UTF_8);
     }
 
     private String getThumbnailUrlFromCacheItem(CourseListItemCacheItem item) {
