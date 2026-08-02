@@ -114,9 +114,12 @@
 - [ ] 5-6. 스케줄러에 refresh-ahead(캐시 evict 대신 put) 연결
 
 ### 6. 캐시 무효화 연결
+
+> dev 브랜치 병합 배경과 알려진 gap은 [TASK-6.md](tasks/TASK-6.md) 참고.
+
 - [ ] 6-1. 코스 업로드 시 인기 목록 evict
 - [ ] 6-2. fork 시 해당 코스 상세 캐시 evict
-- [ ] 6-3. 원본 일정/장소 수정 시 업로드된 코스라면 상세 캐시 evict
+- [ ] 6-3. 업로드 코스 직접 수정(`PUT /api/upload-courses/{id}`) 시 상세/아이템 캐시 evict 또는 write-through
 
 ### 7. 안정성 검증
 - [ ] 7-1. 캐시 히트 시 SQL 로그가 발생하지 않는지 확인 (목록/상세 각각)
