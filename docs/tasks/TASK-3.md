@@ -200,10 +200,6 @@ fail-open 검증(Redis 중단 상태 테스트) 중, 코스가 실제로 존재�
 - **`ApplicationReadyEvent`를 택한 이유**: 이 레포의 유일한 부팅 훅 선례(`TestUserInitializer`)는 `ApplicationRunner`를 구현하지만, `ApplicationReadyEvent`는 애플리케이션 컨텍스트가 완전히 준비된 뒤(요청을 받을 준비가 된 시점) 발행되는 이벤트라 "캐시를 미리 데워둔다"는 웜업의 의도와 의미상 더 맞아떨어진다고 판단했다. 두 방식 모두 부팅 마지막 단계에서 실행되어 타이밍상 실질적 차이는 크지 않다.
 - **개별 테마를 try-catch로 감싼 이유**: `getPopularCourses` 내부의 Redis 관련 예외는 이미 fail-open 처리돼 있지만, DB 예외까지 전파되면 `ApplicationReadyEvent` 리스너의 예외가 애플리케이션 부팅 자체를 실패시킬 수 있다. 웜업은 순수 최적화이므로 한 테마가 실패해도 나머지 7개와 앱 부팅에는 영향이 없어야 한다. `@SpringBootTest`를 쓰는 `YourtripApplicationTests`(레포에 유일한 컨텍스트 로드 테스트)도 이 경로를 그대로 타게 되므로, 이 방어가 테스트 안정성에도 필요하다.
 
-### 다음 측정 예정
-
-- **비교 3(cache-aside vs refresh-ahead)**: 5~6번 섹션(조회수 동기화 스케줄러) 완료 후 진행한다.
-
 ## 발견한 개선점 (이번 작업 범위 밖 — 코드 수정 없이 기록)
 
 ### 검색 결과 API도 `courseListItem` 캐시를 재사용할 수 있다
