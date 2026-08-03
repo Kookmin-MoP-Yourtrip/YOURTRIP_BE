@@ -5,4 +5,19 @@
 .env
 CLAUDE.md
 .claude/
+GEMINI.md
+.gemini/
+.agents/
 src/main/resources/data.sql
+
+# terraform/.terraform/(provider 플러그인 캐시)는 `terraform init`으로 즉시 재생성되므로
+# .gradle/build와 같은 이유로 제외한다. 아래는 재생성이 불가능한 실제 상태/설정/키 파일이다:
+#  - terraform.tfstate(.backup): 로컬 파일로만 관리되는 유일한 진실 공급원(terraform/README.md 참고).
+#    없으면 이미 적용된 리소스를 다시 import해야 한다.
+#  - terraform.tfvars: 버킷 이름 등 환경별 실제 값.
+#  - cloudfront_*.pem: Signed URL 서명용 키페어(개인키가 없으면 서명 URL 발급이 아예 안 됨).
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/terraform.tfvars
+terraform/cloudfront_private_key.pem
+terraform/cloudfront_public_key.pem

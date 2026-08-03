@@ -50,3 +50,25 @@ resource "aws_iam_user_policy_attachment" "app_s3_access" {
   user       = aws_iam_user.app.name
   policy_arn = aws_iam_policy.app_s3_access.arn
 }
+
+# S3Service.deleteFile()이 객체 삭제 후 CloudFront 캐시도 함께 지우기 위해
+# CloudFrontService.invalidate()를 호출한다(cloudfront.tf 참고). 이 권한은
+# 해당 배포 하나로만 한정한다 — 다른 배포를 무효화할 수 없도록.
+data "aws_iam_policy_document" "app_cloudfront_invalidation" {
+  statement {
+    sid       = "AllowCreateInvalidation"
+    effect    = "Allow"
+    actions   = ["cloudfront:CreateInvalidation"]
+    resources = [aws_cloudfront_distribution.media.arn]
+  }
+}
+
+resource "aws_iam_policy" "app_cloudfront_invalidation" {
+  name   = "${var.iam_user_name}-cloudfront-invalidation"
+  policy = data.aws_iam_policy_document.app_cloudfront_invalidation.json
+}
+
+resource "aws_iam_user_policy_attachment" "app_cloudfront_invalidation" {
+  user       = aws_iam_user.app.name
+  policy_arn = aws_iam_policy.app_cloudfront_invalidation.arn
+}

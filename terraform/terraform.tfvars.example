@@ -6,3 +6,8 @@ bucket_name = ""               # 전역 고유해야 함 (예: yourtrip-media-<�
 iam_user_name = "yourtrip-s3-app-user"
 grant_list_bucket = false
 bucket_force_destroy = false
+
+# CloudFront Signed URL 검증용 공개키(PEM) 경로. README.md의 키페어 생성 절차로 만든
+# cloudfront_public_key.pem을 가리킨다 (개인키 cloudfront_private_key.pem은 절대 여기에 두지 않는다).
+cloudfront_public_key_path = "./cloudfront_public_key.pem"
+cloudfront_price_class = "PriceClass_200"

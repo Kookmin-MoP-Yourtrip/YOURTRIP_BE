@@ -10,7 +10,7 @@ import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.FeedErrorCode;
-import backend.yourtrip.global.s3.service.S3Service;
+import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Component;
@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class FeedMapper {
 
-    private final S3Service s3Service;
+    private final CloudFrontService cloudFrontService;
 
     public Feed toEntity(User user, FeedCreateRequest request, UploadCourse uploadCourse) {
         return Feed.builder()
@@ -51,14 +51,14 @@ public class FeedMapper {
 
         String profileImageUrl = null;
         if (user != null && user.getProfileImageS3Key() != null && !user.getProfileImageS3Key().isBlank()) {
-            profileImageUrl = s3Service.getPresignedUrl(user.getProfileImageS3Key());
+            profileImageUrl = cloudFrontService.getPublicUrl(user.getProfileImageS3Key());
         }
 
         List<FeedDetailResponse.MediaResponse> mediaList = feed.getMediaList() != null
                 ? feed.getMediaList().stream()
                 .map(media -> FeedDetailResponse.MediaResponse.builder()
                         .mediaId(media.getId())
-                        .mediaUrl(s3Service.getPresignedUrl(media.getMediaS3Key()))
+                        .mediaUrl(cloudFrontService.getPublicUrl(media.getMediaS3Key()))
                         .mediaType(media.getMediaType().name())
                         .displayOrder(media.getDisplayOrder())
                         .build())
@@ -97,14 +97,14 @@ public class FeedMapper {
 
         String profileImageUrl = null;
         if (user != null && user.getProfileImageS3Key() != null && !user.getProfileImageS3Key().isBlank()) {
-            profileImageUrl = s3Service.getPresignedUrl(user.getProfileImageS3Key());
+            profileImageUrl = cloudFrontService.getPublicUrl(user.getProfileImageS3Key());
         }
 
         List<FeedDetailResponse.MediaResponse> mediaList = feed.getMediaList() != null
                 ? feed.getMediaList().stream()
                 .map(media -> FeedDetailResponse.MediaResponse.builder()
                         .mediaId(media.getId())
-                        .mediaUrl(s3Service.getPresignedUrl(media.getMediaS3Key()))
+                        .mediaUrl(cloudFrontService.getPublicUrl(media.getMediaS3Key()))
                         .mediaType(media.getMediaType().name())
                         .displayOrder(media.getDisplayOrder())
                         .build())

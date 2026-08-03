@@ -38,6 +38,9 @@ out/
 CLAUDE.md
 .claude/
 .env
+GEMINI.md
+.gemini/
+.agents/
 
 # 로컬 개발용 시드 데이터 (사용자/코스/일정/장소 샘플). .worktreeinclude가
 # gitignore된 파일로 전제하고 복사 대상에 포함하고 있으나 규칙이 누락돼 있어 추가.
@@ -51,6 +54,7 @@ terraform/*.tfvars
 terraform/*.tfplan
 terraform/tfplan
 terraform/crash.log
+terraform/*.pem
 terraform/crash.*.log
 terraform/override.tf
 terraform/override.tf.json

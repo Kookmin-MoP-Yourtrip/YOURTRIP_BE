@@ -54,6 +54,7 @@ dependencies {
 
     implementation platform('software.amazon.awssdk:bom:2.25.30') // 최신 안정판으로 맞추기
     implementation 'software.amazon.awssdk:s3'
+    implementation 'software.amazon.awssdk:cloudfront' // CloudFrontUtilities (Signed URL 발급), CloudFrontClient (invalidation)
     implementation 'com.google.genai:google-genai:1.28.0'
 }
 

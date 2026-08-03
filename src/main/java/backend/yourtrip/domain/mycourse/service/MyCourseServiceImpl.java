@@ -37,6 +37,7 @@ import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
+import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto.PlaceDto;
 import backend.yourtrip.global.gemini.service.GeminiService;
@@ -62,6 +63,7 @@ public class MyCourseServiceImpl implements MyCourseService {
 
     private final UserService userService;
     private final S3Service s3Service;
+    private final CloudFrontService cloudFrontService;
     private final GeminiService geminiService;
 
     private final ObjectMapper objectMapper;
@@ -139,12 +141,14 @@ public class MyCourseServiceImpl implements MyCourseService {
                 dayId)
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.DAY_SCHEDULE_NOT_FOUND));
 
+        // MyCourseController의 "/{courseId}/days/{dayId}/places" — 작성자만 볼 수 있는
+        // 비공개 조회이므로 Signed URL을 발급한다.
         List<PlaceImageResponse> imageIdAndUrls = daySchedule.getPlaces().stream()
             .flatMap(place -> place.getPlaceImages().stream()
                 .map(placeImage -> new PlaceImageResponse(
                     place.getId(),
                     placeImage.getId(),
-                    s3Service.getPresignedUrl(placeImage.getPlaceImageS3Key())
+                    cloudFrontService.getSignedUrl(placeImage.getPlaceImageS3Key())
                 ))
             )
             .toList();
@@ -160,6 +164,9 @@ public class MyCourseServiceImpl implements MyCourseService {
 
         List<DaySchedule> daySchedules = getDaySchedulesWithPlaces(courseId);
 
+        // MyCourseController에는 노출되지 않는 내부 헬퍼 — UploadCourseServiceImpl.createUploadCourse()가
+        // 방금 만든 업로드용 hidden copy(TravelCourseType.UPLOADED, 공개 key)의 응답 조립에만 쓴다.
+        // 그래서 여기서 만드는 이미지는 이미 공개 콘텐츠라 서명 없는 URL을 발급해야 한다.
         return daySchedules.stream()
             .map(daySchedule -> {
                 List<PlaceImageResponse> imageIdAndUrls = daySchedule.getPlaces().stream()
@@ -167,7 +174,7 @@ public class MyCourseServiceImpl implements MyCourseService {
                         .map(placeImage -> new PlaceImageResponse(
                             place.getId(),
                             placeImage.getId(),
-                            s3Service.getPresignedUrl(placeImage.getPlaceImageS3Key())
+                            cloudFrontService.getPublicUrl(placeImage.getPlaceImageS3Key())
                         ))
                     )
                     .toList();
@@ -184,6 +191,8 @@ public class MyCourseServiceImpl implements MyCourseService {
 
         List<DaySchedule> daySchedules = getDaySchedulesWithPlaces(courseId);
 
+        // MyCourseController에는 노출되지 않는 내부 헬퍼 — UploadCourseServiceImpl.updateUploadCourse()가
+        // 업로드 코스 자체(공개 콘텐츠)의 갱신 응답 조립에만 쓴다. 서명 없는 URL을 발급한다.
         return daySchedules.stream()
             .map(daySchedule -> {
                 List<PlaceImageResponse> imageIdAndUrls = daySchedule.getPlaces().stream()
@@ -191,7 +200,7 @@ public class MyCourseServiceImpl implements MyCourseService {
                         .map(placeImage -> new PlaceImageResponse(
                             place.getId(),
                             placeImage.getId(),
-                            s3Service.getPresignedUrl(placeImage.getPlaceImageS3Key())
+                            cloudFrontService.getPublicUrl(placeImage.getPlaceImageS3Key())
                         ))
                     )
                     .toList();
@@ -255,7 +264,7 @@ public class MyCourseServiceImpl implements MyCourseService {
 
         String placeImageS3Key;
         try {
-            placeImageS3Key = s3Service.uploadFile(placeImage).key();
+            placeImageS3Key = s3Service.uploadPrivateFile(placeImage).key();
         } catch (IOException e) {
             throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
         }
@@ -264,7 +273,7 @@ public class MyCourseServiceImpl implements MyCourseService {
             new PlaceImage(place, placeImageS3Key));
 
         return new PlaceImageCreateResponse(savedPlaceImage.getId(),
-            s3Service.getPresignedUrl(placeImageS3Key));
+            cloudFrontService.getSignedUrl(placeImageS3Key));
     }
 
     @Override
@@ -334,7 +343,9 @@ public class MyCourseServiceImpl implements MyCourseService {
     /**
      * fork/업로드 사본 생성에 공용으로 쓰이는 딥카피 헬퍼.
      * TravelCourse 본체 + 참여자(소유자) + 일차별 DaySchedule/Place/PlaceImage를 전부 새 PK로 복제한다.
-     * PlaceImage는 S3 key 문자열만 복사하고 실제 S3 오브젝트는 원본과 공유한다.
+     * PlaceImage는 S3 오브젝트 자체를 실제로 복사한다(key 문자열만 복사하면 원본과 사본이 물리적으로
+     * 같은 오브젝트를 가리켜 "업로드 코스=공개/내 코스=비공개" 경계가 무너지기 때문 — type이
+     * UPLOADED(비공개→공개)인지 FORK(공개→비공개)인지에 따라 대상 가시성을 정한다).
      */
     private TravelCourse copyMyCourseWithSchedule(TravelCourse original, User user,
         TravelCourseType type) {
@@ -353,12 +364,17 @@ public class MyCourseServiceImpl implements MyCourseService {
                 Place copiedPlace = PlaceMapper.toCopyEntity(originalPlace, copiedDaySchedule);
                 copiedDaySchedule.getPlaces().add(copiedPlace);
 
-                // 장소 이미지 복사
+                // 장소 이미지 복사 — S3 오브젝트를 대상 가시성으로 실제 복사한 새 key를 사용한다.
                 originalPlace.getPlaceImages().forEach(originalImage -> {
-                    PlaceImage copiedImage = new PlaceImage(
-                        copiedPlace,
-                        originalImage.getPlaceImageS3Key()
-                    );
+                    String copiedKey = switch (type) {
+                        case UPLOADED -> s3Service.copyToPublic(originalImage.getPlaceImageS3Key());
+                        case FORK -> s3Service.copyToPrivate(originalImage.getPlaceImageS3Key());
+                        default -> throw new IllegalStateException(
+                            "copyMyCourseWithSchedule은 UPLOADED/FORK 타입에서만 호출되어야 합니다: "
+                                + type);
+                    };
+
+                    PlaceImage copiedImage = new PlaceImage(copiedPlace, copiedKey);
                     copiedPlace.getPlaceImages().add(copiedImage);
                 });
             });

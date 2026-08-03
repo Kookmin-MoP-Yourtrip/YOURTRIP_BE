@@ -1,11 +1,12 @@
 package backend.yourtrip.global.s3.service;
 
+import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import java.io.IOException;
 import java.io.InputStream;
-import java.time.Duration;
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -16,18 +17,41 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.MetadataDirective;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
-import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
 @Service
 @RequiredArgsConstructor
 public class S3Service {
 
+    // 공개 콘텐츠(uploadcourse/feed/프로필 등)는 업로드 후 수정 API가 없어 사실상 정적이라
+    // 장기 캐싱해도 안전하다(TASK-4.md 재검토 결과). 비공개(mycourse)는 여행 계획 단계에서
+    // 추가·삭제가 잦지만, 삭제 시 CloudFrontService.invalidate()가 즉시 캐시를 지우므로
+    // TTL 길이 자체가 "삭제 후 잔존 위험"을 방어할 필요는 없다 — 그래도 공개 콘텐츠보다는
+    // 짧게 잡아 굳이 오래 들고 있을 이유를 만들지 않는다.
+    private static final String CACHE_CONTROL_PUBLIC = "public, max-age=15552000, immutable"; // 6개월
+    private static final String CACHE_CONTROL_PRIVATE = "public, max-age=604800, immutable"; // 1주일
+
+    private static final String PUBLIC_KEY_PREFIX = "uploads/";
+    private static final String PRIVATE_KEY_PREFIX = "private/";
+
+    // copy()에서 원본 key의 확장자만으로 Content-Type을 복원하기 위한 역방향 매핑
+    // (extensionOf()의 순방향 매핑과 쌍을 이룬다).
+    private static final Map<String, String> CONTENT_TYPE_BY_EXTENSION = Map.of(
+        ".png", "image/png",
+        ".jpg", "image/jpeg",
+        ".webp", "image/webp",
+        ".mp4", "video/mp4",
+        ".mov", "video/quicktime",
+        ".webm", "video/webm"
+    );
+
     private final S3Client s3Client;
+    private final CloudFrontService cloudFrontService;
+
     @Value("${s3.max-size-bytes}")
     private long maxSizeBytes;
     @Value("${s3.allowed-content-types}")
@@ -37,7 +61,6 @@ public class S3Service {
     @Value("${s3.region}")
     private String region;
 
-    private final S3Presigner presigner;
     private volatile Set<String> allowedContentTypeSetCache;
 
     //허용 타입을 set으로 변환
@@ -56,7 +79,20 @@ public class S3Service {
         return cache;
     }
 
+    // 공개 콘텐츠(uploadcourse 썸네일/장소이미지, feed 미디어, 프로필 이미지 등) — CloudFront
+    // 배포의 default cache behavior가 서명 없이 서빙한다.
     public UploadResult uploadFile(MultipartFile file) throws IOException {
+        return upload(file, PUBLIC_KEY_PREFIX, CACHE_CONTROL_PUBLIC);
+    }
+
+    // 비공개 콘텐츠(mycourse 장소 이미지 전용) — key가 "private/"로 시작해 CloudFront
+    // 배포의 "private/*" cache behavior(서명 필수)에 걸린다.
+    public UploadResult uploadPrivateFile(MultipartFile file) throws IOException {
+        return upload(file, PRIVATE_KEY_PREFIX, CACHE_CONTROL_PRIVATE);
+    }
+
+    private UploadResult upload(MultipartFile file, String keyPrefix, String cacheControl)
+        throws IOException {
         // 기본 검증
         if (file == null || file.isEmpty()) {
             throw new BusinessException(S3ErrorCode.EMPTY_FILE);
@@ -74,23 +110,15 @@ public class S3Service {
         }
 
         // 키 생성
-        String ext = switch (contentType) {
-            case "image/png" -> ".png";
-            case "image/jpeg" -> ".jpg";
-            case "image/webp" -> ".webp";
-            case "video/mp4" -> ".mp4";
-            case "video/quicktime" -> ".mov";
-            case "video/webm" -> ".webm";
-            default -> ".bin";
-        };
-        String key = "uploads/" + LocalDate.now() + "/" + UUID.randomUUID() + ext;
+        String ext = extensionOf(contentType);
+        String key = keyPrefix + LocalDate.now() + "/" + UUID.randomUUID() + ext;
 
         // 업로드
         PutObjectRequest put = PutObjectRequest.builder()
             .bucket(bucket)
             .key(key)
             .contentType(contentType)
-            .cacheControl("public, max-age=3600, immutable") // 필요 시 조정
+            .cacheControl(cacheControl)
             // .serverSideEncryption("AES256") // SSE-S3 (기본 암호화 켰으면 생략 가능)
             .build();
 
@@ -102,6 +130,57 @@ public class S3Service {
         String url =
             "https://" + bucket + ".s3." + region + ".amazonaws.com/" + key;
         return new UploadResult(key, url, file.getOriginalFilename(), contentType, file.getSize());
+    }
+
+    private String extensionOf(String contentType) {
+        return switch (contentType) {
+            case "image/png" -> ".png";
+            case "image/jpeg" -> ".jpg";
+            case "image/webp" -> ".webp";
+            case "video/mp4" -> ".mp4";
+            case "video/quicktime" -> ".mov";
+            case "video/webm" -> ".webm";
+            default -> ".bin";
+        };
+    }
+
+    // 업로드(mycourse→uploadcourse)/포크(uploadcourse→mycourse) 시 S3 오브젝트를 실제로
+    // 복사해 물리적으로 분리한다. key 문자열만 복사하면 원본과 사본이 같은 오브젝트를 가리켜
+    // "공개/비공개" 경계가 무너지기 때문이다(MyCourseServiceImpl.copyMyCourseWithSchedule 참고).
+    public String copyToPublic(String privateKey) {
+        return copy(privateKey, PUBLIC_KEY_PREFIX, CACHE_CONTROL_PUBLIC);
+    }
+
+    public String copyToPrivate(String publicKey) {
+        return copy(publicKey, PRIVATE_KEY_PREFIX, CACHE_CONTROL_PRIVATE);
+    }
+
+    private String copy(String sourceKey, String targetPrefix, String cacheControl) {
+        int dotIndex = sourceKey.lastIndexOf('.');
+        String ext = dotIndex >= 0 ? sourceKey.substring(dotIndex) : ".bin";
+        String contentType = CONTENT_TYPE_BY_EXTENSION.getOrDefault(ext, "application/octet-stream");
+        String targetKey = targetPrefix + LocalDate.now() + "/" + UUID.randomUUID() + ext;
+
+        try {
+            // MetadataDirective.REPLACE — 원본의 Cache-Control은 이전 가시성(공개/비공개)
+            // 기준으로 설정된 값이라 그대로 복사하면 안 된다. 대상 가시성에 맞는 값을
+            // 명시적으로 다시 지정한다.
+            CopyObjectRequest copyRequest = CopyObjectRequest.builder()
+                .sourceBucket(bucket)
+                .sourceKey(sourceKey)
+                .destinationBucket(bucket)
+                .destinationKey(targetKey)
+                .contentType(contentType)
+                .cacheControl(cacheControl)
+                .metadataDirective(MetadataDirective.REPLACE)
+                .build();
+
+            s3Client.copyObject(copyRequest);
+        } catch (S3Exception e) {
+            throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
+        }
+
+        return targetKey;
     }
 
     private String safe(String s) {
@@ -137,20 +216,6 @@ public class S3Service {
 
     }
 
-    public String getPresignedUrl(String key) {
-        // 1) 프리사인 요청 객체 생성
-        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-            .signatureDuration(Duration.ofMinutes(15))  // URL 유효 시간
-            .getObjectRequest(r -> r.bucket(bucket).key(key))
-            .build();
-
-        // 2) presigner로 프리사인 URL 생성
-        PresignedGetObjectRequest presignedRequest = presigner.presignGetObject(presignRequest);
-
-        // 3) URL 반환
-        return presignedRequest.url().toString();
-    }
-
     public void deleteFile(String key) {
         if (key == null || key.isBlank()) {
             throw new BusinessException(S3ErrorCode.INVALID_S3_KEY);
@@ -167,6 +232,10 @@ public class S3Service {
         } catch (S3Exception e) {
             throw new BusinessException(S3ErrorCode.FAIL_DELETE_FILE);
         }
+
+        // 삭제 자체는 이미 끝났으므로 CDN 캐시 무효화 실패가 이 메서드를 실패시키지 않는다
+        // (CloudFrontService.invalidate() 내부에서 fail-open 처리).
+        cloudFrontService.invalidate(key);
     }
 
 }

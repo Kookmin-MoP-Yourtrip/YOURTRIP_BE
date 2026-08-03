@@ -8,6 +8,7 @@ import backend.yourtrip.domain.user.repository.UserRepository;
 import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MypageErrorCode;
+import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.s3.service.S3Service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -24,6 +25,7 @@ public class ProfileServiceImpl implements ProfileService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final S3Service s3Service;
+    private final CloudFrontService cloudFrontService;
 
     @Override
     @Transactional(readOnly = true)
@@ -31,7 +33,7 @@ public class ProfileServiceImpl implements ProfileService {
         Long userId = userService.getCurrentUserId();
         User user = userService.getUser(userId);
 
-        String url = s3Service.getPresignedUrl(user.getProfileImageS3Key());
+        String url = cloudFrontService.getPublicUrl(user.getProfileImageS3Key());
 
         return new ProfileResponse(
             user.getEmail(),
@@ -56,8 +58,8 @@ public class ProfileServiceImpl implements ProfileService {
             user = user.withProfileImage(key);
             userRepository.save(user);
 
-            String presigned = s3Service.getPresignedUrl(key);
-            return new ProfileImageResponse(presigned);
+            String publicUrl = cloudFrontService.getPublicUrl(key);
+            return new ProfileImageResponse(publicUrl);
 
         } catch (IOException e) {
             throw new BusinessException(MypageErrorCode.PROFILE_IMAGE_UPLOAD_FAILED);

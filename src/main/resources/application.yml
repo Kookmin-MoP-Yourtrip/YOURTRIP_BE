@@ -88,5 +88,15 @@ s3:
   access-key: ${AWS_ACCESS_KEY}
   secret-key: ${AWS_SECRET_KEY}
 
+cloudfront:
+  domain: ${CLOUDFRONT_DOMAIN}
+  key-pair-id: ${CLOUDFRONT_KEY_PAIR_ID}
+  private-key-path: ${CLOUDFRONT_PRIVATE_KEY_PATH}
+  distribution-id: ${CLOUDFRONT_DISTRIBUTION_ID}
+  # mycourse Signed URL 유효기간. 기존 S3 presigned URL(15분)보다 늘렸다 — 여행 사진 수준의
+  # 낮은 민감도 대비, 느린 네트워크/백그라운드 전환/긴 일정 스크롤에서 15분은 이미지가
+  # 깨지는 UX 문제를 일으킬 수 있어서다.
+  signed-url-ttl-minutes: 60
+
 gemini:
   api-key: ${GEMINI_API_KEY}
