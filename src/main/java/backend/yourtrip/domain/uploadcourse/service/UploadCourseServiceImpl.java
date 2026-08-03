@@ -106,6 +106,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private final RedisTemplate<String, String> redisTemplate;
     private final RedisTemplate<String, Object> cacheValueRedisTemplate;
     private final ObjectMapper objectMapper;
+    private final UploadCourseViewCountService uploadCourseViewCountService;
 
     /**
      * GenericJackson2JsonRedisSerializer(RedisConfig.cacheValueSerializer())는 값에 타입 정보(@class)를
@@ -163,6 +164,8 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     @Override
     @Transactional(readOnly = true)
     public UploadCourseDetailResponse getDetail(Long uploadCourseId) {
+        uploadCourseViewCountService.incrementViewCount(uploadCourseId);
+
         UploadCourseDetailCacheItem cached = readDetailCache(uploadCourseId);
         if (cached != null) {
             return UploadCourseMapper.toDetailResponse(cached,
@@ -174,8 +177,6 @@ public class UploadCourseServiceImpl implements UploadCourseService {
                 uploadCourseId)
             .orElseThrow(
                 () -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
-
-        uploadCourse.increaseViewCount(); //조회 수 증가 (readOnly 트랜잭션 버그로 실제 반영은 안 됨 — 5번 섹션에서 교체 예정)
 
         List<DaySchedule> daySchedules = myCourseService.getDaySchedulesWithPlaces(
             uploadCourse.getTravelCourse().getId());
@@ -769,5 +770,14 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
         List<DayScheduleResponse> updatedDaySchedules = myCourseService.getAllDaySchedulesByCourse(travelCourse.getId());
         return UploadCourseMapper.toDetailResponse(uploadCourse, getGetThumbnailUrl(uploadCourse), updatedDaySchedules);
+    }
+
+    @Override
+    public void refreshAllPopularCoursesCache() {
+        // 전체 카테고리(ALL) 및 각 테마(MOOD)별로 랭킹 쿼리를 강제로 재실행하고 캐시를 갱신한다.
+        computePopularCourseIdsWithLock(null, ALL_THEME_CACHE_KEY);
+        for (KeywordType theme : KeywordType.findByCategory("mood")) {
+            computePopularCourseIdsWithLock(theme, theme.name());
+        }
     }
 }
