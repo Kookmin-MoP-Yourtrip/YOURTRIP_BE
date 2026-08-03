@@ -5,7 +5,6 @@ import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import java.io.IOException;
 import java.io.InputStream;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Map;
 import java.util.Set;
@@ -23,9 +22,6 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.MetadataDirective;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
-import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
 @Service
 @RequiredArgsConstructor
@@ -65,7 +61,6 @@ public class S3Service {
     @Value("${s3.region}")
     private String region;
 
-    private final S3Presigner presigner;
     private volatile Set<String> allowedContentTypeSetCache;
 
     //허용 타입을 set으로 변환
@@ -219,20 +214,6 @@ public class S3Service {
     public record UploadResult(String key, String url, String originalName, String contentType,
                                long size) {
 
-    }
-
-    public String getPresignedUrl(String key) {
-        // 1) 프리사인 요청 객체 생성
-        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-            .signatureDuration(Duration.ofMinutes(15))  // URL 유효 시간
-            .getObjectRequest(r -> r.bucket(bucket).key(key))
-            .build();
-
-        // 2) presigner로 프리사인 URL 생성
-        PresignedGetObjectRequest presignedRequest = presigner.presignGetObject(presignRequest);
-
-        // 3) URL 반환
-        return presignedRequest.url().toString();
     }
 
     public void deleteFile(String key) {
