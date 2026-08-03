@@ -10,6 +10,7 @@ import backend.yourtrip.domain.user.repository.UserRepository;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UserErrorCode;
+import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
 import backend.yourtrip.global.mail.service.MailService;
 import backend.yourtrip.global.s3.service.S3Service;
@@ -36,6 +37,7 @@ public class UserServiceImpl implements UserService {
     private final JwtTokenProvider jwtTokenProvider;
     private final MailService mailService;
     private final S3Service s3Service;
+    private final CloudFrontService cloudFrontService;
 
     private final Map<String, String> verificationCodes = new ConcurrentHashMap<>();
     private final Map<String, LocalDateTime> codeExpiry = new ConcurrentHashMap<>();
@@ -138,9 +140,9 @@ public class UserServiceImpl implements UserService {
         verificationCodes.remove(email);
         codeExpiry.remove(email);
 
-        String presigned = s3Service.getPresignedUrl(user.getProfileImageS3Key());
+        String profileUrl = cloudFrontService.getPublicUrl(user.getProfileImageS3Key());
 
-        return UserMapper.toSignupResponse(user, presigned);
+        return UserMapper.toSignupResponse(user, profileUrl);
     }
 
     @Transactional
@@ -159,7 +161,7 @@ public class UserServiceImpl implements UserService {
         user = user.withRefreshToken(refreshToken);
         userRepository.save(user);
 
-        String profileUrl = s3Service.getPresignedUrl(user.getProfileImageS3Key());
+        String profileUrl = cloudFrontService.getPublicUrl(user.getProfileImageS3Key());
 
         return new UserLoginResponse(
             user.getId(),
@@ -189,7 +191,7 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(UserErrorCode.NOT_MATCH_REFRESH_TOKEN);
         }
 
-        String profileUrl = s3Service.getPresignedUrl(user.getProfileImageS3Key());
+        String profileUrl = cloudFrontService.getPublicUrl(user.getProfileImageS3Key());
         String newAccessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail());
 
         return new UserLoginResponse(user.getId(), user.getNickname(), profileUrl, newAccessToken);
