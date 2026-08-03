@@ -26,3 +26,14 @@ variable "bucket_force_destroy" {
   type        = bool
   default     = false
 }
+
+variable "cloudfront_public_key_path" {
+  description = "mycourse Signed URL 검증에 쓸 RSA 공개키(PEM) 파일 경로. openssl로 생성한 키페어 중 공개키만 이 경로에 둔다(terraform/README.md 절차 참고) — 개인키는 이 저장소나 tfstate에 절대 들어가지 않는다."
+  type        = string
+}
+
+variable "cloudfront_price_class" {
+  description = "CloudFront가 실제로 요청을 서빙할 엣지 로케이션 범위 겸 과금 등급. PriceClass_200은 북미/유럽에 아시아(한국 포함)까지 포함해 이 앱의 주 사용자층에 필요한 리전을 커버하면서 PriceClass_All보다 저렴하다."
+  type        = string
+  default     = "PriceClass_200"
+}

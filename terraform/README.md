@@ -1,7 +1,26 @@
-# Terraform — AWS S3 인프라
+# Terraform — AWS S3 / CloudFront 인프라
 
-이 디렉토리는 애플리케이션(`S3Config.java`, `S3Service.java`)이 사용하는 AWS S3 버킷과,
-그 버킷에 접근하는 전용 IAM 사용자를 Terraform으로 관리한다.
+이 디렉토리는 애플리케이션(`S3Config.java`, `S3Service.java`, `CloudFrontService.java`)이
+사용하는 AWS S3 버킷, CloudFront 배포, 그리고 이들에 접근하는 전용 IAM 사용자를
+Terraform으로 관리한다.
+
+## CloudFront Signed URL용 키페어 생성 (`terraform apply` 전에 먼저 진행)
+
+mycourse의 비공개 장소 이미지는 CloudFront Signed URL로 서빙된다. 이 서명에 쓰는 RSA
+키페어는 Terraform이 아니라 **로컬에서 직접 생성**한다 — 개인키가 절대 tfstate에
+들어가지 않게 하기 위함이다(Terraform은 공개키만 `aws_cloudfront_public_key`로 등록한다).
+
+```bash
+openssl genrsa -out cloudfront_private_key.pem 2048
+openssl rsa -pubout -in cloudfront_private_key.pem -out cloudfront_public_key.pem
+```
+
+- `cloudfront_public_key.pem` → 이 디렉토리에 두고 `terraform.tfvars`의
+  `cloudfront_public_key_path`가 가리키게 한다(`terraform.tfvars.example` 참고).
+- `cloudfront_private_key.pem` → **레포에 두지 않는다.** 애플리케이션이 실행되는 서버의
+  임의 경로에 두고, 그 경로를 `.env`의 `CLOUDFRONT_PRIVATE_KEY_PATH`에 채운다.
+- 두 파일 모두 `.gitignore`에 이미 걸린 `*.pem` 패턴이 없다면 커밋 방지를 위해
+  `.gitignore`에 `*.pem`을 추가해둘 것.
 
 ## 사전 준비
 
@@ -43,10 +62,22 @@ cp terraform.tfvars.example terraform.tfvars
 terraform output -raw s3_bucket_name
 terraform output -raw iam_user_access_key_id
 terraform output -raw iam_user_secret_access_key
+terraform output -raw cloudfront_domain_name
+terraform output -raw cloudfront_distribution_id
+terraform output -raw cloudfront_key_pair_id
 ```
 
-위 세 값을 각각 `.env`의 `S3_BUCKET`, `AWS_ACCESS_KEY`, `AWS_SECRET_KEY`에 수동으로 붙여넣는다.
+위 값들을 각각 `.env`의 `S3_BUCKET`, `AWS_ACCESS_KEY`, `AWS_SECRET_KEY`, `CLOUDFRONT_DOMAIN`,
+`CLOUDFRONT_DISTRIBUTION_ID`, `CLOUDFRONT_KEY_PAIR_ID`에 수동으로 붙여넣는다. `CLOUDFRONT_PRIVATE_KEY_PATH`는
+위 "CloudFront Signed URL용 키페어 생성" 절차에서 만든 `cloudfront_private_key.pem`의 실제 경로를 채운다.
 (`.env.example` 참고)
+
+## CloudFront invalidation 과금
+
+`S3Service.deleteFile()`은 이미지 삭제 시 CloudFront invalidation을 함께 호출한다
+(`terraform/iam.tf`의 `cloudfront:CreateInvalidation` 권한 참고). AWS는 월 1,000개 경로까지
+무료이고, 그 이상은 경로당 과금된다 — 이미지 삭제가 아주 빈번한 서비스가 아니라면 일반적인
+사용량에서는 무료 한도 내로 충분하다.
 
 ## 트레이드오프 — 알고 있어야 할 것
 
