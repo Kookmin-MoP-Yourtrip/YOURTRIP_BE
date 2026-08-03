@@ -30,4 +30,6 @@ public interface UploadCourseService {
     UploadCourseDetailResponse updateUploadCourse(Long uploadCourseId,
         UploadCourseUpdateRequest request, MultipartFile thumbnailImage,
         List<MultipartFile> placeImages);
+
+    void refreshAllPopularCoursesCache();
 }

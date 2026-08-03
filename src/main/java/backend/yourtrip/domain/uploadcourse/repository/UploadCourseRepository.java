@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -106,4 +107,8 @@ public interface UploadCourseRepository extends JpaRepository<UploadCourse, Long
             WHERE uc.id IN :ids
         """)
     List<UploadCourse> findAllByIdInWithKeywords(@Param("ids") List<Long> ids);
+
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE UploadCourse uc SET uc.viewCount = uc.viewCount + :increment WHERE uc.id = :id")
+    void incrementViewCount(@Param("id") Long id, @Param("increment") long increment);
 }
