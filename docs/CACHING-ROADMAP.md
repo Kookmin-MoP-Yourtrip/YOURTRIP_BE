@@ -14,20 +14,7 @@
 **① 목록 조회가 매번 전체 스캔이다.**
 `UploadCourseRepository.findAllByKeywordsOrderByViewCountDesc`([UploadCourseRepository.java:66-81](../src/main/java/backend/yourtrip/domain/uploadcourse/repository/UploadCourseRepository.java))는 `UploadCourse` 전체를 `LEFT JOIN FETCH` + 상관 서브쿼리로 훑고, 페이징이 없어 데이터가 늘수록 선형으로 느려진다.
 
-**② 조회수가 DB에 반영되지 않는다.**
-[UploadCourseServiceImpl.java:85-92](../src/main/java/backend/yourtrip/domain/uploadcourse/service/UploadCourseServiceImpl.java)의 `getDetail`은 `@Transactional(readOnly = true)`인데 그 안에서 `increaseViewCount()`를 호출한다.
-
-- JPA는 트랜잭션 안에서 엔티티 필드를 바꾸면(`increaseViewCount()`), 트랜잭션 종료 시 자동으로 `UPDATE`를 날려주는 dirty checking을 수행한다.
-- 그런데 `readOnly = true`로 선언하면 Spring/Hibernate는 "이 트랜잭션은 쓰기가 없다"고 가정하고 FlushMode를 `MANUAL`로 바꿔 자동 flush 자체를 꺼버린다.
-- 그 결과 `increaseViewCount()`는 메모리상의 객체 값만 바꿀 뿐, 그 변경이 DB로 전송되지 않는다.
-- 인기순 정렬(`ORDER BY viewCount DESC`)은 이 컬럼값을 기준으로 하므로, **정렬 기준 자체가 사실상 갱신되지 않고 있다.**
-
-가장 단순한 해법은 `readOnly = true`를 제거하는 것이지만, 그러면 **상세 조회 1회 = DB `UPDATE` 1회**가 된다. 인기 코스는 정의상 동시에 여러 사용자가 몰려서 보게 되므로, 같은 row(`upload_course_id`)에 대한 `UPDATE`가 동시에 여러 건 발생한다. DB는 UPDATE 중인 row에 락을 걸기 때문에, 동시 요청들이 줄지어 순서대로 처리되는 **락 경합**이 생긴다. 트래픽이 적을 때는 티가 안 나지만, 대용량 트래픽 가정 하에서는 인기 코스일수록 상세 조회 자체가 느려지는 새로운 병목이 된다. 즉:
-
-- 그대로 두면: 조회수 집계가 애초에 안 됨 (기능 결함)
-- 단순히 고치면: 인기 코스일수록 상세 조회가 느려짐 (성능 병목)
-
-**③ 상세 조회 1건의 비용이 목록보다 크다.**
+**② 상세 조회 1건의 비용이 목록보다 크다.**
 `findWithMyCourseAndKeywords` → `existsById` → `getDaySchedulesWithPlaces`로 쿼리가 이어지고, **장소 이미지 개수만큼 presigned URL을 생성**한다([MyCourseServiceImpl.java:200-220](../src/main/java/backend/yourtrip/domain/mycourse/service/MyCourseServiceImpl.java)). 목록만 캐싱하면 트래픽을 막는 게 아니라 상세 조회로 떠넘기는 셈이 된다.
 
 ## 설계 원칙
@@ -106,12 +93,12 @@
 - [x] 4-4. Before/After 성능 측정 (단일 인기 코스 반복 조회 vs 여러 코스 혼합 조회)
 
 ### 5. 조회수 Redis 카운터
-- [ ] 5-1. `INCR` + `SADD` 기반 카운터 증가 로직 추가 (try-catch로 Redis 장애 격리)
-- [ ] 5-2. `getDetail`의 기존 `increaseViewCount()` 호출을 Redis 카운터 호출로 교체
-- [ ] 5-3. Repository에 벌크 증분 UPDATE 쿼리 추가
-- [ ] 5-4. dirty set을 `RENAME`으로 스냅샷 떠서 배출하는 로직 추가
-- [ ] 5-5. 스케줄러 추가 (DB 벌크 반영) + `@EnableScheduling` 등록
-- [ ] 5-6. 스케줄러에 refresh-ahead(캐시 evict 대신 put) 연결
+- [x] 5-1. `INCR` + `SADD` 기반 카운터 증가 로직 추가 (try-catch로 Redis 장애 격리)
+- [x] 5-2. `getDetail`의 기존 `increaseViewCount()` 호출을 Redis 카운터 호출로 교체
+- [x] 5-3. Repository에 벌크 증분 UPDATE 쿼리 추가
+- [x] 5-4. dirty set을 `RENAME`으로 스냅샷 떠서 배출하는 로직 추가
+- [x] 5-5. 스케줄러 추가 (DB 벌크 반영) + `@EnableScheduling` 등록
+- [x] 5-6. 스케줄러에 refresh-ahead(캐시 evict 대신 put) 연결
 
 ### 6. 캐시 무효화 연결
 
