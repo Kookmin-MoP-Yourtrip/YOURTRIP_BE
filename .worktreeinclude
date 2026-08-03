@@ -5,6 +5,9 @@
 .env
 CLAUDE.md
 .claude/
+GEMINI.md
+.gemini/
+.agents/
 src/main/resources/data.sql
 
 # terraform/.terraform/(provider 플러그인 캐시)는 `terraform init`으로 즉시 재생성되므로
