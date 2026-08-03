@@ -2,6 +2,7 @@ package backend.yourtrip.domain.uploadcourse.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
@@ -59,38 +60,40 @@ class UploadCourseControllerE2ETest {
         // given
         Long uploadCourseId = 1L;
 
-        UploadCourseUpdateRequest requestDto = UploadCourseUpdateRequest.builder()
-            .title("경주 인생샷 코스 (수정본)")
-            .introduction("황리단길과 첨성대 야경 수정 완료")
-            .location("경주")
-            .startDate(LocalDate.of(2025, 3, 1))
-            .endDate(LocalDate.of(2025, 3, 1))
-            .keywords(List.of(KeywordType.WALK, KeywordType.FOOD))
-            .daySchedules(List.of(
-                DayScheduleUpdateRequest.builder()
-                    .dayScheduleId(100L)
-                    .day(1)
-                    .places(List.of(
-                        PlaceUpdateRequest.builder()
-                            .placeId(200L)
-                            .placeName("황리단길 카페 거리")
-                            .startTime(LocalTime.of(10, 30))
-                            .memo("카페 골목 산책")
-                            .latitude(35.8375)
-                            .longitude(129.2123)
-                            .placeUrl("http://place.map.kakao.com/26338954")
-                            .placeLocation("경북 경주시 포석로 인근")
-                            .build()
-                    ))
-                    .build()
-            ))
-            .build();
+        String requestJson = """
+            {
+              "title": "경주 인생샷 코스 (수정본)",
+              "introduction": "황리단길과 첨성대 야경 수정 완료",
+              "location": "경주",
+              "startDate": "2025-03-01",
+              "endDate": "2025-03-01",
+              "keywords": ["WALK", "FOOD"],
+              "daySchedules": [
+                {
+                  "dayScheduleId": 100,
+                  "day": 1,
+                  "places": [
+                    {
+                      "placeId": 200,
+                      "placeName": "황리단길 카페 거리",
+                      "startTime": "10:30:00",
+                      "memo": "카페 골목 산책",
+                      "latitude": 35.8375,
+                      "longitude": 129.2123,
+                      "placeUrl": "http://place.map.kakao.com/26338954",
+                      "placeLocation": "경북 경주시 포석로 인근"
+                    }
+                  ]
+                }
+              ]
+            }
+            """;
 
         MockMultipartFile requestPart = new MockMultipartFile(
             "request",
-            "",
+            "request.json",
             MediaType.APPLICATION_JSON_VALUE,
-            objectMapper.writeValueAsString(requestDto).getBytes()
+            requestJson.getBytes(java.nio.charset.StandardCharsets.UTF_8)
         );
 
         MockMultipartFile thumbnailPart = new MockMultipartFile(
@@ -115,7 +118,7 @@ class UploadCourseControllerE2ETest {
             ))
             .build();
 
-        given(uploadCourseService.updateUploadCourse(eq(uploadCourseId), any(), any(), any()))
+        given(uploadCourseService.updateUploadCourse(eq(uploadCourseId), any(), nullable(org.springframework.web.multipart.MultipartFile.class), nullable(List.class)))
             .willReturn(expectedResponse);
 
         // when & then
@@ -138,19 +141,21 @@ class UploadCourseControllerE2ETest {
         // given
         Long uploadCourseId = 1L;
 
-        UploadCourseUpdateRequest requestDto = UploadCourseUpdateRequest.builder()
-            .title("제목")
-            .startDate(LocalDate.now())
-            .endDate(LocalDate.now())
-            .keywords(List.of())
-            .daySchedules(List.of())
-            .build();
+        String requestJson = """
+            {
+              "title": "제목",
+              "startDate": "2025-03-01",
+              "endDate": "2025-03-01",
+              "keywords": [],
+              "daySchedules": []
+            }
+            """;
 
         MockMultipartFile requestPart = new MockMultipartFile(
             "request",
-            "",
+            "request.json",
             MediaType.APPLICATION_JSON_VALUE,
-            objectMapper.writeValueAsString(requestDto).getBytes()
+            requestJson.getBytes(java.nio.charset.StandardCharsets.UTF_8)
         );
 
         // when & then
@@ -168,19 +173,21 @@ class UploadCourseControllerE2ETest {
         // given
         Long uploadCourseId = 1L;
 
-        UploadCourseUpdateRequest requestDto = UploadCourseUpdateRequest.builder()
-            .title("") // 빈 제목 (Validation 실패)
-            .startDate(LocalDate.now())
-            .endDate(LocalDate.now())
-            .keywords(List.of())
-            .daySchedules(List.of())
-            .build();
+        String requestJson = """
+            {
+              "title": "",
+              "startDate": "2025-03-01",
+              "endDate": "2025-03-01",
+              "keywords": [],
+              "daySchedules": []
+            }
+            """;
 
         MockMultipartFile requestPart = new MockMultipartFile(
             "request",
-            "",
+            "request.json",
             MediaType.APPLICATION_JSON_VALUE,
-            objectMapper.writeValueAsString(requestDto).getBytes()
+            requestJson.getBytes(java.nio.charset.StandardCharsets.UTF_8)
         );
 
         // when & then
