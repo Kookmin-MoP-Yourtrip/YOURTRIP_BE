@@ -115,8 +115,24 @@ export default function () {
 ```
 
 ### 실행 명령어
+
+#### 1) 일반 실행
 ```bash
 k6 run script.js
+```
+
+#### 2) k6 웹 대시보드 및 HTML 리포트 생성 실행 (강력 추천 ⭐)
+k6 내장 웹 대시보드를 켜면 부하 테스트 중 브라우저(`http://127.0.0.1:5665`)에서 실시간 차트를 볼 수 있으며, 테스트 종료 후 단독 실행 가능한 HTML 보고서(`report.html`)를 자동 저장할 수 있습니다.
+
+```bash
+# PowerShell
+$env:K6_WEB_DASHBOARD="true"; $env:K6_WEB_DASHBOARD_EXPORT="report.html"; k6 run script.js
+
+# CMD
+set K6_WEB_DASHBOARD=true && set K6_WEB_DASHBOARD_EXPORT=report.html && k6 run script.js
+
+# 또는 k6 CLI 옵션으로 바로 지정 (가장 간편)
+k6 run --out web-dashboard=export=report.html script.js
 ```
 
 ---
