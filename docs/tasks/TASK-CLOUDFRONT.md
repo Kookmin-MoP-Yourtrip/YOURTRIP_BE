@@ -81,6 +81,12 @@ mycourse/uploadcourse 각각 독립적으로 3,000건(hot 1건 + pool 2,999건),
 - **CloudFront canned policy 대신 custom policy 검토**: 이번엔 canned policy(단일 만료시각)만 썼다. custom policy는 IP 제한 등 추가 기능이 있지만 서명 비용 차이는 크지 않을 것으로 예상되므로 우선순위는 낮다.
 - **RSA 키 크기 조정**: 현재 2048비트 키를 쓰는데, 서명 속도와 보안 강도의 트레이드오프를 고려해 실제 운영에서 적절한 키 크기인지 재검토할 수 있다(다만 CloudFront가 지원하는 키 크기 제약 내에서만 조정 가능).
 
+### Signed URL 발급 병렬화 및 캐싱 적용 (PR #57 후속)
+
+- **작업 내용**: `MyCourseServiceImpl.getPlaceListByDay`의 Signed URL 순차 발급을 전용 `ThreadPoolTaskExecutor`와 `CompletableFuture`를 통해 병렬화하고, `CloudFrontService`에서 `@PostConstruct`를 통해 개인키를 캐싱하도록 개선.
+- **재측정 결과**: (추후 채움)
+- **presign 롤백 관련**: CloudFront Signed URL을 그만두고 S3 presign으로 롤백하는 방안도 검토했으나, 이번 병렬화+캐싱을 적용한 후 실제 배포 타겟(t3.micro)에서 엣지 캐싱 이득까지 포함해 재측정하기 전까지는 롤백을 미루기로 결정 (이번 범위 밖 후속 과제).
+
 ## 이번 작업에서 얻은 교훈 (포트폴리오 포인트)
 
 1. **"CDN으로 옮기면 빨라진다"는 직관은 콘텐츠 성격(공개/비공개)에 따라 다르게 검증돼야 한다.** 같은 CloudFront 전환이라도 서명이 필요 없는 공개 콘텐츠와 서명이 필요한 비공개 콘텐츠는 정반대의 결과가 나올 수 있다 — 이번 실측으로 "일부는 개선, 일부는 트레이드오프"라는 균형 잡힌 결론에 도달했다.
