@@ -73,7 +73,7 @@ mycourse/uploadcourse 각각 독립적으로 3,000건(hot 1건 + pool 2,999건),
 ## 발견한 개선점 (이번 작업 범위 밖 — 코드 수정 없이 기록)
 
 - **mycourse Signed URL 발급의 병렬화**: 현재 이미지 URL 조립이 스트림으로 순차 처리된다(TASK-4.md가 uploadcourse에서 지적했던 것과 동일한 패턴이 mycourse에도 있다). RSA 서명이 HMAC보다 느리다는 걸 이번에 확인했으니, 이 병목은 uploadcourse보다 mycourse에서 더 크게 작용한다 — 병렬 스트림/스레드풀로 서명을 병렬화하면 개선 여지가 있다.
-- **RSA 키 크기 조정**: 현재 2048비트 키를 쓰는데, 서명 속도와 보안 강도의 트레이드오프를 고려해 실제 운영에서 적절한 키 크기인지 재검토할 수 있다(다만 CloudFront가 지원하는 키 크기 제약 내에서만 조정 가능).
+- **RSA 키 크기 조정은 불가능 — 대신 ECDSA P-256 검토 여지가 있다**: AWS 공식 문서를 확인한 결과, CloudFront trusted key group(이 프로젝트가 쓰는 방식)에 등록 가능한 키는 "SSH-2 RSA 2048" 또는 "ECDSA P256" 두 가지로 고정되어 있다 — 1024/3072/4096 같은 다른 RSA 크기는 애초에 선택지가 아니다(legacy CloudFront key pair 방식만 1024/2048/4096을 지원하지만, AWS가 신규 사용을 권장하지 않는 구식 방식이다). 반면 ECDSA P-256은 RSA-3072급 안전성을 가지면서도 타원곡선 연산이라 RSA-2048보다 서명이 훨씬 빠르다고 알려져 있다 — "키 크기를 줄인다"가 아니라 "서명 알고리즘 자체를 RSA에서 ECDSA로 바꾼다"가 진짜 실현 가능한 최적화 방향이다. 다만 키페어 재발급(Terraform `aws_cloudfront_public_key` 갱신 포함)과 AWS SDK의 `CannedSignerRequest.privateKey(PrivateKey)`가 EC 키에도 동일하게 동작하는지 검증이 필요해, 이번 범위보다 큰 변경이라 코드는 건드리지 않았다.
 
 ### Signed URL 발급 병렬화 및 캐싱 적용 (PR #57 후속)
 
