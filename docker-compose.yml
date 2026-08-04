@@ -7,3 +7,23 @@ services:
     # allkeys-lru: 순수 캐시 용도(원본은 항상 DB)이므로 메모리 초과 시
     # noeviction(기본값)처럼 쓰기 실패를 내지 않고 오래된 키부터 자동 축출한다.
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: yourtrip-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: yourtrip-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
