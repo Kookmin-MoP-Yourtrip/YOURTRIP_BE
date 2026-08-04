@@ -98,7 +98,10 @@ mycourse/uploadcourse 각각 독립적으로 3,000건(hot 1건 + pool 2,999건),
 
 - **presign 롤백 관련**: CloudFront Signed URL을 그만두고 S3 presign으로 롤백하는 방안도 검토했으나, 위 재측정 결과(개선은 있으나 드라마틱하지 않음, 그마저 DB 커넥션 병목에 가려짐)로는 롤백을 정당화하기 어렵다고 판단해 보류한다. 실제 배포 타겟(t3.micro, 물리 코어 1개)에서는 이번 12코어 dev 머신보다 병렬화 이득이 더 작을 것으로 예상되므로, t3.micro 배포 후 재측정이 여전히 유효한 후속 과제다.
 
-- **발견한 인프라 갭**: `generate_statistics: true` + actuator만으로는 이 프로젝트(Spring Boot 3.5.7)에서 `hibernate.statements` 메트릭이 Micrometer에 자동 등록되지 않는 것으로 확인됐다(`/actuator/metrics` 목록에 `hibernate.*`가 전혀 없음, 쿼리 실행 후에도 동일). `docs/guide/LOAD-TESTING-GUIDE.md`가 문서화한 DB 쿼리 횟수 diff 절차가 실제로는 동작하지 않는다는 뜻이라, 이번 재측정에서는 이 부가 지표를 건너뛰었다(`run-all.ps1`이 자동으로 스킵하고 본 측정은 계속 진행하도록 처리). 원인 조사와 수정(예: `HibernateMetrics` 명시적 빈 등록)은 이번 범위 밖 후속 과제로 남긴다. 또한 `build.gradle`에 `micrometer-registry-prometheus`가 없어 `/actuator/prometheus` 자체가 등록 안 되는 문제는 이번에 함께 고쳤다(같은 근본 원인 계열의 별개 이슈).
+- **발견한 인프라 갭 — ✅ 해결.** `generate_statistics: true` + actuator만으로는 이 프로젝트(Spring Boot 3.5.7)에서 `hibernate.statements` 메트릭이 Micrometer에 자동 등록되지 않는 것으로 확인됐다(`/actuator/metrics` 목록에 `hibernate.*`가 전혀 없음, 쿼리 실행 후에도 동일). `docs/guide/LOAD-TESTING-GUIDE.md`가 문서화한 DB 쿼리 횟수 diff 절차가 실제로는 동작하지 않는다는 뜻이라, 재측정 시점에는 이 부가 지표를 건너뛰었다.
+  - **원인**: Spring Boot의 `HibernateMetricsAutoConfiguration`은 `@ConditionalOnClass({..., HibernateMetrics.class, ...})`로 `org.hibernate.stat.HibernateMetrics` 클래스를 요구하는데(소스 직접 확인), 이 클래스는 `hibernate-core`가 아니라 별도 아티팩트인 `org.hibernate.orm:hibernate-micrometer`에 있다. `spring-boot-starter-data-jpa`는 이 아티팩트를 가져오지 않아, `generate_statistics: true`를 켜도 그 값을 Micrometer에 연결해줄 바인더 자체가 클래스패스에 없었다.
+  - **조치**: `build.gradle`에 `implementation 'org.hibernate.orm:hibernate-micrometer'` 한 줄 추가(버전은 Spring Boot BOM이 관리, `hibernate-core`와 동일하게 6.6.33.Final로 해석됨을 확인). 앱 재기동 후 `hibernate.statements`를 포함해 `hibernate.*` 메트릭 28종이 모두 등록되고, 실제 API 호출에 따라 카운터가 증가하며(13→19), `/actuator/prometheus`에도 `hibernate_statements_total`로 정상 노출됨을 확인했다. 이제 `MONITORING-GUIDE.md`의 `rate(hibernate_statements_total[1m])` PromQL 예시도 실제로 동작한다.
+  - 또한 `build.gradle`에 `micrometer-registry-prometheus`가 없어 `/actuator/prometheus` 자체가 등록 안 되는 문제는 이번 재측정 당시 함께 고쳤다(같은 근본 원인 계열의 별개 이슈).
 
 ## 이번 작업에서 얻은 교훈 (포트폴리오 포인트)
 
