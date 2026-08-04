@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 5s     # 5초 간격으로 메트릭 수집 (부하 테스트 시 촘촘한 그래프 확인)
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'yourtrip-backend'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      # 호스트 OS(로컬)에서 실행 중인 Spring Boot 8080 포트를 도커 내부에서 참조하기 위해 host.docker.internal 사용
+      - targets: ['host.docker.internal:8080']

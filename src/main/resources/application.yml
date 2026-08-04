@@ -11,6 +11,7 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        generate_statistics: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
     show-sql: true
 
@@ -102,3 +103,12 @@ cloudfront:
 
 gemini:
   api-key: ${GEMINI_API_KEY}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, metrics, prometheus
+  endpoint:
+    health:
+      show-details: always

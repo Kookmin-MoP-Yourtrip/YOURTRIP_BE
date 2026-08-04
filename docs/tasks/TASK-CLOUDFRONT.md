@@ -1,6 +1,7 @@
 # TASK-CLOUDFRONT. presigned URL → CloudFront 전환 및 도입 전/후 성능 측정
 
-> Redis 캐싱 로드맵([CACHING-ROADMAP.md](../CACHING-ROADMAP.md))과는 별개의 작업이다. 상세 조회 캐싱([TASK-4.md](TASK-4.md))이 "캐시 히트 시에도 이미지 개수만큼 presigned URL을 순차 발급하는 것이 새로운 병목"이라는 걸 발견한 데서 출발해, presigned URL(S3)을 CloudFront(공개 콘텐츠는 서명 없는 URL, 비공개 콘텐츠는 Signed URL)로 전면 교체했다. 이 문서는 그 전환의 설계 근거와, "실제로 효과가 있었는가"를 실측한 결과를 남긴다.
+> Redis 캐싱 로드맵([CACHING-ROADMAP.md](../CACHING-ROADMAP.md))과는 별개의 작업이다.
+> 상세 조회 캐싱([TASK-4.md](TASK-4.md))이 "캐시 히트 시에도 이미지 개수만큼 presigned URL을 순차 발급하는 것이 새로운 병목"이라는 걸 발견한 데서 출발해, presigned URL(S3)을 CloudFront(공개 콘텐츠는 서명 없는 URL, 비공개 콘텐츠는 Signed URL)로 전면 교체했다. 이 문서는 그 전환의 설계 근거와, "실제로 효과가 있었는가"를 실측한 결과를 남긴다.
 
 ## 배경
 
@@ -18,11 +19,6 @@
 - **캐시 TTL**: 공개 콘텐츠 `max-age=15552000`(6개월, 사실상 정적이라 장기 캐싱), 비공개 `max-age=604800`(1주일). 삭제 시 CloudFront invalidation을 함께 호출해 TTL과 무관하게 즉시 무효화한다.
 - **Signed URL 유효기간**: 60분(기존 presign 15분보다 완화 — 느린 네트워크·백그라운드 전환 등 정상 사용 패턴에서 불필요하게 이미지가 깨지는 걸 방지).
 
-## 발견한 문제 — Redis 캐시가 DB 재시드 이후에도 살아남아 결과를 오염시킬 뻔함
-
-벤치마크용으로 DB 스키마를 재생성(`DB_DDL_AUTO=create`)하고 시드 데이터를 새로 넣었는데도, `GET /api/upload-courses/1` 응답이 새 시드 데이터가 아니라 몇 시간 전 별도 검증 중 만들었던 테스트 코스 내용을 그대로 반환하는 현상이 발생했다. 원인은 **Redis가 DB와 별개의 생명주기를 가진 서비스라서, DB 스키마를 재생성해도 `courseDetail::{id}` 캐시(TTL 2시간)는 그대로 남아있고, 새로 시드된 코스가 우연히 같은 ID(IDENTITY 시퀀스가 1부터 다시 시작하므로)를 받으면 낡은 캐시를 그대로 서빙**하기 때문이었다. `redis-cli FLUSHALL`로 확인 후 정상화했다.
-
-**교훈**: DB와 캐시는 서로 다른 생명주기를 가지므로, "DB를 초기화했다"가 "캐시도 초기화됐다"를 보장하지 않는다. 이후 모든 재시드 사이클마다 DB 재생성 직후 Redis도 명시적으로 flush하도록 절차에 추가했다.
 
 ## 성능 측정 계획
 
@@ -30,7 +26,6 @@
 
 - PostgreSQL(네이티브 Windows 서비스, `localhost:5434`), Redis(네이티브 Windows 서비스, `localhost:6479`) — TASK-3/4.md와 동일 구성.
 - 부하 생성: Node.js(v24) 내장 `http` 모듈 기반 동시성 제어 스크립트(TASK-3/4.md와 동일 방법론). `single` 모드(고정 URL 반복 조회)와 `pool` 모드(URL 목록에서 매 요청 무작위 선택) 두 가지를 지원하도록 새로 작성했다.
-- Before/After 전환: 이번 CloudFront 마이그레이션이 아직 커밋되지 않은 상태였으므로, `git stash -u`(→ Before = presigned URL 코드) / `git stash pop`(→ After = CloudFront 코드)로 같은 워킹 디렉토리 안에서 전환했다. 전환 전후 `git status`/`git diff --stat`으로 정확히 원상복구됨을 확인했다.
 
 ### 시드 데이터
 
@@ -78,7 +73,6 @@ mycourse/uploadcourse 각각 독립적으로 3,000건(hot 1건 + pool 2,999건),
 ## 발견한 개선점 (이번 작업 범위 밖 — 코드 수정 없이 기록)
 
 - **mycourse Signed URL 발급의 병렬화**: 현재 이미지 URL 조립이 스트림으로 순차 처리된다(TASK-4.md가 uploadcourse에서 지적했던 것과 동일한 패턴이 mycourse에도 있다). RSA 서명이 HMAC보다 느리다는 걸 이번에 확인했으니, 이 병목은 uploadcourse보다 mycourse에서 더 크게 작용한다 — 병렬 스트림/스레드풀로 서명을 병렬화하면 개선 여지가 있다.
-- **CloudFront canned policy 대신 custom policy 검토**: 이번엔 canned policy(단일 만료시각)만 썼다. custom policy는 IP 제한 등 추가 기능이 있지만 서명 비용 차이는 크지 않을 것으로 예상되므로 우선순위는 낮다.
 - **RSA 키 크기 조정**: 현재 2048비트 키를 쓰는데, 서명 속도와 보안 강도의 트레이드오프를 고려해 실제 운영에서 적절한 키 크기인지 재검토할 수 있다(다만 CloudFront가 지원하는 키 크기 제약 내에서만 조정 가능).
 
 ### Signed URL 발급 병렬화 및 캐싱 적용 (PR #57 후속)
@@ -91,4 +85,3 @@ mycourse/uploadcourse 각각 독립적으로 3,000건(hot 1건 + pool 2,999건),
 
 1. **"CDN으로 옮기면 빨라진다"는 직관은 콘텐츠 성격(공개/비공개)에 따라 다르게 검증돼야 한다.** 같은 CloudFront 전환이라도 서명이 필요 없는 공개 콘텐츠와 서명이 필요한 비공개 콘텐츠는 정반대의 결과가 나올 수 있다 — 이번 실측으로 "일부는 개선, 일부는 트레이드오프"라는 균형 잡힌 결론에 도달했다.
 2. **캐시와 DB는 서로 다른 생명주기를 가진 독립된 상태 저장소다.** DB를 초기화해도 Redis TTL이 남아있으면 완전히 다른 시점의 데이터가 우연히 같은 ID로 서빙될 수 있다 — 재현 가능한 벤치마크를 만들려면 모든 상태 저장소를 명시적으로 초기화해야 한다.
-3. **before/after 비교를 위해 반드시 별도 브랜치나 커밋을 만들 필요는 없다.** 변경사항이 아직 uncommitted라면 `git stash`로 같은 워킹 디렉토리 안에서 안전하게 왕복할 수 있다 — 다만 매 전환마다 `git status`로 정확히 원상복구되는지 검증하는 절차가 필수다.
