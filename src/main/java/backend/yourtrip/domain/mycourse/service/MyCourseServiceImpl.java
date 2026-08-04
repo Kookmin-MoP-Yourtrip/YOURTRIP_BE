@@ -50,8 +50,13 @@ import java.io.IOException;
 import java.time.LocalTime;
 import java.time.Period;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -74,6 +79,8 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final PlaceImageRepository placeImageRepository;
     private final UploadCourseRepository uploadCourseRepository;
     private final KakaoLocalClient kakaoLocalClient;
+    @Qualifier("cloudFrontSigningExecutor")
+    private final ThreadPoolTaskExecutor cloudFrontSigningExecutor;
 
     @Override
     @Transactional
@@ -143,14 +150,29 @@ public class MyCourseServiceImpl implements MyCourseService {
 
         // MyCourseController의 "/{courseId}/days/{dayId}/places" — 작성자만 볼 수 있는
         // 비공개 조회이므로 Signed URL을 발급한다.
-        List<PlaceImageResponse> imageIdAndUrls = daySchedule.getPlaces().stream()
+        
+        // 1. 트랜잭션 내에서 엔티티 스칼라값 추출 (LazyInitializationException 방지)
+        record ImageTaskParams(Long placeId, Long placeImageId, String s3Key) {}
+        List<ImageTaskParams> taskParams = daySchedule.getPlaces().stream()
             .flatMap(place -> place.getPlaceImages().stream()
-                .map(placeImage -> new PlaceImageResponse(
-                    place.getId(),
-                    placeImage.getId(),
-                    cloudFrontService.getSignedUrl(placeImage.getPlaceImageS3Key())
-                ))
-            )
+                .map(placeImage -> new ImageTaskParams(place.getId(), placeImage.getId(), placeImage.getPlaceImageS3Key())))
+            .toList();
+
+        // 2. CompletableFuture 리스트 생성 (별도 단계로 만들어 즉시 실행 시작)
+        List<CompletableFuture<PlaceImageResponse>> signingFutures = taskParams.stream()
+            .map(params -> CompletableFuture.supplyAsync(() -> {
+                String signedUrl = cloudFrontService.getSignedUrl(params.s3Key());
+                return new PlaceImageResponse(params.placeId(), params.placeImageId(), signedUrl);
+            }, cloudFrontSigningExecutor).exceptionally(ex -> {
+                log.warn("CloudFront Signed URL 발급 실패 (placeImageId={})", params.placeImageId(), unwrapCause(ex));
+                return null;
+            }))
+            .toList();
+
+        // 3. join 및 null(실패) 필터링
+        List<PlaceImageResponse> imageIdAndUrls = signingFutures.stream()
+            .map(CompletableFuture::join)
+            .filter(Objects::nonNull)
             .toList();
 
         return DayScheduleMapper.toDayScheduleResponse(daySchedule, imageIdAndUrls);
@@ -491,5 +513,9 @@ public class MyCourseServiceImpl implements MyCourseService {
         double latitude = Double.parseDouble(doc.y());
 
         place.updateKakaoPlace(placeName, placeLocation, placeUrl, latitude, longitude);
+    }
+
+    private Throwable unwrapCause(Throwable ex) {
+        return (ex instanceof CompletionException && ex.getCause() != null) ? ex.getCause() : ex;
     }
 }

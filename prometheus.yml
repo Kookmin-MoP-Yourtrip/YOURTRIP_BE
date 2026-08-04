@@ -3,8 +3,13 @@ global:
   evaluation_interval: 5s
 
 scrape_configs:
-  - job_name: 'yourtrip-backend'
+  - job_name: 'yourtrip-backend-after'
     metrics_path: '/actuator/prometheus'
     static_configs:
       # 호스트 OS(로컬)에서 실행 중인 Spring Boot 8080 포트를 도커 내부에서 참조하기 위해 host.docker.internal 사용
       - targets: ['host.docker.internal:8080']
+  - job_name: 'yourtrip-backend-before'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      # mycourse Signed URL 병렬화 perf 커밋(306505b) 직전 상태를 별도 워크트리+포트로 띄운 Before 비교군
+      - targets: ['host.docker.internal:8081']

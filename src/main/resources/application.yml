@@ -98,6 +98,8 @@ cloudfront:
   # 낮은 민감도 대비, 느린 네트워크/백그라운드 전환/긴 일정 스크롤에서 15분은 이미지가
   # 깨지는 UX 문제를 일으킬 수 있어서다.
   signed-url-ttl-minutes: 60
+  # mycourse 상세조회 Signed URL 병렬 서명용 스레드풀 크기. 0이면 Runtime.availableProcessors()를 사용한다.
+  signing-pool-size: ${CLOUDFRONT_SIGNING_POOL_SIZE:0}
 
 gemini:
   api-key: ${GEMINI_API_KEY}

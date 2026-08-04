@@ -72,8 +72,36 @@ mycourse/uploadcourse 각각 독립적으로 3,000건(hot 1건 + pool 2,999건),
 
 ## 발견한 개선점 (이번 작업 범위 밖 — 코드 수정 없이 기록)
 
-- **mycourse Signed URL 발급의 병렬화**: 현재 이미지 URL 조립이 스트림으로 순차 처리된다(TASK-4.md가 uploadcourse에서 지적했던 것과 동일한 패턴이 mycourse에도 있다). RSA 서명이 HMAC보다 느리다는 걸 이번에 확인했으니, 이 병목은 uploadcourse보다 mycourse에서 더 크게 작용한다 — 병렬 스트림/스레드풀로 서명을 병렬화하면 개선 여지가 있다.
-- **RSA 키 크기 조정**: 현재 2048비트 키를 쓰는데, 서명 속도와 보안 강도의 트레이드오프를 고려해 실제 운영에서 적절한 키 크기인지 재검토할 수 있다(다만 CloudFront가 지원하는 키 크기 제약 내에서만 조정 가능).
+- **mycourse Signed URL 발급의 병렬화 — ✅ 완료.** 병렬 스트림/스레드풀로 서명을 병렬화하면 개선 여지가 있다고 여기 처음 기록했었는데, PR #57 후속 작업(perf 커밋 306505b)으로 실제 구현·재측정까지 마쳤다. 상세 내용과 재측정 결과는 아래 "Signed URL 발급 병렬화 및 캐싱 적용" 절 참고.
+- **RSA 키 크기 조정은 불가능 — 대신 ECDSA P-256 검토 여지가 있다**: AWS 공식 문서를 확인한 결과, CloudFront trusted key group(이 프로젝트가 쓰는 방식)에 등록 가능한 키는 "SSH-2 RSA 2048" 또는 "ECDSA P256" 두 가지로 고정되어 있다 — 1024/3072/4096 같은 다른 RSA 크기는 애초에 선택지가 아니다(legacy CloudFront key pair 방식만 1024/2048/4096을 지원하지만, AWS가 신규 사용을 권장하지 않는 구식 방식이다). 반면 ECDSA P-256은 RSA-3072급 안전성을 가지면서도 타원곡선 연산이라 RSA-2048보다 서명이 훨씬 빠르다고 알려져 있다 — "키 크기를 줄인다"가 아니라 "서명 알고리즘 자체를 RSA에서 ECDSA로 바꾼다"가 진짜 실현 가능한 최적화 방향이다. 다만 키페어 재발급(Terraform `aws_cloudfront_public_key` 갱신 포함)과 AWS SDK의 `CannedSignerRequest.privateKey(PrivateKey)`가 EC 키에도 동일하게 동작하는지 검증이 필요해, 이번 범위보다 큰 변경이라 코드는 건드리지 않았다.
+- **HikariCP 커넥션 풀 크기 튜닝**: mycourse 병렬화 재측정(아래 참고)에서 동시성 200일 때는 DB 커넥션 획득 대기가 서명 병렬화의 이득보다 더 큰 병목으로 확인됐다. `application.yml`에 별도 설정이 없어 Spring Boot 기본값(`maximum-pool-size=10`)을 그대로 쓰는데, 200개 요청이 커넥션 10개를 두고 경쟁하니 병렬화 효과가 상당 부분 가려졌다. 이 값을 실제 피크 동시성에 맞게 올리면 병렬화 효과가 더 뚜렷하게 드러날 가능성이 크다 — 코드는 건드리지 않았고, 재측정으로 먼저 검증이 필요하다.
+- **mycourse Redis 캐싱은 검토했으나 권장하지 않는다**: uploadcourse처럼 mycourse도 Redis로 캐싱하면 어떨지 논의했다. 그러나 uploadcourse는 소수의 인기 코스를 다수 사용자가 반복 조회하는 구조(읽기 증폭이 큼)인 반면, mycourse는 작성자 본인만 보는 비공개 데이터라 캐싱해도 절약되는 읽기 총량이 크지 않다. 반대로 `savePlace`/`updatePlaceTime`/`addPlaceImage`/`deletePlace` 등 뮤테이션 엔드포인트가 많아 캐시 무효화 지점이 uploadcourse보다 많고, 본인이 방금 수정한 내용을 본인이 즉시 봐야 하는 강한 일관성 요구까지 겹친다 — 캐싱 비용 대비 이득이 uploadcourse보다 훨씬 작다. 이번에 실측으로 확인된 진짜 병목(HikariCP 풀 크기)에 캐싱보다 훨씬 저비용·저위험으로 대응할 수 있으므로, mycourse 캐싱 도입보다 커넥션 풀 튜닝을 우선순위로 둔다.
+
+### Signed URL 발급 병렬화 및 캐싱 적용 (PR #57 후속)
+
+- **작업 내용**: `MyCourseServiceImpl.getPlaceListByDay`의 Signed URL 순차 발급을 전용 `ThreadPoolTaskExecutor`와 `CompletableFuture`를 통해 병렬화하고, `CloudFrontService`에서 `@PostConstruct`를 통해 개인키를 캐싱하도록 개선(perf 커밋 306505b).
+
+- **재측정 환경**: 이번엔 Node.js 자체 스크립트 대신 k6(`shared-iterations` executor 기반 스크립트)로 처음 측정했다. Before는 perf 커밋의 부모(`b3dd945`)를 별도 git worktree로 체크아웃해 포트 8081·별도 DB(`yourtrip_before`)로, After는 현재 코드를 포트 8080으로 각각 띄워 비교했다. 시드 규모(3,000코스=hot 1+pool 2,999, 코스당 10장)와 시나리오/동시성/요청 수(A/B, 50/200, 각 600건)는 원 측정과 동일하게 맞췄다. **이 머신은 12코어**(`system.cpu.count`로 확인)라 `cloudFrontSigningExecutor` 풀 크기도 12로 잡혔다 — t3.micro(물리 코어 1개)보다 훨씬 유리한 조건이다. (k6 스크립트·시드 SQL·자동화 래퍼는 TASK-3/4의 Node.js 스크립트와 동일하게 레포에 커밋하지 않았다.)
+
+- **재측정 결과**:
+
+| 시나리오 | 동시성 | TPS(Before→After) | p50(Before→After) | p95(Before→After) | p99(Before→After) |
+|---|---|---|---|---|---|
+| A(인기 반복) | 50 | 27.9 → 28.5 (+2%) | 1651ms → 1646ms (±0%) | 2632ms → 2305ms (-12%) | 3169ms → 3021ms (-5%) |
+| A(인기 반복) | 200 | 28.6 → 31.7 (+11%) | 6469ms → 6069ms (-6%) | 9855ms → 7093ms (-28%) | 11030ms → 10105ms (-8%) |
+| B(혼합 조회) | 50 | 29.9 → 29.9 (±0%) | 1587ms → 1600ms (+1%) | 2363ms → 2144ms (-9%) | 3107ms → 2377ms (-23%) |
+| B(혼합 조회) | 200 | 30.7 → 27.5 (-10%) | 6250ms → 6612ms (+6%) | 9154ms → 8592ms (-6%) | 11149ms → 10826ms (-3%) |
+
+(8개 조합 전부 체크 성공률 100%로 확보된 값만 반영했다 — 동시성 200 조합에서 Windows 개발 머신의 Tomcat `maxThreads`(기본 200)=VUS 경계에 걸려 커넥션이 간헐적으로 거부되는 현상이 관찰됐는데, 앱이 idle로 완전히 안정된 뒤 재시도하면 100% 재현됐다. Before/After 양쪽에서 동일하게 나타나 코드 문제가 아니라 이 환경의 특성으로 판단했다. 원본 raw JSON은 레포에 커밋하지 않았다.)
+
+- **해석 — 기대보다 개선폭이 작다, 왜?**: 12코어에 이미지 10장이면 이론상 서명을 거의 전부 동시 실행할 수 있어 극적인 개선을 기대했지만, 실제로는 시나리오 B/동시성 200에서 오히려 TPS가 소폭 **후퇴**했고 나머지도 개선폭이 크지 않다(p95/p99는 대체로 개선). 원인으로 가장 유력한 것은 **HikariCP 커넥션 풀**이다 — `application.yml`에 별도 설정이 없어 기본 `maximum-pool-size=10`을 쓰는데, 부하 중 `StatisticalLoggingSessionEventListener` 로그에서 "751ms 동안 JDBC 커넥션 획득 대기" 같은 사례가 관찰됐다. 즉 동시성 200에서는 200개 요청이 겨우 10개의 DB 커넥션을 두고 경쟁하는 게 서명 시간 단축보다 훨씬 큰 병목이 되어, 병렬화의 이득을 상당 부분 가려버린 것으로 보인다. Before/After 모두 이 커넥션 풀 제약을 동일하게 받으므로 "URL 생성 방식만 격리해서 비교했다"는 벤치마크 설계 의도 자체는 유효하지만, **총 응답시간 기준으로는 서명 병렬화의 효과가 DB 커넥션 병목에 가려 온전히 드러나지 않았다**는 게 이번 실측의 정직한 결론이다. HikariCP 풀 크기를 늘려 재측정하면 병렬화 효과가 더 뚜렷하게 드러날 가능성이 있다(후속 과제로 남김, 코드는 건드리지 않음).
+
+- **presign 롤백 관련**: CloudFront Signed URL을 그만두고 S3 presign으로 롤백하는 방안도 검토했으나, 위 재측정 결과(개선은 있으나 드라마틱하지 않음, 그마저 DB 커넥션 병목에 가려짐)로는 롤백을 정당화하기 어렵다고 판단해 보류한다. 실제 배포 타겟(t3.micro, 물리 코어 1개)에서는 이번 12코어 dev 머신보다 병렬화 이득이 더 작을 것으로 예상되므로, t3.micro 배포 후 재측정이 여전히 유효한 후속 과제다.
+
+- **발견한 인프라 갭 — ✅ 해결.** `generate_statistics: true` + actuator만으로는 이 프로젝트(Spring Boot 3.5.7)에서 `hibernate.statements` 메트릭이 Micrometer에 자동 등록되지 않는 것으로 확인됐다(`/actuator/metrics` 목록에 `hibernate.*`가 전혀 없음, 쿼리 실행 후에도 동일). `docs/guide/LOAD-TESTING-GUIDE.md`가 문서화한 DB 쿼리 횟수 diff 절차가 실제로는 동작하지 않는다는 뜻이라, 재측정 시점에는 이 부가 지표를 건너뛰었다.
+  - **원인**: Spring Boot의 `HibernateMetricsAutoConfiguration`은 `@ConditionalOnClass({..., HibernateMetrics.class, ...})`로 `org.hibernate.stat.HibernateMetrics` 클래스를 요구하는데(소스 직접 확인), 이 클래스는 `hibernate-core`가 아니라 별도 아티팩트인 `org.hibernate.orm:hibernate-micrometer`에 있다. `spring-boot-starter-data-jpa`는 이 아티팩트를 가져오지 않아, `generate_statistics: true`를 켜도 그 값을 Micrometer에 연결해줄 바인더 자체가 클래스패스에 없었다.
+  - **조치**: `build.gradle`에 `implementation 'org.hibernate.orm:hibernate-micrometer'` 한 줄 추가(버전은 Spring Boot BOM이 관리, `hibernate-core`와 동일하게 6.6.33.Final로 해석됨을 확인). 앱 재기동 후 `hibernate.statements`를 포함해 `hibernate.*` 메트릭 28종이 모두 등록되고, 실제 API 호출에 따라 카운터가 증가하며(13→19), `/actuator/prometheus`에도 `hibernate_statements_total`로 정상 노출됨을 확인했다. 이제 `MONITORING-GUIDE.md`의 `rate(hibernate_statements_total[1m])` PromQL 예시도 실제로 동작한다.
+  - 또한 `build.gradle`에 `micrometer-registry-prometheus`가 없어 `/actuator/prometheus` 자체가 등록 안 되는 문제는 이번 재측정 당시 함께 고쳤다(같은 근본 원인 계열의 별개 이슈).
 
 ## 이번 작업에서 얻은 교훈 (포트폴리오 포인트)
 
