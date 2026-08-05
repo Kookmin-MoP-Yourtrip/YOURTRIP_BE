@@ -83,7 +83,7 @@ public class CloudFrontService {
             SignedUrl signedUrl = cloudFrontUtilities.getSignedUrlWithCannedPolicy(request);
             return signedUrl.url();
         } catch (Exception e) {
-            throw new BusinessException(CloudFrontErrorCode.FAIL_GENERATE_SIGNED_URL);
+            throw new BusinessException(CloudFrontErrorCode.FAIL_GENERATE_SIGNED_URL, e);
         }
     }
 
