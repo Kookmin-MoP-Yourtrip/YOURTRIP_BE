@@ -28,7 +28,7 @@ variable "bucket_force_destroy" {
 }
 
 variable "cloudfront_public_key_path" {
-  description = "mycourse Signed URL 검증에 쓸 RSA 공개키(PEM) 파일 경로. openssl로 생성한 키페어 중 공개키만 이 경로에 둔다(terraform/README.md 절차 참고) — 개인키는 이 저장소나 tfstate에 절대 들어가지 않는다."
+  description = "mycourse Signed URL 검증에 쓸 ECDSA P-256 공개키(PEM) 파일 경로. openssl로 생성한 키페어 중 공개키만 이 경로에 둔다(terraform/README.md 절차 참고) — 개인키는 이 저장소나 tfstate에 절대 들어가지 않는다."
   type        = string
 }
 

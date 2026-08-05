@@ -40,11 +40,15 @@ public class CloudFrontService {
     @Value("${cloudfront.signed-url-ttl-minutes}")
     private long signedUrlTtlMinutes;
 
-    // Signed URL 서명(RSA)에 매 호출마다 필요한 PrivateKey. 과거에는 getSignedUrl() 호출마다
+    // Signed URL 서명(ECDSA P-256)에 매 호출마다 필요한 PrivateKey. 과거에는 getSignedUrl() 호출마다
     // Path.of(privateKeyPath)로 PEM 파일을 디스크에서 다시 읽고 파싱했는데, 이 반복 비용이
     // mycourse 상세조회 성능 회귀의 주요 원인 중 하나였다(TASK-CLOUDFRONT.md 참고). 앱 시작 시
     // 1회만 파싱해 캐싱하고, 이후 모든 서명 호출(병렬 호출 포함)에서 재사용한다. PrivateKey는
     // 불변 객체라 여러 스레드가 동시에 읽어도 안전하다.
+    // 서명 알고리즘 자체는 RSA-2048에서 ECDSA P-256으로 전환했다(TASK-CLOUDFRONT.md 참고) — CloudFront
+    // trusted key group이 지원하는 두 키 타입 중 서명 연산이 훨씬 가벼운 쪽이다. CannedSignerRequest가
+    // PrivateKey의 알고리즘(RSA/EC)을 자동 감지해 서명 방식을 고르므로, 이 아래 로직은 키 타입과
+    // 무관하게 동일하게 동작한다(AWS SDK 2.40.12+, aws/aws-sdk-java-v2 PR #6627 참고).
     private volatile PrivateKey cachedPrivateKey;
 
     // 공개 콘텐츠(uploadcourse/feed/프로필 등 "private/"로 시작하지 않는 key) — 서명 없이

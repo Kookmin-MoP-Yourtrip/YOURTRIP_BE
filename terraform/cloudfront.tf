@@ -18,10 +18,21 @@ resource "aws_cloudfront_origin_access_control" "media" {
 # mycourse 비공개 이미지의 Signed URL 검증용 키 그룹. 개인키는 애플리케이션(.env의
 # CLOUDFRONT_PRIVATE_KEY_PATH)에만 두고 여기서는 공개키만 등록한다 — terraform state에
 # 개인키가 절대 들어가지 않는다(README.md의 키페어 생성 절차 참고).
+#
+# name 대신 name_prefix + create_before_destroy를 쓰는 이유: encoded_key가 바뀌면(예: RSA→ECDSA
+# 키 로테이션) 이 리소스는 무조건 교체(destroy 후 create)돼야 하는데, 고정된 name을 그대로 쓰면
+# 새 키를 만들기 전에 기존 키부터 지워야 해서 "아직 key group이 참조 중"이라는 CloudFront API
+# 오류(PublicKeyInUse)가 난다 — 실제로 겪은 문제다. name_prefix면 새 키가 다른 이름으로 먼저
+# 생성되고, 아래 aws_cloudfront_key_group.signer가 새 키를 가리키도록 갱신된 뒤에야 기존 키가
+# 삭제되어 무중단으로 로테이션된다.
 resource "aws_cloudfront_public_key" "signer" {
-  name        = "${var.bucket_name}-signer-key"
+  name_prefix = "${var.bucket_name}-signer-key-"
   encoded_key = file(var.cloudfront_public_key_path)
   comment     = "mycourse 비공개 장소 이미지 Signed URL 검증용 공개키"
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_cloudfront_key_group" "signer" {

@@ -73,7 +73,7 @@ mycourse/uploadcourse 각각 독립적으로 3,000건(hot 1건 + pool 2,999건),
 ## 발견한 개선점 (이번 작업 범위 밖 — 코드 수정 없이 기록)
 
 - **mycourse Signed URL 발급의 병렬화 — ✅ 완료.** 병렬 스트림/스레드풀로 서명을 병렬화하면 개선 여지가 있다고 여기 처음 기록했었는데, PR #57 후속 작업(perf 커밋 306505b)으로 실제 구현·재측정까지 마쳤다. 상세 내용과 재측정 결과는 아래 "Signed URL 발급 병렬화 및 캐싱 적용" 절 참고.
-- **RSA 키 크기 조정은 불가능 — 대신 ECDSA P-256 검토 여지가 있다**: AWS 공식 문서를 확인한 결과, CloudFront trusted key group(이 프로젝트가 쓰는 방식)에 등록 가능한 키는 "SSH-2 RSA 2048" 또는 "ECDSA P256" 두 가지로 고정되어 있다 — 1024/3072/4096 같은 다른 RSA 크기는 애초에 선택지가 아니다(legacy CloudFront key pair 방식만 1024/2048/4096을 지원하지만, AWS가 신규 사용을 권장하지 않는 구식 방식이다). 반면 ECDSA P-256은 RSA-3072급 안전성을 가지면서도 타원곡선 연산이라 RSA-2048보다 서명이 훨씬 빠르다고 알려져 있다 — "키 크기를 줄인다"가 아니라 "서명 알고리즘 자체를 RSA에서 ECDSA로 바꾼다"가 진짜 실현 가능한 최적화 방향이다. 다만 키페어 재발급(Terraform `aws_cloudfront_public_key` 갱신 포함)과 AWS SDK의 `CannedSignerRequest.privateKey(PrivateKey)`가 EC 키에도 동일하게 동작하는지 검증이 필요해, 이번 범위보다 큰 변경이라 코드는 건드리지 않았다.
+- **RSA 키 크기 조정은 불가능 — 대신 ECDSA P-256 검토 여지가 있다 — ✅ 완료.** AWS 공식 문서를 확인한 결과, CloudFront trusted key group(이 프로젝트가 쓰는 방식)에 등록 가능한 키는 "SSH-2 RSA 2048" 또는 "ECDSA P256" 두 가지로 고정되어 있다 — 1024/3072/4096 같은 다른 RSA 크기는 애초에 선택지가 아니다(legacy CloudFront key pair 방식만 1024/2048/4096을 지원하지만, AWS가 신규 사용을 권장하지 않는 구식 방식이다). 반면 ECDSA P-256은 RSA-3072급 안전성을 가지면서도 타원곡선 연산이라 RSA-2048보다 서명이 훨씬 빠르다고 알려져 있다 — "키 크기를 줄인다"가 아니라 "서명 알고리즘 자체를 RSA에서 ECDSA로 바꾼다"가 진짜 실현 가능한 최적화 방향이다. 실제로 전환·재측정까지 마쳤다. 상세 내용은 아래 "RSA → ECDSA P-256 전환 및 재측정" 절 참고.
 - **HikariCP 커넥션 풀 크기 튜닝**: mycourse 병렬화 재측정(아래 참고)에서 동시성 200일 때는 DB 커넥션 획득 대기가 서명 병렬화의 이득보다 더 큰 병목으로 확인됐다. `application.yml`에 별도 설정이 없어 Spring Boot 기본값(`maximum-pool-size=10`)을 그대로 쓰는데, 200개 요청이 커넥션 10개를 두고 경쟁하니 병렬화 효과가 상당 부분 가려졌다. 이 값을 실제 피크 동시성에 맞게 올리면 병렬화 효과가 더 뚜렷하게 드러날 가능성이 크다 — 코드는 건드리지 않았고, 재측정으로 먼저 검증이 필요하다.
 - **mycourse Redis 캐싱은 검토했으나 권장하지 않는다**: uploadcourse처럼 mycourse도 Redis로 캐싱하면 어떨지 논의했다. 그러나 uploadcourse는 소수의 인기 코스를 다수 사용자가 반복 조회하는 구조(읽기 증폭이 큼)인 반면, mycourse는 작성자 본인만 보는 비공개 데이터라 캐싱해도 절약되는 읽기 총량이 크지 않다. 반대로 `savePlace`/`updatePlaceTime`/`addPlaceImage`/`deletePlace` 등 뮤테이션 엔드포인트가 많아 캐시 무효화 지점이 uploadcourse보다 많고, 본인이 방금 수정한 내용을 본인이 즉시 봐야 하는 강한 일관성 요구까지 겹친다 — 캐싱 비용 대비 이득이 uploadcourse보다 훨씬 작다. 이번에 실측으로 확인된 진짜 병목(HikariCP 풀 크기)에 캐싱보다 훨씬 저비용·저위험으로 대응할 수 있으므로, mycourse 캐싱 도입보다 커넥션 풀 튜닝을 우선순위로 둔다.
 
@@ -102,6 +102,30 @@ mycourse/uploadcourse 각각 독립적으로 3,000건(hot 1건 + pool 2,999건),
   - **원인**: Spring Boot의 `HibernateMetricsAutoConfiguration`은 `@ConditionalOnClass({..., HibernateMetrics.class, ...})`로 `org.hibernate.stat.HibernateMetrics` 클래스를 요구하는데(소스 직접 확인), 이 클래스는 `hibernate-core`가 아니라 별도 아티팩트인 `org.hibernate.orm:hibernate-micrometer`에 있다. `spring-boot-starter-data-jpa`는 이 아티팩트를 가져오지 않아, `generate_statistics: true`를 켜도 그 값을 Micrometer에 연결해줄 바인더 자체가 클래스패스에 없었다.
   - **조치**: `build.gradle`에 `implementation 'org.hibernate.orm:hibernate-micrometer'` 한 줄 추가(버전은 Spring Boot BOM이 관리, `hibernate-core`와 동일하게 6.6.33.Final로 해석됨을 확인). 앱 재기동 후 `hibernate.statements`를 포함해 `hibernate.*` 메트릭 28종이 모두 등록되고, 실제 API 호출에 따라 카운터가 증가하며(13→19), `/actuator/prometheus`에도 `hibernate_statements_total`로 정상 노출됨을 확인했다. 이제 `MONITORING-GUIDE.md`의 `rate(hibernate_statements_total[1m])` PromQL 예시도 실제로 동작한다.
   - 또한 `build.gradle`에 `micrometer-registry-prometheus`가 없어 `/actuator/prometheus` 자체가 등록 안 되는 문제는 이번 재측정 당시 함께 고쳤다(같은 근본 원인 계열의 별개 이슈).
+
+### RSA → ECDSA P-256 전환 및 재측정
+
+- **작업 내용**: `CloudFrontService`가 사용하는 CloudFront Signed URL 서명 알고리즘을 RSA-2048에서 ECDSA P-256으로 교체했다.
+  - `software.amazon.awssdk:bom`을 `2.25.30`에서 `2.51.0`으로 업그레이드했다 — [aws/aws-sdk-java-v2 PR #6627](https://github.com/aws/aws-sdk-java-v2/pull/6627)(2025-12-17 병합)이 `CannedSignerRequest`에 EC 개인키 자동 인식을 추가하기 전 버전이라 EC 키 자체를 로드하지 못했다.
+  - `openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:prime256v1`로 새 키페어를 생성했다. 처음엔 `openssl ecparam -genkey`(SEC1, `BEGIN EC PRIVATE KEY`)로 만들었는데, AWS SDK의 PEM 파서가 이 헤더를 인식하지 못해 `NullPointerException`(`PemObjectType.ordinal()` on null)이 실제로 발생했다 — `genpkey`가 만드는 PKCS8(`BEGIN PRIVATE KEY`) 형식으로 바꿔서 해결했고, 이 사실을 신규 `CloudFrontServiceTest`(RSA/EC 두 키 타입 모두 실제 openssl로 생성해 서명까지 확인)로 고정해뒀다. 애플리케이션 코드(`CloudFrontService.initPrivateKey()`/`getSignedUrl()`) 자체는 무변경 — `CannedSignerRequest`가 키 알고리즘을 자동 감지한다.
+  - Terraform: `aws_cloudfront_public_key.signer`를 고정된 `name` 대신 `name_prefix` + `lifecycle { create_before_destroy = true }`로 바꿨다. 처음엔 `name`을 그대로 둔 채 `terraform apply`를 시도했는데, 새 공개키를 만들기 전에 기존 공개키부터 지우려다 `PublicKeyInUse`(여전히 key group이 참조 중) 오류로 apply가 실패했다 — 새 키를 먼저 만들고 key group을 갱신한 뒤에야 기존 키를 지우도록 순서를 바꿔서 해결했다. 실제 AWS(운영 CloudFront 배포)에 적용까지 완료했다.
+
+- **로컬/실제 CloudFront 기능 검증**: 로컬 앱을 띄워 실제 mycourse 이미지 업로드 → Signed URL 발급 → 그 URL로 직접 CloudFront에 요청까지 end-to-end로 확인했다. 발급된 URL은 `Key-Pair-Id`가 새 ECDSA 키와 일치했고 `Signature` 값도 RSA(344자) 대비 훨씬 짧은(ECDSA 특유의 DER 인코딩) 형태였다. CloudFront가 해당 서명을 검증해 실제로 `200`을 반환했고, 서명 없이 같은 리소스에 접근하면 `403`으로 정상 거부됨을 확인했다.
+
+- **재측정 방법론**: 기존 RSA 병렬화 재측정(위 절)과 동일한 시드(mycourse 3,000코스=hot 1+pool 2,999, 코스당 10장)를 그대로 재사용했다. Before(RSA)는 `mycourse-signedurl-before` 워크트리(PR #61 부모 커밋)를 포트 8081로, After(ECDSA)는 이 브랜치를 포트 8090으로 띄워 k6(`shared-iterations`, 시나리오 A/B × 동시성 50/200 × 각 600건)로 비교했다. 두 앱이 동일한 시드를 갖도록 Before DB의 mycourse 데이터를 After DB로 그대로 복제했다.
+
+- **재측정 결과**:
+
+| 시나리오 | 동시성 | TPS(RSA→ECDSA) | p50(RSA→ECDSA) | p95(RSA→ECDSA) | p99(RSA→ECDSA) |
+|---|---|---|---|---|---|
+| A(인기 반복) | 50 | 23.0 → 63.2 (**+174%**) | 1970ms → 697ms (**-65%**) | 2950ms → 1110ms (**-62%**) | 3600ms → 1280ms (**-64%**) |
+| A(인기 반복) | 200 | 30.9 → 82.7 (**+167%**) | 6800ms → 2290ms (**-66%**) | 8160ms → 2870ms (**-65%**) | 11060ms → 3290ms (**-70%**) |
+| B(혼합 조회) | 50 | 25.8 → 68.8 (**+167%**) | 1870ms → 702ms (**-62%**) | 2310ms → 1160ms (**-50%**) | 2530ms → 1310ms (**-48%**) |
+| B(혼합 조회) | 200 | 29.4 → 104.9 (**+257%**) | 6770ms → 1890ms (**-72%**) | 7630ms → 2280ms (**-70%**) | 10940ms → 2570ms (**-77%**) |
+
+(동시성 200 조합은 이전 절에서 관찰된 것과 동일한 Windows 개발 머신의 Tomcat `maxThreads`(기본 200) 경계 현상으로 체크 성공률이 84~96% 사이였다 — Before/After 양쪽에 동일하게 나타나는 환경 특성이라 재시도해 100%를 맞추지는 않고 그대로 반영했다. k6 스크립트·원본 결과는 기존 관례대로 레포에 커밋하지 않았다.)
+
+- **해석**: 병렬화 재측정 때와 달리 이번엔 모든 조합에서 개선폭이 뚜렷하고 일관됐다 — TPS는 최소 +167%, 최대 +257%, p50/p95/p99는 대부분 -60~-77% 구간이다. 병렬화 재측정 당시 병목으로 지목됐던 HikariCP 커넥션 풀(`maximum-pool-size=10`) 제약을 Before/After 둘 다 동일하게 받는데도 이렇게 큰 차이가 난다는 것은, **서명 알고리즘 자체의 연산 비용 차이가 DB 커넥션 병목보다 훨씬 지배적인 요인**이었다는 뜻이다. 코스당 이미지 10장이면 요청마다 서명 연산이 10회 반복되는데, RSA-2048의 모듈러 거듭제곱 연산을 ECDSA P-256의 타원곡선 연산으로 바꾼 효과가 병렬화(동시 실행 수를 늘리는 것)보다 서명 1회당 비용을 직접 줄이는 이번 변경에서 훨씬 크게 드러났다. TASK-CLOUDFRONT.md 67~71행에서 "CloudFront 전환 자체가 비공개 콘텐츠에는 트레이드오프"라고 기록했던 문제를, 알고리즘 교체로 상당 부분 되돌린 셈이다.
 
 ## 이번 작업에서 얻은 교훈 (포트폴리오 포인트)
 

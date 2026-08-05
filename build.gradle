@@ -59,7 +59,9 @@ dependencies {
     testImplementation 'org.springframework.security:spring-security-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
-    implementation platform('software.amazon.awssdk:bom:2.25.30') // 최신 안정판으로 맞추기
+    // 2.40.12 이상부터 CannedSignerRequest가 EC(ECDSA P-256) 개인키를 자동 인식한다(aws/aws-sdk-java-v2 PR #6627).
+    // CloudFront Signed URL 서명을 RSA-2048에서 ECDSA P-256으로 전환하려면 이 버전 이상이 필수라 업그레이드했다.
+    implementation platform('software.amazon.awssdk:bom:2.51.0') // 최신 안정판으로 맞추기
     implementation 'software.amazon.awssdk:s3'
     implementation 'software.amazon.awssdk:cloudfront' // CloudFrontUtilities (Signed URL 발급), CloudFrontClient (invalidation)
     implementation 'com.google.genai:google-genai:1.28.0'
