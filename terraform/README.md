@@ -6,14 +6,27 @@ Terraform으로 관리한다.
 
 ## CloudFront Signed URL용 키페어 생성 (`terraform apply` 전에 먼저 진행)
 
-mycourse의 비공개 장소 이미지는 CloudFront Signed URL로 서빙된다. 이 서명에 쓰는 RSA
+mycourse의 비공개 장소 이미지는 CloudFront Signed URL로 서빙된다. 이 서명에 쓰는
 키페어는 Terraform이 아니라 **로컬에서 직접 생성**한다 — 개인키가 절대 tfstate에
 들어가지 않게 하기 위함이다(Terraform은 공개키만 `aws_cloudfront_public_key`로 등록한다).
 
+키 알고리즘은 **ECDSA P-256**을 쓴다. CloudFront trusted key group이 지원하는 키는
+RSA-2048 또는 ECDSA P-256 두 가지뿐인데(`docs/tasks/TASK-CLOUDFRONT.md` 참고), ECDSA
+P-256이 RSA-2048급보다 안전 강도가 높으면서도 서명 연산이 훨씬 가볍다. (과거 RSA-2048
+방식을 쓰던 절차는 `openssl genrsa -out cloudfront_private_key.pem 2048` /
+`openssl rsa -pubout -in cloudfront_private_key.pem -out cloudfront_public_key.pem`이었다 —
+롤백이 필요하면 이 명령으로 되돌릴 수 있다.)
+
 ```bash
-openssl genrsa -out cloudfront_private_key.pem 2048
-openssl rsa -pubout -in cloudfront_private_key.pem -out cloudfront_public_key.pem
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:prime256v1 -out cloudfront_private_key.pem
+openssl ec -in cloudfront_private_key.pem -pubout -out cloudfront_public_key.pem
 ```
+
+`openssl ecparam -genkey`가 아니라 `openssl genpkey`를 쓰는 이유: `ecparam -genkey`는 개인키를
+SEC1 형식("BEGIN EC PRIVATE KEY")으로 출력하는데, AWS SDK(`software.amazon.awssdk:cloudfront`)의
+PEM 파서가 이 헤더를 인식하지 못해 `NullPointerException`(`PemObjectType.ordinal()` on null)이
+발생하는 것을 `CloudFrontServiceTest`로 실제 확인했다. `genpkey`는 PKCS8 형식("BEGIN PRIVATE
+KEY")으로 출력하며, SDK가 이 형식은 RSA/EC 구분 없이 정상 로드한다.
 
 - `cloudfront_public_key.pem` → 이 디렉토리에 두고 `terraform.tfvars`의
   `cloudfront_public_key_path`가 가리키게 한다(`terraform.tfvars.example` 참고).
