@@ -145,3 +145,55 @@ k6 run --out web-dashboard=export=report.html script.js
 
 2. **HikariCP Pending 체크**
    - 부하 테스트 중 `/actuator/metrics/hikaricp.connections.pending` 값이 0 초과로 지속된다면, DB 커넥션 풀 크기(`max-lifetime`, `maximum-pool-size`)가 부족하거나 DB 쿼리 실행 시간이 너무 길어 스레드가 대기 중임을 의미합니다.
+
+---
+
+## 6. Ramping 프로파일 — 포화점(knee) 규명
+
+`test/presigned-url-bottleneck`에서 도입. **고정 동시성 두 점(예: 50, 200)만 측정하면 그 사이 어디서 처리량이 꺾이는지 알 수 없다** — 동시성 50과 200에서 TPS가 비슷하면 "이미 50에서 포화였다"는 뜻인지, "200까지도 여유가 있다"는 뜻인지 구분이 안 된다. VU를 서서히 올리며(`ramping-vus` executor) TPS가 꺾이는 지점(knee)과, 그 시점에 CPU/HikariCP/Tomcat 중 무엇이 한계에 닿아 있는지를 함께 보면 병목의 정체를 판정할 수 있다.
+
+```javascript
+export const options = {
+  scenarios: {
+    ramping: {
+      executor: 'ramping-vus',
+      startVUs: 1,
+      stages: [
+        { duration: '60s', target: 5 },
+        { duration: '60s', target: 10 },
+        { duration: '60s', target: 20 },
+        { duration: '90s', target: 50 },
+        { duration: '90s', target: 100 },
+        { duration: '90s', target: 200 },
+      ],
+      gracefulRampDown: '15s',
+    },
+  },
+};
+```
+
+실전 예시는 [`scripts/k6/detail-ramping.js`](../../scripts/k6/detail-ramping.js) 참고. 실행 중에는 Grafana의 **Presign CPU Bottleneck** 대시보드(§4 참고)를 "Last 15 minutes" + 5초 auto-refresh로 열어두고, k6가 보고하는 처리량 저하 시점과 `process_cpu_usage`/`hikaricp_connections_pending`이 한계에 닿는 시점을 나란히 관찰한다.
+
+## 7. JFR(Java Flight Recorder) CPU 프로파일링
+
+end-to-end TPS/latency만으로는 "무엇이 CPU를 쓰고 있는지"까지는 알 수 없다. JDK 내장 JFR로 실행 중인 애플리케이션의 CPU 샘플을 직접 뜬다(별도 프로파일러 설치 불필요).
+
+```bash
+# 1. JFR을 켠 채로 fat jar 실행 (java -jar여야 실제 배포 방식과 동일한 클래스로딩 경로를 탄다)
+./gradlew bootJar
+java -XX:StartFlightRecording=name=bench,settings=profile \
+     -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints \
+     -jar build/libs/yourtrip-0.0.1-SNAPSHOT.jar
+
+# 2. k6로 부하를 건다 (§4/§6)
+
+# 3. 앱이 살아있는 상태에서 명시적으로 덤프한다 — dumponexit=true와 강제 종료(taskkill /F,
+#    kill -9)를 같이 쓰면 셧다운 훅이 생략되어 0바이트 파일이 남는다(실측으로 확인된 함정).
+jcmd <PID> JFR.dump filename=results/dump.jfr
+
+# 4. jdk.ExecutionSample 이벤트를 텍스트로 뽑고, 전용 파서로 관심 패키지별 CPU 샘플 비율을 집계한다
+jfr print --events jdk.ExecutionSample --stack-depth 64 results/dump.jfr \
+  | node scripts/jfr/parse-execution-samples.mjs
+```
+
+`settings=profile`은 기본(`default`) 대비 샘플링 주기가 촘촘해(10ms) 메서드 단위 CPU 귀속에 적합하다. `parse-execution-samples.mjs`는 (1) 최상위(leaf) 프레임 Top 30과 (2) 지정한 패키지(AWS SDK 서명, crypto, Hibernate, logback, HikariCP)가 스택 어디에라도 등장하는 샘플의 비율을 출력한다 — 실측 사례와 해석은 [TASK-PRESIGN-BOTTLENECK.md](../tasks/TASK-PRESIGN-BOTTLENECK.md) 참고.
