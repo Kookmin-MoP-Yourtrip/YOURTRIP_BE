@@ -79,6 +79,13 @@ server:
   address: 0.0.0.0
   ssl:
     enabled: false
+  tomcat:
+    # test/presigned-url-bottleneck: MBean 등록을 켜야 TomcatMetricsBinder가
+    # tomcat_threads_busy/tomcat_threads_config_max를 Micrometer에 연결한다(기본값 false라
+    # 꺼져 있으면 /actuator/prometheus에 해당 지표가 아예 나타나지 않는다 — 실측으로 확인).
+    # 과거 벤치마크에서 동시성 200일 때 관찰된 maxThreads(200) 경계 현상을 이번엔 지표로 직접 본다.
+    mbeanregistry:
+      enabled: true
 
 s3:
   bucket: ${S3_BUCKET}
