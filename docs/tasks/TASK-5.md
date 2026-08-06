@@ -31,14 +31,19 @@
    - *이점*: 동기화 처리 중에 새롭게 유입되는 조회수 요청은 새로운 `view_count_dirty` Set에 쌓이게 되므로, 동시성 데이터 유실이나 락 경합이 발생하지 않습니다.
 4. **대상 코스 ID 목록 조회 (`SMEMBERS`)**
    - `SMEMBERS snapshotKey` 명령어로 동기화 대상이 되는 코스 ID 목록 전체를 가져옵니다.
-5. **원자적 증분값 추출 및 키 삭제 (`GETDEL`)**
-   - 가져온 코스 ID를 순회하며 순정 `GETDEL` 커맨드(`opsForValue().getAndDelete(counterKey)`)를 실행합니다.
-   - 카운팅된 조회수 증분값을 원자적으로 읽어옴과 동시에 Redis에서 해당 카운터 키를 즉시 삭제합니다.
-6. **DB 벌크 증분 반영 (`UPDATE`)**
-   - 읽어온 증분값이 0보다 큰 경우, `UploadCourseRepository.incrementViewCount(uploadCourseId, increment)`를 통해 DB에 `UPDATE UploadCourse SET viewCount = viewCount + :increment WHERE id = :id` 쿼리를 실행합니다.
-7. **스냅샷 정리 및 랭킹 캐시 갱신 (Refresh-Ahead)**
-   - 처리 완료 후 스냅샷 키를 삭제합니다.
+5. **청크 분할 및 파이프라인 읽기 (`GET`)**
+   - 대상 ID를 1,000개 단위 청크로 나눕니다(`ViewCountSyncScheduler.SYNC_CHUNK_SIZE`).
+   - 청크마다 `UploadCourseViewCountService.readPendingIncrements`가 `executePipelined`로 `GET view_count:increment:{id}`를 한 번의 왕복에 묶어 실행합니다. **GETDEL이 아닌 GET**이므로 이 시점에는 Redis 카운터가 지워지지 않습니다.
+6. **청크별 독립 트랜잭션으로 DB 반영 (`UPDATE`)**
+   - 읽어온 증분이 있으면 `UploadCourseService.applyViewCountIncrements(increments)`를 호출합니다. 이 메서드에만 `@Transactional`이 걸려 있어, 호출이 끝나는 시점에 그 청크의 `UPDATE UploadCourse SET viewCount = viewCount + :increment WHERE id = :id`가 독립적으로 커밋됩니다.
+7. **커밋 확인 후 파이프라인 차감 (`DECRBY`)**
+   - DB 커밋이 끝난 뒤에만 `UploadCourseViewCountService.clearSyncedIncrements`가 방금 읽은 값만큼 `DECRBY`를 파이프라인으로 실행합니다. `DEL`이 아니라 `DECRBY`를 쓰는 이유는 그 사이 새로 들어온 조회 증분을 보존하기 위해서입니다.
+   - 한 청크가 실패해도 예외를 격리하고 다음 청크로 진행합니다. 실패한 청크는 DECRBY가 실행되지 않으므로 그 증분은 Redis에 남아 다음 조회 시 자연스럽게 재동기화됩니다(유실이 아니라 지연).
+8. **스냅샷 정리 및 랭킹 캐시 갱신 (Refresh-Ahead)**
+   - 모든 청크 처리 후 스냅샷 키를 삭제합니다.
    - DB의 조회수가 최신화되었으므로, `uploadCourseService.refreshAllPopularCoursesCache()`를 호출해 인기 코스 Top 5 랭킹 캐시를 최신 상태로 덮어씁니다(Refresh-Ahead).
+
+> GETDEL 순차 처리에서 GET→DECRBY 2단계 + 청크 파이프라이닝으로 전환한 배경과 근거는 아래 [발견한 개선점 및 트레이드오프 분석](#-발견한-개선점-및-트레이드오프-분석) 섹션 참고.
 
 ---
 
@@ -61,11 +66,13 @@ sequenceDiagram
         Scheduler->>Redis: RENAME view_count_dirty snapshotKey
         Scheduler->>Redis: SMEMBERS snapshotKey
         Redis-->>Scheduler: [id1, id2, ...]
-        loop 코스 ID 단위 순회
-            Scheduler->>Redis: GETDEL view_count:increment:{id}
-            Redis-->>Scheduler: 증분값
+        loop 1,000개 단위 청크
+            Scheduler->>Redis: 파이프라인 GET view_count:increment:{id} (N건 묶음, 삭제 안 함)
+            Redis-->>Scheduler: 증분값 목록
+            Scheduler->>DB: 청크 전용 트랜잭션으로 Bulk UPDATE viewCount
+            DB-->>Scheduler: 커밋 완료
+            Scheduler->>Redis: 파이프라인 DECRBY view_count:increment:{id} (커밋 확인 후에만)
         end
-        Scheduler->>DB: Bulk UPDATE viewCount
         Scheduler->>Redis: DEL snapshotKey
         Scheduler->>API: refreshAllPopularCoursesCache()
     end
@@ -93,3 +100,34 @@ sequenceDiagram
 
 **결론 및 추후 최적화 대안 (Chunking):**
 백그라운드 동기화 스케줄러는 RTT 단축보다 **데이터 유실 방지(안정성)**가 훨씬 중요한 도메인입니다. 무작정 파이프라이닝으로 밀어넣는 것은 데이터 유실 위험이 크므로, 만약 속도 개선이 필요하다면 **100~500개 단위의 청크(Chunk)로 쪼개어 파이프라이닝과 DB 벌크 업데이트를 수행하는 방식**을 도입하여 리스크를 최소화하는 것이 좋습니다.
+
+---
+
+## ✅ 최종 결정: GET→DECRBY 2단계 + 청크 파이프라이닝 + 청크별 트랜잭션 분리
+
+위 분석 이후 실무 사례를 추가로 조사하고([참고: GitLab `BufferedCounter`](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/104936), [Redis 공식 파이프라이닝 문서](https://redis.io/docs/latest/develop/using-commands/pipelining/)), 다음 두 가지를 재검토해 최종 구현 방향을 확정했습니다.
+
+### 기존 분석에서 보완/반박된 지점
+
+1. **청크 크기의 근거를 "성능"이 아니라 "유실 상한 제한"으로 바꿨습니다.** Redis 공식 문서는 파이프라인 청크를 10,000개 단위로 권장하며, GETDEL 응답처럼 수 바이트짜리 값이면 클라이언트 메모리 부하도 실질적으로 미미합니다. 즉 100~500개라는 청크 크기를 "성능/메모리" 근거로 정당화하기는 어렵습니다. 대신 **"청크는 유실을 없애는 게 아니라 크래시 시 유실(또는 지연) 범위를 그 청크 크기만큼으로 제한하는 장치"**라는 점을 명확히 하고, 청크 크기는 1,000으로 조정했습니다.
+2. **"청크로 쪼개면 유실이 안전해진다"는 명제 자체가 성립하지 않는다는 점을 확인했습니다.** GETDEL을 유지하는 한, 청크 크기와 무관하게 크래시 시점의 그 청크는 Redis에서는 이미 지워졌지만 DB 트랜잭션은 커밋되지 않아 그대로 유실됩니다. 유실을 **제거**하려면 청크 분할이 아니라 "삭제 시점을 DB 커밋 이후로 미루는 것" 자체가 필요합니다.
+
+### 채택한 방식
+
+- **`GETDEL` → `GET`(비파괴적 읽기) + `DECRBY`(보상 차감) 2단계로 전환**: Redis에서 즉시 확정적으로 지워지는 GETDEL 대신, 값을 읽기만 하고 DB 반영이 실제로 커밋된 뒤에만 그만큼을 차감합니다. `DEL`이 아니라 `DECRBY`를 쓰는 이유는, 그 사이 새로 들어온 조회 증분까지 함께 지워지는 것을 막기 위해서입니다(`DEL`을 쓰면 동시 INCR분이 조용히 사라집니다).
+- **청크(1,000개) 단위 파이프라이닝**: `GET`과 `DECRBY` 각각을 청크 단위로 한 번의 네트워크 왕복에 묶어 처리합니다.
+- **청크별 독립 트랜잭션 커밋**: 스케줄러 메서드 전체에 걸려 있던 `@Transactional`을 제거하고, 청크의 DB 반영을 별도 서비스 메서드(`UploadCourseService.applyViewCountIncrements`)로 분리해 그 메서드에만 `@Transactional`을 걸었습니다. 이렇게 해야 "그 청크의 DB 반영이 실제로 커밋된 뒤에만 DECRBY를 호출한다"는 순서가 보장됩니다 — 스케줄러 메서드를 통째로 트랜잭션으로 감싼 채로는 GET→DECRBY로 바꿔도 여전히 동일한 유실 창구가 재현됩니다.
+
+### 트레이드오프
+
+- 유실은 없어졌지만, DB 커밋 이후 DECRBY 실행 전에 스케줄러가 크래시하면 다음 주기에 같은 증분이 한 번 더 반영되는 **중복(과대 집계)** 가능성은 남습니다. 조회수는 정확히 맞을 필요가 없는 지표이므로, 유실(과소 집계)보다 이 쪽이 훨씬 저렴한 대가라고 판단했습니다.
+- 한 청크가 DB 오류 등으로 실패해도 예외를 격리해 다음 청크로 계속 진행하며, 실패한 청크의 증분은 Redis에 남아 다음 조회 시 자연스럽게 재동기화됩니다(유실이 아니라 지연).
+- **`GETDEL` 대비 새로 생긴 부작용 — 카운터 키가 삭제되지 않고 영구히 남음**: 실제 Redis/DB로 검증하는 과정에서 확인한 부분입니다. `DECRBY`는 값을 0으로 만들 뿐 키 자체를 지우지 않으므로, 한 번이라도 조회된 코스는 `view_count:increment:{id}` 키가 값 `0`인 채로 Redis에 영구히 남습니다(예전 `GETDEL`은 처리 후 키를 완전히 지웠습니다). `readPendingIncrements`가 0 이하 값을 걸러내므로 다음 동기화 대상에는 포함되지 않아 기능적으로는 무해하지만, 키 자체는 계속 존재합니다.
+  - 이 프로젝트에서는 채택하지 않은 이유: 키 개수의 상한이 "역대 조회된 적 있는 코스 수"로 자연히 제한되고(유저 수·요청 수가 아니라 콘텐츠 수에 비례), 콘텐츠는 사람이 직접 만들어 업로드하는 만큼 규모가 크지 않아 메모리 영향이 무시할 수준입니다.
+  - 완전히 없애려면 `DECRBY` 후 결과값이 0 이하일 때 `DEL`까지 원자적으로 수행하는 Lua 스크립트(`DECRBY`→조건부 `DEL`)를 파이프라인 안에서 실행하는 방법이 있지만, 이 정도 규모에서는 추가 복잡도 대비 이득이 작다고 판단해 채택하지 않았습니다.
+
+### 구현 위치
+
+- `UploadCourseViewCountService.readPendingIncrements` / `clearSyncedIncrements` — 파이프라인 GET/DECRBY
+- `UploadCourseService.applyViewCountIncrements` — 청크별 독립 트랜잭션 커밋
+- `ViewCountSyncScheduler.syncChunk` — 청크 분할 및 GET → DB 커밋 → DECRBY 순서 오케스트레이션
