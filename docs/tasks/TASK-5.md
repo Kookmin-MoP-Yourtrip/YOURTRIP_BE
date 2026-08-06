@@ -131,3 +131,23 @@ sequenceDiagram
 - `UploadCourseViewCountService.readPendingIncrements` / `clearSyncedIncrements` — 파이프라인 GET/DECRBY
 - `UploadCourseService.applyViewCountIncrements` — 청크별 독립 트랜잭션 커밋
 - `ViewCountSyncScheduler.syncChunk` — 청크 분할 및 GET → DB 커밋 → DECRBY 순서 오케스트레이션
+
+---
+
+## 📊 Before/After 성능 실측 (대상 코스 10,000건)
+
+`@SpringBootTest` 기반 임시 벤치마크로 `syncViewCountsToDb()` 단독 호출 구간의 소요 시간을 측정했다(HTTP API가 아닌 스케줄러 내부 메서드라 TASK-3/4의 Node.js 부하 스크립트 방식은 적용 불가 — 대신 정합성 검증에 쓴 것과 동일한 `@SpringBootTest` + 스톱워치 패턴 재사용). 실제 로컬 Redis(Docker)·Postgres에 코스 10,000건, 코스당 증분 3을 시딩하고 3회씩 반복 측정했다.
+
+| 지표 | Before (GETDEL 순차) | After (GET+DECRBY 청크 파이프라이닝) | 개선 |
+|---|---|---|---|
+| Redis 왕복 횟수(이론치) | 10,000회 (코스당 1회) | 40회 (20청크 × GET/DECRBY 각 1회) | 약 250배 감소 |
+| 소요 시간 1회차 | 14,817 ms | 6,333 ms | - |
+| 소요 시간 2회차 | 11,462 ms | 4,204 ms | - |
+| 소요 시간 3회차 | 11,070 ms | 3,797 ms | - |
+| **중앙값** | **11,462 ms** | **4,204 ms** | **약 2.7배 (63% 단축)** |
+
+### 결과 해석
+
+- Redis 왕복 횟수는 이론상 250배(10,000 → 40) 줄었지만, 실제 소요 시간 개선은 2.7배에 그쳤다. 원인은 명확하다 — **DB 왕복 횟수가 Before/After 동일**하기 때문이다. `applyViewCountIncrements`도 결국 `incrementViewCount(id, increment)`를 코스마다 한 번씩 개별 호출하는 구조라(멀티로우 배치 SQL이 아님), DB 쪽은 여전히 10,000회 왕복이 발생한다. 이번 변경은 "Redis 구간"만 최적화한 것이고, 측정 결과가 그 사실을 정확히 보여준다.
+- 1회차가 항상 2~3회차보다 느린 것은 JIT 워밍업, 커넥션 풀·Lettuce 채널 초기화 비용 때문으로 보인다(2~3회차부터 안정화).
+- **추가 개선 여지(이번 범위 밖, 발견한 개선점으로만 기록)**: DB 쪽이 이제 지배적인 비용이므로, 여기서 더 줄이려면 `UPDATE ... FROM (VALUES ...)` 형태의 멀티로우 배치 UPDATE로 청크당 DB 왕복을 1,000회에서 1회로 줄이는 방안을 고려할 수 있다. 다만 이 프로젝트의 실제 스케줄 주기(10분)와 트래픽 규모를 감안하면 지금 소요 시간(수 초)도 사용자 응답 경로와 무관한 백그라운드 작업이라 체감 영향이 없어, 우선순위는 낮다고 판단한다.
