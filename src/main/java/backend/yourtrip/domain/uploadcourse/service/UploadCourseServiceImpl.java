@@ -40,6 +40,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -779,5 +780,19 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         for (KeywordType theme : KeywordType.findByCategory("mood")) {
             computePopularCourseIdsWithLock(theme, theme.name());
         }
+    }
+
+    /**
+     * ViewCountSyncScheduler가 청크(예: 1,000건)마다 이 메서드를 호출한다. 스케줄러 메서드 자체는
+     * @Transactional이 아니므로, 청크마다 이 호출이 끝나는 시점에 그 청크만의 트랜잭션이 독립적으로
+     * 커밋된다 — 스케줄러가 커밋 확정 이후에만 Redis DECRBY를 내보낼 수 있는 전제가 여기서 만들어진다.
+     */
+    @Override
+    @Transactional
+    public void applyViewCountIncrements(Map<Long, Long> increments) {
+        List<Long> ids = new ArrayList<>(increments.keySet());
+        Long[] idArray = ids.toArray(new Long[0]);
+        Long[] incrementArray = ids.stream().map(increments::get).toArray(Long[]::new);
+        uploadCourseRepository.incrementViewCounts(idArray, incrementArray);
     }
 }

@@ -108,7 +108,16 @@ public interface UploadCourseRepository extends JpaRepository<UploadCourse, Long
         """)
     List<UploadCourse> findAllByIdInWithKeywords(@Param("ids") List<Long> ids);
 
+    /**
+     * 청크 전체(최대 1,000건)의 증분을 SQL 한 문장으로 반영해 DB 왕복을 청크당 1회로 보장한다.
+     * ids/increments는 병렬 배열(같은 인덱스가 한 코스의 id/증분 쌍)로 unnest()해 조인한다.
+     */
     @Modifying(clearAutomatically = true)
-    @Query("UPDATE UploadCourse uc SET uc.viewCount = uc.viewCount + :increment WHERE uc.id = :id")
-    void incrementViewCount(@Param("id") Long id, @Param("increment") long increment);
+    @Query(value = """
+        UPDATE upload_course uc
+        SET view_count = uc.view_count + v.increment
+        FROM (SELECT unnest(:ids) AS id, unnest(:increments) AS increment) AS v
+        WHERE uc.upload_course_id = v.id
+        """, nativeQuery = true)
+    void incrementViewCounts(@Param("ids") Long[] ids, @Param("increments") Long[] increments);
 }
