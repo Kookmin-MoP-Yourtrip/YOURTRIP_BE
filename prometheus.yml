@@ -3,13 +3,16 @@ global:
   evaluation_interval: 5s
 
 scrape_configs:
-  - job_name: 'yourtrip-backend-after'
+  # test/presigned-url-bottleneck: arm P(presign, PR #57 이전 순차 S3 presign 복원)과
+  # arm C(cloudfront, 현행 HEAD)를 job 라벨로 구분한다. 두 arm은 항상 순차 실행하므로
+  # (동시 실행 시 CPU 병목 실험 자체가 무의미해진다) 측정하지 않는 쪽 job은 always down으로
+  # 보이는 게 정상이다 — Prometheus는 scrape 실패를 그냥 up=0으로 기록할 뿐 문제없이 동작한다.
+  - job_name: 'presign'
     metrics_path: '/actuator/prometheus'
     static_configs:
       # 호스트 OS(로컬)에서 실행 중인 Spring Boot 8080 포트를 도커 내부에서 참조하기 위해 host.docker.internal 사용
       - targets: ['host.docker.internal:8080']
-  - job_name: 'yourtrip-backend-before'
+  - job_name: 'cloudfront'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      # mycourse Signed URL 병렬화 perf 커밋(306505b) 직전 상태를 별도 워크트리+포트로 띄운 Before 비교군
       - targets: ['host.docker.internal:8081']
