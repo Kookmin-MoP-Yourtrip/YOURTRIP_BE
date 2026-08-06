@@ -37,7 +37,6 @@ import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
-import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto.PlaceDto;
 import backend.yourtrip.global.gemini.service.GeminiService;
@@ -50,13 +49,8 @@ import java.io.IOException;
 import java.time.LocalTime;
 import java.time.Period;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
-import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -68,7 +62,6 @@ public class MyCourseServiceImpl implements MyCourseService {
 
     private final UserService userService;
     private final S3Service s3Service;
-    private final CloudFrontService cloudFrontService;
     private final GeminiService geminiService;
 
     private final ObjectMapper objectMapper;
@@ -79,8 +72,6 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final PlaceImageRepository placeImageRepository;
     private final UploadCourseRepository uploadCourseRepository;
     private final KakaoLocalClient kakaoLocalClient;
-    @Qualifier("cloudFrontSigningExecutor")
-    private final ThreadPoolTaskExecutor cloudFrontSigningExecutor;
 
     @Override
     @Transactional
@@ -149,30 +140,16 @@ public class MyCourseServiceImpl implements MyCourseService {
             .orElseThrow(() -> new BusinessException(MyCourseErrorCode.DAY_SCHEDULE_NOT_FOUND));
 
         // MyCourseController의 "/{courseId}/days/{dayId}/places" — 작성자만 볼 수 있는
-        // 비공개 조회이므로 Signed URL을 발급한다.
-        
-        // 1. 트랜잭션 내에서 엔티티 스칼라값 추출 (LazyInitializationException 방지)
-        record ImageTaskParams(Long placeId, Long placeImageId, String s3Key) {}
-        List<ImageTaskParams> taskParams = daySchedule.getPlaces().stream()
+        // 비공개 조회이므로 presigned URL을 발급한다.
+        // (test/presigned-url-bottleneck: PR #57 이전 순차 presign 방식으로 복원)
+        List<PlaceImageResponse> imageIdAndUrls = daySchedule.getPlaces().stream()
             .flatMap(place -> place.getPlaceImages().stream()
-                .map(placeImage -> new ImageTaskParams(place.getId(), placeImage.getId(), placeImage.getPlaceImageS3Key())))
-            .toList();
-
-        // 2. CompletableFuture 리스트 생성 (별도 단계로 만들어 즉시 실행 시작)
-        List<CompletableFuture<PlaceImageResponse>> signingFutures = taskParams.stream()
-            .map(params -> CompletableFuture.supplyAsync(() -> {
-                String signedUrl = cloudFrontService.getSignedUrl(params.s3Key());
-                return new PlaceImageResponse(params.placeId(), params.placeImageId(), signedUrl);
-            }, cloudFrontSigningExecutor).exceptionally(ex -> {
-                log.warn("CloudFront Signed URL 발급 실패 (placeImageId={})", params.placeImageId(), unwrapCause(ex));
-                return null;
-            }))
-            .toList();
-
-        // 3. join 및 null(실패) 필터링
-        List<PlaceImageResponse> imageIdAndUrls = signingFutures.stream()
-            .map(CompletableFuture::join)
-            .filter(Objects::nonNull)
+                .map(placeImage -> new PlaceImageResponse(
+                    place.getId(),
+                    placeImage.getId(),
+                    s3Service.getPresignedUrl(placeImage.getPlaceImageS3Key())
+                ))
+            )
             .toList();
 
         return DayScheduleMapper.toDayScheduleResponse(daySchedule, imageIdAndUrls);
@@ -188,7 +165,7 @@ public class MyCourseServiceImpl implements MyCourseService {
 
         // MyCourseController에는 노출되지 않는 내부 헬퍼 — UploadCourseServiceImpl.createUploadCourse()가
         // 방금 만든 업로드용 hidden copy(TravelCourseType.UPLOADED, 공개 key)의 응답 조립에만 쓴다.
-        // 그래서 여기서 만드는 이미지는 이미 공개 콘텐츠라 서명 없는 URL을 발급해야 한다.
+        // (test/presigned-url-bottleneck: PR #57 이전에는 CloudFront가 없었으므로 여기도 presign)
         return daySchedules.stream()
             .map(daySchedule -> {
                 List<PlaceImageResponse> imageIdAndUrls = daySchedule.getPlaces().stream()
@@ -196,7 +173,7 @@ public class MyCourseServiceImpl implements MyCourseService {
                         .map(placeImage -> new PlaceImageResponse(
                             place.getId(),
                             placeImage.getId(),
-                            cloudFrontService.getPublicUrl(placeImage.getPlaceImageS3Key())
+                            s3Service.getPresignedUrl(placeImage.getPlaceImageS3Key())
                         ))
                     )
                     .toList();
@@ -214,7 +191,8 @@ public class MyCourseServiceImpl implements MyCourseService {
         List<DaySchedule> daySchedules = getDaySchedulesWithPlaces(courseId);
 
         // MyCourseController에는 노출되지 않는 내부 헬퍼 — UploadCourseServiceImpl.updateUploadCourse()가
-        // 업로드 코스 자체(공개 콘텐츠)의 갱신 응답 조립에만 쓴다. 서명 없는 URL을 발급한다.
+        // 업로드 코스 자체의 갱신 응답 조립에만 쓴다.
+        // (test/presigned-url-bottleneck: PR #57 이전에는 CloudFront가 없었으므로 여기도 presign)
         return daySchedules.stream()
             .map(daySchedule -> {
                 List<PlaceImageResponse> imageIdAndUrls = daySchedule.getPlaces().stream()
@@ -222,7 +200,7 @@ public class MyCourseServiceImpl implements MyCourseService {
                         .map(placeImage -> new PlaceImageResponse(
                             place.getId(),
                             placeImage.getId(),
-                            cloudFrontService.getPublicUrl(placeImage.getPlaceImageS3Key())
+                            s3Service.getPresignedUrl(placeImage.getPlaceImageS3Key())
                         ))
                     )
                     .toList();
@@ -295,7 +273,7 @@ public class MyCourseServiceImpl implements MyCourseService {
             new PlaceImage(place, placeImageS3Key));
 
         return new PlaceImageCreateResponse(savedPlaceImage.getId(),
-            cloudFrontService.getSignedUrl(placeImageS3Key));
+            s3Service.getPresignedUrl(placeImageS3Key));
     }
 
     @Override
@@ -513,9 +491,5 @@ public class MyCourseServiceImpl implements MyCourseService {
         double latitude = Double.parseDouble(doc.y());
 
         place.updateKakaoPlace(placeName, placeLocation, placeUrl, latitude, longitude);
-    }
-
-    private Throwable unwrapCause(Throwable ex) {
-        return (ex instanceof CompletionException && ex.getCause() != null) ? ex.getCause() : ex;
     }
 }

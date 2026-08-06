@@ -23,7 +23,6 @@ import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
-import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.s3.service.S3Service;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -52,9 +51,6 @@ class UploadCourseServiceImplTest {
 
     @Mock
     private S3Service s3Service;
-
-    @Mock
-    private CloudFrontService cloudFrontService;
 
     @Mock
     private CacheManager cacheManager;
@@ -165,7 +161,7 @@ class UploadCourseServiceImplTest {
         given(myCourseService.getAllDaySchedulesByCourse(100L)).willReturn(List.of(
             new DayScheduleResponse(1000L, 1, List.of())
         ));
-        given(cloudFrontService.getPublicUrl("thumb.png")).willReturn("http://cloudfront.example.com/thumb.png");
+        given(s3Service.getPresignedUrl("thumb.png")).willReturn("http://s3.example.com/thumb.png?X-Amz-Signature=test");
 
         UploadCourseUpdateRequest request = UploadCourseUpdateRequest.builder()
             .title("수정된 경주 여행")
