@@ -150,4 +150,44 @@ sequenceDiagram
 
 - Redis 왕복 횟수는 이론상 250배(10,000 → 40) 줄었지만, 실제 소요 시간 개선은 2.7배에 그쳤다. 원인은 명확하다 — **DB 왕복 횟수가 Before/After 동일**하기 때문이다. `applyViewCountIncrements`도 결국 `incrementViewCount(id, increment)`를 코스마다 한 번씩 개별 호출하는 구조라(멀티로우 배치 SQL이 아님), DB 쪽은 여전히 10,000회 왕복이 발생한다. 이번 변경은 "Redis 구간"만 최적화한 것이고, 측정 결과가 그 사실을 정확히 보여준다.
 - 1회차가 항상 2~3회차보다 느린 것은 JIT 워밍업, 커넥션 풀·Lettuce 채널 초기화 비용 때문으로 보인다(2~3회차부터 안정화).
-- **추가 개선 여지(이번 범위 밖, 발견한 개선점으로만 기록)**: DB 쪽이 이제 지배적인 비용이므로, 여기서 더 줄이려면 `UPDATE ... FROM (VALUES ...)` 형태의 멀티로우 배치 UPDATE로 청크당 DB 왕복을 1,000회에서 1회로 줄이는 방안을 고려할 수 있다. 다만 이 프로젝트의 실제 스케줄 주기(10분)와 트래픽 규모를 감안하면 지금 소요 시간(수 초)도 사용자 응답 경로와 무관한 백그라운드 작업이라 체감 영향이 없어, 우선순위는 낮다고 판단한다.
+- **추가 개선 여지(당시엔 범위 밖으로 남겼음, 아래 절에서 실제로 적용함)**: DB 쪽이 이제 지배적인 비용이므로, 여기서 더 줄이려면 `UPDATE ... FROM (VALUES ...)` 형태의 멀티로우 배치 UPDATE로 청크당 DB 왕복을 1,000회에서 1회로 줄이는 방안을 고려할 수 있다.
+
+---
+
+## ✅ 후속 결정: 청크당 DB 왕복을 네이티브 멀티로우 UPDATE로 1회로 통합
+
+[이슈 #65](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/65)에서 위 "추가 개선 여지"를 실제로 적용했다.
+
+### 왜 `hibernate.jdbc.batch_size`가 아니었는가
+
+가장 먼저 검토한 건 Hibernate의 `hibernate.jdbc.batch_size` 설정이었다. 하지만 이 설정은 **영속성 컨텍스트의 dirty-checking flush**(즉 `save()`/`persist()`로 관리되는 엔티티가 flush될 때 자동 생성되는 DML)에만 적용된다. `incrementViewCount`는 `@Modifying @Query`로 짠 커스텀 벌크 쿼리라 호출 즉시 `executeUpdate()`가 실행되며 flush 파이프라인을 거치지 않으므로, 이 설정을 켜도 지금 패턴에는 효과가 없다. 대안으로 "엔티티를 로드해서 수정 후 `saveAll`" 방식으로 전환하는 것도 검토했으나, 이 경우에도 왕복 횟수는 `N/batch_size`로 줄어들 뿐 "1회 보장"은 되지 않고, `order_updates` 설정이 빠지면 조용히 배치가 무효화되는 리스크가 있어 채택하지 않았다.
+
+### 채택한 방식
+
+[UploadCourseRepository.java](../../src/main/java/backend/yourtrip/domain/uploadcourse/repository/UploadCourseRepository.java)에 Postgres `unnest()`로 두 병렬 배열(ids, increments)을 행 집합으로 풀어 조인하는 네이티브 멀티로우 UPDATE를 추가했다:
+
+```sql
+UPDATE upload_course uc
+SET view_count = uc.view_count + v.increment
+FROM (SELECT unnest(:ids) AS id, unnest(:increments) AS increment) AS v
+WHERE uc.upload_course_id = v.id
+```
+
+`UploadCourseService.applyViewCountIncrements`는 이제 청크 엔트리를 순회하는 루프 대신 이 쿼리를 1회 호출한다. 기존 단건 `incrementViewCount(id, increment)`는 호출부가 없어져 완전히 제거했다.
+
+### 재측정 (대상 코스 10,000건, 동일 방법론)
+
+| 지표 | Before (개별 UPDATE 루프) | After (멀티로우 UPDATE) | 개선 |
+|---|---|---|---|
+| 청크당 DB 왕복 횟수(이론치) | 1,000회 | 1회 | 1,000배 감소 |
+| 소요 시간 1회차 | 6,932 ms | 2,293 ms | - |
+| 소요 시간 2회차 | 4,916 ms | 1,614 ms | - |
+| 소요 시간 3회차 | 3,813 ms | 2,042 ms | - |
+| **중앙값** | **4,916 ms** | **2,042 ms** | **약 2.4배 (58% 단축)** |
+
+`hibernate.SQL: debug` 로그로도 청크당 `UPDATE upload_course` 문장이 정확히 1번만 실행됨을 확인했다(기존에는 1,000번).
+
+### 결과 해석
+
+- DB 왕복은 이론상 1,000배 줄었는데 전체 소요 시간은 2.4배 개선에 그쳤다. Redis 파이프라이닝 때와 같은 패턴이다 — 왕복 횟수 감소가 곧바로 같은 배수의 시간 단축으로 이어지지 않는다. Postgres 입장에서 "행 1,000개를 개별 UPDATE 1,000번"과 "행 1,000개를 멀티로우 UPDATE 1번"은 네트워크 왕복 수는 크게 다르지만, DB 서버 내부에서 실제로 1,000개 행을 찾아 잠그고 갱신하는 작업량 자체는 비슷하기 때문으로 보인다. 즉 이번 최적화로 없앤 건 "네트워크 RTT 누적 비용"이지 "행 갱신 자체의 비용"이 아니다.
+- 그럼에도 이 최적화의 핵심 가치는 절대 시간 단축보다 **커넥션 점유 시간 단축**에 있다. 기존에는 청크 하나를 처리하는 동안 HikariCP 커넥션 하나를 1,000번의 순차 왕복 내내(수 초) 붙잡고 있었는데, 이제는 SQL 한 문장을 보내고 응답을 기다리는 훨씬 짧은 시간만 붙잡는다. 실제 트래픽과 겹칠 때 커넥션 풀 경합 위험을 줄인다는 점에서, 이번 변경은 "스케줄러를 더 빠르게" 만들었다기보다 "스케줄러가 다른 요청에 주는 부담을 줄였다"는 관점에서 더 의미가 있다.

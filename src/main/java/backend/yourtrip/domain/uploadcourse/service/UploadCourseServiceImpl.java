@@ -40,6 +40,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -789,8 +790,9 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     @Override
     @Transactional
     public void applyViewCountIncrements(Map<Long, Long> increments) {
-        for (Map.Entry<Long, Long> entry : increments.entrySet()) {
-            uploadCourseRepository.incrementViewCount(entry.getKey(), entry.getValue());
-        }
+        List<Long> ids = new ArrayList<>(increments.keySet());
+        Long[] idArray = ids.toArray(new Long[0]);
+        Long[] incrementArray = ids.stream().map(increments::get).toArray(Long[]::new);
+        uploadCourseRepository.incrementViewCounts(idArray, incrementArray);
     }
 }
