@@ -504,12 +504,11 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     // IllegalStateException을 던진다(실측 확인, cacheSerializer() 주석 참고). courseListItem과
     // 동일하게 타입을 명시한 Jackson2JsonRedisSerializer로 원시 Redis 커맨드를 직접 다룬다.
     //
-    // TTL은 courseListItem과 동일하게 RedisConfig.COURSE_LIST_ITEM_TTL(2시간)을 그대로 재사용한다.
-    // 처음엔 5분으로 잡았으나, 상세 캐시가 담는 필드(title/location/thumbnail/forkCount/keywords + 일정)가
-    // courseListItem이 담는 필드와 변경 빈도 면에서 다를 게 없다는 점(업로드 후 수정 API가 없어 사실상
-    // 정적이고, 유일하게 바뀌는 forkCount는 6-2에서 evict로 별도 처리될 예정)을 재검토해 늘렸다.
-    // 5분은 이 콘텐츠의 실제 변경 빈도에 비해 과도하게 짧아 DB 부하 절감 효과를 스스로 깎아먹고
-    // 있었다 — TTL은 데이터 변경 빈도에 맞춰야 한다는 일반적인 캐싱 원칙에 따른 조정이다.
+    // TTL은 RedisConfig.COURSE_DETAIL_TTL(2시간)을 쓴다. courseListItem과 같은 2시간이지만 별도
+    // 상수다 — 두 캐시가 담는 필드의 변경 빈도가 우연히 같을 뿐, 정합성 정책이 묶여 있는 건 아니다.
+    // 콘텐츠가 실제로 바뀌는 시점(updateUploadCourse)의 정합성은 이 TTL이 아니라 커밋 후
+    // write-through(아래 4단계 섹션의 refreshUploadCourseCaches)로 보장하며, TTL은 그 write-through가
+    // Redis 장애 등으로 누락됐을 때의 안전망 역할만 한다.
 
     /**
      * 랭킹/아이템 캐시와 동일하게 jitter나 락 없이 단순 cache-aside로 구현한다.
@@ -539,7 +538,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             byte[] value = cacheSerializer(UploadCourseDetailCacheItem.class).serialize(item);
             cacheValueRedisTemplate.execute((RedisCallback<Object>) connection -> {
                 connection.stringCommands().set(key, value,
-                    Expiration.seconds(RedisConfig.COURSE_LIST_ITEM_TTL.getSeconds()),
+                    Expiration.seconds(RedisConfig.COURSE_DETAIL_TTL.getSeconds()),
                     SetOption.upsert());
                 return null;
             });
