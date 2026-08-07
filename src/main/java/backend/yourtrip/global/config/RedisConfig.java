@@ -30,8 +30,13 @@ public class RedisConfig implements CachingConfigurer {
 
     // 인기 목록 안전망 TTL — 조회수 동기화 스케줄러(10분 주기)가 멈췄을 때를 대비한 마지노선.
     private static final Duration POPULAR_COURSES_TTL = Duration.ofMinutes(30);
-    // 상세 캐시 기본 TTL — 실제 적용 시점에는 동시 만료를 피하기 위해 ± jitter가 더해진다.
-    private static final Duration COURSE_DETAIL_TTL = Duration.ofMinutes(5);
+    // 상세 캐시 TTL — 원래 5분이었으나 실제 값과 어긋나 있었다(코드는 COURSE_LIST_ITEM_TTL을 그대로
+    // 재사용 중이었음). 상세 캐시가 담는 필드의 변경 빈도가 아이템 캐시와 다를 게 없어 값을 2시간으로
+    // 맞추고, updateUploadCourse의 write-through 리스너(refreshUploadCourseCaches)가 이 상수를 직접
+    // 참조하도록 정리했다. 콘텐츠가 실제로 바뀌는 시점의 정합성은 이 TTL이 아니라 그 write-through로
+    // 보장한다 — TTL은 Redis 장애/재시작으로 write-through가 누락됐을 때의 안전망 역할만 한다.
+    // public: UploadCourseServiceImpl의 writeDetailCache에서도 참조해야 해서 공유한다.
+    public static final Duration COURSE_DETAIL_TTL = Duration.ofHours(2);
     // 코스 콘텐츠(엔티티 ID 단위) 캐시 TTL — 거의 안 바뀌는 read-heavy 데이터라 넉넉하게 잡는다.
     // 정합성은 이 TTL이 아니라 콘텐츠 변경 이벤트 발생 시의 write-through(cache.put)로 보장한다.
     // public: 아이템 캐시를 파이프라인으로 직접 쓰는 UploadCourseServiceImpl에서도 동일 TTL을 적용해야 해서 공유한다.
