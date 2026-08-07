@@ -18,6 +18,7 @@ import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseUpdateReques
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
+import backend.yourtrip.domain.uploadcourse.event.UploadCourseCacheRefreshEvent;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
@@ -37,6 +38,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cache.CacheManager;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class UploadCourseServiceImplTest {
@@ -58,6 +60,9 @@ class UploadCourseServiceImplTest {
 
     @Mock
     private CacheManager cacheManager;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private UploadCourseServiceImpl uploadCourseService;
@@ -206,6 +211,7 @@ class UploadCourseServiceImplTest {
         assertThat(uploadCourse.getKeywords()).hasSize(2);
         assertThat(travelCourse.getTitle()).isEqualTo("수정된 경주 여행");
         assertThat(place.getPlaceName()).isEqualTo("수정된 황리단길");
+        verify(eventPublisher).publishEvent(any(UploadCourseCacheRefreshEvent.class));
     }
 
     private void setEntityId(Object entity, Long id) {
