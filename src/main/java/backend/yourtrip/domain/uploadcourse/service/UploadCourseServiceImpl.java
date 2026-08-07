@@ -26,6 +26,7 @@ import backend.yourtrip.domain.uploadcourse.entity.CourseKeyword;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.domain.uploadcourse.entity.enums.UploadCourseSortType;
+import backend.yourtrip.domain.uploadcourse.event.UploadCourseCacheRefreshEvent;
 import backend.yourtrip.domain.uploadcourse.mapper.UploadCourseMapper;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
@@ -54,6 +55,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -63,6 +65,8 @@ import org.springframework.data.redis.connection.RedisStringCommands.SetOption;
 import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
@@ -108,6 +112,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private final RedisTemplate<String, Object> cacheValueRedisTemplate;
     private final ObjectMapper objectMapper;
     private final UploadCourseViewCountService uploadCourseViewCountService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * GenericJackson2JsonRedisSerializer(RedisConfig.cacheValueSerializer())는 값에 타입 정보(@class)를
@@ -548,6 +553,28 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         return (COURSE_DETAIL_CACHE + "::" + uploadCourseId).getBytes(StandardCharsets.UTF_8);
     }
 
+    // ==========================
+    //  4단계: 수정 API 캐시 write-through (updateUploadCourse 전용)
+    // ==========================
+
+    /**
+     * updateUploadCourse 트랜잭션이 커밋에 성공한 뒤에만 실행된다. 커밋 전에 캐시부터 갱신하면,
+     * 그 뒤 커밋이 실패(제약 위반 등)했을 때 "DB엔 반영 안 됐는데 캐시엔 새 값이 들어간" 상태가
+     * 남을 수 있어 AFTER_COMMIT으로 묶었다. 이벤트가 이미 write-through에 필요한 캐시 DTO를
+     * 전부 담고 있으므로, 여기서는 엔티티/영속성 컨텍스트에 다시 접근하지 않고 캐시 쓰기만 한다.
+     * writeDetailCache/writeItemCache 자체가 fail-open(예외를 삼키고 WARN 로그)이라 이 리스너도
+     * 동일한 정책을 그대로 물려받는다.
+     * private이 아닌 이유: 이 클래스는 @Transactional로 AOP 프록시가 씌워지는데, @EventListener 계열
+     * 처리기는 프록시를 통해 대상 빈의 리스너 메서드를 호출한다. private 메서드는 프록시가 대상 빈에
+     * 위임할 수 없어 기동 시점에 BeanInitializationException이 발생한다(실측 확인) — 패키지 프라이빗
+     * 이상의 가시성이 필요하다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    void refreshUploadCourseCaches(UploadCourseCacheRefreshEvent event) {
+        writeDetailCache(event.uploadCourseId(), event.detailCacheItem());
+        writeItemCache(event.uploadCourseId(), event.listItemCacheItem());
+    }
+
     private String getThumbnailUrlFromDetailCache(UploadCourseDetailCacheItem item) {
         if (item.thumbnailImageS3Key() == null) {
             return null;
@@ -770,6 +797,16 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         }
 
         List<DayScheduleResponse> updatedDaySchedules = myCourseService.getAllDaySchedulesByCourse(travelCourse.getId());
+
+        // 5. 캐시 write-through 이벤트 발행 (커밋 성공 후에만 실제 캐시 쓰기가 실행됨, 6-2단계 아래 리스너 참고)
+        // 영속성 컨텍스트가 아직 살아있는 이 시점에 캐시 DTO를 미리 조립해 이벤트에 담는다. 커밋 이후
+        // 리스너에서 엔티티에 다시 접근하면 세션이 닫혀 LazyInitializationException이 날 수 있기 때문이다.
+        UploadCourseDetailCacheItem detailCacheItem = UploadCourseMapper.toDetailCacheItem(uploadCourse,
+            travelCourse.getDaySchedules());
+        CourseListItemCacheItem listItemCacheItem = UploadCourseMapper.toCourseListItemCacheItem(uploadCourse);
+        eventPublisher.publishEvent(
+            new UploadCourseCacheRefreshEvent(uploadCourseId, detailCacheItem, listItemCacheItem));
+
         return UploadCourseMapper.toDetailResponse(uploadCourse, getGetThumbnailUrl(uploadCourse), updatedDaySchedules);
     }
 
