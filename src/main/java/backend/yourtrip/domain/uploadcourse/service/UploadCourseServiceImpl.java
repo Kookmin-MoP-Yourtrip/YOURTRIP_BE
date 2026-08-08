@@ -30,6 +30,7 @@ import backend.yourtrip.domain.uploadcourse.mapper.UploadCourseMapper;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
+import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
@@ -100,6 +101,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private final MyCourseService myCourseService;
     private final UserService userService;
     private final S3Service s3Service;
+    private final CloudFrontService cloudFrontService;
     private final CacheManager cacheManager;
     private final RedisTemplate<String, String> redisTemplate;
     private final RedisTemplate<String, Object> cacheValueRedisTemplate;
@@ -484,7 +486,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         if (item.thumbnailImageS3Key() == null) {
             return null;
         }
-        return s3Service.getPresignedUrl(item.thumbnailImageS3Key());
+        return cloudFrontService.getPublicUrl(item.thumbnailImageS3Key());
     }
 
     // ==========================
@@ -549,7 +551,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         if (item.thumbnailImageS3Key() == null) {
             return null;
         }
-        return s3Service.getPresignedUrl(item.thumbnailImageS3Key());
+        return cloudFrontService.getPublicUrl(item.thumbnailImageS3Key());
     }
 
     /**
@@ -576,7 +578,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
                             .map(image -> new PlaceImageResponse(
                                 image.placeId(),
                                 image.placeImageId(),
-                                s3Service.getPresignedUrl(image.placeImageS3Key())
+                                cloudFrontService.getPublicUrl(image.placeImageS3Key())
                             ))
                             .toList())
                         .build())
@@ -600,7 +602,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
                         .map(placeImage -> new PlaceImageResponse(
                             place.getId(),
                             placeImage.getId(),
-                            s3Service.getPresignedUrl(placeImage.getPlaceImageS3Key())
+                            cloudFrontService.getPublicUrl(placeImage.getPlaceImageS3Key())
                         ))
                     )
                     .toList();
@@ -619,7 +621,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private String getGetThumbnailUrl(UploadCourse uploadCourse) {
         String thumbnailUrl = null;
         if (uploadCourse.getThumbnailImageS3Key() != null) {
-            thumbnailUrl = s3Service.getPresignedUrl(uploadCourse.getThumbnailImageS3Key());
+            thumbnailUrl = cloudFrontService.getPublicUrl(uploadCourse.getThumbnailImageS3Key());
         }
         return thumbnailUrl;
     }

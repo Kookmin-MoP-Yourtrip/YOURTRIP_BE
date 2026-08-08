@@ -5,7 +5,6 @@ import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import java.io.IOException;
 import java.io.InputStream;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.util.Map;
 import java.util.Set;
@@ -23,9 +22,6 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.MetadataDirective;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
-import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
 @Service
 @RequiredArgsConstructor
@@ -55,7 +51,6 @@ public class S3Service {
 
     private final S3Client s3Client;
     private final CloudFrontService cloudFrontService;
-    private final S3Presigner presigner;
 
     @Value("${s3.max-size-bytes}")
     private long maxSizeBytes;
@@ -219,19 +214,6 @@ public class S3Service {
     public record UploadResult(String key, String url, String originalName, String contentType,
                                long size) {
 
-    }
-
-    // presign 병목 검증(test/presigned-url-bottleneck)용으로 PR #57 이전 방식을 복원.
-    // 네트워크 호출 없는 로컬 SigV4 HMAC 서명.
-    public String getPresignedUrl(String key) {
-        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-            .signatureDuration(Duration.ofMinutes(15))
-            .getObjectRequest(r -> r.bucket(bucket).key(key))
-            .build();
-
-        PresignedGetObjectRequest presignedRequest = presigner.presignGetObject(presignRequest);
-
-        return presignedRequest.url().toString();
     }
 
     public void deleteFile(String key) {
