@@ -1,9 +1,11 @@
 package backend.yourtrip.domain.uploadcourse.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -52,6 +54,38 @@ class UploadCourseControllerE2ETest {
 
     @MockBean
     private UserRepository userRepository;
+
+    @Test
+    @DisplayName("GET /api/upload-courses/{uploadCourseId} - 요청의 IP/User-Agent로 계산한 viewerKey를 getDetail에 전달하고 200 OK를 반환한다")
+    void getUploadCourseDetail_Success() throws Exception {
+        // given
+        Long uploadCourseId = 1L;
+        String viewerKey = "a1b2c3";
+
+        UploadCourseDetailResponse expectedResponse = UploadCourseDetailResponse.builder()
+            .uploadCourseId(uploadCourseId)
+            .title("경주 인생샷 코스")
+            .introduction("황리단길과 첨성대 야경")
+            .location("경주")
+            .thumbnailImageUrl("http://s3.com/thumbnail.png")
+            .startDate(LocalDate.of(2025, 3, 1))
+            .endDate(LocalDate.of(2025, 3, 1))
+            .forkCount(5)
+            .keywords(List.of("뚜벅이", "맛집탐방"))
+            .daySchedules(List.of())
+            .build();
+
+        given(uploadCourseService.resolveViewerKey(anyString(), anyString())).willReturn(viewerKey);
+        given(uploadCourseService.getDetail(uploadCourseId, viewerKey)).willReturn(expectedResponse);
+
+        // when & then
+        mockMvc.perform(get("/api/upload-courses/{uploadCourseId}", uploadCourseId)
+                .header("User-Agent", "Mozilla/5.0"))
+            .andDo(print())
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.uploadCourseId").value(uploadCourseId))
+            .andExpect(jsonPath("$.title").value("경주 인생샷 코스"));
+    }
 
     @Test
     @DisplayName("PUT /api/upload-courses/{uploadCourseId} - 로그인한 사용자가 정상적인 정보로 수정 시 200 OK와 수정된 코스 상세 응답을 반환한다")

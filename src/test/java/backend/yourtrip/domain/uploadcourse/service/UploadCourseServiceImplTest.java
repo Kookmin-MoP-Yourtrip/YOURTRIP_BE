@@ -26,6 +26,7 @@ import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.s3.service.S3Service;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -39,6 +40,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.core.RedisTemplate;
 
 @ExtendWith(MockitoExtension.class)
 class UploadCourseServiceImplTest {
@@ -63,6 +65,15 @@ class UploadCourseServiceImplTest {
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private UploadCourseViewCountService uploadCourseViewCountService;
+
+    @Mock
+    private RedisTemplate<String, Object> cacheValueRedisTemplate;
+
+    @Mock
+    private ObjectMapper objectMapper;
 
     @InjectMocks
     private UploadCourseServiceImpl uploadCourseService;
@@ -212,6 +223,61 @@ class UploadCourseServiceImplTest {
         assertThat(travelCourse.getTitle()).isEqualTo("수정된 경주 여행");
         assertThat(place.getPlaceName()).isEqualTo("수정된 황리단길");
         verify(eventPublisher).publishEvent(any(UploadCourseCacheRefreshEvent.class));
+    }
+
+    @Test
+    @DisplayName("resolveViewerKey는 로그인 여부를 판별해 viewerKey 계산을 위임한다")
+    void resolveViewerKey_DelegatesToViewCountService() {
+        // given
+        given(userService.getCurrentUserIdOrNull()).willReturn(5L);
+        given(uploadCourseViewCountService.resolveViewerKey(5L, "1.2.3.4", "Mozilla/5.0"))
+            .willReturn("u5");
+
+        // when
+        String viewerKey = uploadCourseService.resolveViewerKey("1.2.3.4", "Mozilla/5.0");
+
+        // then
+        assertThat(viewerKey).isEqualTo("u5");
+        verify(uploadCourseViewCountService).resolveViewerKey(5L, "1.2.3.4", "Mozilla/5.0");
+    }
+
+    @Test
+    @DisplayName("getDetail 호출 시 전달받은 viewerKey로 조회수 중복 방지 게이트를 호출한다")
+    void getDetail_CallsViewCountGateWithViewerKey() {
+        // given
+        Long uploadCourseId = 1L;
+        String viewerKey = "u5";
+
+        User owner = User.builder().email("owner@test.com").password("pass").nickname("owner").build();
+        setEntityId(owner, 10L);
+
+        TravelCourse travelCourse = TravelCourse.builder()
+            .user(owner)
+            .title("경주 여행")
+            .location("경주")
+            .startDate(LocalDate.now())
+            .endDate(LocalDate.now())
+            .type(TravelCourseType.UPLOADED)
+            .build();
+        setEntityId(travelCourse, 100L);
+
+        UploadCourse uploadCourse = UploadCourse.builder()
+            .title("경주 여행")
+            .introduction("소개")
+            .travelCourse(travelCourse)
+            .user(owner)
+            .location("경주")
+            .build();
+
+        given(uploadCourseRepository.findWithTravelCourseAndKeywords(uploadCourseId))
+            .willReturn(Optional.of(uploadCourse));
+        given(myCourseService.getDaySchedulesWithPlaces(100L)).willReturn(List.of());
+
+        // when
+        uploadCourseService.getDetail(uploadCourseId, viewerKey);
+
+        // then
+        verify(uploadCourseViewCountService).incrementViewCountIfNotDuplicate(uploadCourseId, viewerKey);
     }
 
     private void setEntityId(Object entity, Long id) {
