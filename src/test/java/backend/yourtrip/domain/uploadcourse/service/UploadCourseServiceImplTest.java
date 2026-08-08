@@ -48,6 +48,9 @@ class UploadCourseServiceImplTest {
     private MyCourseService myCourseService;
 
     @Mock
+    private UploadCourseDetailReader uploadCourseDetailReader;
+
+    @Mock
     private UserService userService;
 
     @Mock
