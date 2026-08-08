@@ -9,7 +9,9 @@ import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListRespons
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.domain.uploadcourse.entity.enums.UploadCourseSortType;
 import backend.yourtrip.domain.uploadcourse.service.UploadCourseService;
+import backend.yourtrip.global.common.ClientRequestUtils;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -62,8 +64,10 @@ public class UploadCourseController implements UploadCourseControllerSpec {
     @Override
     @GetMapping("/{uploadCourseId}")
     public UploadCourseDetailResponse getUploadCourseDetail(
-        @PathVariable Long uploadCourseId) {
-        return uploadCourseService.getDetail(uploadCourseId);
+        @PathVariable Long uploadCourseId, HttpServletRequest request) {
+        String viewerKey = uploadCourseService.resolveViewerKey(
+            ClientRequestUtils.resolveClientIp(request), request.getHeader("User-Agent"));
+        return uploadCourseService.getDetail(uploadCourseId, viewerKey);
     }
 
     // ==========================

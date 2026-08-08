@@ -19,7 +19,13 @@ public interface UploadCourseService {
     UploadCourseCreateResponse createUploadCourse(UploadCourseCreateRequest request,
         MultipartFile thumbnailImage);
 
-    UploadCourseDetailResponse getDetail(Long uploadCourseId);
+    UploadCourseDetailResponse getDetail(Long uploadCourseId, String viewerKey);
+
+    /**
+     * 컨트롤러에서 추출한 클라이언트 IP/User-Agent로, 조회수 중복 방지에 쓸 viewerKey를 만든다.
+     * 로그인 여부 판별까지 이 메서드 내부에서 처리해, 컨트롤러가 UserService에 직접 의존하지 않게 한다.
+     */
+    String resolveViewerKey(String clientIp, String userAgent);
 
     UploadCourseListResponse getAllForSearch(String keyword, List<KeywordType> tags,
         UploadCourseSortType sortType);

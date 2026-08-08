@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -266,7 +267,8 @@ public interface UploadCourseControllerSpec {
             )
         )
     })
-    UploadCourseDetailResponse getUploadCourseDetail(@Schema(example = "1") Long uploadCourseId);
+    UploadCourseDetailResponse getUploadCourseDetail(@Schema(example = "1") Long uploadCourseId,
+        @Parameter(hidden = true) HttpServletRequest request);
 
     // ==========================
     //  코스 업로드
