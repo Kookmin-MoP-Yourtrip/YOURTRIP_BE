@@ -218,6 +218,19 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public Long getCurrentUserIdOrNull() {
+        Object principal = SecurityContextHolder.getContext()
+            .getAuthentication() != null
+            ? SecurityContextHolder.getContext().getAuthentication().getPrincipal()
+            : null;
+
+        if (principal instanceof CustomUserDetails userDetails) {
+            return userDetails.getUserId();
+        }
+        return null;
+    }
+
+    @Override
     public void findPasswordSendEmail(String email) {
         userRepository.findByEmail(email)
             .orElseThrow(() -> new BusinessException(UserErrorCode.EMAIL_NOT_FOUND));

@@ -30,4 +30,10 @@ public interface UserService {
     User getUser(Long userId);
 
     Long getCurrentUserId();
+
+    /**
+     * getCurrentUserId()와 달리 비로그인 상태에서도 예외를 던지지 않고 null을 반환한다.
+     * 로그인 여부에 따라 분기해야 하는 곳(예: 비로그인도 허용된 API)에서 사용한다.
+     */
+    Long getCurrentUserIdOrNull();
 }

@@ -168,9 +168,15 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     }
 
     @Override
+    public String resolveViewerKey(String clientIp, String userAgent) {
+        Long userId = userService.getCurrentUserIdOrNull();
+        return uploadCourseViewCountService.resolveViewerKey(userId, clientIp, userAgent);
+    }
+
+    @Override
     @Transactional(readOnly = true)
-    public UploadCourseDetailResponse getDetail(Long uploadCourseId) {
-        uploadCourseViewCountService.incrementViewCount(uploadCourseId);
+    public UploadCourseDetailResponse getDetail(Long uploadCourseId, String viewerKey) {
+        uploadCourseViewCountService.incrementViewCountIfNotDuplicate(uploadCourseId, viewerKey);
 
         UploadCourseDetailCacheItem cached = readDetailCache(uploadCourseId);
         if (cached != null) {
