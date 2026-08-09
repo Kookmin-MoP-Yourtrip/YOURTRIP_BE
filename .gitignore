@@ -66,3 +66,28 @@ terraform/*_override.tf
 terraform/*_override.tf.json
 terraform/.terraformrc
 terraform/terraform.rc
+
+### Terraform (loadtest 루트 모듈 — 별도 state, 위와 동일한 패턴) ###
+terraform/loadtest/.terraform/
+terraform/loadtest/.terraform.lock.hcl
+terraform/loadtest/*.tfstate
+terraform/loadtest/*.tfstate.*
+terraform/loadtest/*.tfvars
+terraform/loadtest/*.tfplan
+terraform/loadtest/tfplan*
+terraform/loadtest/crash.log
+terraform/loadtest/*.pem
+terraform/loadtest/*.pub
+# ssh-keygen 기본 산출물은 개인키에 확장자가 없다(공개키만 .pub) — 이름 패턴으로 추가 차단.
+terraform/loadtest/*-ssh
+terraform/loadtest/crash.*.log
+terraform/loadtest/override.tf
+terraform/loadtest/override.tf.json
+terraform/loadtest/*_override.tf
+terraform/loadtest/*_override.tf.json
+terraform/loadtest/.terraformrc
+terraform/loadtest/terraform.rc
+# terraform apply/plan 실행 시 로컬에 남는 운영 로그 — 민감정보 포함 가능성 있고
+# 애초에 버전관리 대상도 아니다.
+terraform/loadtest/apply*.log
+terraform/loadtest/*.output

@@ -1,0 +1,60 @@
+# terraform/loadtest/terraform.tfvars 로 복사한 뒤 실제 값을 채워 사용한다.
+# (terraform.tfvars는 git에 커밋하지 않는다)
+
+aws_region  = "ap-northeast-2"
+name_prefix = "yourtrip-loadtest"
+
+# curl -s ifconfig.me 로 확인. SSH/8080(actuator 원격 스크레이프)/선택적 5432 접근을
+# 이 IP로만 제한하는 데 쓰인다. 자택/사무실 IP가 바뀌면 apply 전에 반드시 갱신할 것.
+my_ip_cidr = "" # 예: "203.0.113.10/32"
+
+# --- 네트워크 (보통 기본값 그대로 사용) ---
+vpc_cidr                     = "10.42.0.0/16"
+public_subnet_primary_cidr   = "10.42.1.0/24"
+public_subnet_secondary_cidr = "10.42.2.0/24"
+availability_zone_primary    = "ap-northeast-2a"
+availability_zone_secondary  = "ap-northeast-2c"
+
+# --- EC2 ---
+# ssh-keygen -t ed25519 -f ./yourtrip-loadtest-ssh -C yourtrip-loadtest 로 이 디렉토리에
+# 생성한 키페어 중 공개키(.pub) 경로를 지정한다. 개인키는 .gitignore로 이미 보호된다.
+ssh_public_key_path = "./yourtrip-loadtest-ssh.pub"
+
+app_instance_type         = "t3.micro" # 실제 배포 타겟과 동일 스펙 — 임의로 올리지 말 것
+k6_instance_type          = "t3.micro" # CPU 포화 관측되면 t3.small로 올리는 걸 대안으로 검토
+enable_detailed_monitoring = true
+
+app_repo_url = "https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE.git"
+app_git_ref  = "" # 로컬에서 검증한 커밋 해시를 지정하는 걸 권장 (예: "e7023d1")
+
+# --- RDS ---
+rds_instance_class    = "db.t3.micro"
+rds_engine_version    = "16" # apply 전 로컬 `psql --version`으로 확인해 맞출 것
+rds_db_name            = "yourtrip"
+rds_username            = "postgres"
+rds_password            = "" # 반드시 채울 것 (state에 평문 저장됨 — terraform/README.md 트레이드오프 절 참고)
+allow_dev_psql_access   = false # EXPLAIN ANALYZE 직접 검증이 필요할 때만 true
+
+# --- ElastiCache ---
+elasticache_node_type = "cache.t3.micro"
+
+# --- 애플리케이션 환경변수 ---
+# 아래 s3_bucket ~ cloudfront_distribution_id는 기존 terraform/ apply 결과를 그대로 재사용한다:
+#   terraform -chdir=../ output -raw s3_bucket_name
+#   terraform -chdir=../ output -raw iam_user_access_key_id
+#   terraform -chdir=../ output -raw iam_user_secret_access_key
+#   terraform -chdir=../ output -raw cloudfront_domain_name
+#   terraform -chdir=../ output -raw cloudfront_key_pair_id
+#   terraform -chdir=../ output -raw cloudfront_distribution_id
+jwt_secret     = ""
+mail_email      = ""
+mail_password    = ""
+kakao_api_key     = ""
+gemini_api_key      = ""
+
+s3_bucket                  = ""
+aws_access_key              = ""
+aws_secret_key                = ""
+cloudfront_domain               = ""
+cloudfront_key_pair_id            = ""
+cloudfront_distribution_id          = ""
