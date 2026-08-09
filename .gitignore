@@ -46,6 +46,10 @@ GEMINI.md
 # gitignore된 파일로 전제하고 복사 대상에 포함하고 있으나 규칙이 누락돼 있어 추가.
 src/main/resources/data.sql
 
+# 부하 테스트 원본 산출물(k6 summary JSON, JFR 덤프 등). 과거 TASK-3/4/CLOUDFRONT와
+# 동일하게 레포에는 커밋하지 않는다 — 핵심 수치는 docs/tasks/TASK-*.md에 정리해 남긴다.
+results/
+
 ### Terraform ###
 terraform/.terraform/
 terraform/*.tfstate

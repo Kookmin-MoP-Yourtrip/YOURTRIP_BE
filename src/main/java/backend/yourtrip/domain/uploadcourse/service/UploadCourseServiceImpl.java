@@ -104,6 +104,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
     private final UploadCourseRepository uploadCourseRepository;
     private final MyCourseService myCourseService;
+    private final UploadCourseDetailReader uploadCourseDetailReader;
     private final UserService userService;
     private final S3Service s3Service;
     private final CloudFrontService cloudFrontService;
@@ -174,24 +175,27 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public UploadCourseDetailResponse getDetail(Long uploadCourseId, String viewerKey) {
+        // Redis 호출뿐이라 DB 트랜잭션과 무관 — 항상 최상단에서 실행
         uploadCourseViewCountService.incrementViewCountIfNotDuplicate(uploadCourseId, viewerKey);
 
         UploadCourseDetailCacheItem cached = readDetailCache(uploadCourseId);
         if (cached != null) {
+            // 캐시 히트 — DB 커넥션을 전혀 획득하지 않는다(TASK-PRESIGN-BOTTLENECK-FIX.md
+            // 0단계, TASK-PRESIGN-BOTTLENECK.md 직접 증거 3이 지목한 "SQL 0건인데 커넥션은
+            // 붙잡힌다"는 경로를 여기서 원천 차단한다).
             return UploadCourseMapper.toDetailResponse(cached,
                 getThumbnailUrlFromDetailCache(cached),
                 buildDaySchedulesFromCache(cached.daySchedules()));
         }
 
-        UploadCourse uploadCourse = uploadCourseRepository.findWithTravelCourseAndKeywords(
-                uploadCourseId)
-            .orElseThrow(
-                () -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
-
-        List<DaySchedule> daySchedules = myCourseService.getDaySchedulesWithPlaces(
-            uploadCourse.getTravelCourse().getId());
+        // 캐시 미스일 때만 UploadCourseDetailReader의 짧은 DB 트랜잭션에 진입한다.
+        // self-invocation 문제로 이 클래스 안에서 메서드만 분리해서는 트랜잭션을 못 좁혀
+        // 별도 협력 빈으로 뺐다.
+        UploadCourseDetailReader.UploadCourseDetailReadResult result =
+            uploadCourseDetailReader.read(uploadCourseId);
+        UploadCourse uploadCourse = result.uploadCourse();
+        List<DaySchedule> daySchedules = result.daySchedules();
 
         writeDetailCache(uploadCourseId,
             UploadCourseMapper.toDetailCacheItem(uploadCourse, daySchedules));

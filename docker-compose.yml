@@ -25,5 +25,9 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      # test/presigned-url-bottleneck: Presign CPU Bottleneck 대시보드(8패널) + Prometheus
+      # 데이터소스를 자동 provisioning. 컨테이너 기동 즉시 Dashboards > Bottleneck Test 폴더에서 확인 가능.
+      - ./scripts/grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       - prometheus

@@ -52,6 +52,9 @@ class UploadCourseServiceImplTest {
     private MyCourseService myCourseService;
 
     @Mock
+    private UploadCourseDetailReader uploadCourseDetailReader;
+
+    @Mock
     private UserService userService;
 
     @Mock
@@ -269,9 +272,8 @@ class UploadCourseServiceImplTest {
             .location("경주")
             .build();
 
-        given(uploadCourseRepository.findWithTravelCourseAndKeywords(uploadCourseId))
-            .willReturn(Optional.of(uploadCourse));
-        given(myCourseService.getDaySchedulesWithPlaces(100L)).willReturn(List.of());
+        given(uploadCourseDetailReader.read(uploadCourseId))
+            .willReturn(new UploadCourseDetailReader.UploadCourseDetailReadResult(uploadCourse, List.of()));
 
         // when
         uploadCourseService.getDetail(uploadCourseId, viewerKey);
