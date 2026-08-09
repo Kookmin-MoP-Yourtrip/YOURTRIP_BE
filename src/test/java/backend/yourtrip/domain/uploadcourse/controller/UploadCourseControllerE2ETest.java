@@ -5,6 +5,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
@@ -230,5 +232,32 @@ class UploadCourseControllerE2ETest {
                 .contentType(MediaType.MULTIPART_FORM_DATA_VALUE))
             .andDo(print())
             .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("DELETE /api/upload-courses/{uploadCourseId} - 로그인한 사용자가 삭제 요청 시 204 No Content를 반환하고 서비스에 위임한다")
+    @WithMockUser
+    void deleteUploadCourse_Success() throws Exception {
+        // given
+        Long uploadCourseId = 1L;
+
+        // when & then
+        mockMvc.perform(delete("/api/upload-courses/{uploadCourseId}", uploadCourseId))
+            .andDo(print())
+            .andExpect(status().isNoContent());
+
+        verify(uploadCourseService).deleteUploadCourse(uploadCourseId);
+    }
+
+    @Test
+    @DisplayName("DELETE /api/upload-courses/{uploadCourseId} - 비인증 사용자가 요청 시 401/403 응답을 반환한다")
+    void deleteUploadCourse_Unauthenticated_ReturnsForbiddenOrUnauthorized() throws Exception {
+        // given
+        Long uploadCourseId = 1L;
+
+        // when & then
+        mockMvc.perform(delete("/api/upload-courses/{uploadCourseId}", uploadCourseId))
+            .andDo(print())
+            .andExpect(status().is4xxClientError());
     }
 }
