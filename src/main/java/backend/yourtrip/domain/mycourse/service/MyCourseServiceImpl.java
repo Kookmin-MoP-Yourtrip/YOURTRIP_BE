@@ -84,6 +84,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final PlaceImageRepository placeImageRepository;
     private final UploadCourseRepository uploadCourseRepository;
     private final KakaoLocalClient kakaoLocalClient;
+    private final MyCourseDetailReader myCourseDetailReader;
     @Qualifier("cloudFrontSigningExecutor")
     private final ThreadPoolTaskExecutor cloudFrontSigningExecutor;
     private final ApplicationEventPublisher eventPublisher;
@@ -145,19 +146,20 @@ public class MyCourseServiceImpl implements MyCourseService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public DayScheduleResponse getPlaceListByDay(Long courseId, Long dayId) {
-        checkExistCourse(courseId);
-        checkOwnedCourse(courseId, userService.getCurrentUserId());
-
-        DaySchedule daySchedule = dayScheduleRepository.findByIdWithPlaces(courseId,
-                dayId)
-            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.DAY_SCHEDULE_NOT_FOUND));
+        Long userId = userService.getCurrentUserId();
+        // 존재·소유권 확인 + DB 조회는 MyCourseDetailReader의 짧은 트랜잭션 안에서 끝난다.
+        // 아래 서명은 트랜잭션 밖에서 실행돼 HikariCP 커넥션이 서명 시간만큼 묶이지 않는다
+        // (TASK-PRESIGN-BOTTLENECK-FIX.md 0단계 — self-invocation 문제로 같은 클래스 안
+        // 메서드 분리로는 트랜잭션을 못 좁혀 별도 협력 빈으로 뺐다).
+        DaySchedule daySchedule = myCourseDetailReader.readDaySchedule(courseId, dayId, userId);
 
         // MyCourseController의 "/{courseId}/days/{dayId}/places" — 작성자만 볼 수 있는
         // 비공개 조회이므로 Signed URL을 발급한다.
-        
-        // 1. 트랜잭션 내에서 엔티티 스칼라값 추출 (LazyInitializationException 방지)
+
+        // 1. 엔티티에서 스칼라값 추출 (daySchedule은 이미 페치 조인되어 있어 트랜잭션이
+        // 끝난 뒤에도 안전하게 읽을 수 있다 — LazyInitializationException은 아직 초기화 안 된
+        // 프록시에 접근할 때만 발생한다)
         record ImageTaskParams(Long placeId, Long placeImageId, String s3Key) {}
         List<ImageTaskParams> taskParams = daySchedule.getPlaces().stream()
             .flatMap(place -> place.getPlaceImages().stream()

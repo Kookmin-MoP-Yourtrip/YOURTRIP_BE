@@ -76,5 +76,23 @@ compileTestJava {
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    // test/presigned-url-bottleneck: SigningBenchmarkTest(@Tag("benchmark"))는 openssl 프로세스
+    // 호출과 12,000회 반복 서명을 포함해 일반 빌드에 넣기엔 느리다 — 일반 빌드/CI에서는 제외하고,
+    // 아래 `benchmarkTest` 태스크(`./gradlew benchmarkTest`)로만 명시적으로 돌린다.
+    useJUnitPlatform {
+        excludeTags 'benchmark'
+    }
+}
+
+tasks.register('benchmarkTest', Test) {
+    description = 'presign/CloudFront 서명 1회 비용 마이크로벤치마크만 실행한다 (test/presigned-url-bottleneck)'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'benchmark'
+    }
+    testLogging {
+        showStandardStreams = true
+    }
 }

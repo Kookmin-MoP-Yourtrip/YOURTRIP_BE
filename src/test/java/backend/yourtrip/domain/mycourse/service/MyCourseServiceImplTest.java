@@ -82,6 +82,8 @@ class MyCourseServiceImplTest {
     @Mock
     private KakaoLocalClient kakaoLocalClient;
     @Mock
+    private MyCourseDetailReader myCourseDetailReader;
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     private ThreadPoolTaskExecutor cloudFrontSigningExecutor;
@@ -105,7 +107,7 @@ class MyCourseServiceImplTest {
             userService, s3Service, cloudFrontService, geminiService, objectMapper,
             travelCourseRepository, dayScheduleRepository, placeRepository,
             placeImageRepository, uploadCourseRepository, kakaoLocalClient,
-            cloudFrontSigningExecutor, eventPublisher
+            myCourseDetailReader, cloudFrontSigningExecutor, eventPublisher
         );
     }
 
@@ -127,11 +129,9 @@ class MyCourseServiceImplTest {
         daySchedule.getPlaces().add(place1);
         daySchedule.getPlaces().add(place2);
 
-        given(travelCourseRepository.existsById(COURSE_ID)).willReturn(true);
-        given(travelCourseRepository.existsByIdAndUser_Id(COURSE_ID, OWNER_ID)).willReturn(true);
         given(userService.getCurrentUserId()).willReturn(OWNER_ID);
-        given(dayScheduleRepository.findByIdWithPlaces(COURSE_ID, DAY_ID))
-            .willReturn(Optional.of(daySchedule));
+        given(myCourseDetailReader.readDaySchedule(COURSE_ID, DAY_ID, OWNER_ID))
+            .willReturn(daySchedule);
         given(cloudFrontService.getSignedUrl(anyString()))
             .willAnswer(inv -> "signed-" + inv.getArgument(0, String.class));
 
@@ -165,11 +165,9 @@ class MyCourseServiceImplTest {
         addImage(place, 14L, "k4");
         daySchedule.getPlaces().add(place);
 
-        given(travelCourseRepository.existsById(COURSE_ID)).willReturn(true);
-        given(travelCourseRepository.existsByIdAndUser_Id(COURSE_ID, OWNER_ID)).willReturn(true);
         given(userService.getCurrentUserId()).willReturn(OWNER_ID);
-        given(dayScheduleRepository.findByIdWithPlaces(COURSE_ID, DAY_ID))
-            .willReturn(Optional.of(daySchedule));
+        given(myCourseDetailReader.readDaySchedule(COURSE_ID, DAY_ID, OWNER_ID))
+            .willReturn(daySchedule);
 
         CyclicBarrier barrier = new CyclicBarrier(4);
         Set<String> threadNames = new CopyOnWriteArraySet<>();
@@ -204,11 +202,9 @@ class MyCourseServiceImplTest {
         addImage(place, 13L, "ok-2");
         daySchedule.getPlaces().add(place);
 
-        given(travelCourseRepository.existsById(COURSE_ID)).willReturn(true);
-        given(travelCourseRepository.existsByIdAndUser_Id(COURSE_ID, OWNER_ID)).willReturn(true);
         given(userService.getCurrentUserId()).willReturn(OWNER_ID);
-        given(dayScheduleRepository.findByIdWithPlaces(COURSE_ID, DAY_ID))
-            .willReturn(Optional.of(daySchedule));
+        given(myCourseDetailReader.readDaySchedule(COURSE_ID, DAY_ID, OWNER_ID))
+            .willReturn(daySchedule);
         given(cloudFrontService.getSignedUrl("broken"))
             .willThrow(new BusinessException(CloudFrontErrorCode.FAIL_GENERATE_SIGNED_URL));
         given(cloudFrontService.getSignedUrl("ok-1")).willReturn("signed-ok-1");

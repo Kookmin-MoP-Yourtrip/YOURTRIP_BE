@@ -1,0 +1,185 @@
+{
+  "uid": "presign-bottleneck",
+  "title": "Presign CPU Bottleneck",
+  "description": "test/presigned-url-bottleneck: presign(arm P, PR #57 이전 롤백) vs cloudfront(arm C, 현행 HEAD)의 CPU 포화 / HikariCP 커넥션 점유 / 로깅 부하를 나란히 관찰해 병목 판정 기준표를 채운다. $arm으로 관찰할 job을 전환한다(두 arm은 항상 순차 실행).",
+  "tags": ["presign-bottleneck", "yourtrip"],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "arm",
+        "type": "custom",
+        "label": "arm",
+        "query": "presign,cloudfront",
+        "current": { "text": "presign", "value": "presign" },
+        "options": [
+          { "text": "presign", "value": "presign", "selected": true },
+          { "text": "cloudfront", "value": "cloudfront", "selected": false }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "CPU 사용률 (1차 판정 지표 — 포화점에서 1.0에 붙는가)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-presign-bottleneck" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.9 }
+            ]
+          },
+          "custom": { "thresholdsStyle": { "mode": "line" } }
+        },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "process_cpu_usage{job=\"$arm\"}", "legendFormat": "process_cpu_usage" },
+        { "expr": "system_cpu_usage{job=\"$arm\"}", "legendFormat": "system_cpu_usage" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "HikariCP 커넥션 대기 (경쟁가설① — pending 급증 여부)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-presign-bottleneck" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        { "expr": "hikaricp_connections_pending{job=\"$arm\"}", "legendFormat": "pending" },
+        { "expr": "hikaricp_connections_active{job=\"$arm\"}", "legendFormat": "active" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "HikariCP 커넥션 평균 점유 시간 (경쟁가설①의 직접 증거)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-presign-bottleneck" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(hikaricp_connections_usage_seconds_sum{job=\"$arm\"}[1m]) / rate(hikaricp_connections_usage_seconds_count{job=\"$arm\"}[1m])",
+          "legendFormat": "avg usage time"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "HikariCP 평균 획득 대기 시간",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-presign-bottleneck" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(hikaricp_connections_acquire_seconds_sum{job=\"$arm\"}[1m]) / rate(hikaricp_connections_acquire_seconds_count{job=\"$arm\"}[1m])",
+          "legendFormat": "avg acquire time"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Tomcat 스레드 사용률",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-presign-bottleneck" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.7 },
+              { "color": "red", "value": 0.95 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "tomcat_threads_busy_threads{job=\"$arm\"} / tomcat_threads_config_max_threads{job=\"$arm\"}",
+          "legendFormat": "threads busy ratio"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "GC 정지 시간율 (GC 배제용)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-presign-bottleneck" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(jvm_gc_pause_seconds_sum{job=\"$arm\"}[1m])",
+          "legendFormat": "gc pause/sec"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "로그 발생률 (경쟁가설② — 로깅이 CPU를 먹는가)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-presign-bottleneck" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(logback_events_total{job=\"$arm\"}[1m])",
+          "legendFormat": "{{level}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Hibernate 쿼리 실행률 (arm 간 DB 부하 동일성 확인)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-presign-bottleneck" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "min": 0 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "rate(hibernate_statements_total{job=\"$arm\"}[1m])",
+          "legendFormat": "statements/sec"
+        }
+      ]
+    }
+  ]
+}
