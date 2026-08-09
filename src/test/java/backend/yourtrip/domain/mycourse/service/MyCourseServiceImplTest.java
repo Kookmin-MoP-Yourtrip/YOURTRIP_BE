@@ -1,8 +1,11 @@
 package backend.yourtrip.domain.mycourse.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceImageResponse;
@@ -12,6 +15,7 @@ import backend.yourtrip.domain.mycourse.entity.place.Place;
 import backend.yourtrip.domain.mycourse.entity.place.PlaceImage;
 import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
 import backend.yourtrip.domain.mycourse.entity.travelCourse.enums.TravelCourseType;
+import backend.yourtrip.domain.mycourse.event.MyCourseImagesCleanupEvent;
 import backend.yourtrip.domain.mycourse.repository.DayScheduleRepository;
 import backend.yourtrip.domain.mycourse.repository.PlaceImageRepository;
 import backend.yourtrip.domain.mycourse.repository.PlaceRepository;
@@ -22,12 +26,15 @@ import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.CloudFrontErrorCode;
+import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.gemini.service.GeminiService;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
 import backend.yourtrip.global.s3.service.S3Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.lang.reflect.Field;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.CyclicBarrier;
@@ -38,8 +45,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
@@ -74,6 +83,8 @@ class MyCourseServiceImplTest {
     private KakaoLocalClient kakaoLocalClient;
     @Mock
     private MyCourseDetailReader myCourseDetailReader;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     private ThreadPoolTaskExecutor cloudFrontSigningExecutor;
     private MyCourseServiceImpl myCourseService;
@@ -96,7 +107,7 @@ class MyCourseServiceImplTest {
             userService, s3Service, cloudFrontService, geminiService, objectMapper,
             travelCourseRepository, dayScheduleRepository, placeRepository,
             placeImageRepository, uploadCourseRepository, kakaoLocalClient,
-            myCourseDetailReader, cloudFrontSigningExecutor
+            myCourseDetailReader, cloudFrontSigningExecutor, eventPublisher
         );
     }
 
@@ -206,6 +217,85 @@ class MyCourseServiceImplTest {
         assertThat(response.places().get(0).placeImages())
             .extracting(PlaceImageResponse::placeImageUrl)
             .containsExactlyInAnyOrder("signed-ok-1", "signed-ok-2");
+    }
+
+    @Test
+    @DisplayName("코스 소유자가 삭제하면 cascade delete되고, 장소 이미지가 있으면 S3 정리 이벤트가 발행된다")
+    void deleteCourse_Success_PublishesImageCleanupEvent() {
+        // given
+        DaySchedule daySchedule = daySchedule();
+        Place place = place(daySchedule, 1L);
+        addImage(place, 11L, "k1");
+        addImage(place, 12L, "k2");
+        daySchedule.getPlaces().add(place);
+        TravelCourse travelCourse = daySchedule.getCourse();
+
+        given(travelCourseRepository.existsById(COURSE_ID)).willReturn(true);
+        given(travelCourseRepository.existsByIdAndUser_Id(COURSE_ID, OWNER_ID)).willReturn(true);
+        given(userService.getCurrentUserId()).willReturn(OWNER_ID);
+        given(travelCourseRepository.findCourseWithDaySchedule(COURSE_ID))
+            .willReturn(Optional.of(travelCourse));
+        given(dayScheduleRepository.findDaySchedulesWithPlaces(COURSE_ID))
+            .willReturn(List.of(daySchedule));
+
+        // when
+        myCourseService.deleteCourse(COURSE_ID);
+
+        // then
+        verify(travelCourseRepository).delete(travelCourse);
+        ArgumentCaptor<MyCourseImagesCleanupEvent> captor =
+            ArgumentCaptor.forClass(MyCourseImagesCleanupEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().imageS3Keys()).containsExactlyInAnyOrder("k1", "k2");
+    }
+
+    @Test
+    @DisplayName("장소 이미지가 없는 코스를 삭제하면 S3 정리 이벤트를 발행하지 않는다")
+    void deleteCourse_NoImages_DoesNotPublishCleanupEvent() {
+        // given
+        DaySchedule daySchedule = daySchedule();
+        TravelCourse travelCourse = daySchedule.getCourse();
+
+        given(travelCourseRepository.existsById(COURSE_ID)).willReturn(true);
+        given(travelCourseRepository.existsByIdAndUser_Id(COURSE_ID, OWNER_ID)).willReturn(true);
+        given(userService.getCurrentUserId()).willReturn(OWNER_ID);
+        given(travelCourseRepository.findCourseWithDaySchedule(COURSE_ID))
+            .willReturn(Optional.of(travelCourse));
+        given(dayScheduleRepository.findDaySchedulesWithPlaces(COURSE_ID))
+            .willReturn(List.of(daySchedule));
+
+        // when
+        myCourseService.deleteCourse(COURSE_ID);
+
+        // then
+        verify(travelCourseRepository).delete(travelCourse);
+        verify(eventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 코스를 삭제하려 하면 COURSE_NOT_FOUND 예외가 발생한다")
+    void deleteCourse_CourseNotFound_ThrowsException() {
+        // given
+        given(travelCourseRepository.existsById(COURSE_ID)).willReturn(false);
+
+        // when & then
+        assertThatThrownBy(() -> myCourseService.deleteCourse(COURSE_ID))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", MyCourseErrorCode.COURSE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("소유하지 않은 코스를 삭제하려 하면 NOT_OWNED_COURSE 예외가 발생한다")
+    void deleteCourse_NotOwner_ThrowsException() {
+        // given
+        given(travelCourseRepository.existsById(COURSE_ID)).willReturn(true);
+        given(travelCourseRepository.existsByIdAndUser_Id(COURSE_ID, OWNER_ID)).willReturn(false);
+        given(userService.getCurrentUserId()).willReturn(OWNER_ID);
+
+        // when & then
+        assertThatThrownBy(() -> myCourseService.deleteCourse(COURSE_ID))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", MyCourseErrorCode.NOT_OWNED_COURSE);
     }
 
     private DaySchedule daySchedule() {

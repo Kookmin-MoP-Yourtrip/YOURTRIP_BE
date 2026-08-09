@@ -17,6 +17,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -112,6 +113,16 @@ public class UploadCourseController implements UploadCourseControllerSpec {
         @RequestPart(value = "placeImages", required = false) List<MultipartFile> placeImages,
         @Valid @RequestPart(value = "request") UploadCourseUpdateRequest request) {
         return uploadCourseService.updateUploadCourse(uploadCourseId, request, thumbnailImage, placeImages);
+    }
+
+    // ==========================
+    //  업로드 코스 삭제
+    // ==========================
+    @Override
+    @DeleteMapping("/{uploadCourseId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteUploadCourse(@PathVariable Long uploadCourseId) {
+        uploadCourseService.deleteUploadCourse(uploadCourseId);
     }
 
 }

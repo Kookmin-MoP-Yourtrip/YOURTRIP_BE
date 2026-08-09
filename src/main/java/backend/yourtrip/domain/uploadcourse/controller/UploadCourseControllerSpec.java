@@ -555,4 +555,62 @@ public interface UploadCourseControllerSpec {
             schema = @Schema(implementation = UploadCourseUpdateRequest.class)
         )) UploadCourseUpdateRequest request);
 
+    // ==========================
+    //  업로드 코스 삭제
+    // ==========================
+    @Operation(
+        summary = "업로드 코스 삭제",
+        description = """
+            ### 설명
+            - 업로드 코스를 삭제합니다. 업로드 시점에 딥카피된 사본(일차/장소/장소이미지 포함)도 함께 삭제됩니다(S3에 업로드된 썸네일/장소 이미지 파일도 함께 정리됩니다).
+            - 원본 "나의 코스"에는 영향을 주지 않습니다 — 업로드 시점에 원본과 분리된 별도 데이터이기 때문입니다.
+            - 삭제 즉시 상세 조회 캐시와 인기 코스 랭킹 캐시가 무효화되어, 삭제 직후 조회/인기 목록에 더 이상 노출되지 않습니다.
+            ### 제약조건
+            - 경로 변수
+                - 업로드 코스 ID(uploadCourseId): 존재하는 업로드 코스여야 함
+            ### ⚠ 예외상황
+            - `UPLOAD_COURSE_NOT_FOUND(404)`: 업로드 코스가 존재하지 않는 경우 (잘못된 uploadCourseId가 주어진 경우)
+            - `NOT_OWNED_UPLOAD_COURSE(403)`: 본인이 업로드한 코스가 아닌 경우
+            """
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "204",
+            description = "업로드 코스 삭제 성공"
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "존재하지 않는 uploadCourseId가 주어졌을 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "code": "UPLOAD_COURSE_NOT_FOUND",
+                          "timestamp": "2025-11-11T00:00:44.7553392",
+                          "message": "업로드 코스를 찾을 수 없습니다."
+                        }
+                        """
+                )
+            )
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "본인이 업로드한 코스가 아닌 경우",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "code": "NOT_OWNED_UPLOAD_COURSE",
+                          "timestamp": "2025-11-11T00:00:44.7553392",
+                          "message": "본인이 업로드한 코스만 수정/삭제할 수 있습니다."
+                        }
+                        """
+                )
+            )
+        )
+    })
+    void deleteUploadCourse(@Schema(example = "1") Long uploadCourseId);
+
 }

@@ -48,6 +48,14 @@ public interface MyCourseService {
 
     void deletePlace(Long courseId, Long dayId, Long placeId);
 
+    void deleteCourse(Long courseId);
+
+    /**
+     * uploadCourse 삭제 시 그 뒤에 숨은 사본(TravelCourseType.UPLOADED)을 함께 정리하기 위해
+     * UploadCourseServiceImpl이 호출한다. 원본 mycourse 삭제(deleteCourse)와는 별개의 흐름이다.
+     */
+    void deleteHiddenUploadCopy(TravelCourse hiddenCopy);
+
     MyCourseDetailResponse getMyCourseDetail(Long courseId);
 
     CourseForkResponse forkCourse(Long uploadCourseId);

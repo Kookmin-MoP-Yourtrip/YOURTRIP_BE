@@ -254,6 +254,60 @@ public interface MyCourseControllerSpec {
     MyCourseDetailResponse getMyCourse(@Schema(example = "1") Long courseId);
 
     // ==========================
+    //  나의 코스 삭제
+    // ==========================
+    @Operation(summary = "나의 코스 삭제", description = """
+        ### 설명
+        - 특정 코스를 삭제합니다. 코스에 속한 모든 일차/장소/장소이미지가 함께 삭제됩니다(S3에 업로드된 장소 이미지 파일도 함께 정리됩니다).
+        - 이미 업로드된 코스(업로드 코스 목록에 노출 중인 코스)여도 원본 삭제가 차단되지 않습니다. 원본과 업로드 코스는 업로드 시점에 복제되어 서로 독립된 데이터이므로, 원본을 삭제해도 이미 업로드된 코스는 그대로 유지됩니다.
+        ### 제약조건
+        - 경로 변수
+            - 코스 ID(courseId): 존재하는 코스여야 함
+        ### ⚠ 예외상황
+        - `COURSE_NOT_FOUND(404)`: 코스가 존재하지 않는 경우 (잘못된 courseId가 주어진 경우)
+        - `NOT_OWNED_COURSE(403)`: 본인 소유가 아닌 코스에 접근한 경우
+        """)
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "204",
+            description = "나의 코스 삭제 성공"
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "잘못된 courseId가 주어졌을 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "timestamp": "2025-11-10T11:00:00",
+                          "code": "COURSE_NOT_FOUND",
+                          "message": "코스를 찾을 수 없습니다."
+                        }
+                        """
+                )
+            )
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "소유하지 않은 코스에 접근할 때",
+            content = @Content(
+                mediaType = "application/json",
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "timestamp": "2025-11-10T11:00:00",
+                          "code": "NOT_OWNED_COURSE",
+                          "message": "해당 코스에 대한 접근 권한이 없습니다."
+                        }
+                        """
+                )
+            )
+        )
+    })
+    void deleteMyCourse(@Schema(example = "1") Long courseId);
+
+    // ==========================
     //  일차별 장소 리스트 조회
     // ==========================
     @Operation(

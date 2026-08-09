@@ -27,6 +27,8 @@ import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.domain.uploadcourse.entity.enums.UploadCourseSortType;
 import backend.yourtrip.domain.uploadcourse.event.UploadCourseCacheRefreshEvent;
+import backend.yourtrip.domain.uploadcourse.event.UploadCourseDeletedEvent;
+import backend.yourtrip.domain.uploadcourse.event.UploadCourseImagesCleanupEvent;
 import backend.yourtrip.domain.uploadcourse.mapper.UploadCourseMapper;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
@@ -63,6 +65,7 @@ import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.data.redis.core.types.Expiration;
 import org.springframework.data.redis.connection.RedisStringCommands.SetOption;
 import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
@@ -817,6 +820,127 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             new UploadCourseCacheRefreshEvent(uploadCourseId, detailCacheItem, listItemCacheItem));
 
         return UploadCourseMapper.toDetailResponse(uploadCourse, getGetThumbnailUrl(uploadCourse), updatedDaySchedules);
+    }
+
+    // ==========================
+    //  5단계: 삭제 (hidden copy 함께 정리 + Redis 즉시 무효화 + S3 비동기 정리)
+    // ==========================
+
+    /**
+     * 원본 mycourse에는 영향을 주지 않는다 — hidden copy(uploadCourse.travelCourse)는 업로드
+     * 시점에 딥카피된 uploadCourse 자신의 데이터라서 여기서 함께 정리하지만, 원본은 별도 엔티티라
+     * 이 삭제로 건드리지 않는다.
+     */
+    @Override
+    @Transactional
+    public void deleteUploadCourse(Long uploadCourseId) {
+        UploadCourse uploadCourse = uploadCourseRepository.findWithTravelCourseAndKeywords(uploadCourseId)
+            .orElseThrow(() -> new BusinessException(UploadCourseErrorCode.UPLOAD_COURSE_NOT_FOUND));
+
+        Long currentUserId = userService.getCurrentUserId();
+        if (!uploadCourse.getUser().getId().equals(currentUserId)) {
+            throw new BusinessException(UploadCourseErrorCode.NOT_OWNED_UPLOAD_COURSE);
+        }
+
+        TravelCourse hiddenCopy = uploadCourse.getTravelCourse();
+        // hidden copy의 day/place/image를 미리 로드해 S3 key를 수집한다(삭제 후에는 접근 불가).
+        List<DaySchedule> daySchedules = myCourseService.getDaySchedulesWithPlaces(hiddenCopy.getId());
+
+        List<String> imageS3Keys = new ArrayList<>();
+        String thumbnailS3Key = uploadCourse.getThumbnailImageS3Key();
+        if (thumbnailS3Key != null && !"default-upload-course-thumbnail.png".equals(thumbnailS3Key)) {
+            imageS3Keys.add(thumbnailS3Key);
+        }
+        daySchedules.stream()
+            .flatMap(ds -> ds.getPlaces().stream())
+            .flatMap(place -> place.getPlaceImages().stream())
+            .map(PlaceImage::getPlaceImageS3Key)
+            .forEach(imageS3Keys::add);
+
+        uploadCourseRepository.delete(uploadCourse);
+        myCourseService.deleteHiddenUploadCopy(hiddenCopy);
+
+        if (!imageS3Keys.isEmpty()) {
+            eventPublisher.publishEvent(new UploadCourseImagesCleanupEvent(imageS3Keys));
+        }
+        eventPublisher.publishEvent(new UploadCourseDeletedEvent(uploadCourseId));
+    }
+
+    /**
+     * 커밋 확정 후에만 캐시를 지운다 — 커밋 전에 지우면 그 사이 다른 요청이 캐시 미스를 겪고
+     * 곧 사라질 구 데이터를 다시 채워 넣는 race condition이 생길 수 있다(토스뱅크 캐시 적용기 사례).
+     * 캐시 삭제(DEL 2건 + 조건부 evict)는 명령 자체가 가벼워 동기로 처리해도 응답 시간에 미치는
+     * 영향이 미미하다 — S3 정리(비동기)와는 별도 이벤트/리스너로 관심사를 분리한다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    void invalidateDeletedUploadCourseCaches(UploadCourseDeletedEvent event) {
+        Long uploadCourseId = event.uploadCourseId();
+        evictSingleKey(detailCacheKeyBytes(uploadCourseId), "상세 캐시");
+        evictSingleKey(itemCacheKeyBytes(uploadCourseId), "아이템 캐시");
+        evictRankingCacheIfMember(uploadCourseId);
+    }
+
+    private void evictSingleKey(byte[] key, String cacheLabel) {
+        try {
+            cacheValueRedisTemplate.execute((RedisCallback<Object>) connection -> {
+                connection.keyCommands().del(key);
+                return null;
+            });
+        } catch (Exception e) {
+            // fail-open: 삭제된 코스가 조회되면 DB에서도 이미 사라졌으므로 404로 자연히 걸러진다
+            log.warn("{} 삭제 실패.", cacheLabel, e);
+        }
+    }
+
+    /**
+     * 랭킹 캐시는 무조건 전체 clear하지 않고, 삭제된 코스가 실제로 캐시된 top5에 들어있는
+     * 테마 캐시만 골라서 evict한다. 테마 개수가 적어(mood 카테고리 enum 크기로 고정) 멤버십
+     * 확인 비용은 무시할 수준인 반면, 삭제되는 코스의 절대다수는 애초에 인기순위 밖이라
+     * 무조건 clear하면 무관한 테마까지 불필요하게 콜드 미스로 만들어 버린다.
+     * evict는 리스트를 4개로 patch하는 게 아니라 키 자체를 지우는 방식이라 "top5→top4로 줄어든
+     * 채 방치되는" 문제가 없다 — evict된 테마는 다음 조회 때 computePopularCourseIdsWithLock()이
+     * 분산락 보호 하에 정확한 top5를 다시 채운다.
+     */
+    private void evictRankingCacheIfMember(Long uploadCourseId) {
+        Cache cache = cacheManager.getCache(POPULAR_COURSES_CACHE);
+        if (cache == null) {
+            return;
+        }
+
+        List<String> candidateCacheKeys = new ArrayList<>();
+        candidateCacheKeys.add(ALL_THEME_CACHE_KEY);
+        for (KeywordType theme : KeywordType.findByCategory("mood")) {
+            candidateCacheKeys.add(theme.name());
+        }
+
+        for (String cacheKey : candidateCacheKeys) {
+            List<Long> cachedIds = readRankingCache(cacheKey);
+            if (cachedIds == null || !cachedIds.contains(uploadCourseId)) {
+                continue;
+            }
+            try {
+                cache.evict(cacheKey);
+            } catch (Exception e) {
+                log.warn("인기 랭킹 캐시 evict 실패. cacheKey={}", cacheKey, e);
+            }
+        }
+    }
+
+    /**
+     * 커밋 확정 후 S3 이미지 정리를 요청 스레드에서 분리해 삭제 API의 응답 시간이 이미지
+     * 개수에 비례해 늘어나지 않도록 한다. 실패한 key는 WARN 로그만 남기고 나머지는 계속
+     * 진행한다(fail-open).
+     */
+    @Async("courseImageCleanupExecutor")
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    void cleanupDeletedUploadCourseImages(UploadCourseImagesCleanupEvent event) {
+        for (String key : event.imageS3Keys()) {
+            try {
+                s3Service.deleteFile(key);
+            } catch (Exception e) {
+                log.warn("업로드 코스 삭제 후 S3 이미지 정리 실패. key={}", key, e);
+            }
+        }
     }
 
     @Override
