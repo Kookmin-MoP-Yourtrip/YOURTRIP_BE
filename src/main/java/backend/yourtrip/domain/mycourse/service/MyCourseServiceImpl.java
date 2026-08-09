@@ -22,6 +22,7 @@ import backend.yourtrip.domain.mycourse.entity.place.Place;
 import backend.yourtrip.domain.mycourse.entity.place.PlaceImage;
 import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
 import backend.yourtrip.domain.mycourse.entity.travelCourse.enums.TravelCourseType;
+import backend.yourtrip.domain.mycourse.event.MyCourseImagesCleanupEvent;
 import backend.yourtrip.domain.mycourse.mapper.DayScheduleMapper;
 import backend.yourtrip.domain.mycourse.mapper.PlaceMapper;
 import backend.yourtrip.domain.mycourse.mapper.TravelCourseMapper;
@@ -56,9 +57,13 @@ import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -81,6 +86,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final KakaoLocalClient kakaoLocalClient;
     @Qualifier("cloudFrontSigningExecutor")
     private final ThreadPoolTaskExecutor cloudFrontSigningExecutor;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -342,6 +348,63 @@ public class MyCourseServiceImpl implements MyCourseService {
         place.getPlaceImages().forEach(placeImage ->
             s3Service.deleteFile(placeImage.getPlaceImageS3Key())
         );
+    }
+
+    /**
+     * uploadCourse는 원본 mycourse와 완전히 독립된 데이터로 취급한다(업로드 시점에 딥카피된
+     * 별도 사본이므로). 따라서 원본이 이미 업로드된 상태(uploaded=true)여도 이 삭제를 막지
+     * 않는다 — 원본을 지워도 이미 공개된 uploadCourse는 그대로 유지된다.
+     */
+    @Override
+    @Transactional
+    public void deleteCourse(Long courseId) {
+        checkExistCourse(courseId);
+        Long userId = userService.getCurrentUserId();
+        checkOwnedCourse(courseId, userId);
+
+        TravelCourse travelCourse = travelCourseRepository.findCourseWithDaySchedule(courseId)
+            .orElseThrow(() -> new BusinessException(MyCourseErrorCode.COURSE_NOT_FOUND));
+
+        // day/place/image를 전부 로드해 S3 key를 미리 수집한다(삭제 후에는 엔티티에 접근할 수 없음).
+        // dayScheduleRepository로 조회하지만 같은 트랜잭션(영속성 컨텍스트) 내에서 travelCourse가
+        // 이미 로드해둔 daySchedules와 동일한 관리 엔티티를 공유하므로(1차 캐시), 아래 delete()
+        // 호출 시 cascade가 정상적으로 이 place/image까지 전부 타게 된다.
+        List<DaySchedule> daySchedules = getDaySchedulesWithPlaces(courseId);
+        List<String> imageS3Keys = daySchedules.stream()
+            .flatMap(ds -> ds.getPlaces().stream())
+            .flatMap(place -> place.getPlaceImages().stream())
+            .map(PlaceImage::getPlaceImageS3Key)
+            .toList();
+
+        travelCourseRepository.delete(travelCourse);
+
+        if (!imageS3Keys.isEmpty()) {
+            eventPublisher.publishEvent(new MyCourseImagesCleanupEvent(imageS3Keys));
+        }
+    }
+
+    @Override
+    @Transactional
+    public void deleteHiddenUploadCopy(TravelCourse hiddenCopy) {
+        travelCourseRepository.delete(hiddenCopy);
+    }
+
+    /**
+     * 커밋 확정 후 S3 이미지 정리를 요청 스레드에서 분리해 코스 삭제 API의 응답 시간이 이미지
+     * 개수에 비례해 늘어나지 않도록 한다. 실패한 key는 WARN 로그만 남기고 나머지는 계속
+     * 진행한다(fail-open) — 이 코드베이스 전반의 캐시/외부 I/O 실패 처리 관례와 동일하다.
+     * private이 아닌 이유는 refreshUploadCourseCaches와 동일(AOP 프록시 제약).
+     */
+    @Async("courseImageCleanupExecutor")
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    void cleanupDeletedCourseImages(MyCourseImagesCleanupEvent event) {
+        for (String key : event.imageS3Keys()) {
+            try {
+                s3Service.deleteFile(key);
+            } catch (Exception e) {
+                log.warn("코스 삭제 후 S3 이미지 정리 실패. key={}", key, e);
+            }
+        }
     }
 
     @Override

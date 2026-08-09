@@ -71,6 +71,16 @@ public class MyCourseController implements MyCourseControllerSpec {
     }
 
     // ==========================
+    //  나의 코스 삭제
+    // ==========================
+    @Override
+    @DeleteMapping("/{courseId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteMyCourse(@PathVariable Long courseId) {
+        myCourseService.deleteCourse(courseId);
+    }
+
+    // ==========================
     //  일차별 장소 리스트 조회
     // ==========================
     @Override
