@@ -38,6 +38,13 @@ public interface UploadCourseService {
         UploadCourseUpdateRequest request, MultipartFile thumbnailImage,
         List<MultipartFile> placeImages);
 
+    /**
+     * 업로드 코스와 그 뒤에 숨은 사본 mycourse를 함께 삭제한다. 원본 mycourse에는 영향을 주지
+     * 않는다(업로드 시점에 복제된 별도 데이터). 삭제 커밋 후 Redis 상세/아이템/인기 랭킹 캐시를
+     * 즉시 무효화하고, S3 이미지 정리는 비동기로 처리한다.
+     */
+    void deleteUploadCourse(Long uploadCourseId);
+
     void refreshAllPopularCoursesCache();
 
     /**
