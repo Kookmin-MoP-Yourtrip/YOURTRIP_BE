@@ -21,3 +21,16 @@ terraform/terraform.tfstate.backup
 terraform/terraform.tfvars
 terraform/cloudfront_private_key.pem
 terraform/cloudfront_public_key.pem
+
+# terraform/loadtest/ — EC2+RDS+ElastiCache 분리 부하테스트용 별도 루트 모듈(별도 state).
+# 위와 동일한 이유로 재생성 불가능한 상태/설정/키만 포함한다:
+#  - terraform.tfstate(.backup): 이미 apply된 실제 AWS 리소스(VPC/EC2/RDS/ElastiCache)의
+#    유일한 진실 공급원. 없으면 이미 적용된 리소스를 다시 import해야 한다.
+#  - terraform.tfvars: rds_password 등 환경별 실제 값.
+#  - yourtrip-loadtest-ssh(.pub): App/k6 EC2 SSH 접속 전용 키페어. .pub은 key_pair.tf가
+#    plan/apply 때마다 file()로 읽으므로 없으면 plan 자체가 실패한다.
+terraform/loadtest/terraform.tfstate
+terraform/loadtest/terraform.tfstate.backup
+terraform/loadtest/terraform.tfvars
+terraform/loadtest/yourtrip-loadtest-ssh
+terraform/loadtest/yourtrip-loadtest-ssh.pub
