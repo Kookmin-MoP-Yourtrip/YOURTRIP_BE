@@ -1,7 +1,8 @@
 # 계정의 기본 VPC 존재 여부에 의존하지 않는 완전히 독립된 부하테스트 전용 네트워크.
 # RDS/ElastiCache의 서브넷 그룹은 AWS 제약상 최소 2개 AZ의 서브넷이 필요해 서브넷을
 # 2개 만들지만, 실제 EC2/RDS/ElastiCache 배치는 전부 var.availability_zone_primary로
-# 고정해 인스턴스 간 네트워크 변수(AZ 간 왕복시간)를 최소화한다 — TASK-PRESIGN-BOTTLENECK-FIX.md의
+# 고정해 인스턴스 간 네트워크 변수(AZ 간 왕복시간)를 최소화한다 —
+# docs/tasks/connection-pool-bottleneck/stage0/production/ec2-rds.md의
 # "같은 리전, 가능하면 같은 VPC/AZ" 권고를 그대로 반영.
 resource "aws_vpc" "this" {
   cidr_block           = var.vpc_cidr
