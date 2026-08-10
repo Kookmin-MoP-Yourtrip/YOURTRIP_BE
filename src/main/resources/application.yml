@@ -11,10 +11,7 @@ spring:
       ddl-auto: ${DB_DDL_AUTO}
     properties:
       hibernate:
-        format_sql: true
-        generate_statistics: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
-    show-sql: true
 
   mail:
     host: smtp.gmail.com
@@ -50,13 +47,6 @@ spring:
 
 jwt:
   secret: ${JWT_SECRET}
-
-logging:
-  level:
-    org.hibernate.SQL: debug
-    org.springdoc: debug
-    org.springframework.web: info
-    org.springframework.security: DEBUG
 
 springdoc:
   api-docs:
