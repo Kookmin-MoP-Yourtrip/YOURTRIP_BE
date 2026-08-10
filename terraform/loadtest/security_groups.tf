@@ -112,17 +112,6 @@ resource "aws_security_group_rule" "rds_ingress_from_app" {
   description              = "HikariCP connections from the app"
 }
 
-resource "aws_security_group_rule" "rds_ingress_from_dev" {
-  count             = var.allow_dev_psql_access ? 1 : 0
-  type              = "ingress"
-  security_group_id = aws_security_group.rds.id
-  from_port         = 5432
-  to_port           = 5432
-  protocol          = "tcp"
-  cidr_blocks       = [var.my_ip_cidr]
-  description       = "Direct psql access for EXPLAIN ANALYZE etc. (optional, toggled by allow_dev_psql_access)"
-}
-
 resource "aws_security_group_rule" "rds_egress_all" {
   type              = "egress"
   security_group_id = aws_security_group.rds.id

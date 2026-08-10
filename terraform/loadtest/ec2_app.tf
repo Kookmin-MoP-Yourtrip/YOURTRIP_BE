@@ -23,17 +23,22 @@ resource "aws_instance" "app" {
   monitoring                  = var.enable_detailed_monitoring
   associate_public_ip_address = true
 
-  # 기본 루트 볼륨(8GB)은 Gradle 의존성 캐시+빌드 산출물까지 감안하면 빠듯할 수 있어
-  # 여유를 둔다. gp3 15GB는 프리티어(월 30GB gp2/gp3 무료) 안에 충분히 들어온다.
+  # user_data는 기본적으로 AWS 인스턴스 속성만 갱신될 뿐 이미 부팅된 인스턴스에서
+  # cloud-init을 재실행하지 않는다(실측으로 확인됨 — 껐다 켜도 재실행 안 됨) — 이 옵션이
+  # 있어야 user_data가 바뀔 때 Terraform이 인스턴스를 자동으로 재생성해 새 스크립트가
+  # 실제로 실행되게 한다.
+  user_data_replace_on_change = true
+
+  # 이 인스턴스는 빌드를 하지 않는다(JAR는 로컬 빌드 후 scp로 전달 — 이유는
+  # templates/app-user-data.sh.tpl 상단 주석 참고) — 기본 루트 볼륨(8GB)이면
+  # OS+JRE+JAR+로그로 충분하지만, CloudWatch Agent 등 여유를 두기 위해 10GB로 설정.
   root_block_device {
-    volume_size = 15
+    volume_size = 10
     volume_type = "gp3"
   }
 
   # RDS/ElastiCache 엔드포인트가 필요하므로 두 리소스가 먼저 생성돼야 한다.
   user_data = templatefile("${path.module}/templates/app-user-data.sh.tpl", {
-    app_repo_url               = var.app_repo_url
-    app_git_ref                = var.app_git_ref
     db_host                    = aws_db_instance.this.address
     db_name                    = var.rds_db_name
     db_username                = var.rds_username

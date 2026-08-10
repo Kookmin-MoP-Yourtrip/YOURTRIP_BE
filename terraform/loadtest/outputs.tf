@@ -3,6 +3,11 @@ output "app_public_ip" {
   value       = aws_instance.app.public_ip
 }
 
+output "app_instance_id" {
+  description = "App EC2 인스턴스 ID — SSM Session Manager 포트포워딩(RDS 시딩용, README.md 실행 순서 5번)의 --target 값"
+  value       = aws_instance.app.id
+}
+
 output "app_ssh_command" {
   description = "App EC2 SSH 접속 명령 (<SSH 개인키 경로>를 실제 경로로 바꿔서 사용)"
   value       = "ssh -i <SSH 개인키 경로> ec2-user@${aws_instance.app.public_ip}"

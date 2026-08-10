@@ -81,13 +81,13 @@ variable "enable_detailed_monitoring" {
 }
 
 variable "app_repo_url" {
-  description = "App/k6 EC2가 user_data에서 git clone할 저장소 URL."
+  description = "k6 EC2가 user_data에서 git fetch할 저장소 URL(부하 스크립트 checkout용). App EC2는 더 이상 이 값을 쓰지 않는다 — JAR는 로컬 빌드 후 scp로 전달한다(templates/app-user-data.sh.tpl 상단 주석 참고)."
   type        = string
   default     = "https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE.git"
 }
 
 variable "app_git_ref" {
-  description = "체크아웃할 브랜치 또는 커밋. 로컬에서 검증한 것과 동일한 코드 상태를 테스트하려면 해당 커밋 해시를 지정하는 걸 권장한다."
+  description = "k6 EC2가 checkout할 브랜치 또는 커밋(부하 스크립트 버전 고정용). App EC2에 올릴 JAR도 로컬에서 이 커밋을 기준으로 빌드해야 두 인스턴스가 같은 코드 상태를 테스트한다."
   type        = string
 }
 
@@ -123,12 +123,6 @@ variable "rds_password" {
   description = "RDS 마스터 비밀번호. 기본값을 두지 않아 terraform.tfvars에서 반드시 지정하도록 강제한다."
   type        = string
   sensitive   = true
-}
-
-variable "allow_dev_psql_access" {
-  description = "true면 개발자 공인 IP(my_ip_cidr)에서 RDS 5432 포트로의 보안그룹 인그레스를 연다. 단, RDS가 publicly_accessible=false라 엔드포인트 DNS가 VPC 사설 IP로만 resolve된다 — 실측으로 확인된 대로, 이 설정만으로는 로컬에서 직접 접속할 수 없다(보안그룹은 열려도 애초에 인터넷에서 그 사설 IP로 가는 경로 자체가 없음). 직접 psql 검증이 필요하면 App EC2에 SSH로 접속해 거기서 psql을 실행해야 한다(같은 VPC라 sg-rds가 sg-app을 허용). 이 변수는 향후 배스천 호스트나 SSM Session Manager 포트포워딩을 추가할 때를 대비해 남겨둔다."
-  type        = bool
-  default     = false
 }
 
 # ============================================================

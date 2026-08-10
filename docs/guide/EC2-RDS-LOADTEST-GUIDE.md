@@ -13,7 +13,7 @@
 | VPC (전용) | `10.42.0.0/16`, 단일 AZ(`ap-northeast-2a`) 배치 | 계정 기본 VPC에 의존하지 않는 격리된 네트워크. 모든 컴퓨트 리소스를 한 AZ에 몰아 네트워크 변수를 최소화 |
 | App EC2 | `t3.micro` | 실제 배포 타겟과 동일 스펙. Spring Boot 앱(JVM)만 단독 실행 — Redis/모니터링과 분리해 "1GB로 버티는가"를 순수하게 검증 |
 | k6 EC2 | `t3.micro` | 부하생성기 전용. 앱/DB와 물리적으로 분리해 부하생성기 자신이 CPU 경합을 일으키던 로컬 환경의 문제를 재현하지 않는다 |
-| RDS PostgreSQL | `db.t3.micro`, 단일 AZ | 로컬 시드 규모(course 6,000행, place 30,000행, place_image 60,000행)에 충분. `publicly_accessible=false` — **로컬에서 직접 접속 불가**(§7 참고) |
+| RDS PostgreSQL | `db.t3.micro`, 단일 AZ | 로컬 시드 규모(course 6,000행, place 30,000행, place_image 60,000행)에 충분. `publicly_accessible=false`라 로컬에서 직접 접속은 안 되지만, SSM Session Manager 포트포워딩으로 App EC2를 경유해 터널링한다(§2) — App EC2엔 아무것도 설치하지 않는다 |
 | ElastiCache Redis | `cache.t3.micro`, 단일 노드 | 로컬 `docker-compose.yml`의 Redis(`maxmemory 256mb`, `allkeys-lru`)에 대응하는 관리형 대체 |
 | Prometheus / Grafana | **EC2에 배치하지 않음** — 로컬 개발 머신 그대로 유지 | 측정 대상이 아니라 관측자이므로 어디서 실행되든 지표 값은 동일하다. EC2에 같이 올리면 이번 실험이 없애려던 "여러 프로세스가 CPU를 나눠 쓰는" 문제를 다시 만드는 셈이라 의도적으로 분리했다 |
 
@@ -26,7 +26,28 @@ terraform output
 
 ## 2. 사전 준비 확인
 
-인프라가 이미 떠 있고 앱이 정상 기동했는지 먼저 확인한다.
+**App EC2는 스스로 빌드하지 않는다** — JAR를 로컬에서 미리 빌드해 scp로 전달해야 앱이 뜬다(이유는 §7-3 참고, 상세 절차는 [terraform/loadtest/README.md](../../terraform/loadtest/README.md) "실행 순서" 2~3번). 인프라만 `apply`된 직후라면 이 단계부터 확인한다:
+
+```bash
+# terraform.tfvars의 app_git_ref와 동일한 커밋을 체크아웃한 상태로, 저장소 루트에서
+./gradlew bootJar -x test
+
+cd terraform/loadtest
+# /opt/app은 root 소유라 ec2-user가 직접 못 쓴다(실측 확인) — /tmp 경유 + sudo mv
+scp -i ./yourtrip-loadtest-ssh ../../build/libs/yourtrip-0.0.1-SNAPSHOT.jar \
+  ec2-user@<App EC2 공인 IP>:/tmp/app.jar
+scp -i ./yourtrip-loadtest-ssh ../cloudfront_private_key.pem \
+  ec2-user@<App EC2 공인 IP>:/tmp/cloudfront_private_key.pem
+
+ssh -i ./yourtrip-loadtest-ssh ec2-user@<App EC2 공인 IP> '
+  sudo mv /tmp/app.jar /opt/app/app.jar &&
+  sudo mv /tmp/cloudfront_private_key.pem /opt/app/cloudfront_private_key.pem &&
+  sudo chown ec2-user:ec2-user /opt/app/app.jar /opt/app/cloudfront_private_key.pem &&
+  sudo chmod 600 /opt/app/cloudfront_private_key.pem
+'
+```
+
+두 파일 다 도착하면 systemd가 `Restart=on-failure`로 재시도하다가 자동으로 뜬다(수동 restart 불필요). 앱이 정상 기동했는지 확인한다:
 
 ```bash
 curl -sf http://<App EC2 공인 IP>:8080/actuator/health
@@ -34,7 +55,9 @@ curl -sf http://<App EC2 공인 IP>:8080/actuator/health
 
 `{"status":"UP", "components":{"db":{"status":"UP"...}, "redis":{"status":"UP"...}}}`가 나와야 한다. 안 뜬다면 §7의 트러블슈팅부터 확인한다.
 
-**DB 시딩 여부도 확인한다** — RDS는 `publicly_accessible=false`라 로컬에서 직접 `psql` 접속이 안 되므로, 시딩은 App EC2를 경유해서 한다(§7 참고). 이미 시딩했다면 재실행 전 반드시 재시딩(`TRUNCATE` 후 재삽입, `scripts/sql/seed-benchmark.sql` 자체가 이를 수행)해 로컬 벤치마크와 동일한 조건을 유지한다.
+**DB 시딩 여부도 확인한다** — RDS는 `publicly_accessible=false`라 로컬에서 직접 `psql` 접속이 안 되므로, SSM Session Manager로 App EC2를 경유해 터널링한다(App EC2엔 아무것도 설치하지 않는다 — 상세 절차는 [terraform/loadtest/README.md](../../terraform/loadtest/README.md) "실행 순서" 5번, 배경은 §7-4 참고).
+
+**App EC2를 재생성했다면 반드시 재시딩한다** — `DB_DDL_AUTO=create`라 앱이 부팅할 때마다 Hibernate가 스키마를 DROP 후 재생성해서, RDS 자체는 살아있어도 App EC2만 새로 뜨면 데이터가 사라진다(실측으로 확인됨). App EC2를 안 건드렸다면 이미 시딩된 상태일 수 있으니, 재실행 전 `SELECT count(*) FROM my_course;`로 먼저 확인한다.
 
 ## 3. 로컬 Prometheus/Grafana 원격 재조준
 
@@ -147,45 +170,46 @@ AWS_PROFILE=terraform-admin aws cloudwatch get-metric-statistics \
 
 이 환경을 처음 구축하며 실제로 겪은 문제들이다. 재배포 시 다시 마주칠 수 있어 기록해둔다.
 
-### 7-1. `git clone --branch <커밋 SHA> --depth 1` 실패
+### 7-1. `git clone --branch <커밋 SHA> --depth 1` 실패 (k6 EC2에만 해당)
 
-`app_git_ref`에 브랜치명이 아니라 커밋 해시를 넘기면 `fatal: Remote branch <sha> not found in upstream origin`로 실패한다 — 이 조합은 브랜치/태그 이름만 지원한다. `terraform/loadtest/templates/app-user-data.sh.tpl`/`k6-user-data.sh.tpl`에서 `git init` + `git fetch --depth 1 origin <SHA>` + `git checkout FETCH_HEAD` 방식으로 이미 수정 반영됨(GitHub 공개 저장소는 임의 SHA fetch를 허용).
+`app_git_ref`에 브랜치명이 아니라 커밋 해시를 넘기면 `fatal: Remote branch <sha> not found in upstream origin`로 실패한다 — 이 조합은 브랜치/태그 이름만 지원한다. `terraform/loadtest/templates/k6-user-data.sh.tpl`에서 `git init` + `git fetch --depth 1 origin <SHA>` + `git checkout FETCH_HEAD` 방식으로 이미 수정 반영됨(GitHub 공개 저장소는 임의 SHA fetch를 허용).
+
+> App EC2는 더 이상 git을 쓰지 않는다(§7-3 참고) — 이 함정은 k6 EC2가 부하 스크립트를 checkout할 때만 해당된다.
 
 ### 7-2. k6 rpm 저장소 404
 
 `baseurl=https://dl.k6.io/rpm`을 직접 가리키는 `.repo` 파일 방식은 `repodata/repomd.xml`이 404다. `dnf install -y https://dl.k6.io/rpm/repo.rpm`(공식 문서 기준 최신 방법)으로 이미 수정 반영됨.
 
-### 7-3. CloudFront 개인키 없이는 앱이 기동 자체를 못 함
+### 7-3. App EC2는 원래 t3.micro에서 직접 Gradle 빌드를 했었다 — CPU 크레딧을 갉아먹는 문제로 로컬 빌드+scp로 전환
 
-`CloudFrontService` 빈 초기화가 개인키 파일을 필수로 요구해서, 개인키 전달 전에는 `systemctl enable --now`가 무한 크래시 루프(`Restart=on-failure`)를 돈다 — "나중에 해도 되는 선택적 단계"가 아니라 **앱 기동의 필수 선행조건**이다.
+초기 버전은 App EC2 `user_data`가 부팅 시 `git fetch` + `./gradlew bootJar`를 직접 실행했다. 실측으로 두 가지 문제가 드러났다:
 
-```bash
-scp -i ./yourtrip-loadtest-ssh ../cloudfront_private_key.pem \
-  ec2-user@<App EC2 공인 IP>:/opt/app/cloudfront_private_key.pem
+1. **CPU 크레딧 소진**: t3.micro는 1 vCPU 버스터블 인스턴스인데, 빌드가 3~4분간 CPU를 거의 100% 태운다. 이게 **부하테스트가 시작되기도 전에 CPU 크레딧 잔액을 갉아먹어**, "측정 시작 시점의 인스턴스 상태"가 매번 달라지는 변수가 됐다.
+2. **1GB RAM에서 Gradle 빌드가 OOM 위험**: 임시 스왑(1GB)을 켰다 끄는 우회책이 필요했다 — 스왑이 남아있으면 그 자체로 또 다른 변수(디스크 I/O 지연)가 됐다.
 
-ssh -i ./yourtrip-loadtest-ssh ec2-user@<App EC2 공인 IP> \
-  'sudo chown ec2-user:ec2-user /opt/app/cloudfront_private_key.pem && \
-   sudo chmod 600 /opt/app/cloudfront_private_key.pem && \
-   sudo systemctl restart yourtrip-app.service'
-```
+서버에서 직접 빌드하는 방식 자체가 재현 불가능한 아티팩트·롤백 불가 문제도 안고 있어, **로컬(또는 CI)에서 빌드한 불변 아티팩트를 scp로 전달하는 방식**으로 바꿨다(`terraform/loadtest/templates/app-user-data.sh.tpl` 상단 주석 참고). App EC2는 이제 git도, Gradle도 쓰지 않는다.
 
-### 7-4. RDS `publicly_accessible=false` — 로컬에서 직접 `psql` 불가
+**그 결과 App EC2에서 CloudFront 개인키와 app.jar 둘 다 scp로 전달하기 전까지는 앱이 기동 자체를 못 한다** — `CloudFrontService` 빈 초기화가 개인키 파일을 필수로 요구하고, 애초에 `app.jar` 자체가 없기 때문이다. 둘 다 "나중에 해도 되는 선택적 단계"가 아니라 **앱 기동의 필수 선행조건**이다(§2 참고). `Restart=on-failure`가 계속 재시도하다가 두 파일이 도착하면 다음 재시도에서 자연스럽게 기동한다 — 수동 restart는 필요 없다.
 
-`allow_dev_psql_access=true`로 보안그룹을 열어도 소용없다 — RDS 엔드포인트 DNS 자체가 VPC 사설 IP로만 resolve되기 때문에(`publicly_accessible=false`), 인터넷에서 그 IP로 가는 경로가 애초에 없다. 반드시 같은 VPC 안의 App EC2를 경유한다:
+### 7-4. RDS `publicly_accessible=false` — 로컬에서 직접 `psql` 불가 → SSM 포트포워딩으로 해결
 
-```bash
-scp -i ./yourtrip-loadtest-ssh ../../scripts/sql/seed-benchmark.sql \
-  ec2-user@<App EC2 공인 IP>:/tmp/seed-benchmark.sql
+RDS 엔드포인트 DNS 자체가 VPC 사설 IP로만 resolve되기 때문에(`publicly_accessible=false`), 보안그룹을 아무리 열어도 인터넷에서 그 IP로 가는 경로가 애초에 없다(실측으로 확인됨 — 세그먼트 보안그룹 규칙과 별개의 라우팅 문제).
 
-ssh -i ./yourtrip-loadtest-ssh ec2-user@<App EC2 공인 IP> 'sudo dnf install -y postgresql16'
+초기 버전은 App EC2에 SSH로 접속해 `postgresql16`을 설치하고 그 안에서 `psql`을 실행하는 방식으로 우회했다. 이 방식은 동작은 했지만, "측정 대상 인스턴스는 최대한 순수하게 유지한다"는 이번 인프라의 설계 원칙(Prometheus/Grafana/Redis를 EC2 밖에 둔 것과 동일한 이유)에 어긋났다 — App EC2에 불필요한 패키지가 쌓이는 셈이었다. **SSM Session Manager 포트포워딩**으로 바꿔서 App EC2엔 아무것도 설치하지 않고, 로컬 `psql`이 RDS로 직접 터널링되게 했다(App EC2 IAM 역할의 `AmazonSSMManagedInstanceCore` 권한만 있으면 됨 — `terraform/loadtest/iam.tf`에 이미 반영, 상세 명령은 [terraform/loadtest/README.md](../../terraform/loadtest/README.md) "실행 순서" 5번).
 
-ssh -i ./yourtrip-loadtest-ssh ec2-user@<App EC2 공인 IP> \
-  "PGPASSWORD='<rds_password>' psql -h <RDS 엔드포인트> -U postgres -d yourtrip -f /tmp/seed-benchmark.sql"
-```
+새로 붙인 IAM 정책이 실제로 적용되기까지 **전파 지연**이 있을 수 있다 — SSM Agent 로그(`/var/log/amazon/ssm/amazon-ssm-agent.log`)에 `AccessDeniedException`이 보이면 몇 분 뒤 `sudo systemctl restart amazon-ssm-agent`로 재시도한다(실측으로 확인됨).
 
-### 7-5. `aws_security_group`(rule 아님)의 `description`에 한글을 쓰면 apply가 실패함
+### 7-5. `/opt/app`은 root 소유라 `ec2-user`가 직접 `scp`로 못 씀
+
+`scp ... ec2-user@<IP>:/opt/app/app.jar`을 바로 실행하면 `scp: dest open "/opt/app/app.jar": Permission denied`가 난다 — `user_data`가 root 권한으로 `mkdir -p /opt/app`을 실행해서 디렉토리 소유자가 `root`이기 때문이다. `/tmp`로 먼저 올리고 `ssh` 세션 안에서 `sudo mv`로 옮겨야 한다(§2 예시 참고).
+
+### 7-6. `aws_security_group`(rule 아님)의 `description`에 한글을 쓰면 apply가 실패함
 
 `terraform validate`로는 안 잡히고 실제 `apply` 시점에 `InvalidParameterValue: ... Character sets beyond ASCII are not supported`로 실패한다. `aws_security_group_rule`뿐 아니라 `aws_security_group` 자체의 `description`도 ASCII만 허용된다 — `terraform/loadtest/security_groups.tf`는 전부 영문으로 이미 수정됨.
+
+### 7-7. `user_data`를 수정하고 `apply`해도 이미 떠 있는 인스턴스는 그대로임
+
+AWS는 `user_data`를 **최초 부팅 시 한 번만** 실행한다. `templates/app-user-data.sh.tpl`을 고친 뒤 그냥 `terraform apply`하면 AWS에 등록된 `user_data` 속성만 갱신될 뿐, 이미 부팅된 인스턴스는 예전 스크립트로 실행된 상태 그대로 남는다(재부팅해도 cloud-init이 재실행되지 않음). `terraform/loadtest/ec2_app.tf`의 `aws_instance.app`에 `user_data_replace_on_change = true`를 설정해뒀기 때문에, 지금은 `user_data`가 바뀌면 `terraform apply`가 인스턴스를 자동으로 재생성(destroy+create)한다 — 이 옵션이 없다면 수동으로 `terraform apply -replace="aws_instance.app"`을 써야 한다.
 
 ## 8. 측정 종료 후 정리
 

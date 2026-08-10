@@ -33,7 +33,8 @@ rds_engine_version    = "16" # apply 전 로컬 `psql --version`으로 확인해
 rds_db_name            = "yourtrip"
 rds_username            = "postgres"
 rds_password            = "" # 반드시 채울 것 (state에 평문 저장됨 — terraform/README.md 트레이드오프 절 참고)
-allow_dev_psql_access   = false # EXPLAIN ANALYZE 직접 검증이 필요할 때만 true
+# psql 직접 검증은 SSM Session Manager 포트포워딩으로 한다(README.md 실행 순서 5번) —
+# RDS 보안그룹에 별도 인그레스를 열 필요가 없다.
 
 # --- ElastiCache ---
 elasticache_node_type = "cache.t3.micro"

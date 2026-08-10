@@ -87,7 +87,7 @@ terraform/loadtest/*_override.tf
 terraform/loadtest/*_override.tf.json
 terraform/loadtest/.terraformrc
 terraform/loadtest/terraform.rc
-# terraform apply/plan 실행 시 로컬에 남는 운영 로그 — 민감정보 포함 가능성 있고
-# 애초에 버전관리 대상도 아니다.
-terraform/loadtest/apply*.log
+# terraform apply/plan, SSM 포트포워딩 세션 실행 시 로컬에 남는 운영 로그 — 민감정보
+# 포함 가능성 있고 애초에 버전관리 대상도 아니다.
+terraform/loadtest/*.log
 terraform/loadtest/*.output
