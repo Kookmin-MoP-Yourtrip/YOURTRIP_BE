@@ -9,6 +9,11 @@
 //   1) 최상위(leaf) 프레임 Top 30 — 어떤 메서드가 실제로 CPU 위에 있었는지
 //   2) 관심 패키지가 스택 어디에라도 등장하는 샘플의 비율 — presign/로깅/Hibernate/암호연산/HikariCP
 //      각각이 "이 요청 처리 도중 CPU를 쓰고 있었다"고 볼 수 있는 근거
+//   3) TASK-PRESIGN-CALLERRUNS-HYPOTHESIS: 스레드 이름(sampledThread) 접두사별 분포 및
+//      crypto/presign_or_signing 히트가 어느 스레드 종류에서 발생했는지 — http-nio-*(Tomcat
+//      요청 스레드)에서 crypto/서명 프레임이 나오면 CallerRunsPolicy가 실제로 발동해 요청
+//      스레드가 서명을 직접 실행했다는 직접 증거다(정상 동작이라면 cloudfront-signing-*
+//      전용 executor 스레드에서만 나와야 한다).
 
 import { createInterface } from 'node:readline';
 
@@ -31,6 +36,13 @@ function classify(stackFrames) {
   return hit;
 }
 
+function threadPrefixLabel(name) {
+  if (!name) return 'unknown';
+  if (/^http-nio-/.test(name)) return 'http-nio (Tomcat 요청 스레드)';
+  if (/^cloudfront-signing-/.test(name)) return 'cloudfront-signing (전용 executor)';
+  return 'other';
+}
+
 async function main() {
   const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
 
@@ -38,22 +50,39 @@ async function main() {
   const leafCounts = new Map();
   const categoryHits = Object.fromEntries(Object.keys(INTERESTING).map((k) => [k, 0]));
 
+  // 스레드 이름 접두사별 집계 (TASK-PRESIGN-CALLERRUNS-HYPOTHESIS)
+  const threadPrefixCounts = {};
+  const categoryHitsByThreadPrefix = Object.fromEntries(
+    Object.keys(INTERESTING).map((k) => [k, {}]),
+  );
+
   let inSample = false;
   let currentFrames = [];
   let leafCaptured = false;
+  let currentThreadName = null;
 
   const flushSample = () => {
-    if (currentFrames.length === 0) return;
+    if (currentFrames.length === 0) {
+      currentThreadName = null;
+      return;
+    }
     totalSamples += 1;
 
     const leaf = currentFrames[0];
     leafCounts.set(leaf, (leafCounts.get(leaf) ?? 0) + 1);
 
+    const prefix = threadPrefixLabel(currentThreadName);
+    threadPrefixCounts[prefix] = (threadPrefixCounts[prefix] ?? 0) + 1;
+
     const hits = classify(currentFrames);
-    for (const label of hits) categoryHits[label] += 1;
+    for (const label of hits) {
+      categoryHits[label] += 1;
+      categoryHitsByThreadPrefix[label][prefix] = (categoryHitsByThreadPrefix[label][prefix] ?? 0) + 1;
+    }
 
     currentFrames = [];
     leafCaptured = false;
+    currentThreadName = null;
   };
 
   for await (const rawLine of rl) {
@@ -66,6 +95,14 @@ async function main() {
     }
 
     if (!inSample) continue;
+
+    // jfr print 이벤트 헤더 라인 예시:
+    //   sampledThread = "http-nio-8080-exec-3" (javaThreadId = 45)
+    const threadMatch = line.match(/^\s*sampledThread\s*=\s*"([^"]*)"/);
+    if (threadMatch) {
+      currentThreadName = threadMatch[1];
+      continue;
+    }
 
     // jfr print 스택 프레임 라인 예시:
     //   "software.amazon.awssdk.services.s3.presigner.S3Presigner.presignGetObject(GetObjectPresignRequest) line: 142"
@@ -104,6 +141,24 @@ async function main() {
   for (const [label, count] of Object.entries(categoryHits)) {
     const pct = ((count / totalSamples) * 100).toFixed(2);
     console.log(`${pct.padStart(6)}%  (${String(count).padStart(6)})  ${label}`);
+  }
+
+  console.log('\n=== 스레드 이름 접두사별 전체 샘플 분포 ===');
+  const prefixEntries = Object.entries(threadPrefixCounts).sort((a, b) => b[1] - a[1]);
+  for (const [prefix, count] of prefixEntries) {
+    const pct = ((count / totalSamples) * 100).toFixed(2);
+    console.log(`${pct.padStart(6)}%  (${String(count).padStart(6)})  ${prefix}`);
+  }
+
+  console.log('\n=== 스레드 접두사별 crypto/presign_or_signing 히트 비율 (해당 접두사 샘플 수 대비) ===');
+  console.log('    0%보다 크면 CallerRunsPolicy 발동의 직접 증거 (요청 스레드가 서명을 직접 실행)');
+  for (const label of ['crypto', 'presign_or_signing']) {
+    console.log(`  [${label}]`);
+    for (const [prefix, prefixTotal] of prefixEntries) {
+      const hitCount = categoryHitsByThreadPrefix[label][prefix] ?? 0;
+      const pct = ((hitCount / prefixTotal) * 100).toFixed(2);
+      console.log(`    ${pct.padStart(6)}%  (${String(hitCount).padStart(6)}/${prefixTotal})  ${prefix}`);
+    }
   }
 }
 
