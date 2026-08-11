@@ -213,14 +213,37 @@ AWS는 `user_data`를 **최초 부팅 시 한 번만** 실행한다. `templates/
 
 ## 8. 측정 종료 후 정리
 
+두 단계로 나뉜다 — **매 측정 세션 종료 시**(실무 관행)와 **인프라 자체를 완전히 정리할 때**.
+
+### 8-1. 매 측정 세션 종료 시 — App/k6 EC2만 정지
+
 ```bash
 # 1. 로컬 prometheus.yml 원상복구
 git checkout -- prometheus.yml
 
-# 2. 인프라 철거 (비용 최소화 — 임시 인프라이므로 측정 후 즉시 철거)
+# 2. App EC2 · k6 EC2 인스턴스 ID 확인
+cd terraform/loadtest
+APP_ID=$(terraform output -raw app_instance_id)
+K6_ID=$(terraform output -raw k6_instance_id)
+
+# 3. 두 인스턴스만 정지 (RDS·ElastiCache·VPC는 그대로 둔다)
+AWS_PROFILE=terraform-admin aws ec2 stop-instances --instance-ids "$APP_ID" "$K6_ID"
+AWS_PROFILE=terraform-admin aws ec2 wait instance-stopped --instance-ids "$APP_ID" "$K6_ID"
+```
+
+- `terraform destroy` 대신 `stop-instances`를 쓰는 이유: EBS 루트 볼륨·인스턴스 자체는 그대로 남고 **컴퓨트 요금만 멈춘다** — 다음 세션에서 `start-instances`만으로 바로 재개할 수 있어, 매번 인프라를 처음부터 재구축(수십 분, jar/키 재배포 포함)하지 않아도 된다.
+- **RDS·ElastiCache는 이 절차로 정지되지 않고 계속 과금된다.** RDS는 `aws rds stop-db-instance`로 정지할 수 있지만 AWS가 7일 뒤 자동으로 재시작시키는 제약이 있고, ElastiCache는 애초에 정지 기능이 없어 삭제/재생성만 가능하다. 이 저장소는 지금까지 RDS/ElastiCache는 정지 대상에서 제외하고 App/k6 EC2만 정지해왔다 — 장기간 재사용하지 않을 계획이라면 §8-2로 완전히 철거한다.
+
+**재기동 시 주의 — 정지→재기동만 해도 데이터가 사라진다**: App EC2를 `stop`했다가 `start`하면(재생성이 아니어도) `yourtrip-app` 시스템 서비스가 다시 뜨면서 `DB_DDL_AUTO=create`가 스키마를 DROP 후 재생성한다 — RDS 자체는 살아있어도 App EC2를 정지→재기동하기만 하면 데이터가 사라진다는 뜻이다(§2의 "재생성했다면"과 같은 함정이 재생성이 아닌 단순 재시작만으로도 재현됨 — 실측으로 확인). 다음 측정 전 반드시 재시딩부터 한다.
+
+### 8-2. 인프라 자체를 완전히 정리할 때 — 전체 철거
+
+```bash
 cd terraform/loadtest
 AWS_PROFILE=terraform-admin terraform destroy
 ```
+
+App/k6 EC2뿐 아니라 RDS·ElastiCache·VPC까지 전부 삭제해 과금을 완전히 없앤다 — 이후 다시 쓰려면 인프라를 처음부터 재구축(`terraform apply` + jar/키 재배포 + 재시딩)해야 한다.
 
 ## 참고 문서
 
