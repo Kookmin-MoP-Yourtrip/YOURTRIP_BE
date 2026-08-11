@@ -96,30 +96,6 @@ cloudfront:
   # 낮은 민감도 대비, 느린 네트워크/백그라운드 전환/긴 일정 스크롤에서 15분은 이미지가
   # 깨지는 UX 문제를 일으킬 수 있어서다.
   signed-url-ttl-minutes: 60
-  # mycourse 상세조회 서명용 스레드풀 크기. 0이면 Runtime.availableProcessors()를 사용한다.
-  signing-pool-size: ${CLOUDFRONT_SIGNING_POOL_SIZE:0}
-  # 아래 signing.* 값들은 "요청 하나가 이미지 수만큼 서명 태스크를 만든다"는 전제로 산정한
-  # 것이다. 1단계(코스당 서명 1회)로 그 전제가 사라져 셋 다 크게 과잉이 됐지만, "서명 횟수
-  # 감소"와 "격리 인프라 제거"의 효과를 분리 측정하려고 Run D까지는 값을 그대로 둔다
-  # (Run B와 변수를 하나만 다르게 하기 위해). 인프라 자체는 Run D 이후 제거 예정
-  # — docs/tasks/connection-pool-bottleneck/stage1/design-and-poc.md 참고.
-  signing:
-    # 산정 근거(구): 하한 = permits(54) x 요청당 이미지수(10) = 540, 상한 = bufferbloat 방지
-    # (최악 대기가 지연예산의 2배를 넘지 않게, t3.small 기준 약 1087). 그 사이인 640.
-    # 서명이 코스당 1회가 된 지금은 하한이 permits x 1 = 54라 640은 12배 과잉이다.
-    queue-capacity: 640
-    # 산정 근거(구): (풀크기 x 지연예산) / (요청당 이미지수 x 서명 1회 비용)
-    #             = (2 x 100ms) / (10 x 0.368ms) ≈ 54.
-    # 서명이 코스당 1회가 된 지금의 식은 (2 x 100ms) / 0.368ms ≈ 543이다. 그래도 54를
-    # 유지하는 이유는 위 주석대로 Run B와의 통제된 비교를 위해서다.
-    # 0.368ms는 EC2(t3.small)에서 BenchmarkMain(SigningBenchmarkTest와 동일 로직)으로 직접
-    # 측정한 값이다. 100000으로 두면 사실상 무제한이 돼 게이트가 비활성화되고 AbortPolicy
-    # 단독 동작과 같아진다 — 재배포 없이 이 값만 바꿔 A/B 측정을 할 수 있다.
-    permits: ${CLOUDFRONT_SIGNING_PERMITS:54}
-    # 버스트 흡수기 — 지연 예산과 동급으로 잡는다.
-    acquire-timeout-ms: 100
-    # permit 영구 누수 방지 안전망. 정상 부하에서는 발동하면 안 된다.
-    deadline-ms: 2000
 
 gemini:
   api-key: ${GEMINI_API_KEY}
