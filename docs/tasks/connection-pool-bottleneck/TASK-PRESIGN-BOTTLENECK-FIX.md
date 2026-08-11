@@ -1,6 +1,6 @@
 # TASK-PRESIGN-BOTTLENECK-FIX. 커넥션 풀 병목 해소 계획
 
-> [TASK-PRESIGN-BOTTLENECK.md](TASK-PRESIGN-BOTTLENECK.md)가 원인을 규명한 문제("서명이 `@Transactional` 안에서 실행돼 HikariCP 커넥션을 초 단위로 점유하고, 동시 유저 20명 근처에서 이미 구조적으로 포화된다")에 대한 해결 계획이다. 단계별 우선순위와 각 단계의 근거·트레이드오프를 정리한 문서다. **0단계(트랜잭션 분리)와 그 과정에서 발견한 FK 인덱스 추가는 로컬 + EC2/RDS 분리 환경 양쪽에서 구현·재검증까지 완료했다** — 실측 기록이 길어져 별도 문서 4개로 분리했다(아래 0단계 절의 "실측 결과 요약" 참고). 핵심 결론만 먼저 밝히면: mycourse는 로컬·EC2+RDS 어느 환경에서도 0단계로 풀 포화가 개선되지 않았고(`pending` 최대값이 적용 전후로 완전히 동일), 오히려 평균 커넥션 점유시간이 악화됐다(47.3ms→53.3ms) — 그 원인은 `cloudFrontSigningExecutor`가 HikariCP 풀이 우연히 제공하던 유량제한을 잃고 `CallerRunsPolicy`로 CPU를 대량 잠식했기 때문임을 이후 검증으로 확정했다. uploadcourse는 두 환경 모두에서 `pending`이 0으로 사라지는 뚜렷한 개선을 보였다. 인덱스는 로컬에서만 검증됐고 EC2+RDS 환경에서는 아직 재검증하지 않았다. **1단계는 원안(Signed Cookie)을 기각하고 Custom Policy 와일드카드("코스당 서명 1회")로 대체해 착수했다** — 기각 근거와 설계는 [stage1/design-and-poc.md](stage1/design-and-poc.md) 참고.
+> [TASK-PRESIGN-BOTTLENECK.md](TASK-PRESIGN-BOTTLENECK.md)가 원인을 규명한 문제("서명이 `@Transactional` 안에서 실행돼 HikariCP 커넥션을 초 단위로 점유하고, 동시 유저 20명 근처에서 이미 구조적으로 포화된다")에 대한 해결 계획이다. 단계별 우선순위와 각 단계의 근거·트레이드오프를 정리한 문서다. **0단계(트랜잭션 분리)와 그 과정에서 발견한 FK 인덱스 추가는 로컬 + EC2/RDS 분리 환경 양쪽에서 구현·재검증까지 완료했다** — 실측 기록이 길어져 별도 문서 4개로 분리했다(아래 0단계 절의 "실측 결과 요약" 참고). 핵심 결론만 먼저 밝히면: mycourse는 로컬·EC2+RDS 어느 환경에서도 0단계로 풀 포화가 개선되지 않았고(`pending` 최대값이 적용 전후로 완전히 동일), 오히려 평균 커넥션 점유시간이 악화됐다(47.3ms→53.3ms) — 그 원인은 `cloudFrontSigningExecutor`가 HikariCP 풀이 우연히 제공하던 유량제한을 잃고 `CallerRunsPolicy`로 CPU를 대량 잠식했기 때문임을 이후 검증으로 확정했다. uploadcourse는 두 환경 모두에서 `pending`이 0으로 사라지는 뚜렷한 개선을 보였다. 인덱스는 로컬에서만 검증됐고 EC2+RDS 환경에서는 아직 재검증하지 않았다. **1단계는 원안(Signed Cookie)을 기각하고 Custom Policy 와일드카드("코스당 서명 1회")로 대체해 EC2 실측까지 완료했다** — 브라운아웃은 설계대로 구조적으로 0이 됐지만, CPU 피크가 99%→70~83%로 내려갔음에도 처리량은 거의 그대로였다(151→150.5 req/s) — 병목이 CPU에서 다른 자원으로 옮겨간 것으로 보이며 정체는 미규명. 대신 범위 밖에서 제기했던 "JWT가 CloudFront 서명보다 큰 CPU 소비처일 수 있다"는 가설이 실측으로 확정됐다(JFR: Tomcat 스레드의 crypto 프레임 중 JWT 관련이 22~25%, CloudFront 서명은 0.00%로 완전 격리). 기각 근거·설계는 [stage1/design-and-poc.md](stage1/design-and-poc.md), 실측 기록은 [stage1/run-d-signature-once.md](stage1/run-d-signature-once.md) 참고.
 
 ## 배경 요약
 
@@ -59,7 +59,17 @@
 
 **기대효과의 사전 추정**: Run A/B 실측을 역산하면 서명이 실제로 쓰는 CPU는 878 signs/s × 368us ≈ **2 vCPU 중 약 16%**다(자세한 계산은 [stage1/design-and-poc.md](stage1/design-and-poc.md)). 처리량 개선 상한은 **+19% 수준**으로 폭이 좁다. 채택 근거는 처리량이 아니라 ①브라운아웃 21%가 구조적으로 0이 되고 ②복잡한 방어 장치를 통째로 걷어낼 수 있다는 점이다.
 
-**검증**: Run A/B/C와 같은 인스턴스·시드·열린 루프(`scripts/k6/detail-arrival-rate.js`)로 Run D(게이트 유지)/D2(게이트 비활성)를 측정한다. JFR의 `cloudfront-signing-*` 스레드 샘플 비율로 위 "서명 CPU 16%" 역산값을 직접 검증하고, `cloudfront_signing_rejected_total`·게이트 카운터가 0으로 수렴하는지로 3단계 인프라 제거 가능 여부를 판정한다. 결과는 [stage1/run-d-signature-once.md](stage1/run-d-signature-once.md).
+**검증**: Run A/B/C와 같은 인스턴스·시드·열린 루프(`scripts/k6/detail-arrival-rate.js`)로 Run D(게이트 유지)/D2(게이트 비활성)를 측정했다. JFR `cloudfront-signing` 전용 풀의 전체 샘플 점유율은 Run D 19.16%/Run D2 22.03%로 사전 역산값(16%, 하한으로 명시)과 근접했다. `cloudfront_signing_rejected_total`(executor 큐 거부)이 두 arm 모두 0으로 수렴해 3단계 인프라 제거 근거가 확보됐다.
+
+#### 실측 결과 요약
+
+**1. 브라운아웃이 설계대로 사라졌다.** Run A(49.4%)→B(21.0%)→**D/D2(구조적으로 0, `partial_responses` 메트릭 자체가 발생하지 않음)**. fail-closed 전환으로 게이트 거부(Run D 7,769건)가 전부 "완전한 503"이 됐고, "이미지 0장짜리 200"은 나가지 않았다.
+
+**2. CPU는 확실히 내려갔지만(피크 99%→70~83%), 처리량은 거의 그대로였다(151→150.5 req/s).** 사전 추정(+19% 상한)조차 실현되지 않았다 — 서명 CPU를 줄여도 **CPU가 더 이상 병목이 아니라서** 처리량이 안 올랐다. 도착률 400 req/s를 여전히 못 따라가는데(달성 ~150) 그 원인이 CPU에서 다른 자원으로 옮겨간 것으로 보이며, 이 병목의 정체는 이번 범위에서 규명하지 못했다.
+
+**3. 범위 밖에서 제기했던 "JWT가 서명보다 큰 CPU 소비처일 수 있다"는 가설이 실측으로 확정됐다.** Tomcat 스레드(http-nio)의 crypto 프레임 중 CloudFront 서명 프레임은 0.00%(완전 격리)인 반면, JWT 관련 프레임(`io.jsonwebtoken`/`javax.crypto.Mac`)은 22~25%를 차지했다 — CloudFront 서명 전용 풀 자체의 점유율(19~22%)과 같은 자릿수다. JWT 이중 파싱·파서 재생성·요청마다 DB 조회를 고치는 게 다음으로 유력한 개선 지점이다.
+
+상세 기록은 [stage1/run-d-signature-once.md](stage1/run-d-signature-once.md).
 
 ---
 
@@ -149,5 +159,6 @@ Resilience4j `Bulkhead.Type.THREADPOOL`/`Type.SEMAPHORE`를 검토하고 기각�
 - [stage0/production/callerruns-verification.md](stage0/production/callerruns-verification.md) — mycourse 점유시간 악화 원인(CallerRunsPolicy CPU 경합) 검증 기록
 - [stage0/production/abortpolicy-gate-verification.md](stage0/production/abortpolicy-gate-verification.md) — 위 원인에 대한 해결책(AbortPolicy 전환 + `CloudFrontSigningGate`) 설계·구현·EC2 재검증 기록
 - [stage1/design-and-poc.md](stage1/design-and-poc.md) — 1단계 설계. Signed Cookie 기각 근거와 Custom Policy 와일드카드 채택, PoC 검증 기록
+- [stage1/run-d-signature-once.md](stage1/run-d-signature-once.md) — 1단계 EC2 실측(Run D/D2). 브라운아웃 구조적 제거 확인, JWT가 CloudFront 서명급 CPU 소비처임을 확정, 병목이 CPU 이후 다른 자원으로 옮겨갔다는 미해결 관찰
 - [CACHING-ROADMAP.md](../../CACHING-ROADMAP.md) — 2단계와 관련된 기존 캐싱 설계 원칙
 - GitHub 이슈 [#67](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/67) — 0단계에 대응. 1/3/5단계는 착수 시점에 별도 이슈로 분리하는 것을 검토한다.
