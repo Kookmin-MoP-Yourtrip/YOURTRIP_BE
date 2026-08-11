@@ -20,7 +20,7 @@
 ## 설계 원칙
 
 1. **presigned URL은 캐싱하지 않는다.** [S3Service.java](../src/main/java/backend/yourtrip/global/s3/service/S3Service.java)의 presigned URL은 유효기간이 15분이다. 완성된 응답 DTO를 통째로 캐싱하면 캐시 TTL이 URL 만료에 종속되고, 만료된 URL이 나갈 위험이 생긴다. 따라서 **S3 key만 캐싱하고 URL은 응답 조립 시점에 생성**한다.
-   > **[TASK-4.md](tasks/TASK-4.md)와 [TASK-PRESIGN-BOTTLENECK.md](tasks/TASK-PRESIGN-BOTTLENECK.md)에서 확정적으로 반증됨** — ~~"presign은 네트워크 호출 없는 로컬 HMAC 서명이라 비용이 작다"~~. 실측 결과 presign 1회 비용은 약 382us(마이크로벤치마크)로 결코 작지 않고, 무엇보다 이 URL 생성이 `@Transactional(readOnly = true)` 트랜잭션(= JDBC 커넥션) 안에서 일어나는 구조가 결합되면 HikariCP 커넥션 점유 시간이 초 단위로 증폭되는 병목으로 이어질 수 있다는 것이 CPU 프로파일링(JFR)과 HikariCP 지표로 직접 확인됐다. "S3 key만 캐싱한다"는 결론 자체는 여전히 유효하지만(URL 만료 문제는 그대로다), "presign이 저렴하다"는 전제는 폐기한다.
+   > **[TASK-4.md](tasks/TASK-4.md)와 [TASK-PRESIGN-BOTTLENECK.md](tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md)에서 확정적으로 반증됨** — ~~"presign은 네트워크 호출 없는 로컬 HMAC 서명이라 비용이 작다"~~. 실측 결과 presign 1회 비용은 약 382us(마이크로벤치마크)로 결코 작지 않고, 무엇보다 이 URL 생성이 `@Transactional(readOnly = true)` 트랜잭션(= JDBC 커넥션) 안에서 일어나는 구조가 결합되면 HikariCP 커넥션 점유 시간이 초 단위로 증폭되는 병목으로 이어질 수 있다는 것이 CPU 프로파일링(JFR)과 HikariCP 지표로 직접 확인됐다. "S3 key만 캐싱한다"는 결론 자체는 여전히 유효하지만(URL 만료 문제는 그대로다), "presign이 저렴하다"는 전제는 폐기한다.
 
 2. **조회수 증가는 캐싱 경계 바깥에 둔다.** 상세 조회 메서드에 `@Cacheable`을 그대로 걸면 캐시 히트 시 메서드 전체가 스킵되어 조회수 증가도 건너뛴다. 인기 코스일수록 히트율이 높으므로, 결과적으로 인기 코스의 조회수만 집계되지 않는 결과가 나온다. 조회수 증가는 캐시 조회와 분리된, 항상 실행되는 경로에 둔다.
 

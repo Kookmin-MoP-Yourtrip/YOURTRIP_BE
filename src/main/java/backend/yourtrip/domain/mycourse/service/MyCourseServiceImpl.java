@@ -39,6 +39,7 @@ import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
+import backend.yourtrip.global.cloudfront.service.CloudFrontSigningGate;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto.PlaceDto;
 import backend.yourtrip.global.gemini.service.GeminiService;
@@ -51,15 +52,12 @@ import java.io.IOException;
 import java.time.LocalTime;
 import java.time.Period;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
+import java.util.Map;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Async;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
@@ -85,8 +83,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final UploadCourseRepository uploadCourseRepository;
     private final KakaoLocalClient kakaoLocalClient;
     private final MyCourseDetailReader myCourseDetailReader;
-    @Qualifier("cloudFrontSigningExecutor")
-    private final ThreadPoolTaskExecutor cloudFrontSigningExecutor;
+    private final CloudFrontSigningGate cloudFrontSigningGate;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -157,7 +154,7 @@ public class MyCourseServiceImpl implements MyCourseService {
         // MyCourseController의 "/{courseId}/days/{dayId}/places" — 작성자만 볼 수 있는
         // 비공개 조회이므로 Signed URL을 발급한다.
 
-        // 1. 엔티티에서 스칼라값 추출 (daySchedule은 이미 페치 조인되어 있어 트랜잭션이
+        // 엔티티에서 스칼라값 추출 (daySchedule은 이미 페치 조인되어 있어 트랜잭션이
         // 끝난 뒤에도 안전하게 읽을 수 있다 — LazyInitializationException은 아직 초기화 안 된
         // 프록시에 접근할 때만 발생한다)
         record ImageTaskParams(Long placeId, Long placeImageId, String s3Key) {}
@@ -166,20 +163,18 @@ public class MyCourseServiceImpl implements MyCourseService {
                 .map(placeImage -> new ImageTaskParams(place.getId(), placeImage.getId(), placeImage.getPlaceImageS3Key())))
             .toList();
 
-        // 2. CompletableFuture 리스트 생성 (별도 단계로 만들어 즉시 실행 시작)
-        List<CompletableFuture<PlaceImageResponse>> signingFutures = taskParams.stream()
-            .map(params -> CompletableFuture.supplyAsync(() -> {
-                String signedUrl = cloudFrontService.getSignedUrl(params.s3Key());
-                return new PlaceImageResponse(params.placeId(), params.placeImageId(), signedUrl);
-            }, cloudFrontSigningExecutor).exceptionally(ex -> {
-                log.warn("CloudFront Signed URL 발급 실패 (placeImageId={})", params.placeImageId(), unwrapCause(ex));
-                return null;
-            }))
-            .toList();
+        // 병렬 서명·부하 차단·부분 실패 처리는 게이트가 전담한다 — 요청 단위로 permit을
+        // 얻은 뒤에만 이미지 전체를 병렬 제출하므로, 이미지 일부만 서명되고 나머지가 조용히
+        // 누락되는 태스크 단위 브라운아웃이 생기지 않는다.
+        Map<String, String> signedUrls = cloudFrontSigningGate.signAll(
+            taskParams.stream().map(ImageTaskParams::s3Key).toList());
 
-        // 3. join 및 null(실패) 필터링
-        List<PlaceImageResponse> imageIdAndUrls = signingFutures.stream()
-            .map(CompletableFuture::join)
+        List<PlaceImageResponse> imageIdAndUrls = taskParams.stream()
+            .map(params -> {
+                String signedUrl = signedUrls.get(params.s3Key());
+                return signedUrl == null ? null
+                    : new PlaceImageResponse(params.placeId(), params.placeImageId(), signedUrl);
+            })
             .filter(Objects::nonNull)
             .toList();
 
@@ -302,6 +297,10 @@ public class MyCourseServiceImpl implements MyCourseService {
         PlaceImage savedPlaceImage = placeImageRepository.save(
             new PlaceImage(place, placeImageS3Key));
 
+        // 게이트(CloudFrontSigningGate)를 거치지 않고 직접 서명한다 — 여기는
+        // @Transactional 안이라 세마포어를 기다리면 HikariCP 커넥션을 쥔 채 대기하게 되어
+        // 0단계에서 없앤 문제를 그대로 되살린다. 이미지 업로드는 저빈도 쓰기 경로라
+        // 게이트가 막는 CPU 경합 위험이 낮다.
         return new PlaceImageCreateResponse(savedPlaceImage.getId(),
             cloudFrontService.getSignedUrl(placeImageS3Key));
     }
@@ -578,9 +577,5 @@ public class MyCourseServiceImpl implements MyCourseService {
         double latitude = Double.parseDouble(doc.y());
 
         place.updateKakaoPlace(placeName, placeLocation, placeUrl, latitude, longitude);
-    }
-
-    private Throwable unwrapCause(Throwable ex) {
-        return (ex instanceof CompletionException && ex.getCause() != null) ? ex.getCause() : ex;
     }
 }

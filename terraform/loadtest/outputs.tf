@@ -18,6 +18,11 @@ output "k6_public_ip" {
   value       = aws_instance.k6.public_ip
 }
 
+output "k6_instance_id" {
+  description = "k6 EC2 인스턴스 ID — stop-instances/start-instances 대상 지정 시 사용(EC2-RDS-LOADTEST-GUIDE.md §8-1 참고)"
+  value       = aws_instance.k6.id
+}
+
 output "k6_ssh_command" {
   description = "k6 EC2 SSH 접속 명령 (<SSH 개인키 경로>를 실제 경로로 바꿔서 사용)"
   value       = "ssh -i <SSH 개인키 경로> ec2-user@${aws_instance.k6.public_ip}"

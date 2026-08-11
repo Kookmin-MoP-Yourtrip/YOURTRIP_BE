@@ -4,7 +4,7 @@
 
 ## 배경 — 지금까지 한 번도 직접 측정하지 않은 가설
 
-가설의 발원지는 [TASK-4.md:91](TASK-4.md)이고, 원문 표현부터가 추정이었다:
+가설의 발원지는 [TASK-4.md:91](../TASK-4.md)이고, 원문 표현부터가 추정이었다:
 
 > "동시성 50 하에서 이 서명 연산 자체가 새로운 병목으로 등장한 **것으로 보인다**"
 
@@ -120,7 +120,7 @@ arm C의 최상위(leaf) 프레임 1위는 `sun.security.util.math.intpoly.Integ
 | `hikaricp_connections_active` | **10** (풀 전량 소진) |
 | `process_cpu_usage` | 0.65 |
 
-DB 쿼리가 0건인데도 대기 큐가 189까지 쌓였다 — 세션 전체(쿼리가 실제 발생한 구간 포함) 측정치와 사실상 같은 규모다. 원인은 [UploadCourseServiceImpl.java:163](../../src/main/java/backend/yourtrip/domain/uploadcourse/service/UploadCourseServiceImpl.java)의 `getDetail`이 캐시 히트/미스 분기 전체를 **메서드 하나를 통째로 감싼 `@Transactional(readOnly = true)`** 안에 두고 있기 때문이다. Spring이 트랜잭션을 시작하는 시점에 — 그 트랜잭션 안에서 쿼리를 한 번도 안 날려도 — HikariCP 커넥션을 확보하며(read-only/isolation level을 설정하려면 물리 커넥션이 필요), 그 커넥션은 메서드가 리턴할 때까지, 즉 캐시 히트 분기의 서명 루프(`buildDaySchedulesFromCache`)가 끝날 때까지 반납되지 않는다.
+DB 쿼리가 0건인데도 대기 큐가 189까지 쌓였다 — 세션 전체(쿼리가 실제 발생한 구간 포함) 측정치와 사실상 같은 규모다. 원인은 [UploadCourseServiceImpl.java:163](../../../src/main/java/backend/yourtrip/domain/uploadcourse/service/UploadCourseServiceImpl.java)의 `getDetail`이 캐시 히트/미스 분기 전체를 **메서드 하나를 통째로 감싼 `@Transactional(readOnly = true)`** 안에 두고 있기 때문이다. Spring이 트랜잭션을 시작하는 시점에 — 그 트랜잭션 안에서 쿼리를 한 번도 안 날려도 — HikariCP 커넥션을 확보하며(read-only/isolation level을 설정하려면 물리 커넥션이 필요), 그 커넥션은 메서드가 리턴할 때까지, 즉 캐시 히트 분기의 서명 루프(`buildDaySchedulesFromCache`)가 끝날 때까지 반납되지 않는다.
 
 **결론**: 이 병목의 조건은 "DB를 실제로 건드리는가"가 아니라 **"presign/서명 호출이 `@Transactional` 메서드 경계 안에 있는가"** 하나뿐이다. mycourse(캐싱 자체가 없어 항상 해당), uploadcourse 캐시 미스, **그리고 uploadcourse 캐시 히트**까지 전부 이 조건을 만족한다 — 즉 이미지 URL을 만드는 이 코드베이스의 상세조회 경로 전체가 예외 없이 영향권 안에 있다. 캐싱이 DB 부하를 없앤 것은 사실이지만(TASK-3/4가 실측한 대로), 그것이 이 커넥션 풀 경합 문제까지 없애주지는 못한다.
 

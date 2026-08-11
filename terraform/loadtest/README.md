@@ -1,6 +1,6 @@
 # Terraform — EC2 + RDS + ElastiCache 분리 부하테스트 환경
 
-이 디렉토리는 [`docs/tasks/TASK-PRESIGN-BOTTLENECK-FIX.md`](../../docs/tasks/TASK-PRESIGN-BOTTLENECK-FIX.md)의
+이 디렉토리는 [`docs/tasks/connection-pool-bottleneck/stage0/production/ec2-rds.md`](../../docs/tasks/connection-pool-bottleneck/stage0/production/ec2-rds.md)의
 "개선 제안 — 배포 환경(EC2 + RDS) 분리 부하테스트" 절을 실행하기 위한 **일회성·임시 인프라**를 관리한다.
 로컬 개발 노트북(12코어) 한 대에서 앱·DB·Redis·k6를 전부 같이 돌리며 생긴 CPU 경합 노이즈를 제거하고,
 `hikaricp_connections_pending`/`acquire_seconds` 병목이 진짜 구조적 문제인지 환경 잡음이었는지를 확정하는 게 목적이다.
@@ -204,6 +204,6 @@ terraform destroy
 ## 알아둬야 할 것
 
 - **`rds_password`, `jwt_secret` 등 민감값은 `terraform.tfstate`에 평문으로 저장된다.** 기존 `terraform/`과 동일한 트레이드오프이며(로컬 state, remote backend 없음), 테스트 종료 후 `terraform destroy`로 리소스 자체를 없애는 것이 최선의 완화책이다.
-- **App EC2는 빌드를 하지 않는다 — JAR를 scp로 전달하기 전까지 앱은 계속 재시작을 반복한다(정상 동작).** `Restart=on-failure`가 5초 간격으로 재시도하다가 JAR와 CloudFront 개인키가 도착하면 다음 재시도에서 스스로 뜬다. 예전엔 EC2에서 직접 `git clone`+Gradle 빌드를 했었는데, t3.micro(1 vCPU 버스터블)에서 3~4분간 CPU를 태우는 빌드가 부하테스트 시작 시점의 CPU 크레딧 잔액을 미리 갉아먹어 측정 조건이 매번 달라지는 문제가 있어 로컬 빌드+scp로 바꿨다.
+- **App EC2는 빌드를 하지 않는다 — JAR를 scp로 전달하기 전까지 앱은 계속 재시작을 반복한다(정상 동작).** `Restart=on-failure`가 5초 간격으로 재시도하다가 JAR와 CloudFront 개인키가 도착하면 다음 재시도에서 스스로 뜬다. 예전엔 EC2에서 직접 `git clone`+Gradle 빌드를 했었는데, t3.micro(vCPU 2개지만 물리 코어는 1개뿐인 SMT/하이퍼스레딩 버스터블)에서 3~4분간 CPU를 태우는 빌드가 부하테스트 시작 시점의 CPU 크레딧 잔액을 미리 갉아먹어 측정 조건이 매번 달라지는 문제가 있어 로컬 빌드+scp로 바꿨다.
 - **`DB_DDL_AUTO=create`를 쓴다 — App EC2를 재생성할 때마다 시드 데이터가 사라진다(실측으로 확인됨).** 이 RDS는 매 측정 전 재시딩하는 테스트 전용 DB라 로컬 벤치마크와 동일하게 스키마를 앱이 직접 생성하게 두는데, `create` 모드는 앱이 부팅할 때마다 기존 테이블을 DROP 후 재생성한다. RDS 자체는 살아있어도 App EC2만 새로 뜨면(예: `user_data` 수정 후 `apply`) 데이터가 지워지므로, App EC2를 재생성했다면 §"실행 순서" 5번(DB 시딩)을 반드시 다시 실행한다. 운영 DB(`validate`)와는 다른 설정임을 인지하고 있을 것.
 - **버스터블(t3) 인스턴스 4개 전부 CPU 크레딧 고갈 가능성이 있다.** `CPUCreditBalance`가 0에 가까워지면 "로컬 CPU 경합"이 "AWS 크레딧 고갈"이라는 같은 종류의 새로운 병목으로 바뀐 것뿐이므로, 이 경우 측정 신뢰도를 재평가해야 한다.

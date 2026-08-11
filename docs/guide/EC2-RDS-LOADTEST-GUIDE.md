@@ -2,7 +2,7 @@
 
 ## 배경
 
-[TASK-PRESIGN-BOTTLENECK-FIX.md의 "개선 제안 — 배포 환경(EC2 + RDS) 분리 부하테스트"](../tasks/TASK-PRESIGN-BOTTLENECK-FIX.md)가 지목한 문제 — 지금까지의 모든 부하테스트가 앱·PostgreSQL·Redis·Prometheus·Grafana·k6를 전부 로컬 개발 노트북 한 대에서 동시에 돌린 결과라, "인덱스 추가 이후 남은 병목이 진짜 구조적 문제(HikariCP 20:1 풀 크기)인지, 로컬 머신의 CPU 경합 노이즈인지" 구분이 안 됐다 — 를 해소하기 위해 앱은 EC2, DB는 RDS, 캐시는 ElastiCache, 부하생성기는 별도 EC2로 분리한 환경이다.
+[TASK-PRESIGN-BOTTLENECK-FIX.md의 "개선 제안 — 배포 환경(EC2 + RDS) 분리 부하테스트"](../tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md)가 지목한 문제 — 지금까지의 모든 부하테스트가 앱·PostgreSQL·Redis·Prometheus·Grafana·k6를 전부 로컬 개발 노트북 한 대에서 동시에 돌린 결과라, "인덱스 추가 이후 남은 병목이 진짜 구조적 문제(HikariCP 20:1 풀 크기)인지, 로컬 머신의 CPU 경합 노이즈인지" 구분이 안 됐다 — 를 해소하기 위해 앱은 EC2, DB는 RDS, 캐시는 ElastiCache, 부하생성기는 별도 EC2로 분리한 환경이다.
 
 이 문서는 그 분리 환경이 **이미 배포된 이후**의 부하테스트 실행 절차(Prometheus 재조준 → k6 실행 → 병목 확인 → 지표 측정)를 다룬다. 인프라를 처음부터 구축/재구축하는 절차(Terraform apply/destroy)는 [terraform/loadtest/README.md](../../terraform/loadtest/README.md)를 따로 참고한다 — 이 문서와 역할이 겹치지 않게 분리했다.
 
@@ -126,7 +126,7 @@ k6 run -e BASE_URL=http://<App EC2 공인 IP>:8080 -e DOMAIN=mycourse   -e MODE=
 
 ### 5-3. CloudWatch에서 확인 (환경 자체의 한계 여부 판별용)
 
-로컬 실측에서 "인덱스로 쿼리는 49~236배 빨라졌는데 풀 포화 지표는 그대로였던" 원인이 로컬 머신의 CPU 공유 문제였다는 게 JFR로 밝혀졌었다([TASK-PRESIGN-BOTTLENECK-FIX.md](../tasks/TASK-PRESIGN-BOTTLENECK-FIX.md) Phase C 참고). 이번 환경에서 같은 종류의 잡음이 남아있는지는 CloudWatch로 확인한다.
+로컬 실측에서 "인덱스로 쿼리는 49~236배 빨라졌는데 풀 포화 지표는 그대로였던" 원인이 로컬 머신의 CPU 공유 문제였다는 게 JFR로 밝혀졌었다([TASK-PRESIGN-BOTTLENECK-FIX-INDEX-LOCAL.md](../tasks/connection-pool-bottleneck/stage0/local/index.md) Phase C 참고). 이번 환경에서 같은 종류의 잡음이 남아있는지는 CloudWatch로 확인한다.
 
 ```bash
 # App EC2 메모리 사용률 (커스텀 네임스페이스 — CloudWatch Agent가 수집)
@@ -146,7 +146,7 @@ AWS_PROFILE=terraform-admin aws cloudwatch get-metric-statistics \
 
 ## 6. 성능 지표 측정 및 로컬 대비 비교
 
-측정한 값을 아래 표에 채워 로컬 실측치(인덱스 추가 후, [TASK-PRESIGN-BOTTLENECK-FIX.md](../tasks/TASK-PRESIGN-BOTTLENECK-FIX.md) "인덱스 추가 결과" 참고)와 비교한다.
+측정한 값을 아래 표에 채워 로컬 실측치(인덱스 추가 후, [TASK-PRESIGN-BOTTLENECK-FIX-INDEX-LOCAL.md](../tasks/connection-pool-bottleneck/stage0/local/index.md) "인덱스 추가 결과" 참고)와 비교한다.
 
 ### mycourse (DB 접근이 필수인 경로 — 핵심 비교 대상)
 
@@ -184,7 +184,7 @@ AWS_PROFILE=terraform-admin aws cloudwatch get-metric-statistics \
 
 초기 버전은 App EC2 `user_data`가 부팅 시 `git fetch` + `./gradlew bootJar`를 직접 실행했다. 실측으로 두 가지 문제가 드러났다:
 
-1. **CPU 크레딧 소진**: t3.micro는 1 vCPU 버스터블 인스턴스인데, 빌드가 3~4분간 CPU를 거의 100% 태운다. 이게 **부하테스트가 시작되기도 전에 CPU 크레딧 잔액을 갉아먹어**, "측정 시작 시점의 인스턴스 상태"가 매번 달라지는 변수가 됐다.
+1. **CPU 크레딧 소진**: t3.micro는 vCPU 2개(단, 물리 코어는 1개뿐이고 SMT/하이퍼스레딩으로 논리 코어 2개를 낸 것) 버스터블 인스턴스인데, 빌드가 3~4분간 CPU를 거의 100% 태운다. 이게 **부하테스트가 시작되기도 전에 CPU 크레딧 잔액을 갉아먹어**, "측정 시작 시점의 인스턴스 상태"가 매번 달라지는 변수가 됐다.
 2. **1GB RAM에서 Gradle 빌드가 OOM 위험**: 임시 스왑(1GB)을 켰다 끄는 우회책이 필요했다 — 스왑이 남아있으면 그 자체로 또 다른 변수(디스크 I/O 지연)가 됐다.
 
 서버에서 직접 빌드하는 방식 자체가 재현 불가능한 아티팩트·롤백 불가 문제도 안고 있어, **로컬(또는 CI)에서 빌드한 불변 아티팩트를 scp로 전달하는 방식**으로 바꿨다(`terraform/loadtest/templates/app-user-data.sh.tpl` 상단 주석 참고). App EC2는 이제 git도, Gradle도 쓰지 않는다.
@@ -213,18 +213,42 @@ AWS는 `user_data`를 **최초 부팅 시 한 번만** 실행한다. `templates/
 
 ## 8. 측정 종료 후 정리
 
+두 단계로 나뉜다 — **매 측정 세션 종료 시**(실무 관행)와 **인프라 자체를 완전히 정리할 때**.
+
+### 8-1. 매 측정 세션 종료 시 — App/k6 EC2만 정지
+
 ```bash
 # 1. 로컬 prometheus.yml 원상복구
 git checkout -- prometheus.yml
 
-# 2. 인프라 철거 (비용 최소화 — 임시 인프라이므로 측정 후 즉시 철거)
+# 2. App EC2 · k6 EC2 인스턴스 ID 확인
+cd terraform/loadtest
+APP_ID=$(terraform output -raw app_instance_id)
+K6_ID=$(terraform output -raw k6_instance_id)
+
+# 3. 두 인스턴스만 정지 (RDS·ElastiCache·VPC는 그대로 둔다)
+AWS_PROFILE=terraform-admin aws ec2 stop-instances --instance-ids "$APP_ID" "$K6_ID"
+AWS_PROFILE=terraform-admin aws ec2 wait instance-stopped --instance-ids "$APP_ID" "$K6_ID"
+```
+
+- `terraform destroy` 대신 `stop-instances`를 쓰는 이유: EBS 루트 볼륨·인스턴스 자체는 그대로 남고 **컴퓨트 요금만 멈춘다** — 다음 세션에서 `start-instances`만으로 바로 재개할 수 있어, 매번 인프라를 처음부터 재구축(수십 분, jar/키 재배포 포함)하지 않아도 된다.
+- **RDS·ElastiCache는 이 절차로 정지되지 않고 계속 과금된다.** RDS는 `aws rds stop-db-instance`로 정지할 수 있지만 AWS가 7일 뒤 자동으로 재시작시키는 제약이 있고, ElastiCache는 애초에 정지 기능이 없어 삭제/재생성만 가능하다. 이 저장소는 지금까지 RDS/ElastiCache는 정지 대상에서 제외하고 App/k6 EC2만 정지해왔다 — 장기간 재사용하지 않을 계획이라면 §8-2로 완전히 철거한다.
+
+**재기동 시 주의 — 정지→재기동만 해도 데이터가 사라진다**: App EC2를 `stop`했다가 `start`하면(재생성이 아니어도) `yourtrip-app` 시스템 서비스가 다시 뜨면서 `DB_DDL_AUTO=create`가 스키마를 DROP 후 재생성한다 — RDS 자체는 살아있어도 App EC2를 정지→재기동하기만 하면 데이터가 사라진다는 뜻이다(§2의 "재생성했다면"과 같은 함정이 재생성이 아닌 단순 재시작만으로도 재현됨 — 실측으로 확인). 다음 측정 전 반드시 재시딩부터 한다.
+
+### 8-2. 인프라 자체를 완전히 정리할 때 — 전체 철거
+
+```bash
 cd terraform/loadtest
 AWS_PROFILE=terraform-admin terraform destroy
 ```
 
+App/k6 EC2뿐 아니라 RDS·ElastiCache·VPC까지 전부 삭제해 과금을 완전히 없앤다 — 이후 다시 쓰려면 인프라를 처음부터 재구축(`terraform apply` + jar/키 재배포 + 재시딩)해야 한다.
+
 ## 참고 문서
 
 - [terraform/loadtest/README.md](../../terraform/loadtest/README.md) — 인프라 구축/철거 절차(이 문서와 역할 분리)
-- [TASK-PRESIGN-BOTTLENECK-FIX.md](../tasks/TASK-PRESIGN-BOTTLENECK-FIX.md) — 이 부하테스트의 목적이 된 로컬 실측 기록과 비교 기준
+- [TASK-PRESIGN-BOTTLENECK-FIX.md](../tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md) — 이 부하테스트가 속한 단계별 계획 문서
+- [ec2-rds.md](../tasks/connection-pool-bottleneck/stage0/production/ec2-rds.md) — 이 부하테스트의 목적이 된 로컬 실측 기록과 실제 측정 결과
 - [LOAD-TESTING-GUIDE.md](LOAD-TESTING-GUIDE.md) — k6/JFR 사용법 전반
 - [MONITORING-GUIDE.md](MONITORING-GUIDE.md) — Prometheus/Grafana 구축 및 기본 사용법
