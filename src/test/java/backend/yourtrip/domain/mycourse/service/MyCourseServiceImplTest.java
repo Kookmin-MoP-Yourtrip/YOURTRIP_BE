@@ -23,7 +23,9 @@ import backend.yourtrip.domain.mycourse.repository.TravelCourseRepository;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
+import backend.yourtrip.global.cloudfront.config.CloudFrontExecutorConfig;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
+import backend.yourtrip.global.cloudfront.service.CloudFrontSigningGate;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.CloudFrontErrorCode;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
@@ -31,6 +33,7 @@ import backend.yourtrip.global.gemini.service.GeminiService;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
 import backend.yourtrip.global.s3.service.S3Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.util.List;
@@ -52,9 +55,11 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
- * getPlaceListByDay의 CloudFront Signed URL 병렬 발급(TASK-CLOUDFRONT.md 후속 작업)을 검증한다.
- * cloudFrontSigningExecutor는 실제 병렬 실행 여부를 증명해야 하므로 mock이 아니라 진짜
- * ThreadPoolTaskExecutor를 만들어 생성자에 직접 주입한다(@InjectMocks 미사용).
+ * getPlaceListByDay의 CloudFront Signed URL 병렬 발급 + 입장 제어 게이트(CloudFrontSigningGate)를
+ * 검증한다. 게이트가 실제 executor로 서명을 병렬 실행하는지 증명해야 하므로, 게이트를 mock하지
+ * 않고 permits=100(사실상 무제한)인 실제 인스턴스를 생성자에 직접 주입한다(@InjectMocks 미사용).
+ * executor는 CloudFrontExecutorConfig.buildSigningExecutor로 만들어 프로덕션과 동일한 풀 정책을 쓴다.
+ * 거부 경로(permit 소진, 큐 포화)는 CloudFrontSigningGateTest에서 별도로 검증한다.
  */
 @ExtendWith(MockitoExtension.class)
 class MyCourseServiceImplTest {
@@ -87,6 +92,7 @@ class MyCourseServiceImplTest {
     private ApplicationEventPublisher eventPublisher;
 
     private ThreadPoolTaskExecutor cloudFrontSigningExecutor;
+    private CloudFrontSigningGate cloudFrontSigningGate;
     private MyCourseServiceImpl myCourseService;
 
     private static final Long OWNER_ID = 10L;
@@ -95,19 +101,24 @@ class MyCourseServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        cloudFrontSigningExecutor = new ThreadPoolTaskExecutor();
-        cloudFrontSigningExecutor.setCorePoolSize(4);
-        cloudFrontSigningExecutor.setMaxPoolSize(4);
-        cloudFrontSigningExecutor.setQueueCapacity(100);
-        cloudFrontSigningExecutor.setThreadNamePrefix("cloudfront-signing-test-");
-        cloudFrontSigningExecutor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        // 프로덕션과 동일한 풀 정책(코어=최대=4, 큐 100, AbortPolicy)을 팩터리로 재사용한다.
+        cloudFrontSigningExecutor = CloudFrontExecutorConfig.buildSigningExecutor(
+            4, 100, new ThreadPoolExecutor.AbortPolicy());
         cloudFrontSigningExecutor.initialize(); // 테스트에는 Spring 컨테이너가 없어 직접 호출한다.
+
+        // permits=100 → 사실상 무제한이라 이 테스트들에서는 게이트가 배압을 걸지 않는다.
+        // 거부/데드라인 경로는 CloudFrontSigningGateTest에서 결정론적으로 별도 검증한다.
+        cloudFrontSigningGate = new CloudFrontSigningGate(
+            cloudFrontService, cloudFrontSigningExecutor,
+            /* permits */ 100, /* acquireTimeoutMs */ 1000,
+            /* maxKeysPerRequest */ 100, /* deadlineMs */ 5000,
+            new SimpleMeterRegistry());
 
         myCourseService = new MyCourseServiceImpl(
             userService, s3Service, cloudFrontService, geminiService, objectMapper,
             travelCourseRepository, dayScheduleRepository, placeRepository,
             placeImageRepository, uploadCourseRepository, kakaoLocalClient,
-            myCourseDetailReader, cloudFrontSigningExecutor, eventPublisher
+            myCourseDetailReader, cloudFrontSigningGate, eventPublisher
         );
     }
 
@@ -187,7 +198,7 @@ class MyCourseServiceImplTest {
         // then
         assertThat(response.places().get(0).placeImages()).hasSize(4);
         assertThat(threadNames).hasSize(4);
-        assertThat(threadNames).allMatch(name -> name.startsWith("cloudfront-signing-test-"));
+        assertThat(threadNames).allMatch(name -> name.startsWith("cloudfront-signing-"));
         assertThat(threadNames).doesNotContain(callerThreadName);
     }
 

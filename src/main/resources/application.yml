@@ -98,6 +98,22 @@ cloudfront:
   signed-url-ttl-minutes: 60
   # mycourse 상세조회 Signed URL 병렬 서명용 스레드풀 크기. 0이면 Runtime.availableProcessors()를 사용한다.
   signing-pool-size: ${CLOUDFRONT_SIGNING_POOL_SIZE:0}
+  signing:
+    # 하한: permits(54) x 요청당 이미지수(10) = 540. 상한: bufferbloat 방지(최악 대기가
+    # 지연예산의 2배를 넘지 않게, t3.small 기준 약 1087) — 그 사이인 640이 기본값이다.
+    queue-capacity: 640
+    # (풀크기 x 지연예산) / (요청당 이미지수 x 서명 1회 비용) = (2 x 100ms) / (10 x 0.368ms) ≈ 54.
+    # 0.368ms는 EC2(t3.small) 위에서 BenchmarkMain(SigningBenchmarkTest와 동일 로직)으로
+    # 직접 측정한 값이다(dev 머신 기반 최초 추정치 0.7ms보다 낮게 나왔다). 100000으로 두면
+    # 사실상 무제한이 돼 게이트가 비활성화되고 AbortPolicy 단독 동작과 같아진다 — 재배포 없이
+    # 이 값만 바꿔 A/B 측정을 할 수 있다.
+    permits: ${CLOUDFRONT_SIGNING_PERMITS:54}
+    # 버스트 흡수기 — 지연 예산과 동급으로 잡는다.
+    acquire-timeout-ms: 100
+    # 요청 하나가 만들 수 있는 서명 태스크 수의 하드 캡(fan-out 방어, DoS 방어 겸용).
+    max-keys-per-request: 50
+    # permit 영구 누수 방지 안전망. 정상 부하에서는 발동하면 안 된다.
+    deadline-ms: 2000
 
 gemini:
   api-key: ${GEMINI_API_KEY}
