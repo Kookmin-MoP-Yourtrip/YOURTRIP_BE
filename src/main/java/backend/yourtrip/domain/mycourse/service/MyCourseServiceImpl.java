@@ -40,7 +40,6 @@ import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService.CourseSignature;
-import backend.yourtrip.global.cloudfront.service.CloudFrontSigningGate;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto.PlaceDto;
 import backend.yourtrip.global.gemini.service.GeminiService;
@@ -82,7 +81,6 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final UploadCourseRepository uploadCourseRepository;
     private final KakaoLocalClient kakaoLocalClient;
     private final MyCourseDetailReader myCourseDetailReader;
-    private final CloudFrontSigningGate cloudFrontSigningGate;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -157,7 +155,14 @@ public class MyCourseServiceImpl implements MyCourseService {
         // private/{courseId}/* 와일드카드로 잡아 그 결과 쿼리스트링을 모든 이미지 URL에
         // 재사용한다(TASK-PRESIGN-BOTTLENECK-FIX.md 1단계). 서명은 반드시 위 소유권 검증
         // 이후에 해야 한다 — 순서가 뒤집히면 인가 실패 요청에도 서명이 발급된다.
-        CourseSignature signature = cloudFrontSigningGate.signCourseScope(courseId);
+        //
+        // 전용 스레드풀/세마포어 게이트를 거치지 않고 직접 호출한다 — 서명이 요청당 1회로
+        // 상수화된 뒤로는 fan-out이 없어 격리할 이유가 사라졌다(요청 스레드에서 서명 1회를
+        // 직접 실행해도 부하는 CPU 코어를 공유하는 다른 요청 처리 비용과 자릿수가 같다).
+        // Run D/D2 EC2 실측에서 executor 큐 거부(cloudfront_signing_rejected_total)가 두
+        // arm 모두 0으로 수렴해 이 인프라가 발동하지 않는 안전망임을 확인한 뒤 제거했다
+        // (docs/tasks/connection-pool-bottleneck/stage1/run-d-signature-once.md 판정 5).
+        CourseSignature signature = cloudFrontService.signCourseScope(courseId);
 
         // daySchedule은 이미 페치 조인되어 있어 트랜잭션이 끝난 뒤에도 안전하게 읽을 수 있다
         // (LazyInitializationException은 아직 초기화 안 된 프록시에 접근할 때만 발생한다).
@@ -288,10 +293,6 @@ public class MyCourseServiceImpl implements MyCourseService {
         PlaceImage savedPlaceImage = placeImageRepository.save(
             new PlaceImage(place, placeImageS3Key));
 
-        // 게이트(CloudFrontSigningGate)를 거치지 않고 직접 서명한다 — 여기는
-        // @Transactional 안이라 세마포어를 기다리면 HikariCP 커넥션을 쥔 채 대기하게 되어
-        // 0단계에서 없앤 문제를 그대로 되살린다. 이미지 업로드는 저빈도 쓰기 경로라
-        // 게이트가 막는 CPU 경합 위험이 낮다.
         return new PlaceImageCreateResponse(savedPlaceImage.getId(),
             cloudFrontService.signCourseScope(courseId).signedUrlFor(placeImageS3Key));
     }

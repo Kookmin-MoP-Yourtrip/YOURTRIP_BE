@@ -24,10 +24,8 @@ import backend.yourtrip.domain.mycourse.repository.TravelCourseRepository;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
-import backend.yourtrip.global.cloudfront.config.CloudFrontExecutorConfig;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService.CourseSignature;
-import backend.yourtrip.global.cloudfront.service.CloudFrontSigningGate;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.CloudFrontErrorCode;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
@@ -35,17 +33,10 @@ import backend.yourtrip.global.gemini.service.GeminiService;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
 import backend.yourtrip.global.s3.service.S3Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.concurrent.CyclicBarrier;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -54,14 +45,16 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
- * getPlaceListByDay의 CloudFront Signed URL 병렬 발급 + 입장 제어 게이트(CloudFrontSigningGate)를
- * 검증한다. 게이트가 실제 executor로 서명을 병렬 실행하는지 증명해야 하므로, 게이트를 mock하지
- * 않고 permits=100(사실상 무제한)인 실제 인스턴스를 생성자에 직접 주입한다(@InjectMocks 미사용).
- * executor는 CloudFrontExecutorConfig.buildSigningExecutor로 만들어 프로덕션과 동일한 풀 정책을 쓴다.
- * 거부 경로(permit 소진, 큐 포화)는 CloudFrontSigningGateTest에서 별도로 검증한다.
+ * getPlaceListByDay의 CloudFront 코스 스코프 서명(코스당 1회)을 검증한다.
+ *
+ * <p>1단계(서명 1회 전환) 이전에는 이미지마다 병렬 서명 + 입장 제어 게이트가 있었으나,
+ * 요청당 서명이 1건으로 상수화되면서 fan-out이 사라져 그 인프라(cloudFrontSigningExecutor,
+ * CloudFrontSigningGate)를 제거했다 — Run D/D2 EC2 실측에서 executor 큐 거부가 두 arm 모두
+ * 0으로 수렴해 발동하지 않는 안전망임을 확인한 뒤의 제거다
+ * (docs/tasks/connection-pool-bottleneck/stage1/run-d-signature-once.md 판정 5).
+ * 이제 {@code cloudFrontService}를 직접 mock한다.
  */
 @ExtendWith(MockitoExtension.class)
 class MyCourseServiceImplTest {
@@ -93,8 +86,6 @@ class MyCourseServiceImplTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
-    private ThreadPoolTaskExecutor cloudFrontSigningExecutor;
-    private CloudFrontSigningGate cloudFrontSigningGate;
     private MyCourseServiceImpl myCourseService;
 
     private static final Long OWNER_ID = 10L;
@@ -111,29 +102,12 @@ class MyCourseServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        // 프로덕션과 동일한 풀 정책(코어=최대=4, 큐 100, AbortPolicy)을 팩터리로 재사용한다.
-        cloudFrontSigningExecutor = CloudFrontExecutorConfig.buildSigningExecutor(
-            4, 100, new ThreadPoolExecutor.AbortPolicy());
-        cloudFrontSigningExecutor.initialize(); // 테스트에는 Spring 컨테이너가 없어 직접 호출한다.
-
-        // permits=100 → 사실상 무제한이라 이 테스트들에서는 게이트가 배압을 걸지 않는다.
-        // 거부/데드라인 경로는 CloudFrontSigningGateTest에서 결정론적으로 별도 검증한다.
-        cloudFrontSigningGate = new CloudFrontSigningGate(
-            cloudFrontService, cloudFrontSigningExecutor,
-            /* permits */ 100, /* acquireTimeoutMs */ 1000, /* deadlineMs */ 5000,
-            new SimpleMeterRegistry());
-
         myCourseService = new MyCourseServiceImpl(
             userService, s3Service, cloudFrontService, geminiService, objectMapper,
             travelCourseRepository, dayScheduleRepository, placeRepository,
             placeImageRepository, uploadCourseRepository, kakaoLocalClient,
-            myCourseDetailReader, cloudFrontSigningGate, eventPublisher
+            myCourseDetailReader, eventPublisher
         );
-    }
-
-    @AfterEach
-    void tearDown() {
-        cloudFrontSigningExecutor.shutdown();
     }
 
     @Test
@@ -191,34 +165,6 @@ class MyCourseServiceImplTest {
 
         assertThat(response.places().get(0).placeImages()).hasSize(5);
         verify(cloudFrontService, times(1)).signCourseScope(COURSE_ID);
-    }
-
-    @Test
-    @DisplayName("서명이 호출 스레드가 아닌 전용 서명 스레드풀에서 실행된다")
-    void getPlaceListByDay_SigningRunsOnDedicatedPool() {
-        DaySchedule daySchedule = daySchedule();
-        Place place = place(daySchedule, 1L);
-        addImage(place, 11L, "private/1/k1.jpg");
-        daySchedule.getPlaces().add(place);
-
-        given(userService.getCurrentUserId()).willReturn(OWNER_ID);
-        given(myCourseDetailReader.readDaySchedule(COURSE_ID, DAY_ID, OWNER_ID))
-            .willReturn(daySchedule);
-
-        Set<String> threadNames = new CopyOnWriteArraySet<>();
-        String callerThreadName = Thread.currentThread().getName();
-        given(cloudFrontService.signCourseScope(COURSE_ID)).willAnswer(inv -> {
-            threadNames.add(Thread.currentThread().getName());
-            return SIGNATURE;
-        });
-
-        myCourseService.getPlaceListByDay(COURSE_ID, DAY_ID);
-
-        // 서명이 1건이 되면서 "여러 태스크가 진짜 병렬로 실행되는가"는 검증 대상이 아니게 됐다.
-        // 남은 것은 격리 속성 하나 — 서명이 Tomcat 요청 스레드를 점유하지 않는다는 것.
-        assertThat(threadNames).hasSize(1);
-        assertThat(threadNames).allMatch(name -> name.startsWith("cloudfront-signing-"));
-        assertThat(threadNames).doesNotContain(callerThreadName);
     }
 
     @Test
