@@ -1,6 +1,11 @@
 # 애플리케이션(S3Service.java)이 업로드/조회/삭제하는 미디어(프로필 이미지, 코스 장소 사진,
-# 피드 미디어, 코스 썸네일)를 저장하는 단일 버킷. 모든 도메인이 이 버킷 하나를 공유하며
-# uploads/{yyyy-MM-dd}/{uuid}.{ext} 키로 날짜별 prefix만 구분한다(버킷 분리 불필요).
+# 피드 미디어, 코스 썸네일)를 저장하는 단일 버킷. 모든 도메인이 이 버킷 하나를 공유하고
+# prefix로만 구분한다(버킷 분리 불필요) — 키 규약은 MediaKeys.java에 모여 있다:
+#   공개:   uploads/{yyyy-MM-dd}/{uuid}.{ext}
+#   비공개: private/{courseId}/{uuid}.{ext}
+# 비공개가 날짜가 아니라 코스 단위인 이유는 CloudFront 서명 정책의 Resource를
+# private/{courseId}/* 와일드카드로 잡아 코스당 서명을 1회로 줄이기 위해서다
+# (docs/tasks/connection-pool-bottleneck/stage1/design-and-poc.md).
 resource "aws_s3_bucket" "media" {
   bucket = var.bucket_name
 
@@ -40,8 +45,9 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "media" {
 # - S3Service.deleteFile()은 사용자의 명시적 삭제 요청에 대응한다. 버저닝을 켜면 delete는
 #   delete marker만 추가하고 이전 버전이 스토리지에 남아 "삭제하면 진짜 지워진다"는 앱의
 #   기대 동작과 어긋나고 비용만 쌓인다.
-# - 업로드 키가 uploads/{date}/{uuid}.{ext}로 UUID 기반이라 동일 키 덮어쓰기 충돌
-#   가능성이 사실상 없어, 버저닝이 방어하는 "덮어쓰기 실수" 시나리오 자체가 희박하다.
+# - 업로드 키가 UUID 기반(uploads/{date}/{uuid}.{ext}, private/{courseId}/{uuid}.{ext})이라
+#   동일 키 덮어쓰기 충돌 가능성이 사실상 없어, 버저닝이 방어하는 "덮어쓰기 실수" 시나리오
+#   자체가 희박하다.
 resource "aws_s3_bucket_versioning" "media" {
   bucket = aws_s3_bucket.media.id
 
