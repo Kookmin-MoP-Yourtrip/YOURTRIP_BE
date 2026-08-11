@@ -35,6 +35,8 @@
 
 **4. [CallerRunsPolicy 가설 검증](stage0/production/callerruns-verification.md)** — 위 역설의 원인을 규명했다. `cloudFrontSigningExecutor`(§3단계 참고)가 0단계 이후 HikariCP 풀이 우연히 수행하던 "서명 유량 제한"을 잃고 VU200 근처에서 큐+풀 용량을 압도적으로 초과해, `CallerRunsPolicy`가 초당 약 1,450회(구간 누적 약 145,000회, 전체 실행 413,366회) 발동했다. 그 결과 Tomcat 요청 스레드의 80.69%가 자기 요청 대신 ECDSA 서명 연산을 동기 실행하며 vCPU를 98.28%까지 점유했다(JFR·Micrometer 카운터·CloudWatch 3중 계측으로 확정). 이 CPU 경합이 같은 시점의 DB 트랜잭션 처리 스레드를 굶겨 벽시계 실행시간을 늘렸다는 게 가장 유력한 설명이다.
 
+**5. [AbortPolicy + 게이트 효과 검증](stage0/production/abortpolicy-gate-verification.md)** — §3단계에서 구현한 해결책(`CallerRunsPolicy`→`AbortPolicy`, 요청 단위 세마포어 게이트 `CloudFrontSigningGate` 신설)을 같은 EC2 환경에서 재측정했다. **원래 목표(HikariCP 점유시간 회복)는 `AbortPolicy` 전환만으로 이미 달성됐다** — 53.3ms→5.79ms(게이트 비활성)/6.95ms(게이트 활성), 목표(47.3ms 이하) 대비 압도적으로 낮다. JFR도 CloudFront 서명 프레임(`presign_or_signing`)이 Tomcat 스레드에서 완전히 사라졌음을 확인했다(69.28%→0.00%). 다만 게이트가 없으면 태스크 단위 거부로 인해 응답의 49.4%가 `status: 200`인 채 이미지 일부만 누락되는 "브라운아웃"이 있었고(k6 기본 체크로는 안 잡힘), 게이트는 이를 21.0%까지 줄였지만 완전히 없애지는 못했다(큐 사이징이 실전 경합 부하에서는 부족했던 것으로 규명) — 재조정·재측정은 후속 과제로 남겼다.
+
 ---
 
 ### 1단계 — mycourse 이미지 접근을 CloudFront Signed URL에서 Signed Cookie로 전환
@@ -64,13 +66,20 @@
 
 ---
 
-### 3단계 — 서명/DB 작업을 Bulkhead 패턴으로 정식 격리
+### 3단계 — 서명 실행자를 AbortPolicy + 요청 단위 세마포어 게이트로 재설계
 
-**무엇을**: 0단계가 "트랜잭션 밖으로 뺀다"는 임기응변이라면, 이를 Michael Nygard(*Release It!*)가 정식화한 **Bulkhead 패턴**(서로 다른 성격의 작업을 별도 리소스 풀로 파티셔닝해 한쪽 지연이 다른 쪽으로 전염되지 않게 하는 것)으로 구조화한다. Spring 생태계에서는 Resilience4j `@Bulkhead(type = Bulkhead.Type.THREADPOOL)`가 표준 구현체다.
+**무엇을**: 0단계가 "트랜잭션 밖으로 뺀다"는 임기응변이라면, 이를 Michael Nygard(*Release It!*)가 정식화한 **Bulkhead 패턴**(서로 다른 성격의 작업을 별도 리소스 풀로 파티셔닝해 한쪽 지연이 다른 쪽으로 전염되지 않게 하는 것)으로 구조화한다.
 
-**현재 상태와의 연결**: `cloudFrontSigningExecutor`(코어 수만큼의 전용 풀)가 사실 이 패턴의 절반(서명 스레드풀 격리)은 이미 구현돼 있었다. 다만 그 앞단(HikariCP 풀)이 격리 안 돼 있어서 0단계 적용 전에는 실제로 자기 용량을 다 써본 적이 없었다([TASK-PRESIGN-BOTTLENECK.md의 "PR #61 재해석"](TASK-PRESIGN-BOTTLENECK.md) 참고). **다만 [CallerRunsPolicy 가설 검증](stage0/production/callerruns-verification.md)으로 확인된 실제 결과는 이 서술이 예상한 것보다 훨씬 나빴다** — 0단계 적용 후 이 실행자는 "비로소 제 역할을 하게" 된 게 아니라, VU200 근처에서 큐+풀 용량(102)을 압도적으로 초과해 `CallerRunsPolicy`가 초당 약 1,450회 발동하며 격리 자체가 깨졌다(요청 스레드로 서명 작업이 그대로 역류). Bulkhead는 상대방의 지연이 전염되지 않게 막는 게 목적인데, 지금 구조는 정확히 그 반대로 동작하고 있었다는 뜻이라 이 단계의 필요성이 더 강하게 뒷받침된다.
+**현재 상태와의 연결**: `cloudFrontSigningExecutor`(코어 수만큼의 전용 풀)가 사실 이 패턴의 절반(서명 스레드풀 격리)은 이미 구현돼 있었다. 다만 그 앞단(HikariCP 풀)이 격리 안 돼 있어서 0단계 적용 전에는 실제로 자기 용량을 다 써본 적이 없었다([TASK-PRESIGN-BOTTLENECK.md의 "PR #61 재해석"](TASK-PRESIGN-BOTTLENECK.md) 참고). **다만 [CallerRunsPolicy 가설 검증](stage0/production/callerruns-verification.md)으로 확인된 실제 결과는 이 서술이 예상한 것보다 훨씬 나빴다** — 0단계 적용 후 이 실행자는 "비로소 제 역할을 하게" 된 게 아니라, VU200 근처에서 큐+풀 용량(102)을 압도적으로 초과해 `CallerRunsPolicy`가 초당 약 1,450회 발동하며 격리 자체가 깨졌다(요청 스레드로 서명 작업이 그대로 역류). Bulkhead는 상대방의 지연이 전염되지 않게 막는 게 목적인데, 지금 구조는 정확히 그 반대로 동작하고 있었다는 뜻이라 이 단계의 필요성이 더 강하게 뒷받침된다. 해결책의 설계·구현·기각한 대안·EC2 재검증은 별도 문서([abortpolicy-gate-verification.md](stage0/production/abortpolicy-gate-verification.md))로 뺐다.
 
-**검증**: ~~0단계 적용 후 동시성 200 부하에서 `cloudFrontSigningExecutor`의 큐/활성 스레드 수가 실제로 코어 수에 가깝게 올라가는지 확인한다~~ → [callerruns-verification.md](stage0/production/callerruns-verification.md)에서 완료. 다음은 이 실행자의 큐 크기·거부 정책 자체를 재설계(예: 세마포어로 서명 진입 자체를 HikariCP 풀 크기 수준으로 제한, 또는 `CallerRunsPolicy` 대신 429/재시도 전략 검토)하고 재측정하는 것.
+**구현 방식 정정(Resilience4j → 직접 구현)**: 이 절은 원래 "Resilience4j `@Bulkhead(type = Bulkhead.Type.THREADPOOL)`가 표준 구현체"라고 서술했으나, 실제 설계·구현 단계에서 이 fan-out 구조(요청 1건이 이미지 수만큼 태스크를 만듦)에는 THREADPOOL 타입이 부적합하다는 게 드러나 정정한다. 최종 채택안은 다음 두 가지의 조합이다.
+
+1. **`cloudFrontSigningExecutor`의 거부 정책을 `CallerRunsPolicy` → `AbortPolicy`로 전환.** 큐+풀이 가득 차면 제출 스레드가 서명을 대신 실행하는 대신 즉시 예외를 받는다 — CPU 격리는 이것만으로 복원된다.
+2. **`CloudFrontSigningGate`(`java.util.concurrent.Semaphore` 직접 구현) 신설.** AbortPolicy 단독으로는 부하 차단이 태스크(이미지) 단위로 일어나 "요청 하나가 이미지 일부만 서명된 채 200 OK로 나가는" 부분 응답이 상시화되는 문제가 있다. 게이트는 부하 차단을 요청 단위로 옮겨, 통과한 요청은 이미지가 전부 붙은 완전한 응답을, 나머지는 명확한 503(+`Retry-After`)을 받게 한다.
+
+Resilience4j `Bulkhead.Type.THREADPOOL`/`Type.SEMAPHORE`를 검토하고 기각한 근거는 [abortpolicy-gate-verification.md의 "구현 방식 검토"](stage0/production/abortpolicy-gate-verification.md)에 정리했다.
+
+**검증**: ~~0단계 적용 후 동시성 200 부하에서 `cloudFrontSigningExecutor`의 큐/활성 스레드 수가 실제로 코어 수에 가깝게 올라가는지 확인한다~~ → [callerruns-verification.md](stage0/production/callerruns-verification.md)에서 완료. ~~위 구현의 효과는 EC2 재측정으로 검증한다~~ → [abortpolicy-gate-verification.md의 "EC2 실측 검증"](stage0/production/abortpolicy-gate-verification.md#ec2-실측-검증)에서 완료. `CLOUDFRONT_SIGNING_PERMITS` 환경변수만 바꿔 게이트 비활성(100000)/활성(54, EC2 실측 서명비용 기준 재계산) 두 arm을 같은 배포로 A/B 측정한 결과, HikariCP 점유시간 목표(47.3ms 이하)는 두 arm 모두 압도적으로 달성했다(5.79ms/6.95ms). 판정 기준으로 세웠던 "JFR crypto 비율 <5%"는 실측으로 부정확했음이 드러나(JWT 검증 비용이 섞여 30~57%로 나옴) `presign_or_signing`(CloudFront 서명 프레임만 특정)으로 대체했고, 이 지표는 두 arm 모두 0.00%로 완전한 격리 복원을 확인했다. 다만 게이트의 큐 사이징(640)은 실전 경합 부하에서 부족한 것으로 드러나 브라운아웃(부분 응답)을 49.4%→21.0%로 줄이는 데 그쳤다 — 재조정은 후속 과제.
 
 ---
 
@@ -124,5 +133,6 @@
 - [stage0/local/index.md](stage0/local/index.md) — 인덱스 추가 로컬 실측 기록
 - [stage0/production/ec2-rds.md](stage0/production/ec2-rds.md) — EC2+RDS 분리 환경 실측 기록
 - [stage0/production/callerruns-verification.md](stage0/production/callerruns-verification.md) — mycourse 점유시간 악화 원인(CallerRunsPolicy CPU 경합) 검증 기록
+- [stage0/production/abortpolicy-gate-verification.md](stage0/production/abortpolicy-gate-verification.md) — 위 원인에 대한 해결책(AbortPolicy 전환 + `CloudFrontSigningGate`) 설계·구현·EC2 재검증 기록
 - [CACHING-ROADMAP.md](../../CACHING-ROADMAP.md) — 2단계와 관련된 기존 캐싱 설계 원칙
 - GitHub 이슈 [#67](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/67) — 0단계에 대응. 1/3/5단계는 착수 시점에 별도 이슈로 분리하는 것을 검토한다.
