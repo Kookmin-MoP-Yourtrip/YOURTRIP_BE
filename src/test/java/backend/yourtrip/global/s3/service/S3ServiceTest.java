@@ -34,9 +34,9 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
  * 고치면 업로드 경로와 복사(fork/업로드 사본) 경로가 조용히 어긋난다. 그런데 이 조립 로직을
  * 검증하는 테스트가 없었다 — 이 테스트가 그 안전망이다.
  *
- * <p>TASK-PRESIGN-BOTTLENECK-FIX.md 1단계에서 비공개 key를 {@code private/{courseId}/...}로
- * 바꾸기 직전에, 현행 동작({@code {prefix}/{yyyy-MM-dd}/{uuid}.{ext}})을 먼저 고정해둔다.
- * 이후 커밋에서 이 기대값이 바뀌는 diff가 곧 "무엇이 어떻게 바뀌었는지"의 기록이 된다.
+ * <p>TASK-PRESIGN-BOTTLENECK-FIX.md 1단계로 <b>비공개 key만</b> 코스 단위
+ * ({@code private/{courseId}/{uuid}.{ext}})로 바뀌었다. 공개 key는 서명 대상이 아니라
+ * 이 변경과 무관하므로 날짜 기반({@code uploads/{yyyy-MM-dd}/{uuid}.{ext}})을 유지한다.
  */
 @ExtendWith(MockitoExtension.class)
 class S3ServiceTest {
@@ -47,8 +47,10 @@ class S3ServiceTest {
     private static final String ALLOWED_CONTENT_TYPES =
         "image/png,image/jpeg,image/webp,image/jpg,video/mp4,video/quicktime,video/webm";
 
-    // {prefix}/{yyyy-MM-dd}/{uuid}.{ext} — 날짜 세그먼트와 UUID를 정규식으로 확인한다.
-    // 실제 날짜값을 박아 비교하면 자정 경계에서 깨질 수 있어 형식만 본다.
+    private static final Long COURSE_ID = 42L;
+
+    // 공개: uploads/{yyyy-MM-dd}/{uuid}.{ext} — 실제 날짜값을 박아 비교하면 자정 경계에서
+    // 깨질 수 있어 형식만 본다. 비공개: private/{courseId}/{uuid}.{ext}.
     private static final String DATE_SEGMENT = "\\d{4}-\\d{2}-\\d{2}";
     private static final String UUID_SEGMENT = "[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}";
 
@@ -90,14 +92,38 @@ class S3ServiceTest {
         }
 
         @Test
-        @DisplayName("비공개 업로드는 private/{날짜}/{uuid}.{확장자} key와 1주일 Cache-Control을 쓴다")
-        void uploadPrivateFile_UsesPrivatePrefixAndShorterCacheControl() throws IOException {
-            s3Service.uploadPrivateFile(imageFile("image/png"));
+        @DisplayName("비공개 업로드는 private/{courseId}/{uuid}.{확장자} key와 1주일 Cache-Control을 쓴다")
+        void uploadPrivateFile_UsesCourseScopedPrefixAndShorterCacheControl() throws IOException {
+            s3Service.uploadPrivateFile(imageFile("image/png"), COURSE_ID);
 
             PutObjectRequest request = capturePut();
-            assertThat(request.key()).matches("private/" + DATE_SEGMENT + "/" + UUID_SEGMENT + "\\.png");
+            // 코스 단위 와일드카드 서명(private/42/*)의 스코프와 정확히 맞아야 한다
+            assertThat(request.key()).matches("private/42/" + UUID_SEGMENT + "\\.png");
             assertThat(request.contentType()).isEqualTo("image/png");
             assertThat(request.cacheControl()).isEqualTo("public, max-age=604800, immutable");
+        }
+
+        @Test
+        @DisplayName("서로 다른 코스의 이미지는 서로 다른 prefix로 분리된다")
+        void uploadPrivateFile_SeparatesKeysByCourse() throws IOException {
+            s3Service.uploadPrivateFile(imageFile("image/jpeg"), 1L);
+            s3Service.uploadPrivateFile(imageFile("image/jpeg"), 2L);
+
+            verify(s3Client, org.mockito.Mockito.times(2))
+                .putObject(putRequestCaptor.capture(), any(RequestBody.class));
+            assertThat(putRequestCaptor.getAllValues().get(0).key()).startsWith("private/1/");
+            assertThat(putRequestCaptor.getAllValues().get(1).key()).startsWith("private/2/");
+        }
+
+        @Test
+        @DisplayName("courseId가 없으면 key를 만들지 않고 즉시 실패한다")
+        void uploadPrivateFile_WithoutCourseId_ThrowsBeforeUpload() {
+            // private/null/... 같은 key가 저장되면 어떤 코스 스코프 서명으로도 접근할 수 없어
+            // 영구 403이 된다. 저장 전에 터뜨려야 한다.
+            assertThatThrownBy(() -> s3Service.uploadPrivateFile(imageFile("image/jpeg"), null))
+                .isInstanceOf(IllegalArgumentException.class);
+
+            org.mockito.Mockito.verifyNoInteractions(s3Client);
         }
 
         @Test
@@ -110,10 +136,10 @@ class S3ServiceTest {
         }
 
         @Test
-        @DisplayName("같은 파일을 두 번 올려도 key가 겹치지 않는다")
+        @DisplayName("같은 코스에 같은 파일을 두 번 올려도 key가 겹치지 않는다")
         void upload_GeneratesDistinctKeys() throws IOException {
-            s3Service.uploadPrivateFile(imageFile("image/jpeg"));
-            s3Service.uploadPrivateFile(imageFile("image/jpeg"));
+            s3Service.uploadPrivateFile(imageFile("image/jpeg"), COURSE_ID);
+            s3Service.uploadPrivateFile(imageFile("image/jpeg"), COURSE_ID);
 
             verify(s3Client, org.mockito.Mockito.times(2))
                 .putObject(putRequestCaptor.capture(), any(RequestBody.class));
@@ -127,13 +153,14 @@ class S3ServiceTest {
     class Copy {
 
         @Test
-        @DisplayName("비공개로 복사하면 private prefix가 붙고 확장자와 Content-Type이 복원된다")
-        void copyToPrivate_UsesPrivatePrefixAndRestoresContentType() {
-            String targetKey = s3Service.copyToPrivate("uploads/2026-01-01/source.png");
+        @DisplayName("비공개로 복사하면 사본 코스의 prefix가 붙고 확장자와 Content-Type이 복원된다")
+        void copyToPrivate_UsesTargetCoursePrefixAndRestoresContentType() {
+            String targetKey = s3Service.copyToPrivate("uploads/2026-01-01/source.png", COURSE_ID);
 
             CopyObjectRequest request = captureCopy();
+            // fork 사본은 원본 코스가 아니라 사본 코스의 서명 스코프에 들어가야 한다
             assertThat(request.destinationKey())
-                .matches("private/" + DATE_SEGMENT + "/" + UUID_SEGMENT + "\\.png")
+                .matches("private/42/" + UUID_SEGMENT + "\\.png")
                 .isEqualTo(targetKey);
             assertThat(request.sourceKey()).isEqualTo("uploads/2026-01-01/source.png");
             assertThat(request.contentType()).isEqualTo("image/png");
@@ -157,7 +184,7 @@ class S3ServiceTest {
         @Test
         @DisplayName("확장자가 없는 원본은 .bin과 application/octet-stream으로 떨어진다")
         void copy_WithoutExtension_FallsBackToBinary() {
-            s3Service.copyToPrivate("uploads/2026-01-01/no-extension");
+            s3Service.copyToPrivate("uploads/2026-01-01/no-extension", COURSE_ID);
 
             CopyObjectRequest request = captureCopy();
             assertThat(request.destinationKey()).endsWith(".bin");
@@ -174,7 +201,7 @@ class S3ServiceTest {
         void upload_EmptyFile_Throws() {
             MultipartFile empty = new MockMultipartFile("file", "empty.jpg", "image/jpeg", new byte[0]);
 
-            assertThatThrownBy(() -> s3Service.uploadPrivateFile(empty))
+            assertThatThrownBy(() -> s3Service.uploadPrivateFile(empty, COURSE_ID))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", S3ErrorCode.EMPTY_FILE);
         }
@@ -185,7 +212,7 @@ class S3ServiceTest {
             MultipartFile tooLarge = new MockMultipartFile("file", "big.jpg", "image/jpeg",
                 new byte[(int) MAX_SIZE_BYTES + 1]);
 
-            assertThatThrownBy(() -> s3Service.uploadPrivateFile(tooLarge))
+            assertThatThrownBy(() -> s3Service.uploadPrivateFile(tooLarge, COURSE_ID))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", S3ErrorCode.OVER_SIZE_FILE);
         }
@@ -196,7 +223,7 @@ class S3ServiceTest {
             MultipartFile pdf = new MockMultipartFile("file", "doc.pdf", "application/pdf",
                 "pdf".getBytes());
 
-            assertThatThrownBy(() -> s3Service.uploadPrivateFile(pdf))
+            assertThatThrownBy(() -> s3Service.uploadPrivateFile(pdf, COURSE_ID))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", S3ErrorCode.NOT_ALLOW_FILE_TYPE);
         }

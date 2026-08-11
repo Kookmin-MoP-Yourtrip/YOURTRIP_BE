@@ -289,7 +289,7 @@ public class MyCourseServiceImpl implements MyCourseService {
 
         String placeImageS3Key;
         try {
-            placeImageS3Key = s3Service.uploadPrivateFile(placeImage).key();
+            placeImageS3Key = s3Service.uploadPrivateFile(placeImage, courseId).key();
         } catch (IOException e) {
             throw new BusinessException(S3ErrorCode.FAIL_UPLOAD_FILE);
         }
@@ -454,7 +454,11 @@ public class MyCourseServiceImpl implements MyCourseService {
                 originalPlace.getPlaceImages().forEach(originalImage -> {
                     String copiedKey = switch (type) {
                         case UPLOADED -> s3Service.copyToPublic(originalImage.getPlaceImageS3Key());
-                        case FORK -> s3Service.copyToPrivate(originalImage.getPlaceImageS3Key());
+                        // 사본 key는 원본 코스가 아니라 방금 채번된 사본 코스(savedCourse)의
+                        // 스코프에 들어가야 한다 — 그래야 fork한 사용자가 자기 코스의 서명으로
+                        // 이 이미지에 접근할 수 있다.
+                        case FORK -> s3Service.copyToPrivate(
+                            originalImage.getPlaceImageS3Key(), savedCourse.getId());
                         default -> throw new IllegalStateException(
                             "copyMyCourseWithSchedule은 UPLOADED/FORK 타입에서만 호출되어야 합니다: "
                                 + type);
