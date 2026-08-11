@@ -7,7 +7,9 @@ import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.PrivateKey;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -18,6 +20,8 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.cloudfront.CloudFrontUtilities;
+import software.amazon.awssdk.services.cloudfront.model.CannedSignerRequest;
+import software.amazon.awssdk.services.cloudfront.model.CustomSignerRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
@@ -81,6 +85,55 @@ class SigningBenchmarkTest {
         Runnable op = () -> cloudFrontService.signCourseScope(42L);
 
         report("CloudFront 코스 스코프 서명 (custom policy, ECDSA P-256)", measure(op));
+    }
+
+    @Test
+    @DisplayName("canned policy와 custom policy의 서명 1회 비용을 직접 비교한다 — 1단계 전환의 비용 항목")
+    void benchmarkCannedVsCustomPolicy() throws Exception {
+        assumeTrue(isOpensslAvailable(), "이 벤치마크는 로컬 openssl 실행 파일이 필요하다");
+
+        Path privateKeyPath = tempKeyFile();
+        runOpenssl("genpkey", "-algorithm", "EC", "-pkeyopt", "ec_paramgen_curve:prime256v1",
+            "-out", privateKeyPath.toString());
+
+        CloudFrontUtilities utilities = CloudFrontUtilities.create();
+        PrivateKey privateKey = CannedSignerRequest.builder()
+            .privateKey(privateKeyPath)
+            .build()
+            .privateKey();
+        String resourceUrl = "https://d111111abcdef8.cloudfront.net/private/42/benchmark.jpg";
+        Instant expiration = Instant.now().plus(Duration.ofMinutes(60));
+
+        // 전환 전 방식 — 이미지 하나를 정확히 지목하는 정책
+        Runnable canned = () -> utilities.getSignedUrlWithCannedPolicy(CannedSignerRequest.builder()
+            .resourceUrl(resourceUrl)
+            .privateKey(privateKey)
+            .keyPairId("K3BENCHMARKKEYPAIR")
+            .expirationDate(expiration)
+            .build());
+
+        // 전환 후 방식 — 코스 폴더 전체를 가리키는 와일드카드 정책. 정책 JSON이 길어져
+        // SHA1 입력이 커지므로 이론상 조금 더 비쌀 수 있는데, 그 차이가 실제로 유의미한지 본다.
+        Runnable custom = () -> utilities.getSignedUrlWithCustomPolicy(CustomSignerRequest.builder()
+            .resourceUrl("https://d111111abcdef8.cloudfront.net/private/42/")
+            .resourceUrlPattern("https://d111111abcdef8.cloudfront.net/private/42/*")
+            .privateKey(privateKey)
+            .keyPairId("K3BENCHMARKKEYPAIR")
+            .expirationDate(expiration)
+            .build());
+
+        long cannedNs = measure(canned);
+        long customNs = measure(custom);
+
+        System.out.printf("%n=== canned vs custom policy (서명 1회 비용) ===%n");
+        System.out.printf("canned policy: %.2f us/op%n", cannedNs / 1000.0);
+        System.out.printf("custom policy: %.2f us/op (canned 대비 %+.1f%%)%n",
+            customNs / 1000.0, (customNs - cannedNs) * 100.0 / cannedNs);
+        System.out.printf("→ 이미지 10장 기준 요청당 서명 비용: %.2f us → %.2f us (%.1f배 감소)%n",
+            cannedNs * 10 / 1000.0, customNs / 1000.0, (cannedNs * 10.0) / customNs);
+
+        assertThat(cannedNs).isPositive();
+        assertThat(customNs).isPositive();
     }
 
     @Test

@@ -5,8 +5,11 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import backend.yourtrip.global.cloudfront.service.CloudFrontService.CourseSignature;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -65,6 +68,74 @@ class CloudFrontServiceTest {
         runOpenssl("rsa", "-pubout", "-in", privateKeyPath.toString(), "-out", publicKeyPath.toString());
 
         assertSignedUrlIsIssued(privateKeyPath);
+    }
+
+    @Test
+    @DisplayName("정책의 Resource가 코스 단위 와일드카드로 들어간다 - 코스당 서명 1회의 근거")
+    void signCourseScope_EmbedsCourseScopedWildcardInPolicy() throws Exception {
+        initEcdsaKey();
+
+        String policy = decodePolicy(cloudFrontService.signCourseScope(42L));
+
+        // 이 단언이 "이미지마다 서명하지 않아도 되는 이유" 자체다 — Resource가 특정 파일이
+        // 아니라 코스 폴더 전체를 가리키므로, 같은 서명을 그 폴더의 어떤 key에도 붙일 수 있다.
+        assertThat(policy)
+            .contains("\"Resource\":\"https://d111111abcdef8.cloudfront.net/private/42/*\"")
+            .contains("DateLessThan");
+    }
+
+    @Test
+    @DisplayName("코스가 다르면 정책 Resource도 달라져 서명 스코프가 코스 경계에서 잘린다")
+    void signCourseScope_ScopesPolicyPerCourse() throws Exception {
+        initEcdsaKey();
+
+        assertThat(decodePolicy(cloudFrontService.signCourseScope(1L)))
+            .contains("/private/1/*")
+            .doesNotContain("/private/2/*");
+        assertThat(decodePolicy(cloudFrontService.signCourseScope(2L)))
+            .contains("/private/2/*");
+    }
+
+    @Test
+    @DisplayName("서명 1건의 쿼리스트링을 같은 코스의 여러 key에 붙여 URL을 조립한다")
+    void courseSignature_ReusesSameQueryStringAcrossKeys() throws Exception {
+        initEcdsaKey();
+
+        CourseSignature signature = cloudFrontService.signCourseScope(42L);
+        String first = signature.signedUrlFor("private/42/a.jpg");
+        String second = signature.signedUrlFor("private/42/b.jpg");
+
+        assertThat(first).startsWith("https://d111111abcdef8.cloudfront.net/private/42/a.jpg?");
+        assertThat(second).startsWith("https://d111111abcdef8.cloudfront.net/private/42/b.jpg?");
+        // 경로만 다르고 서명 파라미터는 완전히 동일해야 한다
+        assertThat(queryStringOf(first)).isEqualTo(queryStringOf(second));
+    }
+
+    private void initEcdsaKey() throws Exception {
+        Path privateKeyPath = tempDir.resolve("scope_private_key.pem");
+        runOpenssl("genpkey", "-algorithm", "EC", "-pkeyopt", "ec_paramgen_curve:prime256v1",
+            "-out", privateKeyPath.toString());
+        ReflectionTestUtils.setField(cloudFrontService, "privateKeyPath", privateKeyPath.toString());
+        ReflectionTestUtils.invokeMethod(cloudFrontService, "initPrivateKey");
+    }
+
+    /**
+     * CloudFront는 정책 JSON을 base64로 인코딩한 뒤 URL-safe 치환('+'→'-', '='→'_', '/'→'~')을
+     * 적용한다. 검증하려면 그 치환을 되돌려야 한다.
+     */
+    private String decodePolicy(CourseSignature signature) {
+        String encoded = Arrays.stream(signature.queryString().split("&"))
+            .filter(param -> param.startsWith("Policy="))
+            .map(param -> param.substring("Policy=".length()))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("쿼리스트링에 Policy 파라미터가 없다: " + signature));
+
+        String base64 = encoded.replace('-', '+').replace('_', '=').replace('~', '/');
+        return new String(Base64.getDecoder().decode(base64), StandardCharsets.UTF_8);
+    }
+
+    private String queryStringOf(String url) {
+        return url.substring(url.indexOf('?') + 1);
     }
 
     private void assertSignedUrlIsIssued(Path privateKeyPath) {
