@@ -87,6 +87,8 @@
 
 ### 3단계 — 서명 실행자를 AbortPolicy + 요청 단위 세마포어 게이트로 재설계
 
+> **후일담(1단계 이후 제거됨)**: 이 절이 만든 `cloudFrontSigningExecutor`/`CloudFrontSigningGate`는 1단계(코스당 서명 1회 전환) 이후 제거했다. 이 단계가 대응하던 문제(요청 1건이 이미지 수만큼 서명 태스크를 fan-out하는 구조)의 전제 자체가 1단계로 사라졌기 때문이다 — 3단계가 잘못됐다는 뜻이 아니라, **그 시점엔 필요했고 지금은 아니라는 시간축의 기록**이다. Run D/D2(EC2)에서 executor 큐 거부가 0으로 수렴하는 것을 사전 신호로 확인한 뒤 제거했고, 제거 전후(Run D2 vs Run E)를 재측정해 처리량·지연이 악화되지 않음을 확인했다. 상세는 [stage1/run-e-infra-removed.md](stage1/run-e-infra-removed.md).
+
 **무엇을**: 0단계가 "트랜잭션 밖으로 뺀다"는 임기응변이라면, 이를 Michael Nygard(*Release It!*)가 정식화한 **Bulkhead 패턴**(서로 다른 성격의 작업을 별도 리소스 풀로 파티셔닝해 한쪽 지연이 다른 쪽으로 전염되지 않게 하는 것)으로 구조화한다.
 
 **현재 상태와의 연결**: `cloudFrontSigningExecutor`(코어 수만큼의 전용 풀)가 사실 이 패턴의 절반(서명 스레드풀 격리)은 이미 구현돼 있었다. 다만 그 앞단(HikariCP 풀)이 격리 안 돼 있어서 0단계 적용 전에는 실제로 자기 용량을 다 써본 적이 없었다([TASK-PRESIGN-BOTTLENECK.md의 "PR #61 재해석"](TASK-PRESIGN-BOTTLENECK.md) 참고). **다만 [CallerRunsPolicy 가설 검증](stage0/production/callerruns-verification.md)으로 확인된 실제 결과는 이 서술이 예상한 것보다 훨씬 나빴다** — 0단계 적용 후 이 실행자는 "비로소 제 역할을 하게" 된 게 아니라, VU200 근처에서 큐+풀 용량(102)을 압도적으로 초과해 `CallerRunsPolicy`가 초당 약 1,450회 발동하며 격리 자체가 깨졌다(요청 스레드로 서명 작업이 그대로 역류). Bulkhead는 상대방의 지연이 전염되지 않게 막는 게 목적인데, 지금 구조는 정확히 그 반대로 동작하고 있었다는 뜻이라 이 단계의 필요성이 더 강하게 뒷받침된다. 해결책의 설계·구현·기각한 대안·EC2 재검증은 별도 문서([abortpolicy-gate-verification.md](stage0/production/abortpolicy-gate-verification.md))로 뺐다.
@@ -160,5 +162,6 @@ Resilience4j `Bulkhead.Type.THREADPOOL`/`Type.SEMAPHORE`를 검토하고 기각�
 - [stage0/production/abortpolicy-gate-verification.md](stage0/production/abortpolicy-gate-verification.md) — 위 원인에 대한 해결책(AbortPolicy 전환 + `CloudFrontSigningGate`) 설계·구현·EC2 재검증 기록
 - [stage1/design-and-poc.md](stage1/design-and-poc.md) — 1단계 설계. Signed Cookie 기각 근거와 Custom Policy 와일드카드 채택, PoC 검증 기록
 - [stage1/run-d-signature-once.md](stage1/run-d-signature-once.md) — 1단계 EC2 실측(Run D/D2). 브라운아웃 구조적 제거 확인, JWT가 CloudFront 서명급 CPU 소비처임을 확정, 병목이 CPU 이후 다른 자원으로 옮겨갔다는 미해결 관찰
+- [stage1/run-e-infra-removed.md](stage1/run-e-infra-removed.md) — 3단계 게이트·executor 제거 후 재측정(Run E) + knee 재탐색(Run F). 인프라 제거가 처리량·지연을 악화시키지 않음을 확인, Tomcat `maxThreads`(200)가 실제 처리량 상한임을 특정
 - [CACHING-ROADMAP.md](../../CACHING-ROADMAP.md) — 2단계와 관련된 기존 캐싱 설계 원칙
 - GitHub 이슈 [#67](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/67) — 0단계에 대응. 1/3/5단계는 착수 시점에 별도 이슈로 분리하는 것을 검토한다.
