@@ -76,9 +76,11 @@ class SigningBenchmarkTest {
         ReflectionTestUtils.setField(cloudFrontService, "privateKeyPath", privateKeyPath.toString());
         ReflectionTestUtils.invokeMethod(cloudFrontService, "initPrivateKey");
 
-        Runnable op = () -> cloudFrontService.getSignedUrl("private/benchmark.jpg");
+        // 1단계 이후 서명 단위는 "이미지 1장"이 아니라 "코스 1개"다 — 이 호출 1회가 그 코스의
+        // 모든 이미지 URL을 커버한다.
+        Runnable op = () -> cloudFrontService.signCourseScope(42L);
 
-        report("CloudFront Signed URL (ECDSA P-256)", measure(op));
+        report("CloudFront 코스 스코프 서명 (custom policy, ECDSA P-256)", measure(op));
     }
 
     @Test
@@ -113,11 +115,18 @@ class SigningBenchmarkTest {
         System.out.printf("이 머신(%d코어) 기준 이론 최대 서명 처리량: %,d ops/sec (모든 코어를 서명에만 쓸 때)%n",
             cores, (long) (cores * 1_000_000_000.0 / nsPerOp));
 
-        // TASK-4.md/TASK-CLOUDFRONT.md에서 실제 시드에 쓰인 코스당 이미지 개수 기준
-        // 이론 최대 TPS를 함께 계산해, Phase 4 실측 TPS와 바로 대조할 수 있게 한다.
+        // 1단계(코스당 서명 1회) 이후에는 요청당 서명이 1회로 고정돼, 이론 최대 TPS가
+        // 이미지 개수와 무관한 상수가 된다 — 그 사실 자체가 이번 전환의 핵심이다.
+        double maxTps = cores * 1_000_000_000.0 / nsPerOp;
+        System.out.printf("  요청당 서명 1회 기준 이론 최대 TPS: %.1f (이미지 개수와 무관)%n", maxTps);
+
+        // 전환 전 모델과의 대조 — 예전에는 요청당 이미지 수만큼 서명해서 TPS가 이미지 개수에
+        // 반비례했다. TASK-4.md/TASK-CLOUDFRONT.md 시드의 코스당 이미지 개수를 그대로 쓴다.
+        System.out.println("  [참고] 전환 전 모델(이미지당 1회 서명)이었다면:");
         for (int imagesPerRequest : new int[] {10, 24, 105}) {
-            double theoreticalMaxTps = cores * 1_000_000_000.0 / ((double) nsPerOp * imagesPerRequest);
-            System.out.printf("  코스당 이미지 %3d장일 때 이론 최대 TPS: %.1f%n", imagesPerRequest, theoreticalMaxTps);
+            double legacyMaxTps = maxTps / imagesPerRequest;
+            System.out.printf("    코스당 이미지 %3d장 → 이론 최대 TPS %.1f (현재 대비 1/%d)%n",
+                imagesPerRequest, legacyMaxTps, imagesPerRequest);
         }
 
         assertThat(nsPerOp).isPositive();

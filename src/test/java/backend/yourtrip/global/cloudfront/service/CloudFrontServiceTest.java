@@ -3,6 +3,7 @@ package backend.yourtrip.global.cloudfront.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import backend.yourtrip.global.cloudfront.service.CloudFrontService.CourseSignature;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,8 +17,12 @@ import software.amazon.awssdk.services.cloudfront.CloudFrontUtilities;
 
 /**
  * RSA-2048 → ECDSA P-256 전환(TASK-CLOUDFRONT.md 참고) 검증용. openssl로 실제
- * terraform/README.md 절차와 동일하게 키를 생성해, CannedSignerRequest가 두 키 타입
- * 모두 실제로 서명 가능한지 확인한다(회귀 시 RSA 케이스가 먼저 잡아준다).
+ * terraform/README.md 절차와 동일하게 키를 생성해, SDK가 두 키 타입 모두 실제로 서명
+ * 가능한지 확인한다(회귀 시 RSA 케이스가 먼저 잡아준다).
+ *
+ * <p>1단계에서 canned policy → custom policy(코스 단위 와일드카드)로 바꿨는데, SDK는 키
+ * 타입에 따라 SHA1withRSA/SHA1withECDSA로 분기하므로 <b>두 키 타입 케이스를 그대로
+ * 유지해야</b> 그 분기가 custom policy 경로에서도 살아있는지 확인할 수 있다.
  */
 class CloudFrontServiceTest {
 
@@ -66,13 +71,17 @@ class CloudFrontServiceTest {
         ReflectionTestUtils.setField(cloudFrontService, "privateKeyPath", privateKeyPath.toString());
         ReflectionTestUtils.invokeMethod(cloudFrontService, "initPrivateKey");
 
-        String signedUrl = cloudFrontService.getSignedUrl("private/2026/08/05/test.png");
+        CourseSignature signature = cloudFrontService.signCourseScope(42L);
+        String signedUrl = signature.signedUrlFor("private/42/test.png");
 
         assertThat(signedUrl)
-            .startsWith("https://d111111abcdef8.cloudfront.net/private/2026/08/05/test.png?")
+            .startsWith("https://d111111abcdef8.cloudfront.net/private/42/test.png?")
             .contains("Key-Pair-Id=K3TESTKEYPAIRID")
             .contains("Signature=")
-            .contains("Expires=");
+            // canned policy는 만료시각을 Expires 파라미터로 싣지만, custom policy는 만료 조건이
+            // Policy JSON 안에 들어가므로 Expires가 없어야 정상이다.
+            .contains("Policy=")
+            .doesNotContain("Expires=");
     }
 
     private void runOpenssl(String... args) throws IOException, InterruptedException {

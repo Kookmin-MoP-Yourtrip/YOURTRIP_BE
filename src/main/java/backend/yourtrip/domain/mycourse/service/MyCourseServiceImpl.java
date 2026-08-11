@@ -39,6 +39,7 @@ import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
+import backend.yourtrip.global.cloudfront.service.CloudFrontService.CourseSignature;
 import backend.yourtrip.global.cloudfront.service.CloudFrontSigningGate;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto.PlaceDto;
@@ -52,8 +53,6 @@ import java.io.IOException;
 import java.time.LocalTime;
 import java.time.Period;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -154,28 +153,20 @@ public class MyCourseServiceImpl implements MyCourseService {
         // MyCourseController의 "/{courseId}/days/{dayId}/places" — 작성자만 볼 수 있는
         // 비공개 조회이므로 Signed URL을 발급한다.
 
-        // 엔티티에서 스칼라값 추출 (daySchedule은 이미 페치 조인되어 있어 트랜잭션이
-        // 끝난 뒤에도 안전하게 읽을 수 있다 — LazyInitializationException은 아직 초기화 안 된
-        // 프록시에 접근할 때만 발생한다)
-        record ImageTaskParams(Long placeId, Long placeImageId, String s3Key) {}
-        List<ImageTaskParams> taskParams = daySchedule.getPlaces().stream()
+        // 이미지가 몇 장이든 서명은 코스당 1회다 — custom policy의 Resource를
+        // private/{courseId}/* 와일드카드로 잡아 그 결과 쿼리스트링을 모든 이미지 URL에
+        // 재사용한다(TASK-PRESIGN-BOTTLENECK-FIX.md 1단계). 서명은 반드시 위 소유권 검증
+        // 이후에 해야 한다 — 순서가 뒤집히면 인가 실패 요청에도 서명이 발급된다.
+        CourseSignature signature = cloudFrontSigningGate.signCourseScope(courseId);
+
+        // daySchedule은 이미 페치 조인되어 있어 트랜잭션이 끝난 뒤에도 안전하게 읽을 수 있다
+        // (LazyInitializationException은 아직 초기화 안 된 프록시에 접근할 때만 발생한다).
+        List<PlaceImageResponse> imageIdAndUrls = daySchedule.getPlaces().stream()
             .flatMap(place -> place.getPlaceImages().stream()
-                .map(placeImage -> new ImageTaskParams(place.getId(), placeImage.getId(), placeImage.getPlaceImageS3Key())))
-            .toList();
-
-        // 병렬 서명·부하 차단·부분 실패 처리는 게이트가 전담한다 — 요청 단위로 permit을
-        // 얻은 뒤에만 이미지 전체를 병렬 제출하므로, 이미지 일부만 서명되고 나머지가 조용히
-        // 누락되는 태스크 단위 브라운아웃이 생기지 않는다.
-        Map<String, String> signedUrls = cloudFrontSigningGate.signAll(
-            taskParams.stream().map(ImageTaskParams::s3Key).toList());
-
-        List<PlaceImageResponse> imageIdAndUrls = taskParams.stream()
-            .map(params -> {
-                String signedUrl = signedUrls.get(params.s3Key());
-                return signedUrl == null ? null
-                    : new PlaceImageResponse(params.placeId(), params.placeImageId(), signedUrl);
-            })
-            .filter(Objects::nonNull)
+                .map(placeImage -> new PlaceImageResponse(
+                    place.getId(),
+                    placeImage.getId(),
+                    signature.signedUrlFor(placeImage.getPlaceImageS3Key()))))
             .toList();
 
         return DayScheduleMapper.toDayScheduleResponse(daySchedule, imageIdAndUrls);
@@ -302,7 +293,7 @@ public class MyCourseServiceImpl implements MyCourseService {
         // 0단계에서 없앤 문제를 그대로 되살린다. 이미지 업로드는 저빈도 쓰기 경로라
         // 게이트가 막는 CPU 경합 위험이 낮다.
         return new PlaceImageCreateResponse(savedPlaceImage.getId(),
-            cloudFrontService.getSignedUrl(placeImageS3Key));
+            cloudFrontService.signCourseScope(courseId).signedUrlFor(placeImageS3Key));
     }
 
     @Override

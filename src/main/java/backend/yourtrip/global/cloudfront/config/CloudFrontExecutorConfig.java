@@ -17,11 +17,8 @@ public class CloudFrontExecutorConfig {
     @Value("${cloudfront.signing-pool-size:0}")
     private int signingPoolSize;
 
-    // EC2(t3.small, 2 vCPU) 실측 서명 1회 비용(368us) 기준: queue >= permits(54) x 요청당
-    // 이미지 수(10) = 540이 하한, bufferbloat 방지를 위해 "큐가 가득 찼을 때 최악 대기 <=
-    // 지연예산(100ms)의 2배"가 상한(약 1087) — 그 사이인 640이 기본값이다(최악 대기 약 118ms).
-    // CloudFrontSigningGate가 이 큐보다 먼저 요청을 세마포어로 막으므로, 이 executor 레벨에서
-    // 큐가 실제로 가득 차는 상황은 정상적으로는 발생하지 않아야 한다.
+    // 산정 근거와 "코스당 서명 1회 전환 이후 과잉이 됐지만 통제된 비교를 위해 유지한다"는
+    // 판단은 application.yml의 cloudfront.signing 절에 모아뒀다(주석 3중 중복을 없앴다).
     @Value("${cloudfront.signing.queue-capacity:640}")
     private int queueCapacity;
 

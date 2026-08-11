@@ -2,18 +2,16 @@ package backend.yourtrip.global.cloudfront.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import backend.yourtrip.global.cloudfront.config.CloudFrontExecutorConfig;
+import backend.yourtrip.global.cloudfront.service.CloudFrontService.CourseSignature;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.CloudFrontErrorCode;
-import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -29,13 +27,23 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * CloudFrontSigningGate의 거부·불변식 경로를 결정론적으로 검증한다(sleep 기반 타이밍 추정
- * 대신 CountDownLatch로 특정 순간의 permit·큐 상태를 강제로 만든다). abortpolicy-gate-verification.md가
- * 지적한 두 위험 — (1) AbortPolicy 단독으로는 부하 차단이 태스크 단위라 부분 응답이 상시화되는
- * 문제를 게이트가 요청 단위로 해소하는지, (2) acquire 실패 경로에서 release가 잘못 호출돼
- * permit이 조용히 인플레이션되는 버그가 없는지 — 를 이 클래스가 직접 검증한다.
+ * 대신 CountDownLatch로 특정 순간의 permit 상태를 강제로 만든다).
+ *
+ * <p>1단계(코스당 서명 1회) 이후 검증 대상이 하나 줄고 하나가 뒤집혔다.
+ * <ul>
+ *   <li><b>줄어든 것</b>: "요청당 이미지 수 상한(maxKeysPerRequest)" — 요청 하나가 이미지
+ *       수만큼 태스크를 fan-out하던 구조가 사라져 상한 자체를 없앴다.
+ *   <li><b>뒤집힌 것</b>: executor 큐 포화 시 동작. 예전에는 "예외 없이 부분 응답으로 열화"가
+ *       기대 동작이었지만, 서명이 1건인 지금 같은 정책은 "이미지 0장짜리 200"을 만든다.
+ *       그래서 fail-closed(503)로 바꿨고 이 테스트가 그 판단을 고정한다.
+ * </ul>
  */
 @ExtendWith(MockitoExtension.class)
 class CloudFrontSigningGateTest {
+
+    private static final Long COURSE_ID = 42L;
+    private static final CourseSignature SIGNATURE =
+        new CourseSignature("d111111abcdef8.cloudfront.net", "Policy=p&Signature=s&Key-Pair-Id=k");
 
     @Mock
     private CloudFrontService cloudFrontService;
@@ -50,58 +58,43 @@ class CloudFrontSigningGateTest {
     }
 
     @Test
-    @DisplayName("permit이 남아있으면 요청한 이미지 전체가 서명되어 반환된다")
-    void signAll_WithAvailablePermit_ReturnsAllSignedUrls() {
+    @DisplayName("permit이 남아있으면 코스 스코프 서명을 그대로 반환한다")
+    void signCourseScope_WithAvailablePermit_ReturnsSignature() {
         executor = newExecutor(4, 100);
-        CloudFrontSigningGate gate = newGate(executor, 4, 1000, 50, 2000);
-        given(cloudFrontService.getSignedUrl(anyString()))
-            .willAnswer(inv -> "signed-" + inv.getArgument(0, String.class));
+        CloudFrontSigningGate gate = newGate(executor, 4, 1000, 2000);
+        given(cloudFrontService.signCourseScope(COURSE_ID)).willReturn(SIGNATURE);
 
-        Map<String, String> result = gate.signAll(List.of("a", "b", "c"));
-
-        assertThat(result).containsOnly(
-            Map.entry("a", "signed-a"), Map.entry("b", "signed-b"), Map.entry("c", "signed-c"));
-    }
-
-    @Test
-    @DisplayName("요청당 이미지 수가 상한을 넘으면 permit 획득 전에 400으로 거부된다")
-    void signAll_ExceedsMaxKeysPerRequest_ThrowsBadRequest() {
-        executor = newExecutor(2, 100);
-        CloudFrontSigningGate gate = newGate(executor, 10, 1000, /* maxKeysPerRequest */ 2, 2000);
-
-        assertThatThrownBy(() -> gate.signAll(List.of("a", "b", "c")))
-            .isInstanceOf(BusinessException.class)
-            .hasFieldOrPropertyWithValue("errorCode", MyCourseErrorCode.TOO_MANY_IMAGES);
+        assertThat(gate.signCourseScope(COURSE_ID)).isEqualTo(SIGNATURE);
     }
 
     @Test
     @DisplayName("permit이 모두 점유된 동안에는 대기시간 이후 503으로 거부하고 태스크를 제출조차 하지 않으며, "
         + "점유가 풀리면 permit 수는 초기값으로 돌아온다")
-    void signAll_WhenNoPermitAvailable_RejectsWithoutSubmittingTasks() throws Exception {
+    void signCourseScope_WhenNoPermitAvailable_RejectsWithoutSubmittingTask() throws Exception {
         executor = newExecutor(2, 100);
-        CloudFrontSigningGate gate = newGate(executor, /* permits */ 1, /* acquireTimeoutMs */ 50, 50, 2000);
+        CloudFrontSigningGate gate = newGate(executor, /* permits */ 1, /* acquireTimeoutMs */ 50, 2000);
         Semaphore admission = admissionOf(gate);
         int initialPermits = admission.availablePermits();
 
         CountDownLatch permitHeld = new CountDownLatch(1);
         CountDownLatch releaseSlow = new CountDownLatch(1);
-        given(cloudFrontService.getSignedUrl("slow")).willAnswer(inv -> {
+        given(cloudFrontService.signCourseScope(1L)).willAnswer(inv -> {
             // 이 시점에 도달했다는 건 permit을 이미 획득해 태스크가 실행 중이라는 뜻이다.
             permitHeld.countDown();
             releaseSlow.await(2, TimeUnit.SECONDS);
-            return "signed-slow";
+            return SIGNATURE;
         });
 
-        Thread occupier = new Thread(() -> gate.signAll(List.of("slow")));
+        Thread occupier = new Thread(() -> gate.signCourseScope(1L));
         occupier.start();
         assertThat(permitHeld.await(1, TimeUnit.SECONDS)).isTrue();
 
         // when & then: 유일한 permit이 점유돼 있으므로 두 번째 호출은 acquireTimeoutMs(50ms) 뒤
-        // 즉시 503으로 거부된다 — 서명 태스크는 아예 제출되지 않는다(getSignedUrl("k1") 미호출로 확인).
-        assertThatThrownBy(() -> gate.signAll(List.of("k1")))
+        // 즉시 503으로 거부된다 — 서명 태스크는 아예 제출되지 않는다(2L 미호출로 확인).
+        assertThatThrownBy(() -> gate.signCourseScope(2L))
             .isInstanceOf(BusinessException.class)
             .hasFieldOrPropertyWithValue("errorCode", CloudFrontErrorCode.SIGNING_OVERLOADED);
-        verify(cloudFrontService, never()).getSignedUrl("k1");
+        verify(cloudFrontService, never()).signCourseScope(2L);
 
         releaseSlow.countDown();
         occupier.join(2000);
@@ -112,48 +105,66 @@ class CloudFrontSigningGateTest {
     }
 
     @Test
-    @DisplayName("성공 경로와 태스크 예외(fail-open) 경로 모두 permit을 정상적으로 반납한다")
-    void signAll_ReleasesPermit_OnSuccessAndOnTaskException() {
+    @DisplayName("성공 경로와 서명 예외 경로 모두 permit을 정상적으로 반납한다")
+    void signCourseScope_ReleasesPermit_OnSuccessAndOnException() {
         executor = newExecutor(4, 100);
-        CloudFrontSigningGate gate = newGate(executor, /* permits */ 2, 1000, 50, 2000);
+        CloudFrontSigningGate gate = newGate(executor, /* permits */ 2, 1000, 2000);
         Semaphore admission = admissionOf(gate);
         int initialPermits = admission.availablePermits();
 
-        given(cloudFrontService.getSignedUrl("ok")).willReturn("signed-ok");
-        gate.signAll(List.of("ok"));
+        given(cloudFrontService.signCourseScope(1L)).willReturn(SIGNATURE);
+        gate.signCourseScope(1L);
         assertThat(admission.availablePermits()).isEqualTo(initialPermits);
 
-        given(cloudFrontService.getSignedUrl("bad")).willThrow(new RuntimeException("서명 실패"));
-        Map<String, String> result = gate.signAll(List.of("bad"));
-        assertThat(result).isEmpty(); // fail-open — 실패한 key는 조용히 누락된다
+        given(cloudFrontService.signCourseScope(2L)).willThrow(new RuntimeException("서명 실패"));
+        assertThatThrownBy(() -> gate.signCourseScope(2L))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", CloudFrontErrorCode.FAIL_GENERATE_SIGNED_URL);
         assertThat(admission.availablePermits()).isEqualTo(initialPermits);
     }
 
     @Test
-    @DisplayName("executor 큐+풀이 가득 차 태스크가 거부돼도 예외가 새지 않고 부분 응답으로 열화된다")
-    void signAll_WhenExecutorQueueFull_DegradesToPartialResponseWithoutThrowing() {
+    @DisplayName("executor 큐+풀이 가득 차면 부분 응답으로 열화하지 않고 503으로 거부한다")
+    void signCourseScope_WhenExecutorQueueFull_FailsClosedWith503() throws Exception {
         // 스레드 1개, 큐 1개 — 3번째로 제출되는 태스크는 executor 레벨에서 AbortPolicy로 거부된다.
-        // ThreadPoolExecutor.execute()는 새 워커 등록을 반환 전에 동기적으로 끝내므로, 한 스레드에서
-        // 순차 제출하는 이 테스트는 "blocker가 워커를 점유 → queued가 큐를 채움 → overflow가 거부됨"
-        // 순서가 타이밍에 의존하지 않고 항상 보장된다.
         executor = newExecutor(1, 1);
-        CloudFrontSigningGate gate = newGate(executor, /* permits */ 10, 1000, 50, 2000);
+        CloudFrontSigningGate gate = newGate(executor, /* permits */ 10, 1000, 2000);
 
-        given(cloudFrontService.getSignedUrl(anyString())).willAnswer(inv -> {
-            String key = inv.getArgument(0, String.class);
-            if (key.equals("blocker")) {
-                // 워커를 잠깐 붙잡아 뒤이은 제출이 큐/거부 경로를 타게 만드는 용도의 작업 시간
-                // 시뮬레이션일 뿐, 동기화를 위한 대기가 아니다.
-                TimeUnit.MILLISECONDS.sleep(150);
-            }
-            return "signed-" + key;
+        CountDownLatch blockerRunning = new CountDownLatch(1);
+        CountDownLatch releaseBlocker = new CountDownLatch(1);
+        given(cloudFrontService.signCourseScope(anyLong())).willAnswer(inv -> {
+            blockerRunning.countDown();
+            releaseBlocker.await(2, TimeUnit.SECONDS);
+            return SIGNATURE;
         });
 
-        Map<String, String> result = gate.signAll(List.of("blocker", "queued", "overflow"));
+        // 1) 워커 1개를 점유시킨다
+        Thread blocker = new Thread(() -> gate.signCourseScope(1L));
+        blocker.start();
+        assertThat(blockerRunning.await(1, TimeUnit.SECONDS)).isTrue();
 
-        assertThat(result).containsOnly(
-            Map.entry("blocker", "signed-blocker"), Map.entry("queued", "signed-queued"));
-        assertThat(result).doesNotContainKey("overflow");
+        // 2) 큐(1칸)를 채운다
+        Thread queued = new Thread(() -> gate.signCourseScope(2L));
+        queued.start();
+        awaitQueueDepth(1);
+
+        // 3) 세 번째는 executor가 거부한다 — fail-open으로 조용히 누락되지 않고 503이 나와야 한다
+        assertThatThrownBy(() -> gate.signCourseScope(3L))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", CloudFrontErrorCode.SIGNING_OVERLOADED);
+
+        releaseBlocker.countDown();
+        blocker.join(2000);
+        queued.join(2000);
+
+        assertThat(admissionOf(gate).availablePermits()).isEqualTo(10);
+    }
+
+    private void awaitQueueDepth(int expected) throws InterruptedException {
+        for (int i = 0; i < 200 && executor.getThreadPoolExecutor().getQueue().size() < expected; i++) {
+            TimeUnit.MILLISECONDS.sleep(10);
+        }
+        assertThat(executor.getThreadPoolExecutor().getQueue()).hasSize(expected);
     }
 
     private ThreadPoolTaskExecutor newExecutor(int poolSize, int queueCapacity) {
@@ -164,9 +175,9 @@ class CloudFrontSigningGateTest {
     }
 
     private CloudFrontSigningGate newGate(ThreadPoolTaskExecutor executor, int permits,
-        long acquireTimeoutMs, int maxKeysPerRequest, long deadlineMs) {
+        long acquireTimeoutMs, long deadlineMs) {
         return new CloudFrontSigningGate(cloudFrontService, executor, permits, acquireTimeoutMs,
-            maxKeysPerRequest, deadlineMs, new SimpleMeterRegistry());
+            deadlineMs, new SimpleMeterRegistry());
     }
 
     private Semaphore admissionOf(CloudFrontSigningGate gate) {
