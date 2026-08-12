@@ -5,6 +5,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -22,6 +23,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -147,18 +150,17 @@ class SpringAiStructuredOutputVerificationTest {
             .doesNotContain(SCHEMA_ONLY_MARKER);
     }
 
-    @Test
+    /**
+     * 0단계에서 확정한 에이전트별 모델. Planner·Curator는 {@code gpt-5.6-luna},
+     * PlaceProfile은 {@code gpt-5-nano}를 쓴다. <b>둘 중 하나라도 strict json_schema를 지원하지
+     * 않으면 그게 모델 선택의 하한선이 되므로</b> 두 모델을 모두 검증한다.
+     */
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"gpt-5.6-luna", "gpt-5-nano"})
     @Tag("benchmark")
     @DisplayName("실제 OpenAI 호출에서 선택한 모델이 strict json_schema를 지원한다")
-    void realApiHonorsStrictJsonSchema() throws Exception {
-        String apiKey = resolveEnv("OPENAI_API_KEY");
-        assumeTrue(apiKey != null && !apiKey.isBlank(),
-            "이 검증은 실제 OPENAI_API_KEY 가 필요하다 (.env 또는 환경변수)");
-
-        String model = resolveEnv("OPENAI_VERIFY_MODEL");
-        if (model == null || model.isBlank()) {
-            model = "gpt-5-nano";
-        }
+    void realApiHonorsStrictJsonSchema(String model) throws Exception {
+        String apiKey = requireApiKey();
 
         OpenAiChatModel chatModel =
             chatModelPointingAt("https://api.openai.com", apiKey, model);
@@ -178,9 +180,59 @@ class SpringAiStructuredOutputVerificationTest {
             .hasSize(2);
     }
 
+    /**
+     * <b>최상위가 배열인 스키마를 OpenAI가 받아주는지 확인한다.</b>
+     *
+     * <p>이걸 재는 이유는 CuratorAgent의 응답이 정확히 그 모양이기 때문이다 — 설계 문서 §4의
+     * 예시는 {@code { "day": 1, "slots": [...] }}지만, 슬롯 배열을 루트로 두고 싶은 유혹이 있고
+     * 그렇게 설계했다가 6단계에서 400을 맞으면 스키마와 파싱 코드를 되돌려야 한다.
+     *
+     * <p>거부되는 것이 정상이며, 그 경우 <b>배열을 객체로 감싸는 것이 선택이 아니라 제약</b>이 된다.
+     * 만약 이 테스트가 실패한다면(= 배열이 통과한다면) 제약이 풀린 것이므로 설계의 스키마 제약
+     * 서술을 완화하면 된다. 어느 쪽이든 6단계 착수 전에 알아야 하는 사실이다.
+     */
+    @Test
+    @Tag("benchmark")
+    @DisplayName("최상위가 배열인 스키마는 거부된다 — Curator 응답을 객체로 감싸야 하는 근거")
+    void rejectsTopLevelArraySchema() throws Exception {
+        String apiKey = requireApiKey();
+
+        String rootArraySchema = """
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": { "placeName": { "type": "string" } },
+                "required": ["placeName"],
+                "additionalProperties": false
+              }
+            }
+            """;
+
+        OpenAiChatModel chatModel = chatModelPointingAt(
+            "https://api.openai.com", apiKey, "gpt-5-nano", rootArraySchema);
+
+        assertThatThrownBy(() -> chatModel.call(new Prompt("경주 관광지 3곳을 알려줘")))
+            .as("최상위 배열 스키마는 OpenAI가 거부해야 한다")
+            .satisfies(thrown -> System.out.println(
+                "[0-3b] 최상위 배열 스키마 응답: " + thrown.getMessage()));
+    }
+
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
+    private static String requireApiKey() throws IOException {
+        String apiKey = resolveEnv("OPENAI_API_KEY");
+        assumeTrue(apiKey != null && !apiKey.isBlank(),
+            "이 검증은 실제 OPENAI_API_KEY 가 필요하다 (.env 또는 환경변수)");
+        return apiKey;
+    }
+
     private static OpenAiChatModel chatModelPointingAt(String baseUrl, String apiKey, String model) {
+        return chatModelPointingAt(baseUrl, apiKey, model, PLANNER_SCHEMA);
+    }
+
+    private static OpenAiChatModel chatModelPointingAt(String baseUrl, String apiKey, String model,
+        String jsonSchema) {
         OpenAiApi api = OpenAiApi.builder()
             .baseUrl(baseUrl)
             .apiKey(apiKey)
@@ -190,7 +242,7 @@ class SpringAiStructuredOutputVerificationTest {
             .type(Type.JSON_SCHEMA)
             .jsonSchema(JsonSchema.builder()
                 .name("planner_output")
-                .schema(PLANNER_SCHEMA)
+                .schema(jsonSchema)
                 .strict(true)
                 .build())
             .build();
