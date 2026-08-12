@@ -1,0 +1,272 @@
+# AI 코스 생성 멀티 에이전트 파이프라인 로드맵
+
+> [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md)에서 AI 코스 생성(`POST /api/my-courses/ai`)을 단일 LLM 호출에서 멀티 에이전트 파이프라인으로 재설계하기로 했다. 이 문서는 그 설계를 **어떤 순서로, 무엇을 만들고, 무엇을 확인해야 다음으로 넘어가는지**로 옮긴 실행 로드맵이다.
+>
+> 설계 문서 §13에 11단계 "도입 순서" 표가 있지만 각 단계가 한 줄 요약이라 착수/완료 판정 기준이 없다. 이 로드맵은 그 표를 승계하되 **0단계(사전 준비)를 앞에 추가**하고, 각 단계를 체크 가능한 항목으로 분해한다.
+>
+> V1 범위는 **Planner · Curator · Grounding · PlaceSignal · RouteOptimizer 다섯 단계**다. `CriticAgent`·`CandidateRefiner`는 설계 문서 §5-3/§5-4에 설계만 남기고 제외했다(근거는 설계 문서 §10).
+>
+> **LLM 벤더는 OpenAI로 확정됐다.** 설계 문서 초안은 Gemini를 현행으로 두고 OpenAI 전환 "가능성"을 전제로 쓰였으나, 확정에 따라 설계 문서 본문(§6·§7·§11·§13·§15)이 갱신됐다. 이 로드맵은 그 갱신된 설계를 기준으로 한다.
+>
+> 진행 상황: **0단계 착수 전.**
+
+## 목표
+
+1. **JSON 파싱 실패로 요청이 통째로 실패하는 것을 없앤다.** 단일 호출 구조의 실측 파싱 실패율은 **28.6%** — 사용자가 AI 코스 생성을 4번 시도하면 1번 이상 503을 받는다는 뜻이다. 스키마를 프롬프트 텍스트가 아니라 **디코딩 레벨에서 강제**하면(구조화 출력) 이 실패 자체가 사라진다. 현재 프롬프트의 JSON 예시에 trailing comma가 들어 있는 것이 유력한 원인이라, 프롬프트에서 예시를 걷어내는 것만으로도 상당 부분 해소될 가능성이 높다.
+
+2. **환각 장소가 사용자 코스에 실리는 비율을 낮춘다.** 현재 실측 환각률은 **25.6%**([TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)) — 코스 하나를 받으면 평균 4곳 중 1곳이 존재하지 않는 장소다. 후보를 3배로 늘리고 카카오 매칭 점수에 하한선을 두어, 검증을 통과하지 못한 장소는 파이프라인에 아예 존재하지 않게 만든다.
+
+3. **동선·시간 배치를 LLM 추측에서 실좌표 계산으로 옮긴다.** 좌표를 확보한 뒤 완전탐색으로 최적 순열을 고르므로, "시간 겹침 없음"·"day당 식사 1회"·"동선 역주행 없음"이 프롬프트 규칙이 아니라 **알고리즘 불변식**이 된다.
+
+4. **AI 코스 생성이 다른 API를 죽이지 않게 한다.** 현재 `createAICourse`는 `@Transactional` 하나로 LLM 호출과 카카오 블로킹 호출 N회를 전부 감싸, 최악의 경우 HikariCP 커넥션 1개를 **360초** 점유한다. 이 저장소는 동시성 200에서 이미 커넥션 풀 병목을 실측한 이력이 있다([TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md)).
+
+5. **LLM 벤더를 코드에서 분리한다.** 에이전트 코드가 벤더 SDK 타입을 한 개도 import하지 않게 해, 벤더 교체가 어댑터 하나의 교체가 되도록 한다. 부수 효과로 에이전트 단위 테스트가 가능해진다(`com.google.genai.Client`가 `public final class`라 현재는 Mockito로 묶을 수 없다).
+
+## 배경 — 현재 구조의 문제
+
+**① 환각을 걸러내는 게 아니라 세탁하고 있다.**
+[KakaoLocalClient.java](../../../src/main/java/backend/yourtrip/global/kakao/KakaoLocalClient.java)의 `score()`는 이름 일치 +5 / 주소 일치 +3 / 카테고리 +2로 최대 10점을 매기지만 **하한선이 없다.** `max()`로 최고점을 뽑으므로 0점 후보도 그대로 반환된다. LLM이 지어낸 상호명으로 검색하면 카카오가 그 지역의 무관한 POI를 돌려주고, 그게 사용자 코스에 저장된다. BASELINE 측정이 이 경로를 `LAUNDERED`(진짜 환각)로 분류했다.
+
+**② LLM이 지리를 모르는 채로 동선을 짠다.**
+[GeminiService.java](../../../src/main/java/backend/yourtrip/global/gemini/service/GeminiService.java)의 95줄 프롬프트 하나가 컨셉 설계 + 장소 선정 + 시간 배치 + 동선 최적화 + 제목 작명을 동시에 요구한다. 좌표 없이 텍스트로만 최적화하니 지그재그 동선이 나오고, 다섯 가지 일을 한 번에 시켜 각각이 다 얕다.
+
+**③ 트랜잭션이 외부 I/O 전체를 감싼다.**
+[MyCourseServiceImpl.java](../../../src/main/java/backend/yourtrip/domain/mycourse/service/MyCourseServiceImpl.java)의 `createAICourse`는 `@Transactional` 안에서 타임아웃 없는 LLM 호출과 `block(20초)` 카카오 호출을 최대 18회 수행한다. `open-in-view: false`라 트랜잭션 전체에 커넥션이 묶인다. 이건 품질 문제가 아니라 **가용성 문제**이고, 파이프라인 재설계와 무관하게 우선 고쳐야 한다.
+
+## 확정된 방침
+
+설계 문서가 "미확정"·"착수 전 확인 필요"로 남긴 항목 중 결정된 것들이다.
+
+| 항목 | 설계 문서 상태 | 확정 |
+|---|---|---|
+| LLM 벤더 | "Gemini는 고정이 아니다. OpenAI로 전환할 가능성이 높다"(§6) | **OpenAI 확정.** Gemini 어댑터는 만들지 않는다 |
+| 어댑터 구현 | "Gemini 쪽이 막히면 OpenAI 어댑터만 Spring AI"(§6) | **Spring AI 채택.** `LlmClient` 포트는 그대로 유지 |
+| 모델 배치 | Gemini 기준 `thinking-budget` | **에이전트별 차등.** Planner는 상위 모델, Curator·PlaceProfile은 mini급 |
+| 네이버 API 키 | "착수 전 확인 필요"(§15) | **미보유.** 0단계에서 발급 — 4단계의 블로커 |
+| before/after 비교 | 환각률 25.6%(Gemini 단일 호출) | **OpenAI 단일 호출 baseline을 2단계에서 재측정**해 3점 비교 |
+| V1 범위 | Critic·Refiner 제외(§10) | 유지. §13의 11단계 전부가 이 로드맵의 범위 |
+
+**OpenAI 확정의 근거와 파급.** 설계 문서가 벤더 중립 포트를 정당화한 두 축(향후 전환 대비 / 테스트 가능성) 중 첫 번째는 이제 "이미 일어난 전환"이 됐고, 두 번째는 그대로 남는다. 즉 `LlmClient` 포트는 여전히 필요하지만 **어댑터는 OpenAI 하나만 만든다.** Gemini 어댑터를 만들어 A/B를 유지하는 선택지는 유지 비용 대비 얻는 게 없어 채택하지 않는다 — 2단계 baseline 재측정이 끝나면 Gemini 경로는 8단계에서 삭제된다.
+
+**Spring AI를 고르는 근거.** OpenAI의 `response_format: json_schema`는 업계 표준에 가깝게 정착돼 있어 프레임워크 지원이 안정적일 가능성이 높고, 이 저장소는 이미 `@Bean`·`application.yml` 기반 Spring 관용구가 전역에 깔려 있다. 다만 **포트를 없애고 Spring AI의 `ChatClient`를 에이전트가 직접 쓰지는 않는다** — 오케스트레이션은 어떤 프레임워크를 쓰든 직접 짜야 하는 도메인 로직이고, 툴 자율 호출·`VectorStore`·대화 메모리는 이 파이프라인에 대응물이 없다. Spring AI는 `OpenAiLlmClient` 내부의 전송 계층으로만 가둔다.
+
+**에이전트별 모델 차등의 근거.** 현재 코드의 단일 `temperature 0.3`은 "장소 선정은 다양해야 하고 판정은 일관돼야 한다"는 상충 요구를 하나로 뭉갠 값이다. Curator는 후보 3개가 서로 비슷하면 대체재로서 의미가 없으므로 온도를 올리고, PlaceProfile은 속성 추출이라 창의성이 아니라 충실성이 필요하므로 낮춘다. 모델도 같은 논리로 나눈다 — Planner(컨셉·권역 설계)만 추론 이득이 있고, Curator(지역 상식 회상)·PlaceProfile(속성 추출)은 이득이 적으면서 토큰 비중은 가장 크다. 구체 모델 ID와 단가는 0단계에서 확정한다.
+
+## 문서 작성 원칙
+
+- **이 문서에는 체크리스트만 남긴다.** 설계 논의, 발견한 버그, 성능 측정 결과 같은 상세 내용은 단계별 실행 계획서 `steps/STEP-N-*.md`에 적는다.
+- **실행 계획서는 해당 단계에 착수하는 시점에 작성한다.** 미리 전부 쓰지 않는다 — 앞 단계의 결과가 뒤 단계의 설계를 바꾸기 때문이다(특히 0단계 Spring AI 검증 결과가 2단계를 좌우한다). 각 `### N.` 섹션에 걸린 `steps/` 링크는 **아직 파일이 없는 상태가 정상**이다.
+- 계획이 바뀌면 지우지 않고 `> **[정정]**` 인용블록과 `~~취소선~~`으로 소급 기록한다. 이 저장소의 다른 task 문서와 같은 방식이다.
+- 완료된 항목은 `- [x]`로 반영한다.
+
+## 적용 원칙 (진행 방식)
+
+- 체크리스트는 **한 항목씩** 적용한다. 여러 항목을 묶어 구현하지 않는다. 항목이 커 보이면 더 잘게 쪼갠다.
+- **요구사항·설계·구현 방식 중 모르거나 애매한 부분이 있으면 임의로 판단하지 않는다.** 작업을 멈추고 먼저 질문한 뒤 답변을 받고 진행한다.
+- **매 `### N.` 섹션이 끝날 때마다 애플리케이션을 실행해 정상 기동/동작을 확인한다.** 컴파일 성공으로 끝내지 않는다.
+- **API 동작에 영향을 주는 단계(1, 8, 9)는 실제 요청으로 E2E 검증한다.** 설정·순수 함수만 추가하는 단계는 대상에서 제외한다.
+- **외부 API를 실제로 호출하는 작업은 비용과 쿼터를 소모한다.** 특히 2·11단계의 baseline 측정은 30요청 × LLM 호출이므로, 실행 전에 반드시 확인을 받는다.
+- 이 원칙은 [CLAUDE.md](../../../CLAUDE.md)의 "작업 방식 (포트폴리오 저장소 특성)"과 연결된다.
+
+## 적용 체크리스트
+
+단계 순서는 설계 문서 §13을 따른다. **동작 변화가 없는 커밋을 앞에 쌓고, 스위치는 8단계 하나로 몰아** 문제 시 그 커밋만 revert할 수 있게 하는 것이 이 순서의 요지다.
+
+### 0. 사전 준비
+
+동작 변화 없음. 이후 모든 단계의 선행 조건이며, **여기서 나온 판정이 2·4단계의 설계를 바꾼다.**
+
+> 상세 실행 계획은 [STEP-0-prerequisites.md](steps/STEP-0-prerequisites.md) 참고. (미작성)
+
+- [ ] 0-1. OpenAI API 키 발급 + `.env.example`에 `OPENAI_API_KEY` 추가 (`GEMINI_API_KEY`는 8단계까지 유지)
+- [ ] 0-2. 네이버 개발자센터 앱 등록 + `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET` 발급 및 `.env.example` 추가
+- [ ] 0-3. **Spring AI 구조화 출력 검증** — `spring-ai-openai`가 `response_format: json_schema`(디코딩 레벨 강제)를 그대로 노출하는지 최소 예제로 확인. 프롬프트 지시 기반 JSON 모드로 떨어지면 "파싱 실패율 near-zero" 전제가 깨지므로 **OpenAI 공식 SDK(`com.openai:openai-java`)로 폴백**한다. 판정 결과와 근거를 기록
+- [ ] 0-4. 모델 ID·단가 확정 (Planner용 상위 모델 / Curator·PlaceProfile용 mini급) → 설계 문서 §11 비용표를 OpenAI 기준으로 재계산
+- [ ] 0-5. 쿼터 확인 — 네이버 검색 API 일일 한도, 카카오 Local 일일 한도(요청당 ~45회 기준 상한), OpenAI RPM/TPM 티어. 마지막 값이 `llm.max-concurrent-calls` 초기값의 근거가 된다
+- [ ] 0-6. **테스트 인프라 신설** — `src/test/resources` 디렉터리(현재 존재하지 않음) + `application-test.yml`, WireMock 또는 MockWebServer 의존성 추가. 5단계 이후 결정론적 통합 테스트의 전제
+- [ ] 0-7. `build.gradle`에 Java 21 toolchain 고정 (현재 버전 선언이 전혀 없어 로컬 JDK에 좌우된다)
+
+### 1. 기존 결함 수정
+
+동작 변화 **있음(버그 수정)**. 파이프라인과 **완전히 독립적으로 옳은 수정**이라 리뷰가 쉽고, 작업이 중단돼도 가치가 남는다. 그래서 맨 앞에 둔다.
+
+> 상세 실행 계획은 [STEP-1-existing-defects.md](steps/STEP-1-existing-defects.md) 참고. (미작성)
+
+- [ ] 1-1. `Place`의 `@Builder` 파라미터를 `double` → `Double`로 교체 (좌표 `0.0/0.0` 저장 차단) + `PlaceMapper.toCopyEntity`의 언박싱 NPE 수정
+- [ ] 1-2. `KakaoLocalClient.score()`에 점수 하한선 도입 — 미달 후보는 매칭 실패로 처리. **임계값은 BASELINE 측정의 점수 밴드 분포를 근거로 정한다**
+- [ ] 1-3. `KakaoConfig`의 `WebClient`에 connect/response 타임아웃 + 커넥션 풀 명시, `.block(Duration.ofSeconds(20))` 제거. 현재는 타임아웃 초과 시 `IllegalStateException`이 던져져 `WebClientResponseException` catch를 빠져나가 원시 500이 된다
+- [ ] 1-4. `buildKeywordsJson(null)` NPE 수정 + `AICourseCreateRequest.keywords`에 검증 추가
+- [ ] 1-5. `createAICourse`의 `@Transactional` 경계 분리 — 외부 I/O를 트랜잭션 밖으로 빼고 저장만 짧은 트랜잭션으로. **`AiCoursePersister`를 반드시 별도 빈으로 둔다**(같은 클래스 내부 호출은 Spring AOP 프록시를 우회해 트랜잭션이 아예 안 걸린다). 이 저장소에 `MyCourseDetailReader`라는 동일한 분리 선례가 있다
+- [ ] 1-6. 회귀 테스트 + 커넥션 점유 시간 before/after 확인
+
+### 2. `LlmClient` 벤더 중립 추상화 + 설정 외부화 + baseline 재측정
+
+동작 변화 없음(기존 `GeminiService` 경로는 그대로 둔다).
+
+> 상세 실행 계획은 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 참고. (미작성)
+
+- [ ] 2-1. `LlmClient` 포트 + `LlmCall` record 정의. `responseJsonSchema`는 벤더 타입이 아니라 **JSON 문자열**로 받는다 — 이게 벤더 중립의 핵심이다. 스키마는 `resources/schemas/*.json`
+- [ ] 2-2. `OpenAiLlmClient` 어댑터 구현 (내부 전송 계층은 0-3 판정에 따라 Spring AI 또는 공식 SDK)
+- [ ] 2-3. `AiLlmProperties` 등 `@ConfigurationProperties` 도입 — agent별 model/temperature, `timeout-ms`, `max-concurrent-calls`, retry 설정. **이 저장소 최초의 `@ConfigurationProperties`다**(현재 전 설정이 `@Value` 필드 주입)
+- [ ] 2-4. `LlmResponseParser` + 재시도 2계층 — 전송 계층(429/5xx 지수 백오프 + 지터)과 의미 계층(200 OK인데 깨진 JSON → 1회만 재시도). 2회 이상은 지연 예산만 태운다
+- [ ] 2-5. 포트 기반 단위 테스트 — 에이전트 코드가 벤더 SDK 타입을 import하지 않는다는 것을 테스트로 확인
+- [ ] 2-6. **OpenAI 단일 호출 baseline 재측정** — 기존 `AiHallucinationBaselineTest` 하네스의 LLM만 교체하고 입력 세트·`score()` 로직은 그대로. **환각률과 JSON 파싱 실패율을 함께 집계하고, 이번에는 결과 산출물을 파일로 남긴다**(Gemini 측정 때 파싱 실패율 28.6%가 수치만 남고 산출물이 남지 않아 재확인이 불가능했다)
+
+### 3. `RouteOptimizer` + `SlotType` + `GeoUtils`
+
+동작 변화 없음. 순수 함수라 외부 의존이 없고 단위 테스트가 완전히 결정론적이다.
+
+> 상세 실행 계획은 [STEP-3-route-optimizer.md](steps/STEP-3-route-optimizer.md) 참고. (미작성)
+
+- [ ] 3-1. `SlotType` enum — 체류시간·인기도 가중치·허용 카테고리 코드를 enum이 소유. LLM이 내보내는 필드가 하나 줄면 스키마 위반 가능성도 하나 줄고, 튜닝이 코드 리뷰 대상이 된다
+- [ ] 3-2. `GeoUtils` — haversine 거리(반경 6371.0088km). 유클리드 근사와의 차이는 한국 도시 규모에서 0.1% 미만이지만, 20줄이고 CPU 비용이 무의미하므로 근사 오차라는 변수를 아예 없앤다
+- [ ] 3-3. `RouteOptimizer` 완전탐색 — `n ≤ 7`이면 `7! = 5,040` 순열이 1ms 미만. 비용 함수는 순수 TSP가 아니라 **거리 + 식사 시간창 위반 + 하루 초과 페널티**
+- [ ] 3-4. 시간 모델 — `t[i] = t[i-1] + 체류 + 이동`, travelMode별 유효속도·고정 오버헤드. `startTime` 5분 단위 올림
+- [ ] 3-5. 하루 초과 처리 — 체류시간 0.8배 축소 → 후순위 슬롯 드롭 → day당 최소 3개에서 중단
+- [ ] 3-6. 단위 테스트 + `@Tag("benchmark")`로 `n=6,7,8` 소요시간 실측 (`n ≥ 8` 폴백 임계값의 근거)
+
+### 4. `NaverBlogClient` + `PopularityScorer` + 컨셉 사전
+
+동작 변화 없음. **0-2(네이버 키 발급)가 선행돼야 착수 가능하다.** 5단계보다 앞에 두는 이유는 클라이언트와 점수 계산이 외부 의존이 적고 순수 단위 테스트가 가능하기 때문 — 먼저 검증해두면 5단계가 조립에만 집중할 수 있다.
+
+> 상세 실행 계획은 [STEP-4-place-signal.md](steps/STEP-4-place-signal.md) 참고. (미작성)
+
+- [ ] 4-1. `NaverBlogClient` — `display=5`로 조회하면 응답 한 번에 `total`(인기도) + `postdate`(최신성) + 스니펫 5건(속성 추출 재료)이 전부 들어온다. **장소당 호출은 1회다**
+- [ ] 4-2. `PopularityScorer` (순수 함수) — `popularity = log10(max(total, 1))`. **로그 스케일이 필수인 이유**: `total`은 1건에서 수백만 건까지 자릿수로 벌어져, 선형으로 쓰면 유명 관광지 하나가 다른 모든 신호를 압도한다
+- [ ] 4-3. 폐업 의심 감지 — 최신 `postdate`가 12개월 이내인지
+- [ ] 4-4. `traits` 닫힌 태그 집합 정의 + 키워드↔traits 결정론 사전. **여기에 LLM을 쓰지 않는다** — 사전은 순수 함수라 완전히 테스트 가능하고, 자유 텍스트로 두면 요약 단계 자체가 새로운 환각 지점이 된다
+- [ ] 4-5. `rankScore` 계산 — `kakaoMatchScore + popularity × slot.popularityWeight + conceptScore × CONCEPT_WEIGHT − closedSuspicionPenalty`. **모든 보조 신호는 감점이지 하드 드롭이 아니다**(블로그 언급 0건이 곧 폐업은 아니다)
+- [ ] 4-6. 단위 테스트 (순수 함수 전량) + 네이버 클라이언트 스텁 테스트
+
+### 5. `GroundingStage` + `PlaceSignalStage`
+
+동작 변화 없음(파이프라인이 아직 컨트롤러에 연결되지 않는다).
+
+> 상세 실행 계획은 [STEP-5-grounding.md](steps/STEP-5-grounding.md) 참고. (미작성)
+
+- [ ] 5-1. 스레드풀 2개 신설 — `aiAgentExecutor`(LLM)와 `placeGroundingExecutor`(카카오·네이버 공유). **벌크헤드로 나누는 이유**는 외부 장소 API가 느려질 때 그 대기가 LLM 슬롯을 잠식하면 안 되기 때문이다(LLM은 3~10초짜리 소수, 장소 API는 0.15~0.3초짜리 다수)
+- [ ] 5-2. `GroundingStage` — 후보 병렬 검증, 점수 하한 미달 탈락, `kakaoId` 기준 전 day dedupe. **여기를 통과 못 한 장소는 파이프라인에 존재하지 않는다**
+- [ ] 5-3. 슬롯별 카테고리 하드 제약 — 현재 `category_group_code`를 가점 +2로만 쓰는 것을 하드 제약으로 승격(MEAL←FD6, CAFE←CE7, ATTRACTION←AT4/CT1). 비용이 사실상 0인데 "점심에 호프집"이 구조적으로 사라진다
+- [ ] 5-4. `PlaceSignalStage` — 카카오 생존 후보에만 네이버 조회. **fail-open**: 네이버 장애 시 3·4층 전체를 스킵하고 진행
+- [ ] 5-5. 파이프라인 하드 데드라인 — `CompletableFuture.allOf(...).get(remainingMs, MILLISECONDS)`. `CallerRunsPolicy`를 유지하되(거부보다 느린 성공이 낫다) 요청 스레드가 장소 API I/O를 직접 수행해 순차 실행으로 퇴화하는 것을 데드라인으로 막는다
+- [ ] 5-6. `ai.grounding.match{result=hit|below_threshold|no_result}` 메트릭 — **환각률의 운영 프록시이자 이 작업의 핵심 지표.** 이 저장소는 커스텀 Micrometer 메트릭이 아직 0건이므로 `MeterRegistry` 주입 패턴을 여기서 처음 세운다
+- [ ] 5-7. 스텁 기반 통합 테스트 (0-6의 WireMock 인프라 사용)
+
+### 6. `PlannerAgent` / `CuratorAgent`
+
+동작 변화 없음.
+
+> 상세 실행 계획은 [STEP-6-agents.md](steps/STEP-6-agents.md) 참고. (미작성)
+
+- [ ] 6-1. `PromptLoader` — 프롬프트를 `resources/prompts/*.md`로 분리하고 `@PostConstruct`에서 eager 로드. 파일이 없으면 **애플리케이션 기동이 실패**하므로 런타임이 아니라 배포 시점에 발견된다. 플레이스홀더는 위치 기반 `%s`가 아니라 **명명 기반 `{{location}}`**
+- [ ] 6-2. `PlannerAgent` — 컨셉·제목·day별 권역(`area`)·슬롯 구성. **장소명은 한 개도 생성하지 않는다.** Planner를 별도 단계로 두는 이유는 "단계 분할"이 아니라 **Curator를 day별 병렬 실행하려면 day별 권역이 먼저 확정돼야 하기 때문**이다
+- [ ] 6-3. Planner 출력 구조 검증 — day 수 불일치·MEAL 누락·슬롯 개수 초과를 **코드로 보정**한다(LLM 재호출 없음)
+- [ ] 6-4. `CuratorAgent` — day별 병렬, 슬롯당 실제 상호명 후보 3개. 다른 day는 모른다
+- [ ] 6-5. **`duration` 키워드 처리 방침 결정** — 무시할지, `days`와의 모순 검증에 쓸지. 지금은 "보내지만 아무도 해석하지 않는" 상태이며 label 표기도 어긋나 있다(설계 문서 §7)
+- [ ] 6-6. 프롬프트에서 사라진 규칙 확인 — 시간 배치·동선·중복·스키마 강제는 이제 코드가 보장하므로 프롬프트에 남기지 않는다. 약 45줄이 사라지고 "취향과 컨셉"만 남는 것이 이 분리의 본질이다
+
+### 7. `AiCoursePipeline` 오케스트레이터 + 폴백
+
+동작 변화 없음(컨트롤러 미연결).
+
+> 상세 실행 계획은 [STEP-7-pipeline.md](steps/STEP-7-pipeline.md) 참고. (미작성)
+
+- [ ] 7-1. `AiCoursePipeline` — Planner → Curator → Grounding → PlaceSignal → RouteOptimizer 조립
+- [ ] 7-2. `AiCourseErrorCode` 신설 (`ErrorCode` 인터페이스 구현이라 `GlobalExceptionHandler`는 수정하지 않는다) + `JSON_TRANSFORMATION_FAILED` 오용 정리 — 지금은 방향이 정반대인 두 실패(응답 역직렬화 / 키워드 직렬화)가 같은 코드를 공유한다
+- [ ] 7-3. **degrade, don't fail** 폴백 전량 구현 — Planner 실패 시 결정론적 기본 플랜, Curator 실패 시 카카오 카테고리 검색 폴백, 후보 개별 탈락, 네이버 fail-open, 슬롯 전멸 시 보충
+- [ ] 7-4. **hard fail은 카카오 전면 장애 하나뿐**(`AI_GROUNDING_FAILED` 503). 좌표 없는 코스는 이 기능의 핵심 가치를 잃는다 — **지금 코드가 `0.0/0.0`으로 저장해 성공을 위장하는 것이 정확히 그 실수다**
+- [ ] 7-5. `ai.course.pipeline.duration{stage}` 메트릭 (202 전환 판단의 근거가 된다)
+- [ ] 7-6. 폴백 경로별 테스트
+
+### 8. AI 코스 생성 경로 교체 (스위치)
+
+동작 변화 **있음 — 이 단계가 유일한 스위치다.** 문제가 생기면 이 커밋만 revert하면 된다.
+
+> 상세 실행 계획은 [STEP-8-switch.md](steps/STEP-8-switch.md) 참고. (미작성)
+
+- [ ] 8-1. `createAICourse`를 파이프라인 호출로 교체. `userId`를 요청 스레드에서 **미리 확보해 명시적으로 넘긴다** — `getCurrentUserId()`는 `SecurityContextHolder`를 읽는데 파이프라인이 다른 스레드에서 돌면 `SecurityContext`가 전파되지 않아 인증 정보가 사라진다
+- [ ] 8-2. `AiCoursePersister` 분리 확정 (1-5에서 이미 도입했다면 파이프라인 결과를 받도록 조정)
+- [ ] 8-3. **삽입 순서 = 표시 순서 보장** — `DaySchedule.places`에 `@OrderBy("id ASC")`가 걸려 있고 별도 `sequence` 컬럼이 없다. 최적화된 순서 그대로 `save()`해야 동선 순서가 재현된다
+- [ ] 8-4. `global/gemini` 패키지 삭제 + `GEMINI_API_KEY` 제거 (`.env.example`, `application.yml`)
+- [ ] 8-5. E2E 검증 — 실제 요청으로 코스 생성, 좌표·시간·순서 확인
+- [ ] 8-6. **파이프라인 환각률 측정** (3점 비교의 마지막 점)
+
+### 9. `PlaceProfileAgent`
+
+동작 변화 있음(품질). 8단계까지만으로도 이미 확실히 낫기 때문에(환각 차단 + 실좌표 동선) **순수 부가가치이고 플래그로 붙였다 뗄 수 있다.**
+
+> 상세 실행 계획은 [STEP-9-place-profile.md](steps/STEP-9-place-profile.md) 참고. (미작성)
+
+- [ ] 9-1. `PlaceProfileAgent` — 블로그 `title`·`description`에서 **평가가 아니라 속성**을 추출. 요약 프롬프트가 "이 장소가 좋은가"를 물으면 협찬 문구를 그대로 받아 적는다. **광고비가 "루프탑이 있다"를 바꾸지는 못한다**
+- [ ] 9-2. 닫힌 태그 집합 강제 + "원문에 없으면 비워라" 스키마 강제
+- [ ] 9-3. **조건부 확장** — `mood` 키워드가 있으면 ATTRACTION 슬롯도 대상에 포함, 없으면 MEAL/CAFE만. 전 슬롯 적용은 비용 문제로 돌아가고 전부 끄면 분위기 변별을 잃는다
+- [ ] 9-4. 데드라인 임박 시 스킵 (traits 없이 진행) + LLM 실패 시 traits 비우고 진행
+- [ ] 9-5. `ai.profile.traits{count}` 메트릭 — 속성 추출이 실제로 신호를 뽑고 있는지
+- [ ] 9-6. 플래그 on/off 비교
+
+### 10. 카카오·네이버 Redis 캐싱
+
+동작 변화 있음(지연 감소).
+
+> 상세 실행 계획은 [STEP-10-caching.md](steps/STEP-10-caching.md) 참고. (미작성)
+
+- [ ] 10-1. `kakao:place:{sha1}` / `naver:blog:{sha1}` TTL 7일. 기존 [RedisConfig.java](../../../src/main/java/backend/yourtrip/global/config/RedisConfig.java)와 [RedisCacheErrorHandler.java](../../../src/main/java/backend/yourtrip/global/config/RedisCacheErrorHandler.java)(Redis 장애 시 fail-open)를 그대로 재사용
+- [ ] 10-2. `ai.place.cache{source, result}` 메트릭 → 캐시 히트율로 쿼터 여유 실측
+- [ ] 10-3. **최종 코스는 캐싱하지 않는다** — 같은 조건으로 재생성했는데 똑같은 코스가 나오면 사용자가 버그로 인식한다. 캐싱 대상은 장소 조회 결과(정적)와 Planner 출력(도시+일수+키워드 → 권역 배분은 결정적)뿐이다
+
+### 11. 실측 결과 기록
+
+- [ ] 11-1. 3점 비교 결과를 [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md)와 [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)에 추가
+- [ ] 11-2. 지연 예산 실측치와 설계 추정치(p50 12~16초 / p95 22~30초) 대조 → **202 Accepted 전환 여부를 데이터로 판단**
+- [ ] 11-3. 커넥션 점유 시간 before/after, 실제 토큰 비용, `mood` 키워드 포함 비율 기록
+
+## 성공 기준
+
+**1차 지표는 환각률이다.** 다만 이번에 LLM 벤더가 Gemini에서 OpenAI로 바뀌므로, before/after를 그대로 비교하면 **"모델 교체"와 "파이프라인 도입" 두 변수가 섞여** 개선폭을 어느 쪽에도 귀속시킬 수 없다. 그래서 측정점을 3개로 나눈다.
+
+| 측정점 | 시점 | 분리되는 변수 | 값 |
+|---|---|---|---|
+| Gemini 단일 호출 | 완료 | — | **25.6%** |
+| OpenAI 단일 호출 | 2단계 직후 | 모델 교체 효과 | 미측정 |
+| OpenAI 파이프라인 | 8단계 직후 | 파이프라인 구조 효과 | 미측정 |
+
+- 하네스는 기존 것을 그대로 쓴다: `src/test/java/backend/yourtrip/global/benchmark/AiHallucinationBaselineTest.java`
+  ```bash
+  ./gradlew benchmarkTest --tests '*AiHallucinationBaselineTest*' --rerun
+  ```
+- **동일 입력 세트(지역 10곳 × 스타일 3조합 = 30요청, 여행 일수 3일 고정)와 동일한 `score()` 로직을 유지해야** 세 측정점이 비교 가능하다. 1-2에서 점수 하한선을 도입하므로, 하네스의 판정 로직은 하한선 도입 전 기준을 그대로 쓰도록 고정한다
+- BASELINE 문서가 명시한 한계를 그대로 승계한다 — **LLM 응답은 비결정적이라 수 %p 차이는 반복 측정이 필요하고**, 카카오에 미등록된 실존 업소는 원리적으로 환각과 구분할 수 없다
+
+**부가 지표**
+
+| 지표 | before | 목표 |
+|---|---|---|
+| HikariCP 커넥션 점유(최악) | ~360초 | ~50ms |
+| `ai.grounding.match{below_threshold\|no_result}` | 미계측 | 5단계부터 상시 관측 |
+| JSON 파싱 실패율 | **28.6%** | 구조화 출력으로 near-zero |
+
+## 범위에서 제외한 것
+
+- **`CriticAgent` / `CandidateRefiner`** — 설계는 §5-3/§5-4에 남긴다. 제외 근거는 설계 문서 §10에 정리돼 있고, 재검토 조건은 두 가지다: ① 골든 데이터셋/LLM-as-judge 평가 인프라가 생겨 "Critic이 실제로 개선하는가"를 측정할 수 있을 때 ② 실제 사용자 피드백에서 컨셉 미스매치 불만이 반복될 때
+- **골든 데이터셋 / LLM-as-judge 평가 인프라** — 파이프라인이 안정된 뒤 착수하는 것이 맞다
+- **202 Accepted + 폴링 전환** — 동기 API 계약을 유지한 채 먼저 완성해 실측하고, p95가 목표를 넘는 것을 데이터로 확인한 뒤 전환한다. 그래야 전환이 "숫자에 근거한 결정"이 된다
+- **사용자 피드백 루프** — 생성된 코스에서 사용자가 삭제한 장소가 곧 정답 라벨이고, 이건 외부 API가 아니라 우리가 축적하는 고유 자산이다. **다만 소급할 수 없는 데이터라 삭제 이벤트 기록은 일찍 시작할 가치가 있다** — 별도의 작은 작업으로 분리한다
+- **Gemini 어댑터 유지** — OpenAI 확정으로 불필요. 2단계 baseline 재측정이 끝나면 8단계에서 삭제한다
+- **`SEQUENCE` 전환** — `Place`/`DaySchedule`이 `GenerationType.IDENTITY`라 JDBC 배치 INSERT가 원천 불가능하지만, ~20건 규모라 지금은 무시해도 된다
+
+## 미해결 · 확인 필요
+
+- **Spring AI OpenAI의 구조화 출력이 스키마를 디코딩 레벨에서 강제하는가** — 0-3의 판정 대상. 프롬프트 지시 기반 JSON 모드로 떨어지면 공식 SDK로 폴백한다
+- **OpenAI 기준 비용 재계산** — 설계 문서 §11의 토큰·비용 수치는 `gemini-2.5-flash` 기준이라 금액 환산을 그대로 쓸 수 없다. 추론 토큰이 출력 요금에 포함되는 함정은 벤더가 바뀌어도 동일하므로, OpenAI에 대응하는 추론 강도 설정이 있는지 0-4에서 함께 확인한다
+- **`duration` 키워드 처리 방침** — 6-5에서 결정
+- **`mood` 키워드 포함 비율** — 9-3 조건부 확장이 실제로 얼마나 자주 켜지는지(= 토큰 비용 증가폭)는 추정이 아니라 배포 후 실측이 필요하다
+- **파싱 실패율 28.6%의 산출물이 남아 있지 않다** — 수치는 Gemini 단일 호출 실험에서 직접 뽑은 것이지만 결과 파일을 보존하지 않아 사후 재확인이 불가능하다. 2-6 재측정부터는 **환각률과 파싱 실패율 모두 CSV로 남긴다**
+
+## 참고 문서
+
+- [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md) — 멀티 에이전트 파이프라인 설계 (이 로드맵의 근거 문서)
+- [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md) — 환각률 baseline 실측 (before 값 25.6%)
+- [TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md) — 커넥션 풀 병목 실측. 목표 4의 근거
+- [TASK-PRESIGN-BOTTLENECK-FIX.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md) — 트랜잭션 경계 분리 선례
+- [CACHING-ROADMAP.md](../../CACHING-ROADMAP.md) — 이 문서가 따르는 로드맵 포맷의 선례
+- `steps/STEP-N-*.md` — 단계별 상세 실행 계획서 (각 단계 착수 시점에 작성)
