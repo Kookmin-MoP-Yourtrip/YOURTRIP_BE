@@ -490,11 +490,17 @@ llm:
   max-concurrent-calls: 2     # ★ RPM/TPM 티어 방어. 상위 티어 전환 시 이 값만 올린다
   retry: { attempts: 3, initial-delay-seconds: 0.5, max-delay-seconds: 4.0, jitter: 0.3 }
   agents:
-    planner:       { model: <상위 모델>, temperature: 0.7 }
-    curator:       { model: <mini급>,    temperature: 0.9 }
-    place-profile: { model: <mini급>,    temperature: 0.2 }
+    planner:       { model: gpt-5.6-luna, temperature: 0.7 }
+    curator:       { model: gpt-5.6-luna, temperature: 0.9 }
+    place-profile: { model: gpt-5-nano,   temperature: 0.2 }
     # critic: V1 범위 밖 (§10 참고). 재검토 시 { temperature: 0.0, seed: 42 }
 ```
+
+모델 배정 근거는 [steps/STEP-0-prerequisites.md](steps/STEP-0-prerequisites.md)에 있다. 요지는
+**"추론 난이도"가 아니라 "틀렸을 때의 파급 ÷ 토큰량"으로 골랐다**는 것이다 — Planner는 파급이
+가장 큰데(권역이 틀리면 그 아래 Curator와 카카오 검색이 전부 오염된다) 호출 1회에 출력 350토큰이라
+가장 싸게 투자할 수 있고, Curator는 환각률에 직결되므로 지식 폭이 넓은 최신 세대를 쓰며,
+PlaceProfile은 닫힌 태그 분류라 세대 이점이 작은데 입력 토큰의 76%를 차지해 최저가로 내렸다.
 
 **agent별 temperature를 다르게 두는 근거** — 현재 코드의 단일 `0.3`은 "장소 선정은 다양해야 하고
 판정은 일관돼야 한다"는 상충 요구를 하나로 뭉갠 값이다. 특히 **Curator를 0.9로 올리는 건 후보
@@ -764,7 +770,7 @@ Refiner <10ms + 재최적화가 더해져 p50 16~20초, p95 30~40초였다).
 **60초는 넘지 않는다. 하지만 60초가 문제가 아니다.** 동기 요청으로 15~30초를 잡으면 동시 200건에서
 `maxThreads=200`이 통째로 AI 코스 생성에 묶인다. 이 레포는 이미 동시성 200에서
 `tomcat_threads_busy`가 maxThreads 경계에 닿는 것을 실측한 이력이 있다
-([TASK-PRESIGN-BOTTLENECK.md](TASK-PRESIGN-BOTTLENECK.md)).
+([TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md)).
 
 **결정: 동기 API 계약을 유지한 채 먼저 완성해 실측하고, p95가 목표를 넘는 것을 데이터로 확인한 뒤
 202 Accepted + 폴링으로 전환한다.** 그래야 전환이 "숫자에 근거한 결정"이 된다. 이 레포는 이미
@@ -821,6 +827,14 @@ RouteOptimizer 다섯 단계로 확정된다.
 
 Critic까지 포함하면 6회(`3 + days`)·입력 ~13,000·출력 ~2,000이 되는데, V1에서는 제외했으므로
 (§10 "Critic·Refiner를 V1에서 제외한 이유") 위 5회 기준이 실제 비용이다.
+
+> **[정정] 토큰 수 기준과 금액 기준이 다르다.** 아래 "입력 토큰이 9배가 되는 것이 최대 비용"이라는
+> 서술은 **토큰 수로는 맞지만 금액으로는 틀렸다.** 0단계에서 실제 단가를 대입해보니 출력 단가가
+> 입력의 8배라 두 비중이 어긋난다 — PlaceProfile 입력은 토큰의 76%인데 **금액으로는 19%**이고,
+> 금액을 지배하는 것은 **Curator의 출력(62%)** 이다.
+> 이는 아래 완화 수단 1번("MEAL/CAFE 슬롯에만 적용")의 절감 효과 추정도 함께 낮춘다 — ATTRACTION
+> 슬롯을 PlaceProfile 대상에서 빼서 아낄 수 있는 금액은 §11이 계산한 "약 40%"보다 훨씬 작다.
+> 계산 근거는 [steps/STEP-0-prerequisites.md](steps/STEP-0-prerequisites.md) 참고.
 
 **입력 토큰이 9배가 되는 것이 이 설계의 최대 비용이고, 전부 4층(속성 추출)에서 나온다.**
 완화 수단은 세 가지다.

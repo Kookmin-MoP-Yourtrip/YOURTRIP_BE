@@ -8,7 +8,7 @@
 >
 > **LLM 벤더는 OpenAI로 확정됐다.** 설계 문서 초안은 Gemini를 현행으로 두고 OpenAI 전환 "가능성"을 전제로 쓰였으나, 확정에 따라 설계 문서 본문(§6·§7·§11·§13·§15)이 갱신됐다. 이 로드맵은 그 갱신된 설계를 기준으로 한다.
 >
-> 진행 상황: **0단계 착수 전.**
+> 진행 상황: **0단계 진행 중** — 코드 작업(0-3~0-7)은 완료했고, API 키 발급(0-1·0-2)만 남았다.
 
 ## 목표
 
@@ -40,8 +40,8 @@
 | 항목 | 설계 문서 상태 | 확정 |
 |---|---|---|
 | LLM 벤더 | "Gemini는 고정이 아니다. OpenAI로 전환할 가능성이 높다"(§6) | **OpenAI 확정.** Gemini 어댑터는 만들지 않는다 |
-| 어댑터 구현 | "Gemini 쪽이 막히면 OpenAI 어댑터만 Spring AI"(§6) | **Spring AI 채택.** `LlmClient` 포트는 그대로 유지 |
-| 모델 배치 | Gemini 기준 `thinking-budget` | **에이전트별 차등.** Planner는 상위 모델, Curator·PlaceProfile은 mini급 |
+| 어댑터 구현 | "Gemini 쪽이 막히면 OpenAI 어댑터만 Spring AI"(§6) | **Spring AI `1.1.8` 채택.** `LlmClient` 포트는 그대로 유지. 2.0.x는 Spring Boot 4를 요구해 쓸 수 없다(0단계 판정) |
+| 모델 배치 | Gemini 기준 `thinking-budget` | **Planner·Curator = `gpt-5.6-luna`, PlaceProfile = `gpt-5-nano`** (약 $0.0030/요청). Curator 모델은 2-6 실측으로 최종 확정 |
 | 네이버 API 키 | "착수 전 확인 필요"(§15) | **미보유.** 0단계에서 발급 — 4단계의 블로커 |
 | before/after 비교 | 환각률 25.6%(Gemini 단일 호출) | **OpenAI 단일 호출 baseline을 2단계에서 재측정**해 3점 비교 |
 | V1 범위 | Critic·Refiner 제외(§10) | 유지. §13의 11단계 전부가 이 로드맵의 범위 |
@@ -76,15 +76,15 @@
 
 동작 변화 없음. 이후 모든 단계의 선행 조건이며, **여기서 나온 판정이 2·4단계의 설계를 바꾼다.**
 
-> 상세 실행 계획은 [STEP-0-prerequisites.md](steps/STEP-0-prerequisites.md) 참고. (미작성)
+> 검증 방법·판정 결과·근거는 [STEP-0-prerequisites.md](steps/STEP-0-prerequisites.md) 참고.
 
-- [ ] 0-1. OpenAI API 키 발급 + `.env.example`에 `OPENAI_API_KEY` 추가 (`GEMINI_API_KEY`는 8단계까지 유지)
-- [ ] 0-2. 네이버 개발자센터 앱 등록 + `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET` 발급 및 `.env.example` 추가
-- [ ] 0-3. **Spring AI 구조화 출력 검증** — `spring-ai-openai`가 `response_format: json_schema`(디코딩 레벨 강제)를 그대로 노출하는지 최소 예제로 확인. 프롬프트 지시 기반 JSON 모드로 떨어지면 "파싱 실패율 near-zero" 전제가 깨지므로 **OpenAI 공식 SDK(`com.openai:openai-java`)로 폴백**한다. 판정 결과와 근거를 기록
-- [ ] 0-4. 모델 ID·단가 확정 (Planner용 상위 모델 / Curator·PlaceProfile용 mini급) → 설계 문서 §11 비용표를 OpenAI 기준으로 재계산
-- [ ] 0-5. 쿼터 확인 — 네이버 검색 API 일일 한도, 카카오 Local 일일 한도(요청당 ~45회 기준 상한), OpenAI RPM/TPM 티어. 마지막 값이 `llm.max-concurrent-calls` 초기값의 근거가 된다
-- [ ] 0-6. **테스트 인프라 신설** — `src/test/resources` 디렉터리(현재 존재하지 않음) + `application-test.yml`, WireMock 또는 MockWebServer 의존성 추가. 5단계 이후 결정론적 통합 테스트의 전제
-- [ ] 0-7. `build.gradle`에 Java 21 toolchain 고정 (현재 버전 선언이 전혀 없어 로컬 JDK에 좌우된다)
+- [ ] 0-1. OpenAI API 키 발급 (**사용자 작업 — 대기 중**). `.env.example` 자리표시자와 8단계까지의 `GEMINI_API_KEY` 유지 방침은 반영 완료
+- [ ] 0-2. 네이버 개발자센터 앱 등록 + 검색 API 사용 설정 (**사용자 작업 — 대기 중**). `.env.example` 자리표시자는 반영 완료. **4단계의 블로커**
+- [x] 0-3. **Spring AI 구조화 출력 검증** — WireMock으로 요청 본문을 가로채 확인한 결과 **전제 성립**. 스키마는 `messages[].content`에 섞이지 않고 전부 `response_format.json_schema`에 `strict: true`로 전송된다. 공식 SDK 폴백 불필요. 실 API 검증(0-3b)만 키 발급 후로 남았다
+- [x] 0-4. 모델 배치 확정 — **Planner·Curator = `gpt-5.6-luna`, PlaceProfile = `gpt-5-nano`** (약 $0.0030/요청). 부수적으로 §11의 "비용은 전부 4층에서 나온다"는 전제가 금액 기준으로는 틀렸다는 것이 드러나 재계산했다
+- [x] 0-5. 쿼터 확인 — 네이버 25,000/일(요청당 35회 → 약 714요청), 카카오 100,000/일(요청당 45회 → 약 2,222요청). **네이버가 먼저 한계에 닿는다.** OpenAI RPM/TPM은 키 발급 후 확인
+- [x] 0-6. **테스트 인프라 신설** — `src/test/resources` + `application-test.yml`, `wiremock-standalone` 추가. 셰이딩판을 고른 이유는 이 레포의 테스트 클래스패스에 Jackson·Guava가 이미 여러 버전으로 경합 중이기 때문이다(추가 후 해석 결과 변화 없음을 확인)
+- [x] 0-7. `build.gradle`에 Java 21 toolchain 고정 — 바이트코드 major version 65 확인
 
 ### 1. 기존 결함 수정
 
@@ -252,12 +252,15 @@
 - **202 Accepted + 폴링 전환** — 동기 API 계약을 유지한 채 먼저 완성해 실측하고, p95가 목표를 넘는 것을 데이터로 확인한 뒤 전환한다. 그래야 전환이 "숫자에 근거한 결정"이 된다
 - **사용자 피드백 루프** — 생성된 코스에서 사용자가 삭제한 장소가 곧 정답 라벨이고, 이건 외부 API가 아니라 우리가 축적하는 고유 자산이다. **다만 소급할 수 없는 데이터라 삭제 이벤트 기록은 일찍 시작할 가치가 있다** — 별도의 작은 작업으로 분리한다
 - **Gemini 어댑터 유지** — OpenAI 확정으로 불필요. 2단계 baseline 재측정이 끝나면 8단계에서 삭제한다
+- **Spring Boot 4 마이그레이션** — Spring Boot 3.5가 2026-06-30 오픈소스 EOL에 도달했으므로 언젠가는 해야 하지만 별도 작업으로 분리한다. 코드 수정량 자체는 크지 않으나(Jackson 3 전환 11개 파일, `@MockBean`→`@MockitoBean` 3곳, springdoc 3.1.0, `springboot4-dotenv`, Security 7), **깨지는 곳 대부분이 런타임에만 드러나는 영역**(캐시 직렬화, JWT 필터, Security 체인, Swagger)인데 이 레포의 통합 테스트는 E2E 1개뿐이라 검증 비용이 크다. 상세 근거는 [STEP-0-prerequisites.md](steps/STEP-0-prerequisites.md) 참고
 - **`SEQUENCE` 전환** — `Place`/`DaySchedule`이 `GenerationType.IDENTITY`라 JDBC 배치 INSERT가 원천 불가능하지만, ~20건 규모라 지금은 무시해도 된다
 
 ## 미해결 · 확인 필요
 
-- **Spring AI OpenAI의 구조화 출력이 스키마를 디코딩 레벨에서 강제하는가** — 0-3의 판정 대상. 프롬프트 지시 기반 JSON 모드로 떨어지면 공식 SDK로 폴백한다
-- **OpenAI 기준 비용 재계산** — 설계 문서 §11의 토큰·비용 수치는 `gemini-2.5-flash` 기준이라 금액 환산을 그대로 쓸 수 없다. 추론 토큰이 출력 요금에 포함되는 함정은 벤더가 바뀌어도 동일하므로, OpenAI에 대응하는 추론 강도 설정이 있는지 0-4에서 함께 확인한다
+- **선택한 모델이 strict `json_schema`를 실제로 지원하는가** — 0-3b(실 API 호출)로 확인해야 하며 키 발급 대기 중이다. 지원하지 않으면 그게 모델 선택의 하한선이 된다
+- **OpenAI 구조화 출력의 최상위 배열 제약** — 루트가 배열인 스키마를 받지 않는 것으로 알려져 있다. Curator 응답(`slots[]`)이 여기 해당하므로 객체로 감싸야 하는지 0-3b에서 실물 확정
+- **Spring AI ↔ Spring Boot 버전 스큐** — Spring AI 1.1.8이 요구하는 spring-core 6.2.19 / jackson 2.21.4가 Spring Boot 3.5.7의 관리 버전(6.2.12 / 2.19.2)으로 끌어내려진다. 현재는 문제가 관측되지 않았지만, 2단계에서 `NoSuchMethodError`가 나면 1.1.x 중 낮은 버전으로 내리는 것이 1차 대응이다
+- **OpenAI RPM/TPM 티어** — `llm.max-concurrent-calls` 초기값의 근거. 키 발급 후 확인
 - **`duration` 키워드 처리 방침** — 6-5에서 결정
 - **`mood` 키워드 포함 비율** — 9-3 조건부 확장이 실제로 얼마나 자주 켜지는지(= 토큰 비용 증가폭)는 추정이 아니라 배포 후 실측이 필요하다
 - **파싱 실패율 28.6%의 산출물이 남아 있지 않다** — 수치는 Gemini 단일 호출 실험에서 직접 뽑은 것이지만 결과 파일을 보존하지 않아 사후 재확인이 불가능하다. 2-6 재측정부터는 **환각률과 파싱 실패율 모두 CSV로 남긴다**
