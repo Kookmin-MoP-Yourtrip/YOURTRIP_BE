@@ -45,6 +45,8 @@ Run D/D2와 동일(App EC2 t3.small, RDS db.t3.micro, ElastiCache cache.t3.micro
 
 ## 한계
 
+- **[후속 해소됨] 이 문서의 Run F(1200 req/s)는 도입 후 코드에만 돌려, before/after 비교가 400 req/s 구간에서만 대칭이었다.** [run-g-before-code-max-rate.md](run-g-before-code-max-rate.md)가 도입 전 코드를 같은 조건(1200 req/s)으로 재측정해 이 비대칭을 없앴다 — 결론은 "처리량 천장은 두 arm이 같지만(155 vs 153 req/s, 둘 다 Tomcat busy 200), 도입 전은 그 응답의 64.8%에 이미지가 빠져 있었다"였다. 판정 3의 "상한은 Tomcat 스레드 풀"이라는 결론이 도입 전 코드에도 그대로 적용된다는 것도 함께 확인됐다.
+- **[방법론 정정] 이 인스턴스들은 t3 `unlimited` 모드라 `CPUCreditBalance=0`이 스로틀링을 뜻하지 않는다.** 가이드의 "크레딧이 0에 가까우면 신뢰도 재평가" 기준은 `standard` 모드를 전제한 것이었다 — 자세한 근거는 [run-g-before-code-max-rate.md](run-g-before-code-max-rate.md)의 "방법론 정정" 절 참고. 이 정정은 Run D/D2/E/F에도 소급 적용된다.
 - 각 arm은 반복 없이 1회 측정이다.
 - **Run F는 k6의 `maxVUs`(1000) 한계와 뒤섞여 있다.** `dropped_iterations`가 36,279건(다른 arm의 15~30배)으로 k6가 목표 도착률(1200 req/s)을 스스로 유지하지 못했다는 뜻이다 — 서버가 응답을 늦게 줄수록 그 응답을 기다리는 VU가 늘어 남은 VU 풀이 고갈되고, k6는 새 반복을 시작하지 못한 채 건너뛴다. 즉 판정 3의 "처리량이 안 오른다"는 관찰은 서버 병목(Tomcat maxThreads)과 k6 자체의 부하 생성 한계가 섞인 결과일 수 있다 — 다만 `tomcat_threads_busy_threads=200`(서버 쪽 지표)이 독립적인 증거로 남아있어 서버 병목이 실재한다는 결론 자체는 유효하다. `preAllocatedVUs`/`maxVUs`를 3000 이상으로 올려 이 confound를 제거하는 재측정은 후속 과제로 남긴다.
 - `maxThreads=200`이 병목이라는 결론은 이번 실측(스레드 busy 지표 + Little's Law 자릿수 일치)으로 뒷받침되지만, **`maxThreads`를 실제로 올려 처리량이 실제로 오르는지는 검증하지 않았다** — 4단계(커넥션 풀/DB 계층 튜닝, TASK-PRESIGN-BOTTLENECK-FIX.md)의 "지금 문제를 풀 크기로 덮지 않는다"는 원칙과 같은 이유로 이번 범위에서는 보류한다. 스레드를 늘리면 코어 수(2 vCPU) 대비 컨텍스트 스위칭 오버헤드가 오히려 늘 수 있다는 경고(HikariCP 위키의 풀 사이징 원칙과 같은 논리가 Tomcat 스레드에도 적용된다)도 함께 검토해야 한다.
