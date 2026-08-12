@@ -4,7 +4,7 @@
 >
 > 결론부터: **설계의 핵심 전제(스키마를 디코딩 레벨에서 강제)는 성립한다.** 다만 로드맵을 쓸 때 몰랐던 제약 하나가 드러나 Spring AI 버전 선택이 바뀌었고, 의존성 추가만으로 애플리케이션 기동이 깨지는 함정도 하나 밟았다. 둘 다 아래에 기록한다.
 >
-> 진행 상황: **0-3·0-4·0-5·0-6·0-7 완료. 0-1·0-2는 키 발급 대기.**
+> 진행 상황: **0단계 완료.** 검증 항목 전부 통과했고 키도 모두 발급됐다.
 
 ## 왜 0단계를 새로 만들었나
 
@@ -118,22 +118,31 @@ Spring AI 1.1.8이 요구하는 버전이 Spring Boot 3.5.7의 관리 버전으�
 
 초록불만 남기지 않고 전송된 본문을 콘솔에 출력하게 해뒀다. 이 문서가 인용하는 근거를 언제든 재현할 수 있어야 하기 때문이다.
 
-### 아직 확인하지 못한 것 — 0-3b
-
-실제 OpenAI 호출로 확인해야 하는 항목이 둘 남아 있다. 같은 테스트 클래스에 `@Tag("benchmark")`로 들어 있고, 키가 없으면 명확한 메시지와 함께 스킵된다.
-
-> **현재 상태: 키는 발급됐으나 크레딧이 없어 실행하지 못했다.** 실행 결과는 `401`이 아니라
-> `429 insufficient_quota / credit_balance_exhausted`였다 — **키 자체는 유효하고 인증도 통과했으며,
-> 계정에 크레딧이 없을 뿐이다.** platform.openai.com의 Billing에서 결제 수단 등록과 크레딧 충전이
-> 선행돼야 한다. 이 검증은 §13 2단계(`LlmClient` 어댑터 구현)의 선행 조건이므로 그 전에는 반드시
-> 통과시켜야 하지만, **1단계(기존 결함 수정)는 이와 무관하게 진행할 수 있다.**
+### 0-3b — 실 API 검증도 통과
 
 ```bash
 ./gradlew benchmarkTest --tests '*SpringAiStructuredOutput*' --rerun
 ```
 
-- 선택한 모델이 strict `json_schema`를 실제로 지원하는가 — 지원하지 않으면 그게 **모델 선택의 하한선**이 된다
-- **최상위 JSON 배열 제약** — OpenAI 구조화 출력은 루트가 배열인 스키마를 받지 않는 것으로 알려져 있다. Curator 응답(`slots[]`)이 여기 해당하므로 객체로 감싸야 하는지 실물로 확정해야 한다
+**결과: 3 tests, 0 failures.** 확인한 것은 셋이다.
+
+**① 두 모델 모두 strict `json_schema`를 지원한다.** 0단계에서 확정한 배정(Planner·Curator = `gpt-5.6-luna`, PlaceProfile = `gpt-5-nano`)이 그대로 성립한다. 둘 다 스키마의 `required` 두 필드만 정확히 반환했고 `additionalProperties: false`도 지켜졌다.
+
+```
+[0-3b] model=gpt-5.6-luna content={"concept":"천년고도 경주의 역사 유적과 …","title":"천년의 밤과 오늘의 경주, 3일 시간여행"}
+[0-3b] model=gpt-5-nano  content={"title":"경주 3일: 신라의 시간을 걷다","concept":"신라의 수도 경주를 따라 …"}
+```
+
+**② 최상위 배열 제약은 실재한다.** 루트가 `type: "array"`인 스키마를 보내면 400이 떨어진다.
+
+```
+400 Invalid schema for response_format 'planner_output':
+    schema must be a JSON Schema of 'type: "object"', got 'type: "array"'.
+```
+
+**따라서 배열을 객체로 감싸는 것은 취향이 아니라 제약이다.** §13 6단계에서 CuratorAgent 응답 스키마를 설계할 때 슬롯 배열을 루트에 두면 400을 맞는다 — 설계 문서 §4의 예시(`{ "day": 1, "slots": [...] }`)처럼 반드시 객체로 감싸야 한다. 이걸 6단계에서 알았다면 스키마와 파싱 코드를 되돌려야 했을 것이다.
+
+**③ 키 인증 경로가 정상 동작한다.** 크레딧 충전 전에는 `401`이 아니라 `429 insufficient_quota / credit_balance_exhausted`가 반환됐다 — 키 자체는 처음부터 유효했고 계정 잔액만 없었다는 뜻이다. 충전 후 정상 호출됐다.
 
 ---
 
@@ -264,7 +273,7 @@ OpenAI RPM/TPM은 `llm.max-concurrent-calls` 초기값의 근거가 되므로 �
 | 회귀 없음 | `./gradlew test` | **56 tests, 0 failures** (0단계 시작 시점 55 + 검증 테스트 1) |
 | WireMock 셰이딩 | `./gradlew dependencies --configuration testRuntimeClasspath` | transitive 의존성 **0개**, `jackson-databind` 해석 결과 **변화 없음** |
 | Spring AI 전송 방식 | `./gradlew test --tests '*SpringAiStructuredOutput*'` | **통과** — 판정 2 참고 |
-| 실 API 검증 | `./gradlew benchmarkTest --tests '*SpringAiStructuredOutput*'` | **스킵** (키 대기) |
+| 실 API 검증 | `./gradlew benchmarkTest --tests '*SpringAiStructuredOutput*'` | **3 tests, 0 failures** — 0-3b 참고 |
 
 ## 참고 문서
 

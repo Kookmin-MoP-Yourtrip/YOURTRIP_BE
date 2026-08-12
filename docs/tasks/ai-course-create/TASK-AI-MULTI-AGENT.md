@@ -472,6 +472,12 @@ public record LlmCall<T>(
 ) {}
 ```
 
+> **[제약 확인] 응답 스키마의 루트는 반드시 객체여야 한다.** 0단계 실 API 검증에서 루트가
+> `type: "array"`인 스키마를 보내면 **400**(`schema must be a JSON Schema of 'type: "object"'`)이
+> 떨어지는 것을 확인했다. **CuratorAgent 응답이 정확히 이 함정에 걸린다** — 슬롯 배열을 루트에 두고
+> 싶은 유혹이 있지만, §4 예시(`{ "day": 1, "slots": [...] }`)처럼 반드시 객체로 감싸야 한다.
+> `resources/schemas/*.json`을 쓸 때 전부 이 규칙을 지킨다.
+
 `responseJsonSchema`를 벤더 타입이 아닌 **JSON 문자열**로 받는 것이 벤더 중립의 핵심이다.
 벤더마다 이걸 받는 창구가 다르기 때문이다 — OpenAI는 `response_format: json_schema`, Gemini는
 `GenerateContentConfig.responseJsonSchema(...)`. 어느 쪽이든 **어댑터가 JSON 문자열을 자기 벤더의
