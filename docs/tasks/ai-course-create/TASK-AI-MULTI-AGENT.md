@@ -11,6 +11,14 @@
 > Grounding·PlaceSignal·RouteOptimizer만으로도 환각 차단·동선 계산·인기도 랭킹이라는 확실한
 > 개선이 있고, [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md) 실측에서
 > **JSON 파싱 실패율 28.6%**라는 더 크고 확실한 문제가 이미 드러나 우선순위가 그쪽에 있다.
+>
+> **LLM 벤더**: 이 문서의 초안은 Gemini를 현행으로 두고 OpenAI 전환 "가능성"을 전제로 썼으나,
+> **전환이 OpenAI로 확정됐다.** 그에 따라 §6(어댑터·설정)·§7(프롬프트 결함)·§11(비용 근거)·
+> §13(도입 순서)·§15(착수 전 확인)를 갱신했고, 벤더 교체 효과와 파이프라인 효과를 분리하기 위한
+> **3점 baseline 측정**을 §13 2단계에 추가했다.
+>
+> **실행 로드맵**: 이 문서는 "왜 이렇게 설계했는가"를 담는다. 착수 전 준비, 단계별 체크리스트,
+> 완료 판정 기준은 [ROADMAP.md](ROADMAP.md)에 있다.
 
 ---
 
@@ -25,7 +33,7 @@
 ```java
 @Transactional
 public AICourseCreateResponse createAICourse(AICourseCreateRequest request) {
-    int days = Period.between(request.startDate(), request.endDate()).getDays() + 1;
+    int days = (int) ChronoUnit.DAYS.between(request.startDate(), request.endDate()) + 1;
     String json = geminiService.generateAICourse(...);          // LLM 1회
     GeminiCourseDto dto = objectMapper.readValue(json, ...);
     // … day/place 저장하며 place마다 kakaoLocalClient.findBestPlace() 블로킹 호출
@@ -56,13 +64,15 @@ public AICourseCreateResponse createAICourse(AICourseCreateRequest request) {
 
 | 결함 | 증상 |
 |---|---|
-| `Period.between(...).getDays()` | 다개월 여행에서 **틀린 일수**. `1/1 ~ 3/5`는 `P2M4D`라 `.getDays()`가 `4` → `days=5`(실제 64일). `ChronoUnit.DAYS`여야 한다 |
-| `Place`의 `@Builder`가 primitive `double` | 카카오 매칭 실패 시 좌표가 `0.0/0.0`으로 저장된다. Swagger는 `null`을 약속하는데 실제로는 **기니만 앞바다에 핀이 찍힌다** |
-| `KeywordType.buildKeywordsJson(null)` | `keywords`는 선택 입력인데 NPE로 500 |
+| `Place`의 `@Builder` 파라미터가 primitive `double` | 필드는 `Double latitude/longitude`(래퍼)인데 **`@Builder` 생성자 파라미터만 primitive `double`**이다. 이 한 줄의 불일치가 서로 다른 두 버그를 만든다 — ① `PlaceMapper.toEntityFromGeminiDto`가 좌표를 세팅하지 않으므로 Lombok이 기본값 `0.0`을 넣어, 카카오 매칭 실패 장소가 `null`이 아니라 `0.0/0.0`으로 저장된다. Swagger는 `null`을 약속하는데 실제로는 **기니만 앞바다에 핀이 찍히고**, null 체크로는 걸러낼 수도 없다. ② `PlaceMapper.toCopyEntity`는 `Double`을 `double` 파라미터에 넘기므로 좌표가 `null`인 코스를 fork/upload 복제하면 **언박싱 NPE**가 난다 |
+| `KeywordType.buildKeywordsJson(null)` | `keywords`는 선택 입력(`AICourseCreateRequest`에 검증 애노테이션이 없다)인데 `new HashSet<>(selectedKeywords)`가 NPE로 500 |
+| `MyCourseErrorCode.JSON_TRANSFORMATION_FAILED` 오용 | **방향이 정반대인 두 실패가 같은 코드를 공유한다** — LLM 응답 *역*직렬화 실패와 위 키워드 *직*렬화 실패. 게다가 LLM 호출 자체의 실패(타임아웃·429·safety block)에 대응하는 ErrorCode는 아예 없어 원시 500으로 떨어진다 |
 | `.block(Duration.ofSeconds(20))` | 타임아웃 시 `IllegalStateException`이라 `WebClientResponseException` catch를 빠져나가 원시 500 |
 | **`@Transactional` 안의 외부 I/O** | 타임아웃 없는 LLM 호출 + 최대 18회 × 20초 카카오 호출. 최악의 경우 HikariCP 커넥션 1개를 **360초** 점유(`open-in-view: false`라 트랜잭션 전체에 묶임). 카카오가 느려지면 무관한 API까지 같이 죽는다 |
 
 마지막 항목은 품질 문제가 아니라 **가용성 문제**이고, 파이프라인 재설계와 별개로 우선 고쳐야 한다.
+
+> 이 표에는 원래 **`Period.between(...).getDays()`로 다개월 여행 일수가 틀리는 결함**(`1/1 ~ 3/5`는 `P2M4D`라 `.getDays()`가 `4` → `days=5`, 실제 64일)이 함께 있었으나, 커밋 `7cdda90`에서 `ChronoUnit.DAYS.between`으로 교체되어 **이미 해소됐다.** §13 도입 순서의 1단계 범위에서도 제외한다.
 
 ---
 
@@ -139,10 +149,18 @@ ATTRACTION 슬롯 ← AT4 / CT1(문화시설) 허용, FD6·CE7 배제
 ### 3층 — 네이버 `total`: 후기를 "읽지 않고" 인기도만 잰다
 
 ```
-GET https://openapi.naver.com/v1/search/blog.json
+GET https://naverapihub.apigw.ntruss.com/v1/search/blog.json
     ?query={카카오 공식 상호명} {지역}&display=5&sort=date
+  헤더: X-NCP-APIGW-API-KEY-ID / X-NCP-APIGW-API-KEY
   → { "total": 12847, "items": [ { title, description, postdate }, … ] }
 ```
+
+> **[정정]** 초안은 엔드포인트를 ~~`https://openapi.naver.com`~~, 인증을
+> ~~`X-Naver-Client-Id`/`X-Naver-Client-Secret`~~으로 적었으나, 검색 API가
+> **NAVER API HUB(네이버 클라우드 플랫폼)** 로 이관되며 둘 다 바뀌었다(§11 정정 참고).
+> **경로(`/v1/search/blog.json`)와 응답 필드가 그대로 유지되는지는 아직 확인하지 못했다** —
+> 이 설계의 3·4층은 `total`·`postdate`·`title`·`description`에 의존하므로, §13 4단계 착수 시
+> 실호출로 먼저 확정한다.
 
 ```java
 popularity = log10(max(total, 1));                    // 0건→0, 100건→2, 1만건→4, 100만건→6
@@ -435,7 +453,9 @@ RouteOptimizer를 재실행한다. LLM을 쓰지 않는다.
 
 ## 6. 벤더 중립 LLM 추상화
 
-**Gemini는 고정이 아니다. OpenAI로 전환할 가능성이 높다.** 이것이 이 부분 설계의 지배적 제약이다.
+**LLM 벤더는 OpenAI로 확정됐다.** 이 절의 초안은 "Gemini는 고정이 아니고 OpenAI로 전환할 가능성이 높다"는 것을 지배적 제약으로 삼았는데, 전환이 확정되면서 그 제약은 **이미 일어난 전환**이 됐다.
+
+그렇다고 포트가 불필요해지지는 않는다. 포트를 두는 근거는 원래 두 가지였고 **두 번째는 그대로 남기 때문**이다 — (1) 향후 벤더 전환 대비, (2) 테스트 가능성(바로 아래). 다만 첫 번째가 소진됐으므로 **어댑터는 OpenAI 하나만 만든다.** Gemini 어댑터를 함께 유지해 A/B를 돌리는 선택지는 채택하지 않는다: 벤더 교체 효과를 분리 측정하는 목적은 §15의 3점 baseline 측정이 이미 달성하고, 그 측정이 끝나면 Gemini 경로는 §13 8단계에서 삭제된다.
 
 ```java
 public interface LlmClient {
@@ -452,43 +472,67 @@ public record LlmCall<T>(
 ) {}
 ```
 
-`responseJsonSchema`를 벤더 타입이 아닌 **JSON 문자열**로 받는 것이 벤더 중립의 핵심이다.
-Gemini는 `GenerateContentConfig.responseJsonSchema(...)`로, OpenAI는 `response_format: json_schema`로
-각 어댑터가 알아서 넘긴다. 스키마는 `resources/schemas/*.json`에 둔다.
+> **[제약 확인] 응답 스키마의 루트는 반드시 객체여야 한다.** 0단계 실 API 검증에서 루트가
+> `type: "array"`인 스키마를 보내면 **400**(`schema must be a JSON Schema of 'type: "object"'`)이
+> 떨어지는 것을 확인했다. **CuratorAgent 응답이 정확히 이 함정에 걸린다** — 슬롯 배열을 루트에 두고
+> 싶은 유혹이 있지만, §4 예시(`{ "day": 1, "slots": [...] }`)처럼 반드시 객체로 감싸야 한다.
+> `resources/schemas/*.json`을 쓸 때 전부 이 규칙을 지킨다.
 
-### 포트가 선택이 아니라 필수인 두 번째 이유 — 테스트
+`responseJsonSchema`를 벤더 타입이 아닌 **JSON 문자열**로 받는 것이 벤더 중립의 핵심이다.
+벤더마다 이걸 받는 창구가 다르기 때문이다 — OpenAI는 `response_format: json_schema`, Gemini는
+`GenerateContentConfig.responseJsonSchema(...)`. 어느 쪽이든 **어댑터가 JSON 문자열을 자기 벤더의
+타입으로 옮기면 되고, 포트는 그 차이를 모른다.** 스키마는 `resources/schemas/*.json`에 둔다.
+
+### 포트가 선택이 아니라 필수인 이유 — 테스트
+
+벤더가 확정된 지금, 포트를 정당화하는 근거는 **이것 하나로 충분하다.**
 
 `com.google.genai.Client`는 **`public final class`**이고 `models`도 **`public final` 필드**다.
-Mockito로 목킹할 수 없다. 포트를 두면 에이전트(V1: Planner·Curator·PlaceProfile 3개)의 테스트가
+Mockito로 목킹할 수 없다. 지금 코드에서 LLM 호출부의 단위 테스트가 사실상 불가능한 이유가 정확히
+이것이고, [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)의 측정 하네스가
+Spring 컨텍스트 없이 `new GeminiService(...)`를 수동 조립해 **실제 API를 때리는 방식**을 택한 것도
+같은 제약 때문이다. 포트를 두면 에이전트(V1: Planner·Curator·PlaceProfile 3개)의 테스트가
 **벤더 SDK 타입을 한 개도 import하지 않는다.** "추상화를 위한 추상화"가 아니라 테스트 가능성이라는
-구체적 대가를 받는다.
+구체적 대가를 받는다. 이 근거는 벤더가 무엇으로 확정되든 사라지지 않는다.
 
 ### 설정 외부화
 
 ```yaml
 llm:
-  provider: gemini            # gemini | openai — @ConditionalOnProperty 로 어댑터 선택
+  provider: openai            # 확정. @ConditionalOnProperty 로 어댑터 선택 (구조는 유지)
   timeout-ms: 20000
-  max-concurrent-calls: 2     # ★ 무료 티어 RPM 방어. 유료 전환 시 이 값만 올린다
+  max-concurrent-calls: 2     # ★ RPM/TPM 티어 방어. 상위 티어 전환 시 이 값만 올린다
   retry: { attempts: 3, initial-delay-seconds: 0.5, max-delay-seconds: 4.0, jitter: 0.3 }
   agents:
-    planner:       { temperature: 0.7, thinking-budget: 512 }
-    curator:       { temperature: 0.9, thinking-budget: 0   }
-    place-profile: { temperature: 0.2, thinking-budget: 0   }
-    # critic: V1 범위 밖 (§10 참고). 재검토 시 { temperature: 0.0, thinking-budget: 512, seed: 42 }
+    planner:       { model: gpt-5.6-luna, temperature: 0.7 }
+    curator:       { model: gpt-5.6-luna, temperature: 0.9 }
+    place-profile: { model: gpt-5-nano,   temperature: 0.2 }
+    # critic: V1 범위 밖 (§10 참고). 재검토 시 { temperature: 0.0, seed: 42 }
 ```
+
+모델 배정 근거는 [steps/STEP-0-prerequisites.md](steps/STEP-0-prerequisites.md)에 있다. 요지는
+**"추론 난이도"가 아니라 "틀렸을 때의 파급 ÷ 토큰량"으로 골랐다**는 것이다 — Planner는 파급이
+가장 큰데(권역이 틀리면 그 아래 Curator와 카카오 검색이 전부 오염된다) 호출 1회에 출력 350토큰이라
+가장 싸게 투자할 수 있고, Curator는 환각률에 직결되므로 지식 폭이 넓은 최신 세대를 쓰며,
+PlaceProfile은 닫힌 태그 분류라 세대 이점이 작은데 입력 토큰의 76%를 차지해 최저가로 내렸다.
 
 **agent별 temperature를 다르게 두는 근거** — 현재 코드의 단일 `0.3`은 "장소 선정은 다양해야 하고
 판정은 일관돼야 한다"는 상충 요구를 하나로 뭉갠 값이다. 특히 **Curator를 0.9로 올리는 건 후보
 3개가 서로 비슷하면 대체재로서 의미가 없기 때문**이고, **PlaceProfile을 0.2로 낮추는 건 속성 추출은
 창의성이 아니라 충실성이 필요하기 때문**이다.
 
-**`max-concurrent-calls` 세마포어가 무료 티어 대응의 전부다.** 무료 티어에서 2로 두면 day별 Curator
-3개가 2라운드로 나뉘어 실행된다(+3~6초). 429가 나는 대신 느려질 뿐이고, 유료 전환은 설정값 한 줄이다.
+**agent별 `model`을 다르게 두는 근거도 같은 논리다.** 셋 중 추론 이득이 실제로 있는 건
+Planner(컨셉·권역 설계)뿐이고, Curator(지역 상식 회상)와 PlaceProfile(속성 추출)은 추론 이득이
+적으면서 **토큰 비중은 가장 크다**(§11). 그래서 Planner만 상위 모델, 나머지는 mini급으로 둔다.
+구체 모델 ID와 단가는 착수 시점에 공식 가격표를 확인해 확정한다.
+
+**`max-concurrent-calls` 세마포어가 rate limit 대응의 전부다.** 2로 두면 day별 Curator 3개가
+2라운드로 나뉘어 실행된다(+3~6초). 429가 나는 대신 느려질 뿐이고, 티어 상향은 설정값 한 줄이다.
 **"Curator를 day별 병렬로 만들지, 1회 통합으로 만들지"를 코드 구조로 결정하지 않는 것**이 요점이다.
 
-`thinking-budget`은 Gemini 전용이라 OpenAI 어댑터는 무시한다 — 어댑터가 모르는 옵션을 조용히
-버리는 건 정상 동작이며, 이것이 포트를 최소 공통분모로 유지하는 대가다.
+초안에 있던 `thinking-budget`은 **Gemini 전용 옵션이라 제거했다.** OpenAI에 대응하는 추론 강도
+설정이 있다면 어댑터 내부에서 `model`과 함께 다루고, 없다면 포트에서 사라진 채로 둔다 — 어댑터가
+모르는 옵션을 조용히 버리는 건 정상 동작이며, 이것이 포트를 최소 공통분모로 유지하는 대가다.
 
 ### 재시도 2계층
 
@@ -513,14 +557,12 @@ JSON 스키마를 디코딩 레벨에서 강제하므로 파싱 실패율이 nea
 쓰지도 않을 표면을 위해 버전 안정성 리스크(Spring AI는 1.0 GA가 비교적 최근)와 벤더 커버리지
 불확실성을 떠안는 것 대비 얻는 게 적다.
 
-다만 **포트(`LlmClient`)는 유지하고, 그 구현체(`GeminiLlmClient`/`OpenAiLlmClient`) 내부의
-전송 계층만 Spring AI의 `ChatModel`로 구현하는 절충은 채택한다.**
+다만 **포트(`LlmClient`)는 유지하고, 그 구현체(`OpenAiLlmClient`) 내부의 전송 계층만 Spring AI의
+`ChatModel`로 구현하는 절충은 채택한다.**
 
 ```
-LlmClient (interface, 우리 도메인 타입만 다룸)          ← 그대로 유지
-  └─ GeminiLlmClient implements LlmClient
-        내부에서 raw google-genai SDK 대신 Spring AI VertexAiGeminiChatModel(또는 대응 구현체) 사용
-  └─ OpenAiLlmClient implements LlmClient   (향후)
+LlmClient (interface, 우리 도메인 타입만 다룸)          ← 유지
+  └─ OpenAiLlmClient implements LlmClient
         내부에서 Spring AI OpenAiChatModel 사용
 ```
 
@@ -533,20 +575,21 @@ LlmClient (interface, 우리 도메인 타입만 다룸)          ← 그대로 
 - 어댑터 내부 구현이 raw SDK 호출에서 Spring AI 호출로 바뀌어도 `LlmCall`/`LlmResponseParser` 등
   포트 바깥의 코드는 전혀 바뀌지 않는다.
 
-**착수 전 반드시 검증해야 하는 두 가지** — 실패하면 이 절충 자체가 성립하지 않는다.
+**착수 전 반드시 검증해야 하는 것** — 실패하면 이 절충 자체가 성립하지 않는다.
 
-1. **Spring AI의 Gemini 통합이 API 키 방식(Gemini Developer API, 지금 코드가 쓰는 `GEMINI_API_KEY`
-   인증)을 지원하는가, Vertex AI(GCP 서비스 계정 기반)만 지원하는가.** 후자라면 "라이브러리 교체"가
-   아니라 인증·과금 구조 자체를 바꾸는 훨씬 큰 결정이 되어 이번 범위를 벗어난다.
-2. **Spring AI의 구조화 출력이 `responseJsonSchema`(디코딩 레벨 강제)를 실제로 노출하는가, 아니면
-   프롬프트 지시 기반 JSON 모드로 떨어지는가.** 후자면 §6 위쪽에서 확보한 "파싱 실패율 near-zero"
-   전제가 깨져 의미 재시도 비율이 올라간다.
+> 초안에는 검증 항목이 둘이었다. 첫 번째(~~Spring AI의 Gemini 통합이 API 키 방식을 지원하는가,
+> Vertex AI 전용인가~~)는 **벤더가 OpenAI로 확정되면서 물음 자체가 사라졌다.**
 
-**둘 중 하나라도 Gemini 쪽에서 막히면**: Gemini 어댑터는 raw SDK를 유지하고, **OpenAI 어댑터만
-Spring AI(`OpenAiChatModel`)로 구현한다.** OpenAI의 `response_format: json_schema`는 업계 표준에
-가깝게 정착돼 있어 Spring AI 지원이 더 안정적일 가능성이 높다. 이 경우에도 포트는 그대로이므로
-구현 방식이 어댑터마다 달라지는 것 자체는 문제가 아니다 — "프레임워크를 검증 없이 전면 채택하지
-않고, 실제 기능 지원 여부에 따라 선택적으로 도입했다"는 것 자체가 이 결정의 근거로 남는다.
+**Spring AI의 구조화 출력이 스키마를 디코딩 레벨에서 강제하는가**(OpenAI의
+`response_format: json_schema`를 그대로 노출하는가), 아니면 프롬프트 지시 기반 JSON 모드로
+떨어지는가. 후자면 §6 위쪽에서 확보한 "파싱 실패율 near-zero" 전제가 깨져 의미 재시도 비율이
+올라간다 — 그리고 이건 추상적 우려가 아니라 **이미 실측된 문제**다(단일 호출 구조의 JSON 파싱
+실패율 28.6%, §10 참고).
+
+**막히면**: Spring AI를 포기하고 **OpenAI 공식 Java SDK(`com.openai:openai-java`)로 어댑터를
+구현한다.** 포트는 그대로이므로 어댑터 내부 구현이 무엇이든 `LlmCall`·`LlmResponseParser` 등
+포트 바깥 코드는 전혀 바뀌지 않는다 — "프레임워크를 검증 없이 전면 채택하지 않고, 실제 기능
+지원 여부를 확인한 뒤 도입했다"는 것 자체가 이 결정의 근거로 남는다.
 
 **LangChain4j가 아니라 Spring AI를 고르는 이유**: 이 레포는 이미 전역에 `@Bean`·
 `@ConfigurationProperties`·`application.yml` 기반 Spring 관용구가 깔려 있다(`SecurityConfig`,
@@ -576,7 +619,14 @@ Spring AI(`OpenAiChatModel`)로 구현한다.** OpenAI의 `response_format: json
 - 규칙 5는 `placeLocation`을 채우라 하는데 `PlaceDto`에 그 필드가 없고 규칙 12는 스키마 외 필드를
   금지한다 — **실행되지 않는 죽은 지시문**이다.
 - 프롬프트 JSON 예시에 **trailing comma**가 있다(54·102·106줄). 유효하지 않은 JSON을 예시로 보여주고
-  있어 파싱 실패의 유력한 원인이다.
+  있어 파싱 실패의 유력한 원인이다. **파싱 실패율 28.6%(§10)의 유력한 원인이 바로 이것이다.**
+- **`duration` 키워드 카테고리가 사실상 죽은 신호다.** `KeywordType`에 `ONE_DAY`/`TWO_DAYS`/
+  `WEEKEND`/`LONG` 4개가 있고 `buildKeywordsJson`이 이를 JSON에 실어 보내지만, ① 여행 일수는 이미
+  `days`로 별도 전달되고 ② 현재 프롬프트는 `duration`의 사용 규칙을 설명하지 않으며(travelMode·
+  companionType·mood·budget만 설명) ③ 프롬프트 예시의 `"1박2일"`은 실제 label `"1박 2일"`(공백 있음)과
+  일치하지도 않는다. **Planner 프롬프트를 설계할 때 `duration`을 아예 빼거나, `days`와의 모순 검증
+  용도로 재정의하거나 둘 중 하나를 택해야 한다.** 지금처럼 "보내지만 아무도 해석하지 않는" 상태를
+  그대로 옮기지 않는다.
 
 **프롬프트는 `src/main/resources/prompts/*.md`로 분리한다.**
 - 현재 코드에 `\\"` 이스케이프가 실제로 존재한다. 프롬프트에 JSON을 넣는 한 이스케이프 지옥은 계속된다.
@@ -665,7 +715,7 @@ AI_COURSE_BUSY      ("요청이 많습니다. 잠시 후 다시 시도해주세�
 
 ## 10. 병렬화 · 지연 예산
 
-### 스레드풀 2개 (기존 `AsyncConfig` / `CloudFrontExecutorConfig` 스타일 준수)
+### 스레드풀 2개 (기존 `AsyncConfig` 스타일 준수)
 
 ```java
 @Bean("aiAgentExecutor")        // core 4 / max 8  / queue 50  / prefix "ai-agent-"
@@ -678,11 +728,22 @@ AI_COURSE_BUSY      ("요청이 많습니다. 잠시 후 다시 시도해주세�
 **LLM과 벌크헤드로 나누는 이유**: 외부 장소 API가 느려질 때 그 대기가 LLM 슬롯을 잠식하면 안 된다.
 LLM은 3~10초짜리 소수, 장소 API는 0.15~0.3초짜리 다수 — 최적 풀 크기가 다르고 포화 시 대응도 달라야 한다.
 
-**`CallerRunsPolicy`의 함정 — 기존 두 config와 상황이 다르다.** `courseImageCleanupExecutor`는 커밋
-이후 후처리라 caller-runs가 응답을 막지 않고, `cloudFrontSigningExecutor`는 CPU 작업이라 caller가
-도와주는 게 실제로 이득이다. 하지만 **요청 스레드가 장소 API I/O를 직접 수행하면 사실상 순차 실행으로
-퇴화해 지연 예산이 붕괴한다.** 그래서 정책은 `CallerRunsPolicy`로 유지하되(거부보다 느린 성공이 낫다),
-**파이프라인 전체에 하드 데드라인**을 건다 — `CompletableFuture.allOf(...).get(remainingMs, MILLISECONDS)`.
+**`CallerRunsPolicy`의 함정 — 이 레포에는 이미 실측된 선례가 있다.** 현재 남아 있는 executor는
+`courseImageCleanupExecutor` 하나뿐이고, 이건 커밋 이후 후처리라 caller-runs가 응답을 막지 않는다.
+문제는 **응답 경로 위의 작업**이다 — 과거 `cloudFrontSigningExecutor`가 `CallerRunsPolicy`를 쓰다가
+요청 스레드까지 서명 CPU를 떠안으면서 **커넥션 점유가 오히려 악화되는 것이 실측됐고**, 그래서
+`AbortPolicy` + 요청 단위 세마포어 게이트로 전환됐다
+([callerruns-verification.md](../connection-pool-bottleneck/stage0/production/callerruns-verification.md),
+[abortpolicy-gate-verification.md](../connection-pool-bottleneck/stage0/production/abortpolicy-gate-verification.md)).
+그 executor 자체는 이후 "코스당 서명 1회"로 fan-out이 사라지면서 존재 이유를 잃어 제거됐다
+([run-e-infra-removed.md](../connection-pool-bottleneck/stage1/run-e-infra-removed.md)).
+
+**여기서 가져올 교훈은 정책 이름이 아니라 판단 기준이다: caller-runs가 이득인지 손해인지는 그
+작업이 CPU냐 I/O냐, 응답 경로 위냐 아래냐로 갈린다.** 장소 API는 I/O이고 응답 경로 위에 있다 —
+**요청 스레드가 그 I/O를 직접 수행하면 사실상 순차 실행으로 퇴화해 지연 예산이 붕괴한다.** 그래서
+정책은 `CallerRunsPolicy`로 유지하되(거부보다 느린 성공이 낫다), **파이프라인 전체에 하드 데드라인**을
+건다 — `CompletableFuture.allOf(...).get(remainingMs, MILLISECONDS)`. 데드라인이 없으면 caller-runs는
+"느린 성공"이 아니라 "무한정 느린 성공"이 된다.
 
 ### 외부 API 호출량과 방어
 
@@ -723,7 +784,7 @@ Refiner <10ms + 재최적화가 더해져 p50 16~20초, p95 30~40초였다).
 **60초는 넘지 않는다. 하지만 60초가 문제가 아니다.** 동기 요청으로 15~30초를 잡으면 동시 200건에서
 `maxThreads=200`이 통째로 AI 코스 생성에 묶인다. 이 레포는 이미 동시성 200에서
 `tomcat_threads_busy`가 maxThreads 경계에 닿는 것을 실측한 이력이 있다
-([TASK-PRESIGN-BOTTLENECK.md](TASK-PRESIGN-BOTTLENECK.md)).
+([TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md)).
 
 **결정: 동기 API 계약을 유지한 채 먼저 완성해 실측하고, p95가 목표를 넘는 것을 데이터로 확인한 뒤
 202 Accepted + 폴링으로 전환한다.** 그래야 전환이 "숫자에 근거한 결정"이 된다. 이 레포는 이미
@@ -765,6 +826,11 @@ RouteOptimizer 다섯 단계로 확정된다.
 
 3일 여행 기준. LLM 호출은 `2 + days`회 (V1 = Planner + Curator×days + PlaceProfile, Critic 제외).
 
+> **아래 토큰 수치는 `gemini-2.5-flash` 기준으로 산출한 것이다.** 벤더가 OpenAI로 확정됐으므로
+> (§6) **금액 환산은 착수 시점에 OpenAI 공식 가격표로 다시 계산해야 한다.** 다만 호출 횟수와
+> 토큰 규모의 상대적 구조(입력이 9배가 되고 그 대부분이 4층에서 나온다)는 토크나이저 차이로
+> 소폭 흔들릴 뿐 벤더에 종속되지 않으므로, 아래의 비용 트레이드오프 논의는 그대로 유효하다.
+
 | | 현재 | 신규 (V1) |
 |---|---|---|
 | LLM 호출 | 1회 | **5회** (Planner 1 + Curator 3 + PlaceProfile 1) |
@@ -775,6 +841,14 @@ RouteOptimizer 다섯 단계로 확정된다.
 
 Critic까지 포함하면 6회(`3 + days`)·입력 ~13,000·출력 ~2,000이 되는데, V1에서는 제외했으므로
 (§10 "Critic·Refiner를 V1에서 제외한 이유") 위 5회 기준이 실제 비용이다.
+
+> **[정정] 토큰 수 기준과 금액 기준이 다르다.** 아래 "입력 토큰이 9배가 되는 것이 최대 비용"이라는
+> 서술은 **토큰 수로는 맞지만 금액으로는 틀렸다.** 0단계에서 실제 단가를 대입해보니 출력 단가가
+> 입력의 8배라 두 비중이 어긋난다 — PlaceProfile 입력은 토큰의 76%인데 **금액으로는 19%**이고,
+> 금액을 지배하는 것은 **Curator의 출력(62%)** 이다.
+> 이는 아래 완화 수단 1번("MEAL/CAFE 슬롯에만 적용")의 절감 효과 추정도 함께 낮춘다 — ATTRACTION
+> 슬롯을 PlaceProfile 대상에서 빼서 아낄 수 있는 금액은 §11이 계산한 "약 40%"보다 훨씬 작다.
+> 계산 근거는 [steps/STEP-0-prerequisites.md](steps/STEP-0-prerequisites.md) 참고.
 
 **입력 토큰이 9배가 되는 것이 이 설계의 최대 비용이고, 전부 4층(속성 추출)에서 나온다.**
 완화 수단은 세 가지다.
@@ -817,16 +891,31 @@ else
 것이 "전부 켜기"와 "전부 끄기"보다 합리적이다. 다만 이 조건이 실제로 얼마나 자주 켜지는지(=
 비용이 얼마나 늘어나는지)는 추정이 아니라 실측이 필요하다(§15).
 
-**thinking 토큰이 숨은 변수다.** `gemini-2.5-flash`는 thinking이 기본 활성이고 thinking 토큰은
-**출력 요금으로 과금**된다. 끄지 않으면 추정이 2~3배 부풀 수 있다. 그래서 **Curator와 PlaceProfile은
-`thinking-budget: 0`** — 각각 지역 상식 회상과 속성 추출이라 추론 이득이 거의 없는데 토큰 비중은 가장 크다.
+**추론 토큰이 숨은 변수다.** 초안은 이 항목을 `gemini-2.5-flash` 기준으로 썼다 — thinking이 기본
+활성이고 thinking 토큰이 **출력 요금으로 과금**되므로, 끄지 않으면 추정이 2~3배 부풀 수 있다는
+것이었다. **벤더가 OpenAI로 바뀌어도 이 함정의 구조는 동일하다**: 추론 계열 모델은 추론 토큰이
+출력 요금에 포함된다.
+
+대응도 그대로다 — **Curator와 PlaceProfile은 추론을 쓰지 않는다.** 각각 지역 상식 회상과 속성
+추출이라 추론 이득이 거의 없는데 **토큰 비중은 셋 중 가장 크기 때문**이다. §6에서 두 에이전트에
+mini급 모델을 배정한 것과 같은 근거이며, 실제로 §6의 `model` 분리가 초안의 `thinking-budget: 0`을
+대체한다.
 
 **3층(인기도)은 비용 증가가 0이다** — 무료 쿼터 안에서 동작하고 LLM 토큰을 한 톨도 늘리지 않는다.
 **이 설계에서 가장 비용 효율이 좋은 품질 개선 수단이다.**
 
-**착수 전 확인 필요**: 네이버 검색 API 일일 쿼터(무료 기준 25,000회로 알려져 있으나 공식 문서 확인 필수).
-요청당 35회면 하루 약 700건이 상한이고, 경주·제주·부산이 요청 대부분을 차지하는 특성상 캐시 히트율을
-감안하면 실질 여유는 훨씬 크다.
+> **[확인 완료] 이관 후에도 무료다.** 검색 API가 NAVER API HUB(네이버 클라우드 플랫폼)로 이관되면서
+> **발급처·엔드포인트·인증 헤더는 바뀌었지만 요금 정책은 그대로**다 — 공식 요금표 기준
+> **0~775,000건 구간 0원, 일 최대 25,000건 호출 제한**(`775,000 = 25,000 × 31`이므로 실질 제약은
+> 일일 한도 하나다). 위 문장은 그대로 유효하다.
+>
+> 다만 **25,000건/일은 하드 리밋**이라 상한 자체는 설계에 반영해야 한다. 요청당 약 35회이므로
+> **하루 약 714 코스 생성**이 상한이고, §13 10단계 캐싱(`naver:blog:{sha1}`, TTL 7일)이 붙어
+> 히트율 50%가 되면 약 1,400건까지 늘어난다. 상한을 넘겨도 서비스가 죽지는 않는다 — 네이버는
+> hard fail이 아니라 fail-open이므로(§9) 인기도·속성 신호만 빠지고 코스 생성은 계속된다.
+>
+> 바뀐 엔드포인트·인증 헤더·발급 절차는
+> [steps/STEP-0-prerequisites.md](steps/STEP-0-prerequisites.md)에 정리했다.
 
 ---
 
@@ -851,8 +940,8 @@ else
 
 | 단계 | 내용 | 동작 변화 |
 |---|---|---|
-| 1 | 기존 결함 수정 (일수 계산, 좌표 `Double`, 카카오 점수 하한, 타임아웃, NPE) + 회귀 테스트 | **있음(버그)** |
-| 2 | `LlmClient` 벤더 중립 추상화 + 설정 외부화 (기존 `GeminiService`는 그대로 둠) | – |
+| 1 | 기존 결함 수정 (좌표 `Double`, 카카오 점수 하한, 타임아웃, NPE, 트랜잭션 경계) + 회귀 테스트 | **있음(버그)** |
+| 2 | `LlmClient` 벤더 중립 추상화 + 설정 외부화 + **OpenAI 단일 호출 baseline 재측정** (기존 `GeminiService` 경로는 그대로 둠) | – |
 | 3 | `RouteOptimizer` + `SlotType` + `GeoUtils` + 단위 테스트·벤치마크 | – |
 | 4 | `NaverBlogClient` + `PopularityScorer` + 컨셉 사전 매칭 (순수 함수 우선 검증) | – |
 | 5 | `GroundingStage` + `PlaceSignalStage` (병렬화, 카테고리 하드 제약, dedupe) | – |
@@ -864,7 +953,16 @@ else
 | 11 | 실측 결과를 이 문서에 추가 | – |
 
 **1단계를 맨 앞에 두는 이유**: 파이프라인과 **완전히 독립적으로 옳은 수정**이라 리뷰가 쉽고, 작업이
-중단돼도 가치가 남는다.
+중단돼도 가치가 남는다. (초안의 1단계에 있던 일수 계산 결함은 커밋 `7cdda90`에서 이미 해소되어
+범위에서 빠졌다 — §1 참고.)
+
+**2단계에 baseline 재측정이 붙는 이유**: 이번 작업에서 LLM 벤더가 Gemini → OpenAI로 바뀌므로(§6),
+§15의 before 값과 파이프라인 도입 후 값을 그대로 비교하면 **"모델 교체"와 "파이프라인 도입" 두
+변수가 섞여** 개선폭을 어느 쪽에도 귀속시킬 수 없다. 2단계는 파이프라인 없이 LLM만 교체된 상태라,
+여기서 한 번 재면 그 지점이 정확히 두 변수를 가르는 중간점이 된다.
+
+**실행 단위로 분해한 체크리스트와 착수 전 준비(API 키 발급, Spring AI 검증, 테스트 인프라 신설)는
+[ROADMAP.md](ROADMAP.md)에 있다.** 이 표는 순서와 그 근거만 담는다.
 
 **4단계를 5단계보다 앞에 두는 이유**: 클라이언트와 점수 계산은 외부 의존이 적고 순수 단위 테스트가
 가능하다. 먼저 검증해두면 5단계가 조립에만 집중할 수 있다.
@@ -902,7 +1000,7 @@ else
 
 **웹 검색 그라운딩 (Gemini Google Search / OpenAI web search)** — 컨셉 판별에서는 가장 강력하지만
 **벤더 종속**이 결정적이다. 검색 그라운딩은 벤더마다 API 모양·과금·결과 형식이 전부 달라
-`LlmClient` 포트의 최소 공통분모에 넣기 어렵고, OpenAI 전환을 전제로 한 이 설계와 정면 충돌한다.
+`LlmClient` 포트의 최소 공통분모에 넣기 어렵고, 벤더 중립 포트를 유지하려는 이 설계와 정면 충돌한다.
 지연 +5~15초, 별도 과금, 비결정적 결과라는 부담도 있다. **네이버 3·4층으로 같은 목적을 벤더
 중립적·결정론적·무료로 달성**하므로 우선순위를 내린다. 그래도 부족하면 그때 재검토한다.
 
@@ -952,6 +1050,20 @@ else
    → **before 값은 구현 착수 전에 이미 측정했다: [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md).**
    그 문서에 측정 하네스·방법론·자동 프록시의 한계(거짓 양성/거짓 음성)와 after 측정 재현 절차가
    정리돼 있으므로, 파이프라인 도입 후 **동일한 입력 세트와 동일한 `score()` 로직으로** 재측정한다.
+
+   **단, 이번 작업은 벤더 교체(Gemini → OpenAI, §6)를 동반하므로 측정점이 둘이 아니라 셋이다.**
+   2점만 재면 개선폭을 모델과 구조 중 어느 쪽에도 귀속시킬 수 없다.
+
+   | 측정점 | 시점 | 분리되는 변수 |
+   |---|---|---|
+   | Gemini 단일 호출 | 완료 (환각률 25.6%) | — |
+   | **OpenAI 단일 호출** | §13 2단계 직후 | 모델 교체 효과 |
+   | OpenAI 파이프라인 | §13 8단계 직후 | 파이프라인 구조 효과 |
+
+   세 측정점이 비교 가능하려면 **입력 세트(지역 10곳 × 스타일 3조합, 3일 고정)와 판정 `score()`
+   로직이 동일해야 한다.** 1단계에서 카카오 점수 하한선을 도입하므로, 하네스의 판정 기준은 하한선
+   도입 전 값으로 고정한 채 재측정한다 — 그러지 않으면 "하한선을 올려서 환각률이 내려간" 자기충족적
+   결과가 나온다.
 2. **골든 데이터셋** — 입력 20세트에 대해 생성 결과를 사람이 채점하거나 LLM-as-judge로 평가.
    파이프라인이 안정된 뒤 착수하는 것이 맞다. **이 인프라가 생기는 것이 §10에서 제외한
    `CriticAgent`를 재검토하는 조건 중 하나다** — Critic이 실제로 품질을 개선하는지 측정할
@@ -959,13 +1071,14 @@ else
 
 ### 착수 전 확인 필요
 
-- 네이버 검색 API 일일 쿼터 및 다중 키워드 매칭 방식(AND / 구문 검색 지원 여부)
-- LLM 티어 — 무료 티어는 RPM이 낮아 호출이 6배가 되면 동시 사용자 2~3명만으로도 429가 난다.
+- **네이버 검색 API 키 발급** — 아직 확보하지 않았다. 3·4층 전체가 여기에 의존하므로 `NaverBlogClient`
+  착수의 선행 조건이다. 일일 쿼터와 다중 키워드 매칭 방식(AND / 구문 검색 지원 여부)도 함께 확인한다
+- **Spring AI의 구조화 출력이 스키마를 디코딩 레벨에서 강제하는지** (§6) — 프롬프트 지시 기반 JSON
+  모드로 떨어진다면 파싱 실패율 near-zero 전제가 깨지고, OpenAI 공식 SDK로 폴백해야 한다
+- **OpenAI 모델 ID와 단가** — §6의 agent별 `model` 배정(Planner 상위 / Curator·PlaceProfile mini급)을
+  확정하고, §11의 비용표를 OpenAI 기준으로 재계산하는 근거가 된다
+- **OpenAI RPM/TPM 티어** — 호출이 5배가 되면 낮은 티어에서는 동시 사용자 2~3명만으로도 429가 난다.
   `llm.max-concurrent-calls` 초기값을 결정하는 근거가 된다
+- 카카오 Local API 일일 쿼터 (요청당 45회 기준 상한 계산)
 - **실제 요청 중 `mood` 키워드 포함 비율** — §11의 PlaceProfile 조건부 확장(ATTRACTION 포함 여부)이
   얼마나 자주 켜질지, 즉 실제 토큰 비용 증가폭을 결정한다. 파이프라인 배포 후 실측 필요
-- 카카오 Local API 일일 쿼터 (요청당 45회 기준 상한 계산)
-- **Spring AI의 Gemini 통합이 API 키 인증(Gemini Developer API)을 지원하는지, Vertex AI 전용인지**
-  (§6) — 후자면 `GeminiLlmClient`는 Spring AI 도입을 포기하고 raw SDK를 유지해야 한다
-- **Spring AI의 구조화 출력이 `responseJsonSchema`(디코딩 레벨 강제)를 그대로 노출하는지** (§6) —
-  프롬프트 지시 기반 JSON 모드로 떨어진다면 파싱 실패율 near-zero 전제가 깨진다

@@ -45,6 +45,25 @@ spring:
           # max-wait 기본값은 무한대기이므로 반드시 명시한다.
           max-wait: 1000ms
 
+  ai:
+    # spring-ai-starter-model-openai는 chat 하나가 아니라 OpenAI의 모든 모델 타입(embedding,
+    # image, moderation, audio speech/transcription)을 자동 구성하고, 그 전부가 기동 시점에
+    # API 키를 요구한다. 키가 없으면 openAiAudioSpeechModel 빈 생성에서 컨텍스트가 통째로
+    # 깨진다(실제로 확인함). 이 파이프라인이 쓰는 것은 chat 뿐이므로 나머지는 전부 끈다.
+    model:
+      embedding: none
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
+      # chat도 아직 끈다. 지금은 Spring AI를 "검증"만 하는 단계이고 실제로 쓰기 시작하는 것은
+      # LlmClient 어댑터를 만드는 2단계다. 여기서 켜두면 OPENAI_API_KEY가 없는 환경에서
+      # ./gradlew bootRun이 실패해, 아직 AI 경로를 건드리지 않은 이 단계가 동작 변화를 만든다.
+      # 2단계에서 openai로 바꾸고 아래 openai.api-key를 함께 채운다.
+      # (docs/tasks/ai-course-create/ROADMAP.md 2단계 참고)
+      chat: none
+
 jwt:
   secret: ${JWT_SECRET}
 

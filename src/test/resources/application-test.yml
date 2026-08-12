@@ -1,0 +1,19 @@
+# 통합 테스트 전용 프로파일(@ActiveProfiles("test"))에서 쓴다.
+#
+# 이 파일이 있기 전까지 src/test/resources 디렉터리 자체가 없었고, @SpringBootTest는 운영
+# application.yml + 레포 루트 .env에 그대로 의존했다. 즉 테스트가 개발자 로컬의 실제 API 키를
+# 읽어 외부 API를 때릴 수 있는 구조였다. 이 프로파일은 두 가지를 한다.
+#
+#   1) 외부 API 자격증명을 더미로 덮어써, 테스트가 로컬 .env에 의존하지 않게 한다.
+#   2) 외부 API base-url을 WireMock 스텁 서버로 바꿔 끼울 수 있게 한다.
+#      WireMock 포트는 테스트마다 달라질 수 있으므로, 실제 테스트에서는 @DynamicPropertySource로
+#      주입해 아래 기본값을 덮어쓴다. 여기 적힌 8089는 WireMock 기본 포트다.
+#
+# DB/Redis는 아직 실제 인스턴스를 쓴다. 기존 @SpringBootTest 2개(YourtripApplicationTests,
+# UploadCourseControllerE2ETest)를 이 프로파일로 옮기는 작업은 이번 범위 밖이다
+# (docs/tasks/ai-course-create/ROADMAP.md 0단계 "범위 밖" 참고).
+
+kakao:
+  api-key: test-kakao-api-key
+  local:
+    base-url: http://localhost:8089

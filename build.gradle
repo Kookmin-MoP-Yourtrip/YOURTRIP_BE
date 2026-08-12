@@ -8,6 +8,15 @@ group = 'backend'
 version = '0.0.1-SNAPSHOT'
 description = 'yourtrip'
 
+// 지금까지 빌드 스크립트에 자바 버전 선언이 없어서, 실제 컴파일 타깃이 빌드하는 사람의 로컬 JDK에
+// 좌우됐다(.idea/misc.xml과 EC2 배포 스크립트만 21을 가리키고 있었다). toolchain으로 고정해
+// 로컬/CI/배포가 같은 버전으로 컴파일되게 한다.
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 configurations {
     compileOnly {
         extendsFrom annotationProcessor
@@ -59,12 +68,34 @@ dependencies {
     testImplementation 'org.springframework.security:spring-security-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
+    // 외부 API(카카오/네이버/OpenAI) 스텁 서버. AI 파이프라인은 요청 하나가 외부 호출 수십 건으로
+    // fan-out되는 구조라, 실제 API를 때리지 않고 부분 장애("네이버만 죽은 상황") 같은 시나리오를
+    // 재현할 수단이 필요하다.
+    //
+    // 일반 'org.wiremock:wiremock'이 아니라 셰이딩된 standalone을 쓰는 이유: 이 레포의
+    // testRuntimeClasspath에는 이미 jackson-databind(2.12.6.1/2.16.2/2.17.2 -> 2.19.2)와
+    // guava(29.0/30.1.1/33.4.0-android -> 33.4.0-jre)가 여러 버전으로 경합 중이다. WireMock이
+    // 자기 Jackson/Guava를 들고 들어와 이 해석에 끼어들면, 캐시 직렬화(GenericJackson2JsonRedisSerializer)
+    // 처럼 Jackson 버전에 민감한 지점에서 테스트와 운영이 다르게 동작할 수 있다. standalone은
+    // 의존성을 전부 셰이딩해 버전 해석에 아예 참여하지 않는다.
+    // (Jetty 충돌은 이 레포에선 문제가 아니다 — 서블릿 컨테이너로 Tomcat을 쓰고 있어 Jetty가 없다.)
+    testImplementation 'org.wiremock:wiremock-standalone:3.13.1'
+
     // 2.40.12 이상부터 CannedSignerRequest가 EC(ECDSA P-256) 개인키를 자동 인식한다(aws/aws-sdk-java-v2 PR #6627).
     // CloudFront Signed URL 서명을 RSA-2048에서 ECDSA P-256으로 전환하려면 이 버전 이상이 필수라 업그레이드했다.
     implementation platform('software.amazon.awssdk:bom:2.51.0') // 최신 안정판으로 맞추기
     implementation 'software.amazon.awssdk:s3'
     implementation 'software.amazon.awssdk:cloudfront' // CloudFrontUtilities (Signed URL 발급), CloudFrontClient (invalidation)
     implementation 'com.google.genai:google-genai:1.28.0'
+
+    // AI 코스 생성 멀티 에이전트 파이프라인용 LLM 전송 계층.
+    // 2.0.x가 아니라 1.1.x인 이유: Spring AI 2.0은 Spring Boot 4.0/4.1을 요구하는데 이 레포는
+    // Boot 3.5.7이다. 1.1.x는 Boot 3.4/3.5를 지원하고, 이번 설계가 Spring AI에 요구하는 유일한
+    // 기능(JSON 스키마를 프롬프트 텍스트가 아니라 response_format.json_schema API 필드로 전송)이
+    // 1.1.x에 이미 들어 있어 기능 손해가 없다.
+    // Boot 4 이전은 별도 작업으로 분리했다 (docs/tasks/ai-course-create/ROADMAP.md 참고).
+    implementation platform('org.springframework.ai:spring-ai-bom:1.1.8')
+    implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 }
 
 compileJava {
