@@ -71,6 +71,18 @@
 
 상세 기록은 [stage1/run-d-signature-once.md](stage1/run-d-signature-once.md).
 
+#### 후속 비교 측정 (Run G/H/I) — before/after 비교의 두 구멍을 메움
+
+Run D~F까지의 비교에는 구멍이 둘 있었다. ①극한 부하(1200 req/s)는 도입 후 코드에만 걸어봤다 ②"동시 사용자 N명" 형태의 지표가 없었다. 도입 전 코드(`72f0ed2`, AbortPolicy 단독)를 다시 배포해 같은 인프라에서 셋을 더 측정했다.
+
+**4. 처리량 천장은 도입 전에도 같았다 — 다른 건 응답의 내용물이었다(Run G).** 1200 req/s에서 도입 전 155.22 req/s vs 도입 후 153.34 req/s로 사실상 동일했고, 두 arm 모두 `tomcat_threads_busy_threads`가 200(=`maxThreads`)에 닿았다. 그러나 도입 전은 200 응답의 **64.82%에 이미지가 빠져 있었고**(도입 후 0%), `data_received`가 117MB vs 275MB였다. **같은 부하 구간(100→200 req/s)에서 도입 전은 CPU 100%·스레드 116개로 이미 이미지를 15% 흘리는 중이었고, 도입 후는 CPU 62.3%·스레드 10개로 손실 없이 처리했다.** 브라운아웃은 부하에 비례해 악화됐다(400 req/s에서 49.4% → 1200 req/s에서 64.8%).
+
+**5. 품질을 지키며 감당한 최대 처리량이 약 1.9배가 됐고, 동시 사용자는 50명 → 400명 이상이 됐다(Run H/I).** 이미지 손실 0%를 유지한 구간의 최대 TPS가 **197.9 → 379.0 req/s(+91.5%)**다. 손실 0%를 유지한 마지막 VU 단계는 도입 전 50, 도입 후는 측정 상한인 400에서도 한계를 찾지 못했다. 전체 집계로도 처리량 +54.1%, 평균 지연 -35.1%, p95 -15.8%, 브라운아웃 48.05% → 0%다. JFR 서명 CPU 비중은 **77.55% → 18.38%**로 약 1/4이 됐다.
+
+**6. 닫힌 루프의 "빠른 거부 역설"이 실측으로 확인됐다.** 도입 전 arm은 VU 100→200에서 TPS가 +37.8% 늘었는데, 같은 구간 이미지 손실이 32.5%→85.2%로 뛰었다 — 처리량이 는 게 아니라 일을 안 하고 응답한 것이다. 이 때문에 "포화 VU"를 단독 개선 지표로 쓰면 안 된다(도입 후는 요청을 빨리 처리해서 **더 낮은** VU에서 평탄해진다). 자세한 원칙은 "공통 검증 방법" 절 참고.
+
+상세 기록은 [stage1/run-g-before-code-max-rate.md](stage1/run-g-before-code-max-rate.md)(Run G)와 [stage1/run-h-i-closed-loop.md](stage1/run-h-i-closed-loop.md)(Run H/I).
+
 ---
 
 ### 2단계(조건부) — Signed URL을 만료시간보다 짧은 TTL로 캐싱
@@ -146,11 +158,14 @@ Resilience4j `Bulkhead.Type.THREADPOOL`/`Type.SEMAPHORE`를 검토하고 기각�
 각 단계 적용 후 다음을 반복한다 — [TASK-PRESIGN-BOTTLENECK.md의 "재현 방법"](TASK-PRESIGN-BOTTLENECK.md)과 동일한 도구를 재사용한다.
 
 1. `scripts/sql/seed-benchmark.sql`로 동일 규격 시드
-2. `scripts/k6/detail-ramping.js`(VU 1→200)로 부하
-3. Prometheus range query로 `hikaricp_connections_active`/`pending`/`process_cpu_usage`를 시간축으로 뽑아 knee 위치 비교
-4. `SigningBenchmarkTest`(`./gradlew benchmarkTest`)로 요청당 서명 연산 횟수/비용 변화 확인
+2. **주력 — `scripts/k6/detail-arrival-rate.js`(열린 루프, 도착률 10→50→100→200→`MAX_RATE`)로 부하**
+3. **보조 — `scripts/k6/detail-ramping.js`(닫힌 루프, VU 1→200, 필요시 `MAX_VUS`로 확장)**. "동시 사용자 N명" 형태의 지표가 필요할 때만 쓴다
+4. Prometheus range query로 `hikaricp_connections_active`/`pending`/`tomcat_threads_busy_threads`/`process_cpu_usage`를 시간축으로 뽑아 knee 위치 비교
+5. `SigningBenchmarkTest`(`./gradlew benchmarkTest`)로 요청당 서명 연산 횟수/비용 변화 확인
 
-**목표 지표**: "VU 20 근처에서 `pending`이 나타나기 시작한다"는 현재 상태가, 각 단계 적용 후 어느 VU까지 밀려나는지를 정량적으로 비교해 단계별 효과를 분리 측정한다.
+> **[정정] 원래 이 절은 `detail-ramping.js`(닫힌 루프)만 지정했으나, Run A 이후 실제 측정은 전부 열린 루프로 진행됐다.** 닫힌 루프는 VU가 응답을 받아야 다음 요청을 보내므로, 서버가 요청을 빨리 거부하거나 이미지를 빼먹고 빨리 응답할수록 제공 부하가 오히려 늘어 **개선할수록 지표가 나빠지는 역설**이 생긴다. 이 역설은 [stage1/run-h-i-closed-loop.md](stage1/run-h-i-closed-loop.md) 판정 4에서 실측으로 확인됐다(도입 전 코드가 VU 100→200에서 TPS +37.8%인데 같은 구간 이미지 손실이 32.5%→85.2%). 닫힌 루프를 쓸 때는 **포화가 시작되는 지점까지만 신뢰**하고, 그 이후 구간의 TPS·지연은 비교에 쓰지 않는다.
+
+**목표 지표**: 판정을 단일 지표로 하지 않는다 — `pending`(커넥션 대기줄), `tomcat_threads_busy_threads`(스레드 상한), `partial_responses`(응답 품질), 처리량 평탄화, 지연 급증의 **다섯을 각각 "처음 발생한 지점"으로 기록**하고, 어느 것이 먼저 터지는지로 병목을 특정한다. 0단계 이후 HikariCP가 회복되면서 `pending` 하나만 보던 기존 방법론은 더 이상 통하지 않는다(실제로 Run F에서 진짜 상한은 Tomcat 스레드 풀이었다).
 
 ## 참고 문서
 
@@ -163,5 +178,7 @@ Resilience4j `Bulkhead.Type.THREADPOOL`/`Type.SEMAPHORE`를 검토하고 기각�
 - [stage1/design-and-poc.md](stage1/design-and-poc.md) — 1단계 설계. Signed Cookie 기각 근거와 Custom Policy 와일드카드 채택, PoC 검증 기록
 - [stage1/run-d-signature-once.md](stage1/run-d-signature-once.md) — 1단계 EC2 실측(Run D/D2). 브라운아웃 구조적 제거 확인, JWT가 CloudFront 서명급 CPU 소비처임을 확정, 병목이 CPU 이후 다른 자원으로 옮겨갔다는 미해결 관찰
 - [stage1/run-e-infra-removed.md](stage1/run-e-infra-removed.md) — 3단계 게이트·executor 제거 후 재측정(Run E) + knee 재탐색(Run F). 인프라 제거가 처리량·지연을 악화시키지 않음을 확인, Tomcat `maxThreads`(200)가 실제 처리량 상한임을 특정
+- [stage1/run-g-before-code-max-rate.md](stage1/run-g-before-code-max-rate.md) — 도입 전 코드를 Run F와 같은 극한 부하(1200 req/s)로 재측정(Run G). "처리량 천장은 원래도 같았지만 도입 전은 응답의 64.8%에 이미지가 빠져 있었다"를 확인. t3 `unlimited` 모드에서 `CPUCreditBalance=0`이 스로틀링을 뜻하지 않는다는 방법론 정정 포함
+- [stage1/run-h-i-closed-loop.md](stage1/run-h-i-closed-loop.md) — 닫힌 루프로 도입 전/후 포화점 비교(Run H/I). 무손실 최대 처리량 197.9→379.0 req/s, 품질 유지 동시 사용자 50명→400명 이상. 닫힌 루프의 "빠른 거부 역설"을 실측으로 확인
 - [CACHING-ROADMAP.md](../../CACHING-ROADMAP.md) — 2단계와 관련된 기존 캐싱 설계 원칙
 - GitHub 이슈 [#67](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/67) — 0단계에 대응. 1/3/5단계는 착수 시점에 별도 이슈로 분리하는 것을 검토한다.
