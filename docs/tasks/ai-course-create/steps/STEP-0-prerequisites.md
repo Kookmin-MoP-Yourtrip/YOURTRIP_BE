@@ -120,7 +120,13 @@ Spring AI 1.1.8이 요구하는 버전이 Spring Boot 3.5.7의 관리 버전으�
 
 ### 아직 확인하지 못한 것 — 0-3b
 
-실제 OpenAI 호출로 확인해야 하는 항목이 둘 남아 있다. 같은 테스트 클래스에 `@Tag("benchmark")`로 들어 있고, **키가 없으면 명확한 메시지와 함께 스킵된다**(현재 상태).
+실제 OpenAI 호출로 확인해야 하는 항목이 둘 남아 있다. 같은 테스트 클래스에 `@Tag("benchmark")`로 들어 있고, 키가 없으면 명확한 메시지와 함께 스킵된다.
+
+> **현재 상태: 키는 발급됐으나 크레딧이 없어 실행하지 못했다.** 실행 결과는 `401`이 아니라
+> `429 insufficient_quota / credit_balance_exhausted`였다 — **키 자체는 유효하고 인증도 통과했으며,
+> 계정에 크레딧이 없을 뿐이다.** platform.openai.com의 Billing에서 결제 수단 등록과 크레딧 충전이
+> 선행돼야 한다. 이 검증은 §13 2단계(`LlmClient` 어댑터 구현)의 선행 조건이므로 그 전에는 반드시
+> 통과시켜야 하지만, **1단계(기존 결함 수정)는 이와 무관하게 진행할 수 있다.**
 
 ```bash
 ./gradlew benchmarkTest --tests '*SpringAiStructuredOutput*' --rerun
@@ -230,11 +236,12 @@ PlaceProfile을 nano로 내린 선택이 틀렸는지는 설계 문서 §12에 �
 
 구 방식(`openapi.naver.com` + `X-Naver-Client-Id`/`X-Naver-Client-Secret`)과 **엔드포인트도 헤더도 다르다.** 4단계에서 `NaverBlogClient`를 짤 때 이 스펙을 기준으로 한다.
 
+**일 25,000건 한도를 초과하면 `429`가 반환된다.** 4단계 `NaverBlogClient`의 fail-open 분기는 이 코드를 기준으로 잡는다 — 429는 재시도 대상이 아니라 **그날의 쿼터 소진**이므로, 전송 계층의 지수 백오프 재시도를 태우지 말고 즉시 신호 없이 진행해야 한다(설계 §9의 "네이버 개별 조회 실패 → 인기도·traits 없이 카카오 점수만으로 랭킹"). 여기서 재시도를 돌리면 이미 소진된 쿼터에 지연 예산만 태우게 된다.
+
 ### 4단계 착수 전 실호출로 확정할 것
 
 - **블로그 검색의 정확한 경로** — 새 Base URL 아래에서 `/v1/search/blog.json`이 유지되는지
 - **응답 스키마 유지 여부** — 설계의 3·4층은 `total`·`postdate`·`title`·`description`에 의존한다. 바뀌었다면 두 층의 설계를 손봐야 한다
-- **일 25,000건 한도 초과 시의 응답 형태** — 429인지 403인지에 따라 fail-open 분기 조건이 달라진다
 
 OpenAI RPM/TPM은 `llm.max-concurrent-calls` 초기값의 근거가 되므로 키 발급 후 확인이 필요하다.
 
