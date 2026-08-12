@@ -2,12 +2,14 @@ package backend.yourtrip.domain.mycourse.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceImageResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceResponse;
@@ -267,6 +269,56 @@ class MyCourseServiceImplTest {
         assertThatThrownBy(() -> myCourseService.deleteCourse(COURSE_ID))
             .isInstanceOf(BusinessException.class)
             .hasFieldOrPropertyWithValue("errorCode", MyCourseErrorCode.NOT_OWNED_COURSE);
+    }
+
+    @Test
+    @DisplayName("saveCourse - 다개월에 걸친 여행이면 실제 날짜 차이만큼 DaySchedule을 생성한다")
+    void saveCourse_MultiMonthTrip_CreatesDaySchedulePerActualDay() {
+        // given
+        // Period.between(...).getDays()였다면 개월 수를 뺀 나머지 일수(4)만 남아 5로 계산되던
+        // 케이스 — ChronoUnit.DAYS.between으로 고친 뒤 실제 날짜 차이(64)가 나오는지 검증한다.
+        LocalDate startDate = LocalDate.of(2026, 1, 1);
+        LocalDate endDate = LocalDate.of(2026, 3, 5);
+        MyCourseCreateRequest request = new MyCourseCreateRequest("천년의 봄", "경주", startDate,
+            endDate);
+
+        User owner = User.builder().email("owner@test.com").password("pass").nickname("owner")
+            .build();
+        setEntityId(owner, OWNER_ID);
+        given(userService.getCurrentUserId()).willReturn(OWNER_ID);
+        given(userService.getUser(OWNER_ID)).willReturn(owner);
+        given(travelCourseRepository.save(any(TravelCourse.class)))
+            .willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        myCourseService.saveCourse(request);
+
+        // then
+        verify(dayScheduleRepository, times(64)).save(any(DaySchedule.class));
+    }
+
+    @Test
+    @DisplayName("saveCourse - 같은 달 안의 짧은 여행이면 날짜 차이만큼 DaySchedule을 생성한다")
+    void saveCourse_SameMonthTrip_CreatesDaySchedulePerActualDay() {
+        // given
+        LocalDate startDate = LocalDate.of(2026, 8, 1);
+        LocalDate endDate = LocalDate.of(2026, 8, 3);
+        MyCourseCreateRequest request = new MyCourseCreateRequest("경주 3일", "경주", startDate,
+            endDate);
+
+        User owner = User.builder().email("owner@test.com").password("pass").nickname("owner")
+            .build();
+        setEntityId(owner, OWNER_ID);
+        given(userService.getCurrentUserId()).willReturn(OWNER_ID);
+        given(userService.getUser(OWNER_ID)).willReturn(owner);
+        given(travelCourseRepository.save(any(TravelCourse.class)))
+            .willAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        myCourseService.saveCourse(request);
+
+        // then
+        verify(dayScheduleRepository, times(3)).save(any(DaySchedule.class));
     }
 
     private DaySchedule daySchedule() {

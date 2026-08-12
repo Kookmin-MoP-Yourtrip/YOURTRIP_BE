@@ -50,7 +50,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.LocalTime;
-import java.time.Period;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -93,7 +93,7 @@ public class MyCourseServiceImpl implements MyCourseService {
         TravelCourse savedCourse = travelCourseRepository.save(travelCourse);
 
         //일차 생성
-        int days = Period.between(request.startDate(), request.endDate()).getDays() + 1;
+        int days = (int) ChronoUnit.DAYS.between(request.startDate(), request.endDate()) + 1;
         for (int i = 1; i <= days; i++) {
             dayScheduleRepository.save(new DaySchedule(travelCourse, i));
         }
@@ -430,9 +430,8 @@ public class MyCourseServiceImpl implements MyCourseService {
         TravelCourse copyTravelCourse = TravelCourseMapper.toCopyEntity(original, type, user);
         TravelCourse savedCourse = travelCourseRepository.save(copyTravelCourse);
 
-        int days =
-            Period.between(copyTravelCourse.getStartDate(), copyTravelCourse.getEndDate())
-                .getDays() + 1;
+        int days = (int) ChronoUnit.DAYS.between(
+            copyTravelCourse.getStartDate(), copyTravelCourse.getEndDate()) + 1;
         for (int i = 1; i <= days; i++) {
             DaySchedule copiedDaySchedule = new DaySchedule(copyTravelCourse, i);
             dayScheduleRepository.save(copiedDaySchedule);
@@ -514,7 +513,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     @Transactional
     public AICourseCreateResponse createAICourse(AICourseCreateRequest request) {
         int days =
-            Period.between(request.startDate(), request.endDate()).getDays() + 1;
+            (int) ChronoUnit.DAYS.between(request.startDate(), request.endDate()) + 1;
 
         //gemini 호출해서 json 문자열 받기
         String json = geminiService.generateAICourse(request.location(), days, request.keywords());
