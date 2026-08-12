@@ -8,6 +8,15 @@ group = 'backend'
 version = '0.0.1-SNAPSHOT'
 description = 'yourtrip'
 
+// 지금까지 빌드 스크립트에 자바 버전 선언이 없어서, 실제 컴파일 타깃이 빌드하는 사람의 로컬 JDK에
+// 좌우됐다(.idea/misc.xml과 EC2 배포 스크립트만 21을 가리키고 있었다). toolchain으로 고정해
+// 로컬/CI/배포가 같은 버전으로 컴파일되게 한다.
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 configurations {
     compileOnly {
         extendsFrom annotationProcessor
