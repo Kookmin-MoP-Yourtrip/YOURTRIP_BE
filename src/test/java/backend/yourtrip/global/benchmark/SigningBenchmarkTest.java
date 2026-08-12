@@ -7,7 +7,9 @@ import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.PrivateKey;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -18,6 +20,8 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.cloudfront.CloudFrontUtilities;
+import software.amazon.awssdk.services.cloudfront.model.CannedSignerRequest;
+import software.amazon.awssdk.services.cloudfront.model.CustomSignerRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
@@ -76,9 +80,60 @@ class SigningBenchmarkTest {
         ReflectionTestUtils.setField(cloudFrontService, "privateKeyPath", privateKeyPath.toString());
         ReflectionTestUtils.invokeMethod(cloudFrontService, "initPrivateKey");
 
-        Runnable op = () -> cloudFrontService.getSignedUrl("private/benchmark.jpg");
+        // 1단계 이후 서명 단위는 "이미지 1장"이 아니라 "코스 1개"다 — 이 호출 1회가 그 코스의
+        // 모든 이미지 URL을 커버한다.
+        Runnable op = () -> cloudFrontService.signCourseScope(42L);
 
-        report("CloudFront Signed URL (ECDSA P-256)", measure(op));
+        report("CloudFront 코스 스코프 서명 (custom policy, ECDSA P-256)", measure(op));
+    }
+
+    @Test
+    @DisplayName("canned policy와 custom policy의 서명 1회 비용을 직접 비교한다 — 1단계 전환의 비용 항목")
+    void benchmarkCannedVsCustomPolicy() throws Exception {
+        assumeTrue(isOpensslAvailable(), "이 벤치마크는 로컬 openssl 실행 파일이 필요하다");
+
+        Path privateKeyPath = tempKeyFile();
+        runOpenssl("genpkey", "-algorithm", "EC", "-pkeyopt", "ec_paramgen_curve:prime256v1",
+            "-out", privateKeyPath.toString());
+
+        CloudFrontUtilities utilities = CloudFrontUtilities.create();
+        PrivateKey privateKey = CannedSignerRequest.builder()
+            .privateKey(privateKeyPath)
+            .build()
+            .privateKey();
+        String resourceUrl = "https://d111111abcdef8.cloudfront.net/private/42/benchmark.jpg";
+        Instant expiration = Instant.now().plus(Duration.ofMinutes(60));
+
+        // 전환 전 방식 — 이미지 하나를 정확히 지목하는 정책
+        Runnable canned = () -> utilities.getSignedUrlWithCannedPolicy(CannedSignerRequest.builder()
+            .resourceUrl(resourceUrl)
+            .privateKey(privateKey)
+            .keyPairId("K3BENCHMARKKEYPAIR")
+            .expirationDate(expiration)
+            .build());
+
+        // 전환 후 방식 — 코스 폴더 전체를 가리키는 와일드카드 정책. 정책 JSON이 길어져
+        // SHA1 입력이 커지므로 이론상 조금 더 비쌀 수 있는데, 그 차이가 실제로 유의미한지 본다.
+        Runnable custom = () -> utilities.getSignedUrlWithCustomPolicy(CustomSignerRequest.builder()
+            .resourceUrl("https://d111111abcdef8.cloudfront.net/private/42/")
+            .resourceUrlPattern("https://d111111abcdef8.cloudfront.net/private/42/*")
+            .privateKey(privateKey)
+            .keyPairId("K3BENCHMARKKEYPAIR")
+            .expirationDate(expiration)
+            .build());
+
+        long cannedNs = measure(canned);
+        long customNs = measure(custom);
+
+        System.out.printf("%n=== canned vs custom policy (서명 1회 비용) ===%n");
+        System.out.printf("canned policy: %.2f us/op%n", cannedNs / 1000.0);
+        System.out.printf("custom policy: %.2f us/op (canned 대비 %+.1f%%)%n",
+            customNs / 1000.0, (customNs - cannedNs) * 100.0 / cannedNs);
+        System.out.printf("→ 이미지 10장 기준 요청당 서명 비용: %.2f us → %.2f us (%.1f배 감소)%n",
+            cannedNs * 10 / 1000.0, customNs / 1000.0, (cannedNs * 10.0) / customNs);
+
+        assertThat(cannedNs).isPositive();
+        assertThat(customNs).isPositive();
     }
 
     @Test
@@ -113,11 +168,18 @@ class SigningBenchmarkTest {
         System.out.printf("이 머신(%d코어) 기준 이론 최대 서명 처리량: %,d ops/sec (모든 코어를 서명에만 쓸 때)%n",
             cores, (long) (cores * 1_000_000_000.0 / nsPerOp));
 
-        // TASK-4.md/TASK-CLOUDFRONT.md에서 실제 시드에 쓰인 코스당 이미지 개수 기준
-        // 이론 최대 TPS를 함께 계산해, Phase 4 실측 TPS와 바로 대조할 수 있게 한다.
+        // 1단계(코스당 서명 1회) 이후에는 요청당 서명이 1회로 고정돼, 이론 최대 TPS가
+        // 이미지 개수와 무관한 상수가 된다 — 그 사실 자체가 이번 전환의 핵심이다.
+        double maxTps = cores * 1_000_000_000.0 / nsPerOp;
+        System.out.printf("  요청당 서명 1회 기준 이론 최대 TPS: %.1f (이미지 개수와 무관)%n", maxTps);
+
+        // 전환 전 모델과의 대조 — 예전에는 요청당 이미지 수만큼 서명해서 TPS가 이미지 개수에
+        // 반비례했다. TASK-4.md/TASK-CLOUDFRONT.md 시드의 코스당 이미지 개수를 그대로 쓴다.
+        System.out.println("  [참고] 전환 전 모델(이미지당 1회 서명)이었다면:");
         for (int imagesPerRequest : new int[] {10, 24, 105}) {
-            double theoreticalMaxTps = cores * 1_000_000_000.0 / ((double) nsPerOp * imagesPerRequest);
-            System.out.printf("  코스당 이미지 %3d장일 때 이론 최대 TPS: %.1f%n", imagesPerRequest, theoreticalMaxTps);
+            double legacyMaxTps = maxTps / imagesPerRequest;
+            System.out.printf("    코스당 이미지 %3d장 → 이론 최대 TPS %.1f (현재 대비 1/%d)%n",
+                imagesPerRequest, legacyMaxTps, imagesPerRequest);
         }
 
         assertThat(nsPerOp).isPositive();

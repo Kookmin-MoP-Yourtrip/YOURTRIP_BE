@@ -74,8 +74,10 @@ resource "aws_cloudfront_distribution" "media" {
     compress               = true
   }
 
-  # mycourse 장소 이미지 전용(S3Service.uploadPrivateFile()이 "private/{date}/{uuid}.ext"
+  # mycourse 장소 이미지 전용(S3Service.uploadPrivateFile()이 "private/{courseId}/{uuid}.ext"
   # 형식으로 저장). 서명 없는 요청/만료된 서명은 오리진(S3)에 묻지도 않고 엣지에서 403.
+  # 경로 세그먼트가 코스 단위로 한 단계 깊어져도 이 path_pattern("private/*")에 그대로
+  # 매칭되므로 behavior 수정은 필요 없다(실배포 PoC로 확인 — stage1/design-and-poc.md).
   ordered_cache_behavior {
     path_pattern           = "private/*"
     allowed_methods        = ["GET", "HEAD"]

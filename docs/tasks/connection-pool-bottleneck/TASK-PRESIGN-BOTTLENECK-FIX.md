@@ -1,6 +1,6 @@
 # TASK-PRESIGN-BOTTLENECK-FIX. 커넥션 풀 병목 해소 계획
 
-> [TASK-PRESIGN-BOTTLENECK.md](TASK-PRESIGN-BOTTLENECK.md)가 원인을 규명한 문제("서명이 `@Transactional` 안에서 실행돼 HikariCP 커넥션을 초 단위로 점유하고, 동시 유저 20명 근처에서 이미 구조적으로 포화된다")에 대한 해결 계획이다. 단계별 우선순위와 각 단계의 근거·트레이드오프를 정리한 문서다. **0단계(트랜잭션 분리)와 그 과정에서 발견한 FK 인덱스 추가는 로컬 + EC2/RDS 분리 환경 양쪽에서 구현·재검증까지 완료했다** — 실측 기록이 길어져 별도 문서 4개로 분리했다(아래 0단계 절의 "실측 결과 요약" 참고). 핵심 결론만 먼저 밝히면: mycourse는 로컬·EC2+RDS 어느 환경에서도 0단계로 풀 포화가 개선되지 않았고(`pending` 최대값이 적용 전후로 완전히 동일), 오히려 평균 커넥션 점유시간이 악화됐다(47.3ms→53.3ms) — 그 원인은 `cloudFrontSigningExecutor`가 HikariCP 풀이 우연히 제공하던 유량제한을 잃고 `CallerRunsPolicy`로 CPU를 대량 잠식했기 때문임을 이후 검증으로 확정했다. uploadcourse는 두 환경 모두에서 `pending`이 0으로 사라지는 뚜렷한 개선을 보였다. 인덱스는 로컬에서만 검증됐고 EC2+RDS 환경에서는 아직 재검증하지 않았다 — 1단계 이후도 아직 미착수.
+> [TASK-PRESIGN-BOTTLENECK.md](TASK-PRESIGN-BOTTLENECK.md)가 원인을 규명한 문제("서명이 `@Transactional` 안에서 실행돼 HikariCP 커넥션을 초 단위로 점유하고, 동시 유저 20명 근처에서 이미 구조적으로 포화된다")에 대한 해결 계획이다. 단계별 우선순위와 각 단계의 근거·트레이드오프를 정리한 문서다. **0단계(트랜잭션 분리)와 그 과정에서 발견한 FK 인덱스 추가는 로컬 + EC2/RDS 분리 환경 양쪽에서 구현·재검증까지 완료했다** — 실측 기록이 길어져 별도 문서 4개로 분리했다(아래 0단계 절의 "실측 결과 요약" 참고). 핵심 결론만 먼저 밝히면: mycourse는 로컬·EC2+RDS 어느 환경에서도 0단계로 풀 포화가 개선되지 않았고(`pending` 최대값이 적용 전후로 완전히 동일), 오히려 평균 커넥션 점유시간이 악화됐다(47.3ms→53.3ms) — 그 원인은 `cloudFrontSigningExecutor`가 HikariCP 풀이 우연히 제공하던 유량제한을 잃고 `CallerRunsPolicy`로 CPU를 대량 잠식했기 때문임을 이후 검증으로 확정했다. uploadcourse는 두 환경 모두에서 `pending`이 0으로 사라지는 뚜렷한 개선을 보였다. 인덱스는 로컬에서만 검증됐고 EC2+RDS 환경에서는 아직 재검증하지 않았다. **1단계는 원안(Signed Cookie)을 기각하고 Custom Policy 와일드카드("코스당 서명 1회")로 대체해 EC2 실측까지 완료했다** — 브라운아웃은 설계대로 구조적으로 0이 됐지만, CPU 피크가 99%→70~83%로 내려갔음에도 처리량은 거의 그대로였다(151→150.5 req/s) — 병목이 CPU에서 다른 자원으로 옮겨간 것으로 보이며 정체는 미규명. 대신 범위 밖에서 제기했던 "JWT가 CloudFront 서명보다 큰 CPU 소비처일 수 있다"는 가설이 실측으로 확정됐다(JFR: Tomcat 스레드의 crypto 프레임 중 JWT 관련이 22~25%, CloudFront 서명은 0.00%로 완전 격리). 기각 근거·설계는 [stage1/design-and-poc.md](stage1/design-and-poc.md), 실측 기록은 [stage1/run-d-signature-once.md](stage1/run-d-signature-once.md) 참고.
 
 ## 배경 요약
 
@@ -39,18 +39,49 @@
 
 ---
 
-### 1단계 — mycourse 이미지 접근을 CloudFront Signed URL에서 Signed Cookie로 전환
+### 1단계 — mycourse 이미지 서명을 "이미지당 1회"에서 "코스당 1회"로 축소
 
-**무엇을**: 지금은 상세 조회 응답에 담긴 이미지 URL 하나하나(코스당 최대 수십 장)를 개별 서명한다. 대신 코스 열람 시점에 그 코스(또는 사용자) 범위에 대한 **Signed Cookie를 1회만 발급**하고, 이후 이미지 URL은 서명 없는 일반 CloudFront URL로 응답한다. 브라우저가 쿠키를 자동으로 실어 보내면 CloudFront 엣지에서 인가를 검증한다.
+> **원안 정정**: 이 절은 원래 "CloudFront Signed Cookie로 전환"을 제안했으나, 착수 시점에 기각하고 **Custom Policy + 와일드카드 `Resource`**로 대체했다. 두 방식은 "요청당 서명 1회"라는 목표가 같지만 클라이언트·인프라 비용이 전혀 다르다. 기각 근거와 채택안의 동작 원리는 [stage1/design-and-poc.md](stage1/design-and-poc.md)에 정리했다.
 
-**왜**: [AWS 공식 문서](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-choosing-signed-urls-cookies.html)가 정확히 이 상황을 위한 기준을 제시한다 — "여러 개의 제한된 파일에 접근을 제공하려면 Signed Cookie를 쓰라." 이 전환은 서명 연산량 자체를 "요청당 이미지 수"에서 "요청(또는 세션)당 1회"로 줄인다 — 0단계가 "커넥션을 덜 오래 쥔다"는 개선이라면, 이건 "애초에 서명할 일 자체를 줄인다"는 더 근본적인 개선이다.
+**무엇을**: 지금은 상세 조회 응답에 담긴 이미지 URL 하나하나(코스당 최대 수십 장)를 개별 서명한다. 대신 **코스 범위에 대한 정책 하나를 1회만 서명**하고, 그 결과 쿼리스트링(`Policy`/`Signature`/`Key-Pair-Id`)을 그 코스의 모든 이미지 URL에 그대로 이어붙인다. CloudFront는 서명 진위 검증과 경로 매칭을 분리해서 하므로, 같은 서명을 유지한 채 경로만 바꿔도 매번 통과한다.
 
-**트레이드오프 및 검토 필요 사항**:
-- CloudFront Signed Cookie는 발급 후 즉시 취소가 어렵다(TTL 만료를 기다려야 함) — 코스 소유자가 코스를 비공개로 전환하거나 이미지를 삭제했을 때의 접근 제어를 어떻게 가져갈지 별도 설계가 필요하다.
-- 쿠키 범위(`Path`)를 어떻게 잡을지: 코스 단위(`private/{courseId}/*`)로 좁게 잡을지, 사용자 단위(`private/{userId}/*`)로 넓게 잡아 갱신 빈도를 줄일지 트레이드오프가 있다.
-- 모바일 클라이언트(Android 앱, README 기준 이 프로젝트의 실제 FE)가 쿠키 기반 인증을 자연스럽게 다루는지 확인 필요 — 웹 브라우저와 달리 앱은 쿠키 저장소를 직접 관리해야 할 수 있다.
+**왜**: 0단계가 "커넥션을 덜 오래 쥔다"는 개선이라면, 이건 "애초에 서명할 일 자체를 줄인다"는 더 근본적인 개선이다. 응답 스키마가 그대로라 **Android 클라이언트 변경이 0**이고, `private/*` cache behavior와 `Managed-CachingOptimized` 캐시 정책을 그대로 쓰므로 **terraform 변경도 없다**.
 
-**검증**: 서명 마이크로벤치마크(`./gradlew benchmarkTest`)와 JFR CPU 프로파일(crypto 카테고리 샘플 비율)을 mycourse 상세 조회 부하 전후로 비교한다. 이미지 수와 무관하게 요청당 서명 비용이 상수에 가까워지는지 확인한다.
+**원안(Signed Cookie)을 기각한 이유 요약** — 상세는 [stage1/design-and-poc.md](stage1/design-and-poc.md):
+- AWS가 쿠키를 권하는 근거는 원문 확인 결과 CPU 절감이 아니라 "기존 URL을 안 바꿔도 됨"이라는 운영 편의였다.
+- 그런데 이 프로젝트의 FE는 Android 네이티브라 그 이점이 성립하지 않는다 — OkHttp 기본 `CookieJar`가 `NO_COOKIES`라 발급·재발급·영속화·CookieJar 배선을 FE가 전부 구현해야 한다.
+- `CLOUDFRONT_DOMAIN`이 `*.cloudfront.net`(Public Suffix List 등재)이라 크로스도메인 쿠키를 심을 수 없고, 커스텀 도메인 + ACM + Route53이 선행돼야 한다.
+- AWS가 제시한 완화책(세션 쿠키, viewer IP 고정)이 모바일에서 둘 다 무력화된다.
+
+**선행 작업**: 현재 S3 key(`private/{yyyy-MM-dd}/{UUID}.{ext}`)에 소유자·코스 정보가 없어 와일드카드로 좁힐 수 없다. **`private/{courseId}/{UUID}.{ext}`로 key 구조를 바꾸는 것이 필수 선행 작업**이며, 기존 비공개 이미지는 폐기한다.
+
+**3단계와의 관계**: 요청당 서명이 1회가 되면 fan-out 구조가 사라져 `cloudFrontSigningExecutor`·`CloudFrontSigningGate`·큐 사이징·부분 응답(브라운아웃)이 전부 존재 이유를 잃는다. 3단계 작업이 잘못됐다는 뜻이 아니라 **전제가 바뀌어 장치가 불필요해진 것**이며, 두 효과를 분리 측정하기 위해 제거는 Run D 측정 이후로 미룬다.
+
+**기대효과의 사전 추정**: Run A/B 실측을 역산하면 서명이 실제로 쓰는 CPU는 878 signs/s × 368us ≈ **2 vCPU 중 약 16%**다(자세한 계산은 [stage1/design-and-poc.md](stage1/design-and-poc.md)). 처리량 개선 상한은 **+19% 수준**으로 폭이 좁다. 채택 근거는 처리량이 아니라 ①브라운아웃 21%가 구조적으로 0이 되고 ②복잡한 방어 장치를 통째로 걷어낼 수 있다는 점이다.
+
+**검증**: Run A/B/C와 같은 인스턴스·시드·열린 루프(`scripts/k6/detail-arrival-rate.js`)로 Run D(게이트 유지)/D2(게이트 비활성)를 측정했다. JFR `cloudfront-signing` 전용 풀의 전체 샘플 점유율은 Run D 19.16%/Run D2 22.03%로 사전 역산값(16%, 하한으로 명시)과 근접했다. `cloudfront_signing_rejected_total`(executor 큐 거부)이 두 arm 모두 0으로 수렴해 3단계 인프라 제거 근거가 확보됐다.
+
+#### 실측 결과 요약
+
+**1. 브라운아웃이 설계대로 사라졌다.** Run A(49.4%)→B(21.0%)→**D/D2(구조적으로 0, `partial_responses` 메트릭 자체가 발생하지 않음)**. fail-closed 전환으로 게이트 거부(Run D 7,769건)가 전부 "완전한 503"이 됐고, "이미지 0장짜리 200"은 나가지 않았다.
+
+**2. CPU는 확실히 내려갔지만(피크 99%→70~83%), 처리량은 거의 그대로였다(151→150.5 req/s).** 사전 추정(+19% 상한)조차 실현되지 않았다 — 서명 CPU를 줄여도 **CPU가 더 이상 병목이 아니라서** 처리량이 안 올랐다. 도착률 400 req/s를 여전히 못 따라가는데(달성 ~150) 그 원인이 CPU에서 다른 자원으로 옮겨간 것으로 보이며, 이 병목의 정체는 이번 범위에서 규명하지 못했다.
+
+**3. 범위 밖에서 제기했던 "JWT가 서명보다 큰 CPU 소비처일 수 있다"는 가설이 실측으로 확정됐다.** Tomcat 스레드(http-nio)의 crypto 프레임 중 CloudFront 서명 프레임은 0.00%(완전 격리)인 반면, JWT 관련 프레임(`io.jsonwebtoken`/`javax.crypto.Mac`)은 22~25%를 차지했다 — CloudFront 서명 전용 풀 자체의 점유율(19~22%)과 같은 자릿수다. JWT 이중 파싱·파서 재생성·요청마다 DB 조회를 고치는 게 다음으로 유력한 개선 지점이다.
+
+상세 기록은 [stage1/run-d-signature-once.md](stage1/run-d-signature-once.md).
+
+#### 후속 비교 측정 (Run G/H/I) — before/after 비교의 두 구멍을 메움
+
+Run D~F까지의 비교에는 구멍이 둘 있었다. ①극한 부하(1200 req/s)는 도입 후 코드에만 걸어봤다 ②"동시 사용자 N명" 형태의 지표가 없었다. 도입 전 코드(`72f0ed2`, AbortPolicy 단독)를 다시 배포해 같은 인프라에서 셋을 더 측정했다.
+
+**4. 처리량 천장은 도입 전에도 같았다 — 다른 건 응답의 내용물이었다(Run G).** 1200 req/s에서 도입 전 155.22 req/s vs 도입 후 153.34 req/s로 사실상 동일했고, 두 arm 모두 `tomcat_threads_busy_threads`가 200(=`maxThreads`)에 닿았다. 그러나 도입 전은 200 응답의 **64.82%에 이미지가 빠져 있었고**(도입 후 0%), `data_received`가 117MB vs 275MB였다. **같은 부하 구간(100→200 req/s)에서 도입 전은 CPU 100%·스레드 116개로 이미 이미지를 15% 흘리는 중이었고, 도입 후는 CPU 62.3%·스레드 10개로 손실 없이 처리했다.** 브라운아웃은 부하에 비례해 악화됐다(400 req/s에서 49.4% → 1200 req/s에서 64.8%).
+
+**5. 품질을 지키며 감당한 최대 처리량이 약 1.9배가 됐고, 동시 사용자는 50명 → 400명 이상이 됐다(Run H/I).** 이미지 손실 0%를 유지한 구간의 최대 TPS가 **197.9 → 379.0 req/s(+91.5%)**다. 손실 0%를 유지한 마지막 VU 단계는 도입 전 50, 도입 후는 측정 상한인 400에서도 한계를 찾지 못했다. 전체 집계로도 처리량 +54.1%, 평균 지연 -35.1%, p95 -15.8%, 브라운아웃 48.05% → 0%다. JFR 서명 CPU 비중은 **77.55% → 18.38%**로 약 1/4이 됐다.
+
+**6. 닫힌 루프의 "빠른 거부 역설"이 실측으로 확인됐다.** 도입 전 arm은 VU 100→200에서 TPS가 +37.8% 늘었는데, 같은 구간 이미지 손실이 32.5%→85.2%로 뛰었다 — 처리량이 는 게 아니라 일을 안 하고 응답한 것이다. 이 때문에 "포화 VU"를 단독 개선 지표로 쓰면 안 된다(도입 후는 요청을 빨리 처리해서 **더 낮은** VU에서 평탄해진다). 자세한 원칙은 "공통 검증 방법" 절 참고.
+
+상세 기록은 [stage1/run-g-before-code-max-rate.md](stage1/run-g-before-code-max-rate.md)(Run G)와 [stage1/run-h-i-closed-loop.md](stage1/run-h-i-closed-loop.md)(Run H/I).
 
 ---
 
@@ -67,6 +98,8 @@
 ---
 
 ### 3단계 — 서명 실행자를 AbortPolicy + 요청 단위 세마포어 게이트로 재설계
+
+> **후일담(1단계 이후 제거됨)**: 이 절이 만든 `cloudFrontSigningExecutor`/`CloudFrontSigningGate`는 1단계(코스당 서명 1회 전환) 이후 제거했다. 이 단계가 대응하던 문제(요청 1건이 이미지 수만큼 서명 태스크를 fan-out하는 구조)의 전제 자체가 1단계로 사라졌기 때문이다 — 3단계가 잘못됐다는 뜻이 아니라, **그 시점엔 필요했고 지금은 아니라는 시간축의 기록**이다. Run D/D2(EC2)에서 executor 큐 거부가 0으로 수렴하는 것을 사전 신호로 확인한 뒤 제거했고, 제거 전후(Run D2 vs Run E)를 재측정해 처리량·지연이 악화되지 않음을 확인했다. 상세는 [stage1/run-e-infra-removed.md](stage1/run-e-infra-removed.md).
 
 **무엇을**: 0단계가 "트랜잭션 밖으로 뺀다"는 임기응변이라면, 이를 Michael Nygard(*Release It!*)가 정식화한 **Bulkhead 패턴**(서로 다른 성격의 작업을 별도 리소스 풀로 파티셔닝해 한쪽 지연이 다른 쪽으로 전염되지 않게 하는 것)으로 구조화한다.
 
@@ -104,27 +137,35 @@ Resilience4j `Bulkhead.Type.THREADPOOL`/`Type.SEMAPHORE`를 검토하고 기각�
 ## 실행 순서와 의존관계
 
 ```
-0단계 (트랜잭션 분리) ─┬─→ 3단계 (Bulkhead 정식화, 0단계의 효과를 완성시킴)
-                        │
-                        └─→ 1단계 (Signed Cookie 전환) ─→ 5단계 (알람화)
-                              │
-                              └─(보류 시 대안)→ 2단계 (TTL 캐싱)
+0단계 (트랜잭션 분리) ─→ 3단계 (AbortPolicy + 게이트) ─→ 1단계 (코스당 서명 1회)
+                                                              │
+                                                              ├─→ 3단계 인프라 제거
+                                                              │    (서명 1회로 존재 이유 소멸)
+                                                              │
+                                                              ├─→ 5단계 (알람화)
+                                                              │
+                                                              └─(측정 후 필요시)→ 2단계 (TTL 캐싱)
 
 4단계는 0~3단계 재측정 후 필요성 재평가
 ```
 
-**필수 경로**: 0 → 1 → 3 → 5, 2와 4는 조건부(각 단계 설명 참고).
+**필수 경로**: 0 → 3 → 1 → 5. 2와 4는 조건부(각 단계 설명 참고).
+
+원래 계획은 `0 → 1 → 3`이었으나 실제 진행 순서는 `0 → 3 → 1`이 됐다 — 0단계가 `CallerRunsPolicy`의 암묵적 전제를 무너뜨린 사고를 먼저 수습해야 했기 때문이다([callerruns-verification.md](stage0/production/callerruns-verification.md)). 그 결과 1단계가 3단계 인프라를 되돌리는 모양이 됐는데, 이는 3단계가 불필요했다는 뜻이 아니라 **1단계가 그 인프라의 전제(fan-out) 자체를 없앴다**는 뜻이다.
 
 ## 공통 검증 방법
 
 각 단계 적용 후 다음을 반복한다 — [TASK-PRESIGN-BOTTLENECK.md의 "재현 방법"](TASK-PRESIGN-BOTTLENECK.md)과 동일한 도구를 재사용한다.
 
 1. `scripts/sql/seed-benchmark.sql`로 동일 규격 시드
-2. `scripts/k6/detail-ramping.js`(VU 1→200)로 부하
-3. Prometheus range query로 `hikaricp_connections_active`/`pending`/`process_cpu_usage`를 시간축으로 뽑아 knee 위치 비교
-4. `SigningBenchmarkTest`(`./gradlew benchmarkTest`)로 요청당 서명 연산 횟수/비용 변화 확인
+2. **주력 — `scripts/k6/detail-arrival-rate.js`(열린 루프, 도착률 10→50→100→200→`MAX_RATE`)로 부하**
+3. **보조 — `scripts/k6/detail-ramping.js`(닫힌 루프, VU 1→200, 필요시 `MAX_VUS`로 확장)**. "동시 사용자 N명" 형태의 지표가 필요할 때만 쓴다
+4. Prometheus range query로 `hikaricp_connections_active`/`pending`/`tomcat_threads_busy_threads`/`process_cpu_usage`를 시간축으로 뽑아 knee 위치 비교
+5. `SigningBenchmarkTest`(`./gradlew benchmarkTest`)로 요청당 서명 연산 횟수/비용 변화 확인
 
-**목표 지표**: "VU 20 근처에서 `pending`이 나타나기 시작한다"는 현재 상태가, 각 단계 적용 후 어느 VU까지 밀려나는지를 정량적으로 비교해 단계별 효과를 분리 측정한다.
+> **[정정] 원래 이 절은 `detail-ramping.js`(닫힌 루프)만 지정했으나, Run A 이후 실제 측정은 전부 열린 루프로 진행됐다.** 닫힌 루프는 VU가 응답을 받아야 다음 요청을 보내므로, 서버가 요청을 빨리 거부하거나 이미지를 빼먹고 빨리 응답할수록 제공 부하가 오히려 늘어 **개선할수록 지표가 나빠지는 역설**이 생긴다. 이 역설은 [stage1/run-h-i-closed-loop.md](stage1/run-h-i-closed-loop.md) 판정 4에서 실측으로 확인됐다(도입 전 코드가 VU 100→200에서 TPS +37.8%인데 같은 구간 이미지 손실이 32.5%→85.2%). 닫힌 루프를 쓸 때는 **포화가 시작되는 지점까지만 신뢰**하고, 그 이후 구간의 TPS·지연은 비교에 쓰지 않는다.
+
+**목표 지표**: 판정을 단일 지표로 하지 않는다 — `pending`(커넥션 대기줄), `tomcat_threads_busy_threads`(스레드 상한), `partial_responses`(응답 품질), 처리량 평탄화, 지연 급증의 **다섯을 각각 "처음 발생한 지점"으로 기록**하고, 어느 것이 먼저 터지는지로 병목을 특정한다. 0단계 이후 HikariCP가 회복되면서 `pending` 하나만 보던 기존 방법론은 더 이상 통하지 않는다(실제로 Run F에서 진짜 상한은 Tomcat 스레드 풀이었다).
 
 ## 참고 문서
 
@@ -134,5 +175,10 @@ Resilience4j `Bulkhead.Type.THREADPOOL`/`Type.SEMAPHORE`를 검토하고 기각�
 - [stage0/production/ec2-rds.md](stage0/production/ec2-rds.md) — EC2+RDS 분리 환경 실측 기록
 - [stage0/production/callerruns-verification.md](stage0/production/callerruns-verification.md) — mycourse 점유시간 악화 원인(CallerRunsPolicy CPU 경합) 검증 기록
 - [stage0/production/abortpolicy-gate-verification.md](stage0/production/abortpolicy-gate-verification.md) — 위 원인에 대한 해결책(AbortPolicy 전환 + `CloudFrontSigningGate`) 설계·구현·EC2 재검증 기록
+- [stage1/design-and-poc.md](stage1/design-and-poc.md) — 1단계 설계. Signed Cookie 기각 근거와 Custom Policy 와일드카드 채택, PoC 검증 기록
+- [stage1/run-d-signature-once.md](stage1/run-d-signature-once.md) — 1단계 EC2 실측(Run D/D2). 브라운아웃 구조적 제거 확인, JWT가 CloudFront 서명급 CPU 소비처임을 확정, 병목이 CPU 이후 다른 자원으로 옮겨갔다는 미해결 관찰
+- [stage1/run-e-infra-removed.md](stage1/run-e-infra-removed.md) — 3단계 게이트·executor 제거 후 재측정(Run E) + knee 재탐색(Run F). 인프라 제거가 처리량·지연을 악화시키지 않음을 확인, Tomcat `maxThreads`(200)가 실제 처리량 상한임을 특정
+- [stage1/run-g-before-code-max-rate.md](stage1/run-g-before-code-max-rate.md) — 도입 전 코드를 Run F와 같은 극한 부하(1200 req/s)로 재측정(Run G). "처리량 천장은 원래도 같았지만 도입 전은 응답의 64.8%에 이미지가 빠져 있었다"를 확인. t3 `unlimited` 모드에서 `CPUCreditBalance=0`이 스로틀링을 뜻하지 않는다는 방법론 정정 포함
+- [stage1/run-h-i-closed-loop.md](stage1/run-h-i-closed-loop.md) — 닫힌 루프로 도입 전/후 포화점 비교(Run H/I). 무손실 최대 처리량 197.9→379.0 req/s, 품질 유지 동시 사용자 50명→400명 이상. 닫힌 루프의 "빠른 거부 역설"을 실측으로 확인
 - [CACHING-ROADMAP.md](../../CACHING-ROADMAP.md) — 2단계와 관련된 기존 캐싱 설계 원칙
 - GitHub 이슈 [#67](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/67) — 0단계에 대응. 1/3/5단계는 착수 시점에 별도 이슈로 분리하는 것을 검토한다.

@@ -40,9 +40,14 @@ SELECT p, ((p - 1) / 5) + 1, 'mycourse place ' || p,
        'http://place.local/mycourse/' || p, 'seoul'
 FROM generate_series(1, 15000) AS p;
 
--- place_image_id 1..30000, place당 2개, "private/" prefix (S3Service.PRIVATE_KEY_PREFIX와 동일)
+-- place_image_id 1..30000, place당 2개.
+-- key는 "private/{courseId}/..." 형식이어야 한다(MediaKeys.privatePrefix와 동일) — 상세조회가
+-- 코스당 서명 1회로 발급하는 정책의 Resource가 private/{courseId}/* 와일드카드라, key에 박힌
+-- courseId가 실제 소유 코스와 다르면 그 이미지만 403이 된다.
+-- 코스당 이미지 10장(place 5 × 이미지 2)이므로 courseId = ((i-1)/10)+1.
+-- generate_series가 integer를 주므로 '/'는 정수 나눗셈(버림)이다.
 INSERT INTO place_image (place_image_id, place_id, place_images3key)
-SELECT i, ((i - 1) / 2) + 1, 'private/mycourse-bench/' || i || '.jpg'
+SELECT i, ((i - 1) / 2) + 1, 'private/' || (((i - 1) / 10) + 1) || '/' || i || '.jpg'
 FROM generate_series(1, 30000) AS i;
 
 -- ============================================================
@@ -98,3 +103,13 @@ SELECT
     (SELECT count(*) FROM upload_course) AS upload_courses,                              -- 기대: 3000
     (SELECT count(*) FROM place_image WHERE place_image_id <= 30000) AS mycourse_images, -- 기대: 30000
     (SELECT count(*) FROM place_image WHERE place_image_id > 30000) AS uploadcourse_images; -- 기대: 30000
+
+-- 비공개 key의 courseId 정합성 검증 (기대: 0).
+-- 0이 아니면 그 이미지들은 소유 코스의 서명 스코프(private/{courseId}/*) 밖에 있어 상세조회
+-- 응답에서 403이 되고, k6의 partial_responses로 드러난다. 시드를 고친 뒤 반드시 확인한다.
+SELECT count(*) AS mismatched_private_keys
+FROM place_image pi
+JOIN place p        ON p.place_id = pi.place_id
+JOIN day_schedule d ON d.day_schedule_id = p.day_schedule_id
+WHERE pi.place_images3key LIKE 'private/%'
+  AND pi.place_images3key NOT LIKE 'private/' || d.course_id || '/%';

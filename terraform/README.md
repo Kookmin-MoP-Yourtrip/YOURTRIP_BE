@@ -111,8 +111,12 @@ terraform output -raw cloudfront_key_pair_id
 `aws_s3_bucket_versioning`을 `Disabled`로 명시했다. `S3Service.deleteFile()`은 사용자의
 명시적 삭제 요청에 대응하는데, 버저닝을 켜면 delete가 실제로는 delete marker만 추가하고
 이전 버전이 스토리지에 남아 "삭제하면 진짜 지워진다"는 앱의 기대 동작과 어긋나고 비용만
-쌓인다. 또한 업로드 키가 `uploads/{date}/{uuid}.{ext}`로 UUID 기반이라 동일 키 덮어쓰기
-충돌 가능성이 사실상 없어, 버저닝이 방어하는 시나리오 자체가 희박하다.
+쌓인다. 또한 업로드 키가 UUID 기반(`uploads/{date}/{uuid}.{ext}`,
+`private/{courseId}/{uuid}.{ext}`)이라 동일 키 덮어쓰기 충돌 가능성이 사실상 없어, 버저닝이
+방어하는 시나리오 자체가 희박하다.
+
+> 다만 버저닝이 꺼져 있다는 것은 **삭제된 오브젝트를 복구할 수단이 없다**는 뜻이기도 하다.
+> 대량 삭제(예: prefix 단위 정리)를 수행할 때는 사전 백업 여부를 반드시 별도로 판단해야 한다.
 
 ## 파괴(destroy)
 

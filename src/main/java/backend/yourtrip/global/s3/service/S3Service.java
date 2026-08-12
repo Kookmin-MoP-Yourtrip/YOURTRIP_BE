@@ -1,11 +1,11 @@
 package backend.yourtrip.global.s3.service;
 
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
+import backend.yourtrip.global.common.MediaKeys;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import java.io.IOException;
 import java.io.InputStream;
-import java.time.LocalDate;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -34,9 +34,6 @@ public class S3Service {
     // 짧게 잡아 굳이 오래 들고 있을 이유를 만들지 않는다.
     private static final String CACHE_CONTROL_PUBLIC = "public, max-age=15552000, immutable"; // 6개월
     private static final String CACHE_CONTROL_PRIVATE = "public, max-age=604800, immutable"; // 1주일
-
-    private static final String PUBLIC_KEY_PREFIX = "uploads/";
-    private static final String PRIVATE_KEY_PREFIX = "private/";
 
     // copy()에서 원본 key의 확장자만으로 Content-Type을 복원하기 위한 역방향 매핑
     // (extensionOf()의 순방향 매핑과 쌍을 이룬다).
@@ -82,15 +79,18 @@ public class S3Service {
     // 공개 콘텐츠(uploadcourse 썸네일/장소이미지, feed 미디어, 프로필 이미지 등) — CloudFront
     // 배포의 default cache behavior가 서명 없이 서빙한다.
     public UploadResult uploadFile(MultipartFile file) throws IOException {
-        return upload(file, PUBLIC_KEY_PREFIX, CACHE_CONTROL_PUBLIC);
+        return upload(file, MediaKeys.publicPrefix(), CACHE_CONTROL_PUBLIC);
     }
 
     // 비공개 콘텐츠(mycourse 장소 이미지 전용) — key가 "private/"로 시작해 CloudFront
-    // 배포의 "private/*" cache behavior(서명 필수)에 걸린다.
-    public UploadResult uploadPrivateFile(MultipartFile file) throws IOException {
-        return upload(file, PRIVATE_KEY_PREFIX, CACHE_CONTROL_PRIVATE);
+    // 배포의 "private/*" cache behavior(서명 필수)에 걸린다. courseId를 받는 이유는
+    // MediaKeys.privatePrefix() 참고 — 코스 단위 와일드카드 서명의 스코프와 key를 일치시킨다.
+    public UploadResult uploadPrivateFile(MultipartFile file, Long courseId) throws IOException {
+        return upload(file, MediaKeys.privatePrefix(courseId), CACHE_CONTROL_PRIVATE);
     }
 
+    // keyPrefix는 MediaKeys가 만든 완성된 prefix("uploads/2026-08-11/" 또는 "private/42/")다
+    // — 여기서는 파일 식별자만 덧붙인다.
     private UploadResult upload(MultipartFile file, String keyPrefix, String cacheControl)
         throws IOException {
         // 기본 검증
@@ -111,7 +111,7 @@ public class S3Service {
 
         // 키 생성
         String ext = extensionOf(contentType);
-        String key = keyPrefix + LocalDate.now() + "/" + UUID.randomUUID() + ext;
+        String key = keyPrefix + UUID.randomUUID() + ext;
 
         // 업로드
         PutObjectRequest put = PutObjectRequest.builder()
@@ -148,18 +148,21 @@ public class S3Service {
     // 복사해 물리적으로 분리한다. key 문자열만 복사하면 원본과 사본이 같은 오브젝트를 가리켜
     // "공개/비공개" 경계가 무너지기 때문이다(MyCourseServiceImpl.copyMyCourseWithSchedule 참고).
     public String copyToPublic(String privateKey) {
-        return copy(privateKey, PUBLIC_KEY_PREFIX, CACHE_CONTROL_PUBLIC);
+        return copy(privateKey, MediaKeys.publicPrefix(), CACHE_CONTROL_PUBLIC);
     }
 
-    public String copyToPrivate(String publicKey) {
-        return copy(publicKey, PRIVATE_KEY_PREFIX, CACHE_CONTROL_PRIVATE);
+    // targetCourseId는 사본이 속하게 될 코스다(원본 코스가 아니다) — 사본의 key가 사본
+    // 코스의 서명 스코프에 들어가야 하기 때문. fork 시 새로 채번된 코스 ID를 넘긴다.
+    public String copyToPrivate(String publicKey, Long targetCourseId) {
+        return copy(publicKey, MediaKeys.privatePrefix(targetCourseId), CACHE_CONTROL_PRIVATE);
     }
 
+    // targetPrefix는 upload()와 동일하게 MediaKeys가 만든 완성된 prefix다.
     private String copy(String sourceKey, String targetPrefix, String cacheControl) {
         int dotIndex = sourceKey.lastIndexOf('.');
         String ext = dotIndex >= 0 ? sourceKey.substring(dotIndex) : ".bin";
         String contentType = CONTENT_TYPE_BY_EXTENSION.getOrDefault(ext, "application/octet-stream");
-        String targetKey = targetPrefix + LocalDate.now() + "/" + UUID.randomUUID() + ext;
+        String targetKey = targetPrefix + UUID.randomUUID() + ext;
 
         try {
             // MetadataDirective.REPLACE — 원본의 Cache-Control은 이전 가시성(공개/비공개)

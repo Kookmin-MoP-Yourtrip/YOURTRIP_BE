@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
@@ -23,9 +24,8 @@ import backend.yourtrip.domain.mycourse.repository.TravelCourseRepository;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
-import backend.yourtrip.global.cloudfront.config.CloudFrontExecutorConfig;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
-import backend.yourtrip.global.cloudfront.service.CloudFrontSigningGate;
+import backend.yourtrip.global.cloudfront.service.CloudFrontService.CourseSignature;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.CloudFrontErrorCode;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
@@ -33,17 +33,10 @@ import backend.yourtrip.global.gemini.service.GeminiService;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
 import backend.yourtrip.global.s3.service.S3Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.concurrent.CyclicBarrier;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,14 +45,16 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 /**
- * getPlaceListByDay의 CloudFront Signed URL 병렬 발급 + 입장 제어 게이트(CloudFrontSigningGate)를
- * 검증한다. 게이트가 실제 executor로 서명을 병렬 실행하는지 증명해야 하므로, 게이트를 mock하지
- * 않고 permits=100(사실상 무제한)인 실제 인스턴스를 생성자에 직접 주입한다(@InjectMocks 미사용).
- * executor는 CloudFrontExecutorConfig.buildSigningExecutor로 만들어 프로덕션과 동일한 풀 정책을 쓴다.
- * 거부 경로(permit 소진, 큐 포화)는 CloudFrontSigningGateTest에서 별도로 검증한다.
+ * getPlaceListByDay의 CloudFront 코스 스코프 서명(코스당 1회)을 검증한다.
+ *
+ * <p>1단계(서명 1회 전환) 이전에는 이미지마다 병렬 서명 + 입장 제어 게이트가 있었으나,
+ * 요청당 서명이 1건으로 상수화되면서 fan-out이 사라져 그 인프라(cloudFrontSigningExecutor,
+ * CloudFrontSigningGate)를 제거했다 — Run D/D2 EC2 실측에서 executor 큐 거부가 두 arm 모두
+ * 0으로 수렴해 발동하지 않는 안전망임을 확인한 뒤의 제거다
+ * (docs/tasks/connection-pool-bottleneck/stage1/run-d-signature-once.md 판정 5).
+ * 이제 {@code cloudFrontService}를 직접 mock한다.
  */
 @ExtendWith(MockitoExtension.class)
 class MyCourseServiceImplTest {
@@ -91,60 +86,47 @@ class MyCourseServiceImplTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
-    private ThreadPoolTaskExecutor cloudFrontSigningExecutor;
-    private CloudFrontSigningGate cloudFrontSigningGate;
     private MyCourseServiceImpl myCourseService;
 
     private static final Long OWNER_ID = 10L;
     private static final Long COURSE_ID = 1L;
     private static final Long DAY_ID = 100L;
 
+    private static final String DOMAIN = "d111111abcdef8.cloudfront.net";
+    private static final String QUERY_STRING = "Policy=p&Signature=s&Key-Pair-Id=k";
+    private static final CourseSignature SIGNATURE = new CourseSignature(DOMAIN, QUERY_STRING);
+
+    private static String signedUrlOf(String s3Key) {
+        return "https://" + DOMAIN + "/" + s3Key + "?" + QUERY_STRING;
+    }
+
     @BeforeEach
     void setUp() {
-        // 프로덕션과 동일한 풀 정책(코어=최대=4, 큐 100, AbortPolicy)을 팩터리로 재사용한다.
-        cloudFrontSigningExecutor = CloudFrontExecutorConfig.buildSigningExecutor(
-            4, 100, new ThreadPoolExecutor.AbortPolicy());
-        cloudFrontSigningExecutor.initialize(); // 테스트에는 Spring 컨테이너가 없어 직접 호출한다.
-
-        // permits=100 → 사실상 무제한이라 이 테스트들에서는 게이트가 배압을 걸지 않는다.
-        // 거부/데드라인 경로는 CloudFrontSigningGateTest에서 결정론적으로 별도 검증한다.
-        cloudFrontSigningGate = new CloudFrontSigningGate(
-            cloudFrontService, cloudFrontSigningExecutor,
-            /* permits */ 100, /* acquireTimeoutMs */ 1000,
-            /* maxKeysPerRequest */ 100, /* deadlineMs */ 5000,
-            new SimpleMeterRegistry());
-
         myCourseService = new MyCourseServiceImpl(
             userService, s3Service, cloudFrontService, geminiService, objectMapper,
             travelCourseRepository, dayScheduleRepository, placeRepository,
             placeImageRepository, uploadCourseRepository, kakaoLocalClient,
-            myCourseDetailReader, cloudFrontSigningGate, eventPublisher
+            myCourseDetailReader, eventPublisher
         );
     }
 
-    @AfterEach
-    void tearDown() {
-        cloudFrontSigningExecutor.shutdown();
-    }
-
     @Test
-    @DisplayName("병렬로 서명해도 이미지-장소 매핑과 응답 구조가 올바르다")
-    void getPlaceListByDay_ParallelSigning_MapsImagesToCorrectPlaces() {
+    @DisplayName("코스 스코프 서명 하나로 모든 이미지 URL을 조립해도 이미지-장소 매핑이 올바르다")
+    void getPlaceListByDay_SingleCourseSignature_MapsImagesToCorrectPlaces() {
         // given
         DaySchedule daySchedule = daySchedule();
         Place place1 = place(daySchedule, 1L);
         Place place2 = place(daySchedule, 2L);
-        addImage(place1, 11L, "private/p1-a.jpg");
-        addImage(place1, 12L, "private/p1-b.jpg");
-        addImage(place2, 21L, "private/p2-a.jpg");
+        addImage(place1, 11L, "private/1/p1-a.jpg");
+        addImage(place1, 12L, "private/1/p1-b.jpg");
+        addImage(place2, 21L, "private/1/p2-a.jpg");
         daySchedule.getPlaces().add(place1);
         daySchedule.getPlaces().add(place2);
 
         given(userService.getCurrentUserId()).willReturn(OWNER_ID);
         given(myCourseDetailReader.readDaySchedule(COURSE_ID, DAY_ID, OWNER_ID))
             .willReturn(daySchedule);
-        given(cloudFrontService.getSignedUrl(anyString()))
-            .willAnswer(inv -> "signed-" + inv.getArgument(0, String.class));
+        given(cloudFrontService.signCourseScope(COURSE_ID)).willReturn(SIGNATURE);
 
         // when
         DayScheduleResponse response = myCourseService.getPlaceListByDay(COURSE_ID, DAY_ID);
@@ -156,78 +138,56 @@ class MyCourseServiceImplTest {
 
         assertThat(resPlace1.placeImages())
             .extracting(PlaceImageResponse::placeImageUrl)
-            .containsExactlyInAnyOrder("signed-private/p1-a.jpg", "signed-private/p1-b.jpg");
+            .containsExactlyInAnyOrder(signedUrlOf("private/1/p1-a.jpg"), signedUrlOf("private/1/p1-b.jpg"));
         assertThat(resPlace2.placeImages())
             .extracting(PlaceImageResponse::placeImageUrl)
-            .containsExactly("signed-private/p2-a.jpg");
+            .containsExactly(signedUrlOf("private/1/p2-a.jpg"));
     }
 
     @Test
-    @DisplayName("서명 작업이 커스텀 스레드풀에서 실제로 동시에 실행된다")
-    void getPlaceListByDay_SigningRunsConcurrentlyOnDedicatedPool() throws Exception {
-        // given: 이미지 4장, 풀 크기 4 — 4개의 서명 작업이 동시에 barrier에 도달해야만
-        // 전부 통과할 수 있도록 해서, "다른 스레드에서 실행됐다"뿐 아니라 "진짜 병렬로 실행됐다"를
-        // sleep 기반 타이밍 추정 없이 결정적으로 검증한다.
+    @DisplayName("이미지가 몇 장이든 서명은 코스당 정확히 1회만 호출된다")
+    void getPlaceListByDay_SignsOncePerCourseRegardlessOfImageCount() {
+        // 이 테스트가 1단계(TASK-PRESIGN-BOTTLENECK-FIX.md)의 목적 자체를 단언한다 —
+        // 예전에는 이미지 수만큼(여기서는 5회) 서명했다.
         DaySchedule daySchedule = daySchedule();
         Place place = place(daySchedule, 1L);
-        addImage(place, 11L, "k1");
-        addImage(place, 12L, "k2");
-        addImage(place, 13L, "k3");
-        addImage(place, 14L, "k4");
+        for (long i = 1; i <= 5; i++) {
+            addImage(place, 10L + i, "private/1/img-" + i + ".jpg");
+        }
         daySchedule.getPlaces().add(place);
 
         given(userService.getCurrentUserId()).willReturn(OWNER_ID);
         given(myCourseDetailReader.readDaySchedule(COURSE_ID, DAY_ID, OWNER_ID))
             .willReturn(daySchedule);
+        given(cloudFrontService.signCourseScope(COURSE_ID)).willReturn(SIGNATURE);
 
-        CyclicBarrier barrier = new CyclicBarrier(4);
-        Set<String> threadNames = new CopyOnWriteArraySet<>();
-        String callerThreadName = Thread.currentThread().getName();
-
-        given(cloudFrontService.getSignedUrl(anyString())).willAnswer(inv -> {
-            threadNames.add(Thread.currentThread().getName());
-            // 4개 작업이 모두 이 지점에 도달해야만 통과된다 = 진짜 동시 실행 증명.
-            // 순차 실행이거나 풀이 작으면 여기서 타임아웃(2초) 되어 실패로 드러난다.
-            barrier.await(2, TimeUnit.SECONDS);
-            return "signed-" + inv.getArgument(0, String.class);
-        });
-
-        // when
         DayScheduleResponse response = myCourseService.getPlaceListByDay(COURSE_ID, DAY_ID);
 
-        // then
-        assertThat(response.places().get(0).placeImages()).hasSize(4);
-        assertThat(threadNames).hasSize(4);
-        assertThat(threadNames).allMatch(name -> name.startsWith("cloudfront-signing-"));
-        assertThat(threadNames).doesNotContain(callerThreadName);
+        assertThat(response.places().get(0).placeImages()).hasSize(5);
+        verify(cloudFrontService, times(1)).signCourseScope(COURSE_ID);
     }
 
     @Test
-    @DisplayName("일부 이미지 서명이 실패해도 나머지 이미지는 정상 반환된다")
-    void getPlaceListByDay_PartialSigningFailure_ExcludesFailedImageOnly() {
-        // given
+    @DisplayName("서명이 실패하면 이미지 없는 200이 아니라 예외가 전파된다(fail-closed)")
+    void getPlaceListByDay_SigningFailure_PropagatesInsteadOfEmptyImages() {
+        // 서명이 이미지마다 있던 시절에는 실패한 것만 빼고 반환하는 fail-open이 합리적이었다.
+        // 서명이 1건이 된 지금 같은 정책을 쓰면 "이미지가 한 장도 없는 200"이 나가므로,
+        // 요청 전체를 실패시켜 브라운아웃이 지표에 드러나게 한다.
         DaySchedule daySchedule = daySchedule();
         Place place = place(daySchedule, 1L);
-        addImage(place, 11L, "ok-1");
-        addImage(place, 12L, "broken");
-        addImage(place, 13L, "ok-2");
+        addImage(place, 11L, "private/1/ok-1.jpg");
+        addImage(place, 12L, "private/1/ok-2.jpg");
         daySchedule.getPlaces().add(place);
 
         given(userService.getCurrentUserId()).willReturn(OWNER_ID);
         given(myCourseDetailReader.readDaySchedule(COURSE_ID, DAY_ID, OWNER_ID))
             .willReturn(daySchedule);
-        given(cloudFrontService.getSignedUrl("broken"))
+        given(cloudFrontService.signCourseScope(COURSE_ID))
             .willThrow(new BusinessException(CloudFrontErrorCode.FAIL_GENERATE_SIGNED_URL));
-        given(cloudFrontService.getSignedUrl("ok-1")).willReturn("signed-ok-1");
-        given(cloudFrontService.getSignedUrl("ok-2")).willReturn("signed-ok-2");
 
-        // when
-        DayScheduleResponse response = myCourseService.getPlaceListByDay(COURSE_ID, DAY_ID);
-
-        // then: 전체 요청은 실패하지 않고, 실패한 이미지만 제외된다.
-        assertThat(response.places().get(0).placeImages())
-            .extracting(PlaceImageResponse::placeImageUrl)
-            .containsExactlyInAnyOrder("signed-ok-1", "signed-ok-2");
+        assertThatThrownBy(() -> myCourseService.getPlaceListByDay(COURSE_ID, DAY_ID))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", CloudFrontErrorCode.FAIL_GENERATE_SIGNED_URL);
     }
 
     @Test
