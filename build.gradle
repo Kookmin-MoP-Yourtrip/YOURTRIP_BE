@@ -87,6 +87,15 @@ dependencies {
     implementation 'software.amazon.awssdk:s3'
     implementation 'software.amazon.awssdk:cloudfront' // CloudFrontUtilities (Signed URL 발급), CloudFrontClient (invalidation)
     implementation 'com.google.genai:google-genai:1.28.0'
+
+    // AI 코스 생성 멀티 에이전트 파이프라인용 LLM 전송 계층.
+    // 2.0.x가 아니라 1.1.x인 이유: Spring AI 2.0은 Spring Boot 4.0/4.1을 요구하는데 이 레포는
+    // Boot 3.5.7이다. 1.1.x는 Boot 3.4/3.5를 지원하고, 이번 설계가 Spring AI에 요구하는 유일한
+    // 기능(JSON 스키마를 프롬프트 텍스트가 아니라 response_format.json_schema API 필드로 전송)이
+    // 1.1.x에 이미 들어 있어 기능 손해가 없다.
+    // Boot 4 이전은 별도 작업으로 분리했다 (docs/tasks/ai-course-create/ROADMAP.md 참고).
+    implementation platform('org.springframework.ai:spring-ai-bom:1.1.8')
+    implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 }
 
 compileJava {
