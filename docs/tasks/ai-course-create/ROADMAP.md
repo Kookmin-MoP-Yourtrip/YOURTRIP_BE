@@ -79,10 +79,10 @@
 > 검증 방법·판정 결과·근거는 [STEP-0-prerequisites.md](steps/STEP-0-prerequisites.md) 참고.
 
 - [ ] 0-1. OpenAI API 키 발급 (**사용자 작업 — 대기 중**). `.env.example` 자리표시자와 8단계까지의 `GEMINI_API_KEY` 유지 방침은 반영 완료
-- [ ] 0-2. 네이버 개발자센터 앱 등록 + 검색 API 사용 설정 (**사용자 작업 — 대기 중**). `.env.example` 자리표시자는 반영 완료. **4단계의 블로커**
+- [ ] 0-2. **NCP 콘솔의 NAVER API HUB**에서 Application 등록 + 검색(Search) 선택 (**사용자 작업 — 대기 중**). 검색 API가 developers.naver.com에서 네이버 클라우드 플랫폼으로 옮겨가 엔드포인트·인증 헤더·과금 모델이 모두 바뀌었다. `.env.example` 자리표시자와 새 스펙은 반영 완료. **4단계의 블로커**
 - [x] 0-3. **Spring AI 구조화 출력 검증** — WireMock으로 요청 본문을 가로채 확인한 결과 **전제 성립**. 스키마는 `messages[].content`에 섞이지 않고 전부 `response_format.json_schema`에 `strict: true`로 전송된다. 공식 SDK 폴백 불필요. 실 API 검증(0-3b)만 키 발급 후로 남았다
 - [x] 0-4. 모델 배치 확정 — **Planner·Curator = `gpt-5.6-luna`, PlaceProfile = `gpt-5-nano`** (약 $0.0030/요청). 부수적으로 §11의 "비용은 전부 4층에서 나온다"는 전제가 금액 기준으로는 틀렸다는 것이 드러나 재계산했다
-- [x] 0-5. 쿼터 확인 — 네이버 25,000/일(요청당 35회 → 약 714요청), 카카오 100,000/일(요청당 45회 → 약 2,222요청). **네이버가 먼저 한계에 닿는다.** OpenAI RPM/TPM은 키 발급 후 확인
+- [x] 0-5. 쿼터·과금 확인 — 카카오 100,000/일(요청당 45회 → 약 2,222요청). **네이버는 무료 쿼터가 아니라 종량제로 바뀌었고 단가는 미확인이다** — 이 값에 따라 설계 문서 §11의 "3층은 비용 증가가 0" 전제가 달라지고 10단계 캐싱이 비용 절감 수단으로 격상된다. OpenAI RPM/TPM은 키 발급 후 확인
 - [x] 0-6. **테스트 인프라 신설** — `src/test/resources` + `application-test.yml`, `wiremock-standalone` 추가. 셰이딩판을 고른 이유는 이 레포의 테스트 클래스패스에 Jackson·Guava가 이미 여러 버전으로 경합 중이기 때문이다(추가 후 해석 결과 변화 없음을 확인)
 - [x] 0-7. `build.gradle`에 Java 21 toolchain 고정 — 바이트코드 major version 65 확인
 
@@ -261,6 +261,8 @@
 - **OpenAI 구조화 출력의 최상위 배열 제약** — 루트가 배열인 스키마를 받지 않는 것으로 알려져 있다. Curator 응답(`slots[]`)이 여기 해당하므로 객체로 감싸야 하는지 0-3b에서 실물 확정
 - **Spring AI ↔ Spring Boot 버전 스큐** — Spring AI 1.1.8이 요구하는 spring-core 6.2.19 / jackson 2.21.4가 Spring Boot 3.5.7의 관리 버전(6.2.12 / 2.19.2)으로 끌어내려진다. 현재는 문제가 관측되지 않았지만, 2단계에서 `NoSuchMethodError`가 나면 1.1.x 중 낮은 버전으로 내리는 것이 1차 대응이다
 - **OpenAI RPM/TPM 티어** — `llm.max-concurrent-calls` 초기값의 근거. 키 발급 후 확인
+- **네이버 검색 API 호출 단가** — NAVER API HUB로 이관되며 종량제가 됐다. 코스 1건에 ~35회를 호출하므로 **호출당 0.12원만 넘어도 LLM 비용(요청당 4.2원)을 앞지른다.** 설계 문서 §11의 "3층은 비용 증가가 0"이라는 평가와 10단계 캐싱의 우선순위가 이 숫자에 걸려 있다
+- **NAVER API HUB의 블로그 검색 경로와 응답 스키마** — 새 Base URL(`naverapihub.apigw.ntruss.com`) 아래에서 `/v1/search/blog.json`이 유지되는지, 3·4층이 의존하는 `total`·`postdate`·`title`·`description`이 그대로인지. 4단계 착수 시 실호출로 확정
 - **`duration` 키워드 처리 방침** — 6-5에서 결정
 - **`mood` 키워드 포함 비율** — 9-3 조건부 확장이 실제로 얼마나 자주 켜지는지(= 토큰 비용 증가폭)는 추정이 아니라 배포 후 실측이 필요하다
 - **파싱 실패율 28.6%의 산출물이 남아 있지 않다** — 수치는 Gemini 단일 호출 실험에서 직접 뽑은 것이지만 결과 파일을 보존하지 않아 사후 재확인이 불가능하다. 2-6 재측정부터는 **환각률과 파싱 실패율 모두 CSV로 남긴다**
