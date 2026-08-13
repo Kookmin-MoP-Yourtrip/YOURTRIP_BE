@@ -234,7 +234,18 @@
   ```bash
   ./gradlew benchmarkTest --tests '*AiHallucinationBaselineTest*' --rerun
   ```
-- **동일 입력 세트(지역 10곳 × 스타일 3조합 = 30요청, 여행 일수 3일 고정)와 동일한 `score()` 로직을 유지해야** 세 측정점이 비교 가능하다. 1-2에서 점수 하한선을 도입하므로, 하네스의 판정 로직은 하한선 도입 전 기준을 그대로 쓰도록 고정한다
+- **동일 입력 세트(지역 10곳 × 스타일 3조합 = 30요청, 여행 일수 3일 고정)와 동일한 `score()` 로직을 유지해야** 세 측정점이 비교 가능하다. 1-2에서 매칭 로직을 바꾸므로, 하네스의 판정 로직은 변경 전 기준을 그대로 쓰도록 고정한다
+- **환각률의 산출 정의를 고정한다** — 아래 절차를 그대로 따라야 세 측정점이 같은 것을 재게 된다. 근거와 한계는 [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)의 "25.6%의 정의"에 있다
+
+  ```
+  환각률 = 자동 프록시(매칭 실패율) + 세탁된 환각률
+    자동 프록시   = (NO_RESULT + S0 + S1_4) / 전체 장소 수
+    세탁된 환각률 = Σ_전체밴드 (밴드별 LAUNDERED 비율 × 밴드별 전체 비중)
+  ```
+
+  전제: ① 밴드 경계는 1-2 변경 전 `score()` 기준(`-1`/`0`/`1~4`/`5~7`/`8~10`) ② `UNVERIFIABLE`은 정답으로 간주 ③ `WRONG_MATCH`는 환각에 포함하지 않는다 ④ 수동 검증은 밴드별 층화 추출(밴드당 최대 10건, 시드 42)
+
+  > **[정정]** 이 정의는 **매칭에 실패한 장소를 전부 환각으로 취급**하며, `NO_RESULT`를 두 번 세는 구성이다. "LLM이 실제로 지어낸 이름"만 직접 추정하면 **5.7%**(범위 4~10%)로 훨씬 낮다. 그럼에도 **25.6%를 유지**하기로 했다 — 값을 고치면 세 측정점을 모두 같은 정의로 다시 계산해야 하는데, 비교 가능성이 정확성보다 이 지표의 목적에 부합하기 때문이다. 상세는 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) 판정 4
 - BASELINE 문서가 명시한 한계를 그대로 승계한다 — **LLM 응답은 비결정적이라 수 %p 차이는 반복 측정이 필요하고**, 카카오에 미등록된 실존 업소는 원리적으로 환각과 구분할 수 없다
 
 **부가 지표**
@@ -243,7 +254,9 @@
 |---|---|---|
 | HikariCP 커넥션 점유(최악) | ~360초 | ~50ms |
 | `ai.grounding.match{below_threshold\|no_result}` | 미계측 | 5단계부터 상시 관측 |
-| JSON 파싱 실패율 | **28.6%** | 구조화 출력으로 near-zero |
+| JSON 파싱 실패율 | ~~28.6%~~ → **16.7%** | 구조화 출력 + 절단 방지 |
+
+> **[정정]** 28.6%는 호출이 14건만 성공한 초기 배치의 값(4/14)이었다. 전체 30요청 기준은 **16.7%(5/30)** 다. 또 실패 5건 전부가 `Unexpected end-of-input`(응답 절단)이라 **구조화 출력만으로는 near-zero가 되지 않는다** — 2단계에서 출력 토큰 여유와 종료 사유 확인이 함께 필요하다. 근거는 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) 판정 3. 재측정 시 **분모(전체 요청 vs 호출 성공분)를 반드시 명시한다.**
 
 ## 범위에서 제외한 것
 
@@ -263,12 +276,17 @@
 - ~~**네이버 일 25,000건 한도 초과 시의 응답 코드**~~ — **429로 확인됨.** 4단계에서 이 코드는 재시도 대상이 아니라 그날의 쿼터 소진으로 다뤄야 한다(지수 백오프를 태우면 이미 소진된 쿼터에 지연 예산만 낭비된다)
 - **`duration` 키워드 처리 방침** — 6-5에서 결정
 - **`mood` 키워드 포함 비율** — 9-3 조건부 확장이 실제로 얼마나 자주 켜지는지(= 토큰 비용 증가폭)는 추정이 아니라 배포 후 실측이 필요하다
-- **파싱 실패율 28.6%의 산출물이 남아 있지 않다** — 수치는 Gemini 단일 호출 실험에서 직접 뽑은 것이지만 결과 파일을 보존하지 않아 사후 재확인이 불가능하다. 2-6 재측정부터는 **환각률과 파싱 실패율 모두 CSV로 남긴다**
+- ~~**파싱 실패율 28.6%의 산출물이 남아 있지 않다**~~ — **산출물은 남아 있었다.** `claude/multi-agent-travel-course-fc4b56` 워크트리의 `results/`에 CSV와 Gemini 원본 응답이 보존돼 있었고, 집계 결과를 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md)에 옮겼다.
+
+  > **[정정]** 재분석 결과 이 항목의 서술 두 가지가 틀렸다. ① **28.6%는 호출이 14건만 성공한 초기 배치의 값**(4/14)이고, 전체 30요청 기준으로는 **16.7%(5/30)** 다 ② 위 목표 1이 추정한 "trailing comma가 유력한 원인"은 **뒷받침되지 않는다** — 실패 5건 전부 `Unexpected end-of-input`(응답 절단)이고, 원본이 남은 1건은 386바이트에서 키 이름 중간에 잘려 있었다(정상 응답은 1,400~1,660바이트). **절단이 원인이면 구조화 출력만으로는 해소되지 않으므로**, 2단계에서 출력 토큰 여유와 종료 사유를 함께 확인해야 한다.
+
+  2-6 재측정부터는 **환각률과 파싱 실패율 모두 CSV로 남기고, 집계 결과를 `docs/`의 문서로 옮긴다**(`results/`는 `.gitignore` 대상이라 CSV 자체는 레포에 남지 않는다).
 
 ## 참고 문서
 
 - [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md) — 멀티 에이전트 파이프라인 설계 (이 로드맵의 근거 문서)
 - [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md) — 환각률 baseline 실측 (before 값 25.6%)
+- [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) — 위 측정의 원본 산출물 재분석. **1-2 설계의 근거**(점수 밴드 분포, 밴드×verdict 교차표, 파싱 실패 원인)
 - [TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md) — 커넥션 풀 병목 실측. 목표 4의 근거
 - [TASK-PRESIGN-BOTTLENECK-FIX.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md) — 트랜잭션 경계 분리 선례
 - [CACHING-ROADMAP.md](../../CACHING-ROADMAP.md) — 이 문서가 따르는 로드맵 포맷의 선례
