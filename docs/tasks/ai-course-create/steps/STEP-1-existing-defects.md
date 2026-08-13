@@ -12,7 +12,7 @@
 
 > `KakaoLocalClient.score()`에 점수 하한선 도입 — 미달 후보는 매칭 실패로 처리. **임계값은 BASELINE 측정의 점수 밴드 분포를 근거로 정한다**
 
-그 근거가 될 산출물(`results/*.csv`)은 `.gitignore` 대상이라 레포에 없었고, 다른 워크트리의 작업 디렉터리에서 찾아냈다. 집계 결과는 [BASELINE-ARTIFACT-ANALYSIS.md](../BASELINE-ARTIFACT-ANALYSIS.md)에 문서로 고정했다.
+그 근거가 될 산출물(`results/*.csv`)은 `.gitignore` 대상이라 레포에 없었고, 다른 워크트리의 작업 디렉터리에서 찾아냈다. 집계 결과는 [BASELINE-ARTIFACT-ANALYSIS.md](../hallucination/BASELINE-ARTIFACT-ANALYSIS.md)에 문서로 고정했다.
 
 **그 데이터가 처방을 반박했다.**
 
@@ -247,6 +247,6 @@ f7fee1f test: 1단계에서 고친 결함들의 회귀 테스트 추가
 ## 참고 문서
 
 - [ROADMAP.md](../ROADMAP.md) — 이 단계가 속한 실행 로드맵
-- [BASELINE-ARTIFACT-ANALYSIS.md](../BASELINE-ARTIFACT-ANALYSIS.md) — 1-2 설계 변경의 근거가 된 산출물 집계
+- [BASELINE-ARTIFACT-ANALYSIS.md](../hallucination/BASELINE-ARTIFACT-ANALYSIS.md) — 1-2 설계 변경의 근거가 된 산출물 집계
 - [STEP-0-prerequisites.md](STEP-0-prerequisites.md) — 앞 단계
 - [transaction-separation.md](../../connection-pool-bottleneck/stage0/local/transaction-separation.md) — 트랜잭션 분리 선례와 그 함정

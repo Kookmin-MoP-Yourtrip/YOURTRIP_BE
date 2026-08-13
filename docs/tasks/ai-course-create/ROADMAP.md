@@ -1,6 +1,6 @@
 # AI 코스 생성 멀티 에이전트 파이프라인 로드맵
 
-> [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md)에서 AI 코스 생성(`POST /api/my-courses/ai`)을 단일 LLM 호출에서 멀티 에이전트 파이프라인으로 재설계하기로 했다. 이 문서는 그 설계를 **어떤 순서로, 무엇을 만들고, 무엇을 확인해야 다음으로 넘어가는지**로 옮긴 실행 로드맵이다.
+> [MULTI-AGENT-PIPELINE.md](MULTI-AGENT-PIPELINE.md)에서 AI 코스 생성(`POST /api/my-courses/ai`)을 단일 LLM 호출에서 멀티 에이전트 파이프라인으로 재설계하기로 했다. 이 문서는 그 설계를 **어떤 순서로, 무엇을 만들고, 무엇을 확인해야 다음으로 넘어가는지**로 옮긴 실행 로드맵이다.
 >
 > 설계 문서 §13에 11단계 "도입 순서" 표가 있지만 각 단계가 한 줄 요약이라 착수/완료 판정 기준이 없다. 이 로드맵은 그 표를 승계하되 **0단계(사전 준비)를 앞에 추가**하고, 각 단계를 체크 가능한 항목으로 분해한다.
 >
@@ -10,13 +10,13 @@
 >
 > 진행 상황: **3단계 완료**(3-1 ~ 3-6, 테스트 234개 통과 + 앱 기동 확인 + 완전탐색 벤치마크 n=6~9 실측). 2단계에서 복합 환각률 25.6% → **7.5%**(luna, 수동 검증 82건)를 확인했고 Curator 모델은 `gpt-5.6-luna`로 확정됐다. 다음은 4단계(`NaverBlogClient`). 0단계 검증 항목은 전부 통과했고 OpenAI·네이버 키도 발급됐다.
 >
-> 1단계에서 **로드맵 1-2의 처방이 데이터와 반대라는 것이 드러나 방향을 바꿨다.** 아래 1-2 항목의 정정과 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) 참고.
+> 1단계에서 **로드맵 1-2의 처방이 데이터와 반대라는 것이 드러나 방향을 바꿨다.** 아래 1-2 항목의 정정과 [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 참고.
 
 ## 목표
 
 1. **JSON 파싱 실패로 요청이 통째로 실패하는 것을 없앤다.** 단일 호출 구조의 실측 파싱 실패율은 **28.6%** — 사용자가 AI 코스 생성을 4번 시도하면 1번 이상 503을 받는다는 뜻이다. 스키마를 프롬프트 텍스트가 아니라 **디코딩 레벨에서 강제**하면(구조화 출력) 이 실패 자체가 사라진다. 현재 프롬프트의 JSON 예시에 trailing comma가 들어 있는 것이 유력한 원인이라, 프롬프트에서 예시를 걷어내는 것만으로도 상당 부분 해소될 가능성이 높다.
 
-2. **환각 장소가 사용자 코스에 실리는 비율을 낮춘다.** 현재 실측 환각률은 **25.6%**([TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md)) — 코스 하나를 받으면 평균 4곳 중 1곳이 존재하지 않는 장소다. 후보를 3배로 늘리고 카카오 매칭 점수에 하한선을 두어, 검증을 통과하지 못한 장소는 파이프라인에 아예 존재하지 않게 만든다.
+2. **환각 장소가 사용자 코스에 실리는 비율을 낮춘다.** 현재 실측 환각률은 **25.6%**([AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)) — 코스 하나를 받으면 평균 4곳 중 1곳이 존재하지 않는 장소다. 후보를 3배로 늘리고 카카오 매칭 점수에 하한선을 두어, 검증을 통과하지 못한 장소는 파이프라인에 아예 존재하지 않게 만든다.
 
 3. **동선·시간 배치를 LLM 추측에서 실좌표 계산으로 옮긴다.** 좌표를 확보한 뒤 완전탐색으로 최적 순열을 고르므로, "시간 겹침 없음"·"day당 식사 1회"·"동선 역주행 없음"이 프롬프트 규칙이 아니라 **알고리즘 불변식**이 된다.
 
@@ -101,7 +101,7 @@
 - [x] 1-1. `Place`의 `@Builder` 파라미터를 `double` → `Double`로 교체 (좌표 `0.0/0.0` 저장 차단) + `PlaceMapper.toCopyEntity`의 언박싱 NPE 수정. **응답 DTO 3종과 `PlaceCacheItem`도 함께 승격해야 했다** — 게터를 읽는 쪽이 전부 새 언박싱 NPE 후보가 되기 때문이다. 응답의 좌표가 nullable이 되므로 **API 계약 변경이고 FE 공유가 필요하다**
 - [x] 1-2. ~~`KakaoLocalClient.score()`에 점수 하한선 도입~~ → **이름 정규화 + 이름 일치 필수 게이트**
 
-  > **[정정]** 산출물을 집계해보니 **총점 하한선은 역효과**였다. `S1_4`(3점)는 표본 18건이 전부 정답인데 `S5_7`(5·7점)은 31%가 불량이라, `≥5` 하한선은 정답 밴드를 버리고 불량 밴드를 남긴다. 원인은 검색 키워드가 "지역명 + 장소명"이라 주소(+3)·카테고리(+2) 가점이 거의 자동으로 붙어 **이름이 하나도 안 맞아도 5점이 나오는** 구조다. 그래서 하한선이 아니라 이름 일치를 별도 조건으로 두고, `contains`의 거짓 음성(띄어쓰기·중점)은 정규화로 없앴다. **`score()`는 건드리지 않았다** — 하네스가 리플렉션으로 직접 호출하므로 재측정 비교 가능성이 깨진다. 근거는 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) 판정 1·2
+  > **[정정]** 산출물을 집계해보니 **총점 하한선은 역효과**였다. `S1_4`(3점)는 표본 18건이 전부 정답인데 `S5_7`(5·7점)은 31%가 불량이라, `≥5` 하한선은 정답 밴드를 버리고 불량 밴드를 남긴다. 원인은 검색 키워드가 "지역명 + 장소명"이라 주소(+3)·카테고리(+2) 가점이 거의 자동으로 붙어 **이름이 하나도 안 맞아도 5점이 나오는** 구조다. 그래서 하한선이 아니라 이름 일치를 별도 조건으로 두고, `contains`의 거짓 음성(띄어쓰기·중점)은 정규화로 없앴다. **`score()`는 건드리지 않았다** — 하네스가 리플렉션으로 직접 호출하므로 재측정 비교 가능성이 깨진다. 근거는 [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 판정 1·2
 - [x] 1-3. `KakaoConfig`의 `WebClient`에 connect/response 타임아웃 + 커넥션 풀 명시, `.block(Duration.ofSeconds(20))` 제거. 현재는 타임아웃 초과 시 `IllegalStateException`이 던져져 `WebClientResponseException` catch를 빠져나가 원시 500이 된다 → **catch를 `WebClientException`으로 확장하는 것이 한 세트여야 한다.** 호출당 최악 지연 20초 → 5초
 - [x] 1-4. `buildKeywordsJson(null)` NPE 수정 + `AICourseCreateRequest.keywords`에 검증 추가(`@NotEmpty`)
 - [x] 1-5. `createAICourse`의 `@Transactional` 경계 분리 — 외부 I/O를 트랜잭션 밖으로 빼고 저장만 짧은 트랜잭션으로. **`AiCoursePersister`를 반드시 별도 빈으로 둔다**(같은 클래스 내부 호출은 Spring AOP 프록시를 우회해 트랜잭션이 아예 안 걸린다). 이 저장소에 `MyCourseDetailReader`라는 동일한 분리 선례가 있다. **걸림돌은 어노테이션이 아니라 더티체킹 의존이었다** — `ResolvedPlace`/`ResolvedDay` 중간 표현으로 "결과를 다 모은 뒤 저장" 순서로 뒤집었다
@@ -263,7 +263,7 @@
 
 ### 11. 실측 결과 기록
 
-- [ ] 11-1. 3점 비교 결과를 [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md)와 [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md)에 추가
+- [ ] 11-1. 3점 비교 결과를 [MULTI-AGENT-PIPELINE.md](MULTI-AGENT-PIPELINE.md)와 [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)에 추가
 - [ ] 11-2. 지연 예산 실측치와 설계 추정치(p50 12~16초 / p95 22~30초) 대조 → **202 Accepted 전환 여부를 데이터로 판단**
 - [ ] 11-3. 커넥션 점유 시간 before/after, 실제 토큰 비용, `mood` 키워드 포함 비율 기록
 
@@ -277,7 +277,7 @@
 | **OpenAI 단일 호출** | 2단계 직후 | 모델 교체 효과 | **7.5%** (자동 프록시 6.4% + 세탁 1.08%) |
 | OpenAI 파이프라인 | 8단계 직후 | 파이프라인 구조 효과 | 미측정 |
 
-**모델 교체만으로 25.6% → 7.5%, −18.1%p(71% 감소).** `UNVERIFIABLE`을 전부 환각으로 보는 상한도 9.3%로 before의 절반에 못 미친다. 모델 선택의 대가는 크다 — 같은 조건에서 `gpt-5-nano`는 **89.4%**(진짜 환각률 41.7%)로 Gemini보다도 나쁘다. 상세는 [TASK-AI-HALLUCINATION-OPENAI.md](TASK-AI-HALLUCINATION-OPENAI.md)
+**모델 교체만으로 25.6% → 7.5%, −18.1%p(71% 감소).** `UNVERIFIABLE`을 전부 환각으로 보는 상한도 9.3%로 before의 절반에 못 미친다. 모델 선택의 대가는 크다 — 같은 조건에서 `gpt-5-nano`는 **89.4%**(진짜 환각률 41.7%)로 Gemini보다도 나쁘다. 상세는 [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md)
 
 > **[2-6 중간 결과]** `gpt-5.6-luna` / 프롬프트지시 / 추론 `low` 조합 30요청 전량 성공, 장소 454개 기준 **자동 프록시 환각률 6.4%**(Gemini 19.8% → −13.4%p), **JSON 실패율 0.0%**(Gemini 16.7% → 0/30). `S8_10` 밴드 비중이 66.1% → 84.6%로 올랐다.
 >
@@ -287,7 +287,7 @@
 >
 > **자동 프록시 6.4%는 과대평가다.** `NO_RESULT` 10건 중 3건(통영 분소식당, 제주 민트 레스토랑, 통영 연대도몽돌해변)이 **실존 업소인데 카카오가 못 찾은 것**이었다. BASELINE 문서가 명시한 한계가 실제로 관측된 셈이다.
 >
-> **JSON 실패율 0%는 구조화 출력의 성과가 아니다.** 이 조합은 스키마를 보내지 않은 판이므로, Gemini의 16.7%가 구조화 출력 부재가 아니라 **모델 성질**이었다는 뜻이다 — [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) 판정 3("원인은 절단")과 방향이 같다.
+> **JSON 실패율 0%는 구조화 출력의 성과가 아니다.** 이 조합은 스키마를 보내지 않은 판이므로, Gemini의 16.7%가 구조화 출력 부재가 아니라 **모델 성질**이었다는 뜻이다 — [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 판정 3("원인은 절단")과 방향이 같다.
 >
 > **"모델 교체" 축에 온도와 추론 강도가 딸려 들어간다** — 두 모델 모두 커스텀 온도를 거부하고(기본값 1 고정) 추론 강도도 Gemini와 다르다. 우리가 고를 수 있는 변수가 아니라 모델 선택에 딸려오는 성질이며, 온도가 높은 쪽이 불리하므로 6.4%는 보수적인 값이다. 상세는 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 판정 6
 
@@ -296,7 +296,7 @@
   ./gradlew benchmarkTest --tests '*AiHallucinationBaselineTest*' --rerun
   ```
 - **동일 입력 세트(지역 10곳 × 스타일 3조합 = 30요청, 여행 일수 3일 고정)와 동일한 `score()` 로직을 유지해야** 세 측정점이 비교 가능하다. 1-2에서 매칭 로직을 바꾸므로, 하네스의 판정 로직은 변경 전 기준을 그대로 쓰도록 고정한다
-- **환각률의 산출 정의를 고정한다** — 아래 절차를 그대로 따라야 세 측정점이 같은 것을 재게 된다. 근거와 한계는 [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md)의 "25.6%의 정의"에 있다
+- **환각률의 산출 정의를 고정한다** — 아래 절차를 그대로 따라야 세 측정점이 같은 것을 재게 된다. 근거와 한계는 [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)의 "25.6%의 정의"에 있다
 
   ```
   환각률 = 자동 프록시(매칭 실패율) + 세탁된 환각률
@@ -306,7 +306,7 @@
 
   전제: ① 밴드 경계는 1-2 변경 전 `score()` 기준(`-1`/`0`/`1~4`/`5~7`/`8~10`) ② `UNVERIFIABLE`은 정답으로 간주 ③ `WRONG_MATCH`는 환각에 포함하지 않는다 ④ 수동 검증은 밴드별 층화 추출(밴드당 최대 10건, 시드 42)
 
-  > **[정정]** 이 정의는 **매칭에 실패한 장소를 전부 환각으로 취급**하며, `NO_RESULT`를 두 번 세는 구성이다. "LLM이 실제로 지어낸 이름"만 직접 추정하면 **5.7%**(범위 4~10%)로 훨씬 낮다. 그럼에도 **25.6%를 유지**하기로 했다 — 값을 고치면 세 측정점을 모두 같은 정의로 다시 계산해야 하는데, 비교 가능성이 정확성보다 이 지표의 목적에 부합하기 때문이다. 상세는 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) 판정 4
+  > **[정정]** 이 정의는 **매칭에 실패한 장소를 전부 환각으로 취급**하며, `NO_RESULT`를 두 번 세는 구성이다. "LLM이 실제로 지어낸 이름"만 직접 추정하면 **5.7%**(범위 4~10%)로 훨씬 낮다. 그럼에도 **25.6%를 유지**하기로 했다 — 값을 고치면 세 측정점을 모두 같은 정의로 다시 계산해야 하는데, 비교 가능성이 정확성보다 이 지표의 목적에 부합하기 때문이다. 상세는 [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 판정 4
 - BASELINE 문서가 명시한 한계를 그대로 승계한다 — **LLM 응답은 비결정적이라 수 %p 차이는 반복 측정이 필요하고**, 카카오에 미등록된 실존 업소는 원리적으로 환각과 구분할 수 없다
 
 **부가 지표**
@@ -317,7 +317,7 @@
 | `ai.grounding.match{below_threshold\|no_result}` | 미계측 | 5단계부터 상시 관측 |
 | JSON 파싱 실패율 | ~~28.6%~~ → **16.7%** | 구조화 출력 + 절단 방지 → **2-6에서 0.0% 관측**(luna/프롬프트지시) |
 
-> **[정정]** 28.6%는 호출이 14건만 성공한 초기 배치의 값(4/14)이었다. 전체 30요청 기준은 **16.7%(5/30)** 다. 또 실패 5건 전부가 `Unexpected end-of-input`(응답 절단)이라 **구조화 출력만으로는 near-zero가 되지 않는다** — 2단계에서 출력 토큰 여유와 종료 사유 확인이 함께 필요하다. 근거는 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) 판정 3. 재측정 시 **분모(전체 요청 vs 호출 성공분)를 반드시 명시한다.**
+> **[정정]** 28.6%는 호출이 14건만 성공한 초기 배치의 값(4/14)이었다. 전체 30요청 기준은 **16.7%(5/30)** 다. 또 실패 5건 전부가 `Unexpected end-of-input`(응답 절단)이라 **구조화 출력만으로는 near-zero가 되지 않는다** — 2단계에서 출력 토큰 여유와 종료 사유 확인이 함께 필요하다. 근거는 [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 판정 3. 재측정 시 **분모(전체 요청 vs 호출 성공분)를 반드시 명시한다.**
 
 ## 범위에서 제외한 것
 
@@ -338,7 +338,7 @@
 - ~~**네이버 일 25,000건 한도 초과 시의 응답 코드**~~ — **429로 확인됨.** 4단계에서 이 코드는 재시도 대상이 아니라 그날의 쿼터 소진으로 다뤄야 한다(지수 백오프를 태우면 이미 소진된 쿼터에 지연 예산만 낭비된다)
 - **`duration` 키워드 처리 방침** — 6-5에서 결정
 - **`mood` 키워드 포함 비율** — 9-3 조건부 확장이 실제로 얼마나 자주 켜지는지(= 토큰 비용 증가폭)는 추정이 아니라 배포 후 실측이 필요하다
-- ~~**파싱 실패율 28.6%의 산출물이 남아 있지 않다**~~ — **산출물은 남아 있었다.** `claude/multi-agent-travel-course-fc4b56` 워크트리의 `results/`에 CSV와 Gemini 원본 응답이 보존돼 있었고, 집계 결과를 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md)에 옮겼다.
+- ~~**파싱 실패율 28.6%의 산출물이 남아 있지 않다**~~ — **산출물은 남아 있었다.** `claude/multi-agent-travel-course-fc4b56` 워크트리의 `results/`에 CSV와 Gemini 원본 응답이 보존돼 있었고, 집계 결과를 [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md)에 옮겼다.
 
   > **[정정]** 재분석 결과 이 항목의 서술 두 가지가 틀렸다. ① **28.6%는 호출이 14건만 성공한 초기 배치의 값**(4/14)이고, 전체 30요청 기준으로는 **16.7%(5/30)** 다 ② 위 목표 1이 추정한 "trailing comma가 유력한 원인"은 **뒷받침되지 않는다** — 실패 5건 전부 `Unexpected end-of-input`(응답 절단)이고, 원본이 남은 1건은 386바이트에서 키 이름 중간에 잘려 있었다(정상 응답은 1,400~1,660바이트). **절단이 원인이면 구조화 출력만으로는 해소되지 않으므로**, 2단계에서 출력 토큰 여유와 종료 사유를 함께 확인해야 한다.
 
@@ -346,10 +346,10 @@
 
 ## 참고 문서
 
-- [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md) — 멀티 에이전트 파이프라인 설계 (이 로드맵의 근거 문서)
-- [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md) — 환각률 baseline 실측 (before 값 25.6%)
-- [TASK-AI-HALLUCINATION-OPENAI.md](TASK-AI-HALLUCINATION-OPENAI.md) — **OpenAI 재측정 (중간 측정점 7.5%)**. luna/nano 비교로 Curator 모델을 확정한 근거
-- [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) — 위 측정의 원본 산출물 재분석. **1-2 설계의 근거**(점수 밴드 분포, 밴드×verdict 교차표, 파싱 실패 원인)
+- [MULTI-AGENT-PIPELINE.md](MULTI-AGENT-PIPELINE.md) — 멀티 에이전트 파이프라인 설계 (이 로드맵의 근거 문서)
+- [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md) — 환각률 baseline 실측 (before 값 25.6%)
+- [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md) — **OpenAI 재측정 (중간 측정점 7.5%)**. luna/nano 비교로 Curator 모델을 확정한 근거
+- [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) — 위 측정의 원본 산출물 재분석. **1-2 설계의 근거**(점수 밴드 분포, 밴드×verdict 교차표, 파싱 실패 원인)
 - [TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md) — 커넥션 풀 병목 실측. 목표 4의 근거
 - [TASK-PRESIGN-BOTTLENECK-FIX.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md) — 트랜잭션 경계 분리 선례
 - [CACHING-ROADMAP.md](../../CACHING-ROADMAP.md) — 이 문서가 따르는 로드맵 포맷의 선례
