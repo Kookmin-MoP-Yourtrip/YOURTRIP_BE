@@ -25,8 +25,21 @@ public class LlmTruncatedResponseException extends LlmResponseException {
     /** 벤더가 준 종료 사유 원문. OpenAI 기준 {@code length} / {@code content_filter} 등. */
     private final String finishReason;
 
-    public LlmTruncatedResponseException(String agentName, String finishReason) {
-        super(agentName, "LLM 응답이 정상 종료되지 않았다 (finishReason=" + finishReason + ")");
+    /**
+     * 끊기기 전까지 받은 본문.
+     *
+     * <p>버리지 않고 들고 있는 이유는 <b>절단의 원인이 두 가지로 갈리기 때문</b>이다 — 출력 상한에
+     * 닿아서 잘린 것과 스트림이 중간에 끊긴 것은 대응이 다르다(전자는 {@code max-output-tokens}를
+     * 올리면 되고, 후자는 그렇지 않다). 실제로 Gemini baseline의 절단 1건은 정상 응답이
+     * 1,400~1,660바이트인데 <b>386바이트</b>에서 끊겨 있어 상한이 원인이 아님을 알 수 있었다
+     * ({@code BASELINE-ARTIFACT-ANALYSIS.md} 판정 3). 길이를 재려면 원문이 있어야 한다.
+     */
+    private final String partialText;
+
+    public LlmTruncatedResponseException(String agentName, String finishReason, String partialText) {
+        super(agentName, "LLM 응답이 정상 종료되지 않았다 (finishReason=%s, %d바이트 수신)"
+            .formatted(finishReason, partialText == null ? 0 : partialText.length()));
         this.finishReason = finishReason;
+        this.partialText = partialText;
     }
 }

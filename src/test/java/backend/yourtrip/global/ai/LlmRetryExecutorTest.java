@@ -51,7 +51,7 @@ class LlmRetryExecutorTest {
         @Test
         @DisplayName("두 번 실패 후 성공하면 결과를 돌려주고 재시도는 2회만 대기한다")
         void succeedsAfterTransientFailures() {
-            LlmRetryExecutor executor = executorWith(new Retry(3, 0.5, 4.0, 0.0));
+            LlmRetryExecutor executor = executorWith(new Retry(3, 2, 0.5, 4.0, 0.0));
             AtomicInteger calls = new AtomicInteger();
 
             String result = executor.execute(AGENT, () -> {
@@ -69,7 +69,7 @@ class LlmRetryExecutorTest {
         @Test
         @DisplayName("계속 실패하면 시도 횟수를 담은 LlmTransportException 이 나온다")
         void exhaustsAttempts() {
-            LlmRetryExecutor executor = executorWith(new Retry(3, 0.5, 4.0, 0.0));
+            LlmRetryExecutor executor = executorWith(new Retry(3, 2, 0.5, 4.0, 0.0));
             AtomicInteger calls = new AtomicInteger();
 
             assertThatThrownBy(() -> executor.execute(AGENT, () -> {
@@ -90,7 +90,7 @@ class LlmRetryExecutorTest {
         @Test
         @DisplayName("재시도 대상이 아닌 예외는 즉시 통과시킨다 — 백오프를 태우지 않는다")
         void doesNotRetryNonRetriable() {
-            LlmRetryExecutor executor = executorWith(new Retry(3, 0.5, 4.0, 0.0));
+            LlmRetryExecutor executor = executorWith(new Retry(3, 2, 0.5, 4.0, 0.0));
             AtomicInteger calls = new AtomicInteger();
 
             // 스키마가 잘못돼 400이 오는 상황: 다시 보내도 같은 결과다.
@@ -109,7 +109,7 @@ class LlmRetryExecutorTest {
     @DisplayName("백오프 계산 (순수 함수)")
     class Backoff {
 
-        private final Retry retry = new Retry(5, 0.5, 4.0, 0.0);
+        private final Retry retry = new Retry(5, 2, 0.5, 4.0, 0.0);
 
         @Test
         @DisplayName("지터가 0이면 initial 에서 2배씩 늘어난다")
@@ -131,7 +131,7 @@ class LlmRetryExecutorTest {
         @Test
         @DisplayName("지터 0.3 이면 계산값의 70%~130% 사이로 흩어진다")
         void appliesJitterBand() {
-            Retry jittered = new Retry(5, 1.0, 10.0, 0.3);
+            Retry jittered = new Retry(5, 2, 1.0, 10.0, 0.3);
 
             assertThat(LlmRetryExecutor.backoffMillis(jittered, 1, 0.0)).isEqualTo(700);
             assertThat(LlmRetryExecutor.backoffMillis(jittered, 1, 0.5)).isEqualTo(1_000);

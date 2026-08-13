@@ -237,6 +237,22 @@ class OpenAiLlmClientTest {
 
             assertThat(requestCount()).isEqualTo(2);
         }
+
+        @Test
+        @DisplayName("semantic-attempts 를 1로 두면 보정 재시도 없이 첫 응답 그대로 끝난다")
+        void honoursSemanticAttemptsOne() {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .willReturn(okJson(completion("JSON이 아니다", "stop"))));
+
+            OpenAiLlmClient client = clientWith(properties(2, new Retry(3, 1, 0.01, 0.02, 0.0)));
+
+            assertThatThrownBy(() -> client.generate(call(SCHEMA)))
+                .isInstanceOf(LlmParseException.class);
+
+            // 2-6 baseline 측정이 이 설정에 의존한다 — 재시도가 실패를 가리면 Gemini 측정값과
+            // 같은 자로 잴 수 없다.
+            assertThat(requestCount()).isEqualTo(1);
+        }
     }
 
     @Nested
@@ -250,7 +266,7 @@ class OpenAiLlmClientTest {
                 .willReturn(okJson(completion("{\\\"title\\\":\\\"t\\\"}", "stop"))
                     .withFixedDelay(300)));
 
-            OpenAiLlmClient client = clientWith(properties(1, new Retry(3, 0.01, 0.02, 0.0)));
+            OpenAiLlmClient client = clientWith(properties(1, new Retry(3, 2, 0.01, 0.02, 0.0)));
 
             long startedAt = System.nanoTime();
             List.of(
@@ -277,7 +293,7 @@ class OpenAiLlmClientTest {
     private OpenAiLlmClient client() {
         // 백오프를 짧게 둬 테스트가 실제로 몇 초씩 자지 않게 한다. 백오프 값 자체의 정확성은
         // LlmRetryExecutorTest 가 순수 함수로 따로 검증한다.
-        return clientWith(properties(2, new Retry(3, 0.01, 0.02, 0.0)));
+        return clientWith(properties(2, new Retry(3, 2, 0.01, 0.02, 0.0)));
     }
 
     private OpenAiLlmClient clientWith(AiLlmProperties properties) {

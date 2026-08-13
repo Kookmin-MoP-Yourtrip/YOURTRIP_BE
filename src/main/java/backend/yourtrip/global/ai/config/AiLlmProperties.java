@@ -67,7 +67,13 @@ public record AiLlmProperties(
      * 정도로 충분하고, 서킷브레이커를 얹으면 LLM 장애 시 "코스를 아예 못 만드는" 상태가 되는데
      * 파이프라인의 폴백 전략이 어차피 에이전트 실패를 개별 흡수한다.
      *
-     * @param attempts            초회를 포함한 총 시도 횟수
+     * @param attempts            전송 계층의 총 시도 횟수(초회 포함)
+     * @param semanticAttempts    의미 계층의 총 시도 횟수(초회 포함). 설계값은 2 —
+     *                            깨진 응답에 보정 지시를 붙여 한 번 더 부르고, 그 이상은 지연
+     *                            예산만 태운다. <b>설정으로 뺀 이유는 baseline 측정 때문</b>이다:
+     *                            재시도가 실패를 가려버리면 "구조화 출력이 파싱 실패를 얼마나
+     *                            줄이는가"를 Gemini 측정값과 같은 자로 잴 수 없어, 2-6에서는
+     *                            1로 내려 첫 응답 그대로를 잰다
      * @param initialDelaySeconds 첫 백오프
      * @param maxDelaySeconds     백오프 상한
      * @param jitter              지연에 곱해지는 무작위 폭(0.3이면 ±30%). <b>여러 요청이 429를
@@ -75,6 +81,7 @@ public record AiLlmProperties(
      */
     public record Retry(
         @Positive int attempts,
+        @Positive int semanticAttempts,
         @Positive double initialDelaySeconds,
         @Positive double maxDelaySeconds,
         @PositiveOrZero double jitter

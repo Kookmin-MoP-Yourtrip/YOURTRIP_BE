@@ -140,7 +140,12 @@ llm:
   max-concurrent-calls: 2
 
   retry:
+    # 전송 계층(429/5xx). 이 값이 실제 HTTP 시도 횟수와 정확히 일치해야 한다 —
+    # Spring AI의 RetryTemplate과 HTTP 클라이언트의 자체 재시도를 모두 끈 이유가 그것이다.
     attempts: 3
+    # 의미 계층(200인데 깨진 응답). 초회 + 보정 1회.
+    # 2-6 baseline 측정에서는 재시도가 파싱 실패를 가리지 않도록 1로 내려 잰다.
+    semantic-attempts: 2
     initial-delay-seconds: 0.5
     max-delay-seconds: 4.0
     # 여러 요청이 429를 동시에 맞았을 때 재시도가 같은 시각에 몰리는 것을 흩는다.

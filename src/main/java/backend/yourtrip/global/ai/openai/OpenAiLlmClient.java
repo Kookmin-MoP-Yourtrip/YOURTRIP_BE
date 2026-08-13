@@ -199,17 +199,27 @@ public class OpenAiLlmClient implements LlmClient {
     }
 
     /**
-     * 의미 계층 — 200 OK인데 쓸 수 없는 응답이면 <b>1회만</b> 보정 재시도한다.
-     * 2회 이상은 지연 예산만 태운다는 것이 설계 문서 §6의 판단이다.
+     * 의미 계층 — 200 OK인데 쓸 수 없는 응답이면 보정 지시를 붙여 다시 부른다.
+     *
+     * <p>기본값은 총 2회(초회 + 보정 1회)다. 3회 이상은 지연 예산만 태운다는 것이 설계 문서 §6의
+     * 판단이며, {@code llm.retry.semantic-attempts}로 조절한다.
      */
     private <T> T generateWithSemanticRetry(LlmCall<T> call) {
-        try {
-            return callOnce(call, false);
-        } catch (LlmResponseException first) {
-            log.warn("LLM 응답이 유효하지 않아 보정 재시도한다. agent={}, cause={}",
-                call.agentName(), first.getMessage());
-            return callOnce(call, true);
+        int attempts = Math.max(1, properties.retry().semanticAttempts());
+        LlmResponseException last = null;
+
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            try {
+                return callOnce(call, attempt > 1);
+            } catch (LlmResponseException e) {
+                last = e;
+                if (attempt < attempts) {
+                    log.warn("LLM 응답이 유효하지 않아 보정 재시도한다({}/{}). agent={}, cause={}",
+                        attempt, attempts - 1, call.agentName(), e.getMessage());
+                }
+            }
         }
+        throw last;
     }
 
     private <T> T callOnce(LlmCall<T> call, boolean correcting) {
@@ -218,15 +228,15 @@ public class OpenAiLlmClient implements LlmClient {
 
         Generation generation = requireGeneration(call, response);
         String finishReason = generation.getMetadata().getFinishReason();
+        String text = generation.getOutput().getText();
 
         // 파싱보다 먼저 확인한다. 잘린 JSON을 파싱하면 원인이 "스키마 위반"으로 오분류되고,
         // 그게 정확히 Gemini baseline에서 파싱 실패율의 원인을 몇 달 놓친 경위다.
         if (!isNormalFinish(finishReason)) {
-            throw new LlmTruncatedResponseException(call.agentName(), finishReason);
+            throw new LlmTruncatedResponseException(call.agentName(), finishReason, text);
         }
 
-        return responseParser.parse(call.agentName(), generation.getOutput().getText(),
-            call.responseType());
+        return responseParser.parse(call.agentName(), text, call.responseType());
     }
 
     private <T> Prompt buildPrompt(LlmCall<T> call, boolean correcting) {
@@ -397,7 +407,7 @@ public class OpenAiLlmClient implements LlmClient {
     private <T> Generation requireGeneration(LlmCall<T> call, ChatResponse response) {
         Generation generation = response == null ? null : response.getResult();
         if (generation == null || generation.getOutput() == null) {
-            throw new LlmTruncatedResponseException(call.agentName(), "no_choice");
+            throw new LlmTruncatedResponseException(call.agentName(), "no_choice", "");
         }
         return generation;
     }

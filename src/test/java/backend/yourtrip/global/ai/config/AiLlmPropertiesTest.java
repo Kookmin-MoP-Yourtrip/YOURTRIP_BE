@@ -90,17 +90,18 @@ class AiLlmPropertiesTest {
     @Test
     @DisplayName("모델 ID 가 비어 있으면 기동 시점에 바인딩이 실패한다")
     void blankModelIsRejectedAtBindTime() {
-        Map<String, Object> broken = Map.of(
-            "llm.provider", "openai",
-            "llm.timeout-ms", 20000,
-            "llm.max-concurrent-calls", 2,
-            "llm.retry.attempts", 3,
-            "llm.retry.initial-delay-seconds", 0.5,
-            "llm.retry.max-delay-seconds", 4.0,
-            "llm.retry.jitter", 0.3,
-            "llm.agents.planner.model", "   ",
-            "llm.agents.planner.temperature", 0.7,
-            "llm.agents.planner.max-output-tokens", 2048
+        Map<String, Object> broken = Map.ofEntries(
+            Map.entry("llm.provider", "openai"),
+            Map.entry("llm.timeout-ms", 20000),
+            Map.entry("llm.max-concurrent-calls", 2),
+            Map.entry("llm.retry.attempts", 3),
+            Map.entry("llm.retry.semantic-attempts", 2),
+            Map.entry("llm.retry.initial-delay-seconds", 0.5),
+            Map.entry("llm.retry.max-delay-seconds", 4.0),
+            Map.entry("llm.retry.jitter", 0.3),
+            Map.entry("llm.agents.planner.model", "   "),
+            Map.entry("llm.agents.planner.temperature", 0.7),
+            Map.entry("llm.agents.planner.max-output-tokens", 2048)
         );
         MutablePropertySources sources = new MutablePropertySources();
         sources.addFirst(new MapPropertySource("broken", withOpenAiDefaults(broken)));
