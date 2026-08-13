@@ -76,8 +76,13 @@ public enum KeywordType {
     public static String buildKeywordsJson(List<KeywordType> selectedKeywords) {
         ObjectMapper objectMapper = new ObjectMapper();
 
-        // 선택된 키워드를 빠르게 조회하기 위한 Set 생성
-        Set<KeywordType> selectedSet = new HashSet<>(selectedKeywords);
+        // 선택된 키워드를 빠르게 조회하기 위한 Set 생성.
+        // null 가드가 필요한 이유: AICourseCreateRequest에 @NotEmpty를 걸었지만, 그 검증을
+        // 거치지 않는 호출부(벤치마크 하네스 등)가 있다. new HashSet<>(null)은 생성자 안에서
+        // 즉시 NPE를 던지는데 이를 받는 핸들러가 없어 원시 500이 된다.
+        Set<KeywordType> selectedSet = selectedKeywords == null
+            ? Set.of()
+            : new HashSet<>(selectedKeywords);
 
         Map<String, List<String>> result = new LinkedHashMap<>();
 
@@ -97,7 +102,7 @@ public enum KeywordType {
             return objectMapper.writerWithDefaultPrettyPrinter()
                 .writeValueAsString(result);
         } catch (JsonProcessingException e) {
-            log.error("ekeywords JSON 변환 실패: {}, 변환 map: {}", e.getMessage(), result);
+            log.error("keywords JSON 변환 실패: {}, 변환 map: {}", e.getMessage(), result);
             throw new BusinessException(MyCourseErrorCode.JSON_TRANSFORMATION_FAILED);
         }
     }

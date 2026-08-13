@@ -1,5 +1,7 @@
 package backend.yourtrip.domain.mycourse.service;
 
+import backend.yourtrip.domain.mycourse.dto.ai.ResolvedDay;
+import backend.yourtrip.domain.mycourse.dto.ai.ResolvedPlace;
 import backend.yourtrip.domain.mycourse.dto.request.AICourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
@@ -51,6 +53,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -81,6 +84,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final UploadCourseRepository uploadCourseRepository;
     private final KakaoLocalClient kakaoLocalClient;
     private final MyCourseDetailReader myCourseDetailReader;
+    private final AiCoursePersister aiCoursePersister;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -510,8 +514,16 @@ public class MyCourseServiceImpl implements MyCourseService {
         return hiddenCopy;
     }
 
-    @Transactional
+    /**
+     * <b>이 메서드에는 {@code @Transactional}이 없다.</b> LLM 호출 1회와 카카오 호출 N회를
+     * 트랜잭션 밖에서 끝낸 뒤, 저장만 {@link AiCoursePersister}의 짧은 트랜잭션에 맡긴다.
+     * 예전에는 메서드 전체가 트랜잭션이라 외부 I/O가 끝날 때까지 HikariCP 커넥션이 묶였다.
+     */
+    @Override
     public AICourseCreateResponse createAICourse(AICourseCreateRequest request) {
+        // SecurityContextHolder는 요청 스레드의 ThreadLocal이므로 여기서 먼저 확보해 둔다.
+        Long userId = userService.getCurrentUserId();
+
         int days =
             (int) ChronoUnit.DAYS.between(request.startDate(), request.endDate()) + 1;
 
@@ -519,7 +531,7 @@ public class MyCourseServiceImpl implements MyCourseService {
         String json = geminiService.generateAICourse(request.location(), days, request.keywords());
         log.info(json);
 
-        //json -> dto 바이딩
+        //json -> dto 바인딩
         GeminiCourseDto courseDto;
         try {
             courseDto = objectMapper.readValue(json, GeminiCourseDto.class);
@@ -528,49 +540,71 @@ public class MyCourseServiceImpl implements MyCourseService {
             throw new BusinessException(MyCourseErrorCode.JSON_TRANSFORMATION_FAILED);
         }
 
-        //travelCourse 생성
-        User user = userService.getUser(userService.getCurrentUserId());
-        TravelCourse travelCourse = travelCourseRepository.save(
-            TravelCourseMapper.toAICourseEntity(request, courseDto, user));
+        //카카오 장소 검증 (외부 I/O — 여기까지가 트랜잭션 밖이다)
+        List<ResolvedDay> resolvedDays = resolveDays(request, courseDto);
 
-        //daySchedule, place 생성
-        for (GeminiCourseDto.DayScheduleDto dayScheduleDto : courseDto.daySchedules()) {
-            DaySchedule daySchedule = dayScheduleRepository.save(
-                new DaySchedule(travelCourse, dayScheduleDto.day()));
-            travelCourse.getDaySchedules().add(daySchedule);
+        //저장 (짧은 트랜잭션)
+        Long courseId = aiCoursePersister.save(request, courseDto, resolvedDays, userId);
 
-            //각 place 저장
-            for (GeminiCourseDto.PlaceDto placeDto : dayScheduleDto.places()) {
-                Place place = placeRepository.save(
-                    PlaceMapper.toEntityFromGeminiDto(placeDto, daySchedule));
-
-                updatePlaceFromKakao(request, placeDto, place);
-
-                daySchedule.getPlaces().add(place);
-            }
-        }
-
-        return new AICourseCreateResponse(travelCourse.getId());
+        return new AICourseCreateResponse(courseId);
     }
 
-    private void updatePlaceFromKakao(AICourseCreateRequest request, PlaceDto placeDto,
-        Place place) {
+    private List<ResolvedDay> resolveDays(AICourseCreateRequest request,
+        GeminiCourseDto courseDto) {
+
+        List<ResolvedDay> resolvedDays = new ArrayList<>();
+
+        for (GeminiCourseDto.DayScheduleDto dayScheduleDto : courseDto.daySchedules()) {
+            List<ResolvedPlace> resolvedPlaces = new ArrayList<>();
+
+            for (GeminiCourseDto.PlaceDto placeDto : dayScheduleDto.places()) {
+                resolvedPlaces.add(resolvePlace(request, placeDto));
+            }
+            resolvedDays.add(new ResolvedDay(dayScheduleDto.day(), resolvedPlaces));
+        }
+        return resolvedDays;
+    }
+
+    /**
+     * AI가 준 장소 하나를 카카오로 검증한다. 검증에 실패하면 좌표를 비운 채 이름만 남긴다 —
+     * 예전처럼 0.0/0.0을 저장해 성공을 위장하지 않는다.
+     */
+    private ResolvedPlace resolvePlace(AICourseCreateRequest request, PlaceDto placeDto) {
         Document doc = kakaoLocalClient.findBestPlace(placeDto.placeName(),
             request.location());
 
         if (doc == null) { //적절한 장소가 카카오맵에 검색되지 않음
-            return;
+            return ResolvedPlace.unverified(placeDto.placeName(), placeDto.startTime());
         }
 
-        //placeName, placeLocation, placeUrl, longitude, latitude 업데이트
-        String placeName = doc.place_name();
+        Double latitude = parseCoordinate(doc.y());
+        Double longitude = parseCoordinate(doc.x());
+
+        if (latitude == null || longitude == null) {
+            //좌표를 못 읽으면 매칭 실패와 동일하게 다룬다. 이름까지 카카오 것으로 바꾸면
+            //검증되지 않은 정보를 검증된 것처럼 보이게 하므로 AI 원안을 남긴다.
+            log.warn("카카오 응답의 좌표를 해석하지 못했다: place={}, x={}, y={}",
+                doc.place_name(), doc.x(), doc.y());
+            return ResolvedPlace.unverified(placeDto.placeName(), placeDto.startTime());
+        }
+
         String placeLocation = doc.road_address_name() != null && !doc.road_address_name().isBlank()
             ? doc.road_address_name()
             : doc.address_name();
-        String placeUrl = doc.place_url();
-        double longitude = Double.parseDouble(doc.x());
-        double latitude = Double.parseDouble(doc.y());
 
-        place.updateKakaoPlace(placeName, placeLocation, placeUrl, latitude, longitude);
+        return new ResolvedPlace(doc.place_name(), placeDto.startTime(),
+            latitude, longitude, doc.place_url(), placeLocation);
+    }
+
+    /** 카카오의 x/y는 문자열이라 파싱이 필요하다. null·형식 오류는 500이 아니라 미검증으로 다룬다. */
+    private Double parseCoordinate(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 }
