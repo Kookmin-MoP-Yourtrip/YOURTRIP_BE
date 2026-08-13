@@ -129,6 +129,16 @@ public class OpenAiLlmClient implements LlmClient {
         this.retryExecutor = retryExecutor;
         this.chatModel = chatModel;
         this.concurrencyGate = new Semaphore(properties.maxConcurrentCalls());
+
+        // 어느 모델이 살아 있는지를 기동 로그에서 바로 볼 수 있게 한다. 이 어댑터는 조건부 빈이라
+        // 기동 성공만으로는 활성 여부가 드러나지 않고, agent별 모델은 설정 파일을 열어야 알 수 있다.
+        // API 키는 찍지 않는다.
+        log.info("LLM 어댑터 활성화: provider={}, timeoutMs={}, maxConcurrentCalls={}, agents={}",
+            properties.provider(), properties.timeoutMs(), properties.maxConcurrentCalls(),
+            properties.agents().entrySet().stream()
+                .map(entry -> "%s=%s(t=%s)".formatted(
+                    entry.getKey(), entry.getValue().model(), entry.getValue().temperature()))
+                .toList());
     }
 
     /**
