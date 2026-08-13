@@ -337,7 +337,7 @@ class MyCourseServiceImplTest {
 
     private Place place(DaySchedule daySchedule, Long placeId) {
         Place place = Place.builder()
-            .daySchedule(daySchedule).placeName("place").latitude(0).longitude(0)
+            .daySchedule(daySchedule).placeName("place").latitude(0.0).longitude(0.0)
             .placeUrl("url").placeLocation("loc")
             .build();
         setEntityId(place, placeId);
