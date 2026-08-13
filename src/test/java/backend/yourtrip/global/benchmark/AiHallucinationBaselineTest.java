@@ -9,6 +9,7 @@ import backend.yourtrip.global.gemini.dto.GeminiCourseDto.DayScheduleDto;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto.PlaceDto;
 import backend.yourtrip.global.gemini.service.GeminiService;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
+import backend.yourtrip.global.kakao.config.KakaoConfig;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,7 +34,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.web.reactive.function.client.WebClient;
 
 /**
  * AI 코스 생성(단일 Gemini 호출) 구조의 **환각률 baseline 측정** 하네스.
@@ -179,12 +179,12 @@ class AiHallucinationBaselineTest {
         assumeTrue(geminiKey != null && kakaoKey != null,
             "이 측정은 실제 GEMINI_API_KEY / KAKAO_API_KEY 가 필요하다 (.env 또는 환경변수)");
 
-        // 프로덕션 빈 구성과 동일하게 조립한다 (GeminiConfig / KakaoConfig 참고)
+        // 프로덕션 빈 구성과 동일하게 조립한다 (GeminiConfig / KakaoConfig 참고).
+        // WebClient는 KakaoConfig의 팩토리를 그대로 호출한다 — 여기서 따로 조립하면
+        // 타임아웃·커넥션 풀 설정이 프로덕션과 갈라져 측정이 실제 동작을 반영하지 못한다.
         GeminiService geminiService = new GeminiService(Client.builder().apiKey(geminiKey).build());
-        KakaoLocalClient kakaoLocalClient = new KakaoLocalClient(WebClient.builder()
-            .baseUrl("https://dapi.kakao.com")
-            .defaultHeader("Authorization", "KakaoAK " + kakaoKey)
-            .build());
+        KakaoLocalClient kakaoLocalClient = new KakaoLocalClient(
+            KakaoConfig.buildKakaoWebClient("https://dapi.kakao.com", kakaoKey));
 
         // MyCourseServiceImpl 이 주입받는 ObjectMapper 는 Spring Boot 자동설정이라 JavaTimeModule 이
         // 등록돼 있다(PlaceDto.startTime 이 LocalTime). 여기서는 수동으로 맞춰준다.

@@ -4,7 +4,6 @@ import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
-import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -13,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 @Component
@@ -31,7 +31,11 @@ public class KakaoLocalClient {
                 .build())
             .retrieve()
             .bodyToMono(KakaoSearchResponse.class)
-            .block(Duration.ofSeconds(20)); //20초 타임아웃
+            // 타임아웃은 KakaoConfig의 HttpClient(connect 2초 / response 3초)가 담당한다.
+            // block(Duration)으로 제한하면 초과 시 IllegalStateException이 던져져
+            // 아래 findBestPlace의 catch를 빠져나가지만, HttpClient가 끊으면
+            // WebClientRequestException으로 올라와 정상적으로 잡힌다.
+            .block();
     }
 
     /**
@@ -62,6 +66,12 @@ public class KakaoLocalClient {
         } catch (WebClientResponseException e) {
             log.error("Kakao search API error: {} - {}", e.getStatusCode(),
                 e.getResponseBodyAsString());
+            throw new BusinessException(MyCourseErrorCode.KAKAO_API_FAILED);
+        } catch (WebClientException e) {
+            // 타임아웃·커넥션 실패·풀 고갈은 WebClientResponseException이 아니라
+            // WebClientRequestException으로 올라온다. 이걸 잡지 않으면 GlobalExceptionHandler에
+            // 핸들러가 없어 원시 500이 나간다.
+            log.error("Kakao search API request failed: {}", e.getMessage());
             throw new BusinessException(MyCourseErrorCode.KAKAO_API_FAILED);
         }
     }
