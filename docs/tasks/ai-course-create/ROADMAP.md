@@ -8,7 +8,7 @@
 >
 > **LLM 벤더는 OpenAI로 확정됐다.** 설계 문서 초안은 Gemini를 현행으로 두고 OpenAI 전환 "가능성"을 전제로 쓰였으나, 확정에 따라 설계 문서 본문(§6·§7·§11·§13·§15)이 갱신됐다. 이 로드맵은 그 갱신된 설계를 기준으로 한다.
 >
-> 진행 상황: **1단계 완료**(E2E 검증 포함). 0단계 검증 항목은 전부 통과했고 OpenAI·네이버 키도 발급됐다. 다음은 2단계(`LlmClient` 포트 + baseline 재측정).
+> 진행 상황: **2단계 코드 작업 완료**(2-1 ~ 2-5, 테스트 102개 통과 + 앱 기동 확인). **2-6 baseline 재측정만 남았고 실행 승인 대기 중이다.** 0단계 검증 항목은 전부 통과했고 OpenAI·네이버 키도 발급됐다.
 >
 > 1단계에서 **로드맵 1-2의 처방이 데이터와 반대라는 것이 드러나 방향을 바꿨다.** 아래 1-2 항목의 정정과 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) 참고.
 
@@ -108,14 +108,20 @@
 
 동작 변화 없음(기존 `GeminiService` 경로는 그대로 둔다).
 
-> 상세 실행 계획은 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 참고. (미작성)
+> 상세 실행 기록은 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 참고.
 
-- [ ] 2-1. `LlmClient` 포트 + `LlmCall` record 정의. `responseJsonSchema`는 벤더 타입이 아니라 **JSON 문자열**로 받는다 — 이게 벤더 중립의 핵심이다. 스키마는 `resources/schemas/*.json`
-- [ ] 2-2. `OpenAiLlmClient` 어댑터 구현 (내부 전송 계층은 0-3 판정에 따라 Spring AI 또는 공식 SDK)
-- [ ] 2-3. `AiLlmProperties` 등 `@ConfigurationProperties` 도입 — agent별 model/temperature, `timeout-ms`, `max-concurrent-calls`, retry 설정. **이 저장소 최초의 `@ConfigurationProperties`다**(현재 전 설정이 `@Value` 필드 주입)
-- [ ] 2-4. `LlmResponseParser` + 재시도 2계층 — 전송 계층(429/5xx 지수 백오프 + 지터)과 의미 계층(200 OK인데 깨진 JSON → 1회만 재시도). 2회 이상은 지연 예산만 태운다
-- [ ] 2-5. 포트 기반 단위 테스트 — 에이전트 코드가 벤더 SDK 타입을 import하지 않는다는 것을 테스트로 확인
+- [x] 2-1. `LlmClient` 포트 + `LlmCall` record 정의. `responseJsonSchema`는 벤더 타입이 아니라 **JSON 문자열**로 받는다 — 이게 벤더 중립의 핵심이다. ~~스키마는 `resources/schemas/*.json`~~ → **프로덕션 스키마 디렉터리는 6단계에 만든다**(실제 에이전트 스키마가 그때 생긴다). 2-6 측정용 스키마만 `src/test/resources/schemas/`에 뒀다. 부수적으로 `responseJsonSchema`를 **nullable로 확장**했다 — 2-6이 "구조화 출력을 끈" 측정점을 필요로 하고, 스키마 강제를 포트의 요구사항으로 못박으면 오히려 중립성이 좁아진다
+- [x] 2-2. `OpenAiLlmClient` 어댑터 구현 — 전송 계층은 Spring AI(0-3 판정대로 공식 SDK 폴백 불필요). **auto-config를 쓰지 않고 어댑터가 `OpenAiChatModel`을 직접 조립한다** — 켜면 API 키가 기동 필수가 되어 이 단계가 동작 변화를 만들고, `baseUrl`을 못 바꿔 WireMock 검증이 불가능해진다
+- [x] 2-3. `AiLlmProperties` 등 `@ConfigurationProperties` 도입 — agent별 model/temperature, `timeout-ms`, `max-concurrent-calls`, retry 설정. **이 저장소 최초의 `@ConfigurationProperties`다**(현재 전 설정이 `@Value` 필드 주입). 설계 문서 §6에 없던 **`max-output-tokens`를 agent별로 추가**했다 — 절단이 파싱 실패의 실제 원인이므로 출력 여유가 설정 대상이어야 한다
+- [x] 2-4. `LlmResponseParser` + 재시도 2계층 — 전송 계층(429/5xx 지수 백오프 + 지터)과 의미 계층(200 OK인데 깨진 JSON → 1회만 재시도). 2회 이상은 지연 예산만 태운다
+
+  > **[정정]** 설계 문서 §6 표는 의미 재시도를 `LlmResponseParser`의 책임으로 적었지만 **재호출은 파서가 할 수 없다.** 파서는 순수 변환만 맡고, 전송 재시도는 `LlmRetryExecutor`로 떼어냈으며(백오프 계산을 순수 함수로 테스트하기 위해), 의미 재시도는 어댑터가 오케스트레이션한다.
+  >
+  > **재시도 계층이 셋으로 흩어져 있던 것을 발견해 제거했다** — 설정한 3회가 실제 HTTP 요청 6회로 관측됐다. ① Spring AI `OpenAiChatModel`의 자체 `RetryTemplate` ② **선언조차 되지 않은 전이 의존성** Apache HttpClient 5가 `detect()`에 선택돼 429를 자체적으로 1회 더 시도 ③ 우리 executor. 또 **Spring AI는 429를 `NonTransientAiException`(재시도 무의미)으로 분류**하는데 실제로는 정반대라, 상태 코드를 보존하는 `responseErrorHandler`를 주입해 분류를 직접 소유한다. 근거는 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 판정 1·2
+- [x] 2-5. 포트 기반 단위 테스트 — 에이전트 코드가 벤더 SDK 타입을 import하지 않는다는 것을 테스트로 확인. 에이전트는 6단계에 생기므로 **소스 import 스캔 + 포트 목킹 데모** 두 가지로 갈음했다. 어댑터가 실제로 벤더 SDK를 쓴다는 것도 함께 단언해 검사기가 헛돌지 않음을 보인다
 - [ ] 2-6. **OpenAI 단일 호출 baseline 재측정** — 기존 `AiHallucinationBaselineTest` 하네스의 LLM만 교체하고 입력 세트·`score()` 로직은 그대로. **환각률과 JSON 파싱 실패율을 함께 집계하고, 이번에는 결과 산출물을 파일로 남긴다**(Gemini 측정 때 파싱 실패율 28.6%가 수치만 남고 산출물이 남지 않아 재확인이 불가능했다)
+
+  **하네스 교체는 완료됐고 측정 실행만 남았다**(외부 API 비용이 들어 승인 대기). 측정 축이 둘로 늘었다 — `BASELINE_MODEL`(luna/nano)과 `BASELINE_SCHEMA_MODE`(prompt/json_schema)의 **4조합 120요청**. 구조화 출력을 켠 판과 끈 판을 둘 다 재야 "모델 교체"·"구조화 출력"·"파이프라인" 세 변수가 각각 분리되고, 덤으로 판정 3의 "절단은 구조화 출력으로 안 사라진다"는 추론이 데이터로 검증된다. 요청 결말도 `OK`/`CALL_FAILED`/`TRUNCATED`/`PARSE_FAILED` 넷으로 갈라 **두 분모를 모두 출력**한다
 
 ### 3. `RouteOptimizer` + `SlotType` + `GeoUtils`
 
@@ -275,8 +281,9 @@
 
 ## 미해결 · 확인 필요
 
-- **Spring AI ↔ Spring Boot 버전 스큐** — Spring AI 1.1.8이 요구하는 spring-core 6.2.19 / jackson 2.21.4가 Spring Boot 3.5.7의 관리 버전(6.2.12 / 2.19.2)으로 끌어내려진다. 현재는 문제가 관측되지 않았지만, 2단계에서 `NoSuchMethodError`가 나면 1.1.x 중 낮은 버전으로 내리는 것이 1차 대응이다
-- **OpenAI RPM/TPM 티어** — `llm.max-concurrent-calls` 초기값의 근거. 키 발급 후 확인
+- ~~**Spring AI ↔ Spring Boot 버전 스큐**~~ — **2단계에서 문제 없이 통과했다.** 어댑터 구현·WireMock 검증·앱 기동 전부에서 `NoSuchMethodError`가 관측되지 않았다. 다만 아직 쓰지 않은 경로(스트리밍, 툴 콜링)가 남아 있으므로 완전히 닫힌 항목은 아니다
+- **OpenAI RPM/TPM 티어** — `llm.max-concurrent-calls` 초기값 2의 근거. **2-6 측정 중 429 빈도로 실측한다.** 2단계에서 확인된 사실 하나: Spring AI는 429를 재시도 대상으로 보지 않으므로(위 2-4 정정) 티어에 걸려도 자동 복구되지 않는다 — 우리 분류가 그걸 막고 있다
+- **`max_completion_tokens` 대 `max_tokens`** — 추론 계열 모델은 추론 토큰이 출력에 포함되므로 전자를 쓴다. 실제로 gpt-5 계열이 `max_tokens`를 거부하는지는 2-6 실호출에서 확인된다(WireMock은 필드가 실려 나가는 것까지만 검증한다)
 - **NAVER API HUB의 블로그 검색 경로와 응답 스키마** — 새 Base URL(`naverapihub.apigw.ntruss.com`) 아래에서 `/v1/search/blog.json`이 유지되는지, 3·4층이 의존하는 `total`·`postdate`·`title`·`description`이 그대로인지. 4단계 착수 시 실호출로 확정
 - ~~**네이버 일 25,000건 한도 초과 시의 응답 코드**~~ — **429로 확인됨.** 4단계에서 이 코드는 재시도 대상이 아니라 그날의 쿼터 소진으로 다뤄야 한다(지수 백오프를 태우면 이미 소진된 쿼터에 지연 예산만 낭비된다)
 - **`duration` 키워드 처리 방침** — 6-5에서 결정
