@@ -104,6 +104,15 @@ public class RouteOptimizer {
      * 비용이 가장 낮은 것을 고른다. 근사 알고리즘을 쓰지 않는 이유는 최적해가 공짜이기
      * 때문이다 — nearest-neighbor + 2-opt 는 구현이 더 길고 최적성 보장이 없어 "옳다"를
      * 테스트로 증명하기도 어렵다. <b>더 복잡한데 더 나쁘다.</b>
+     *
+     * <p>하루 종료 시각을 넘기면 ① 체류시간 일괄 축소 ② 후순위 장소 드롭 ③ 세 개에서 중단
+     * 순으로 대응한다. <b>축소는 탐색 전에 할 수 없다</b> — 넘치는지 여부가 순열에 따라 달라져
+     * 탐색 전에는 알 수 없기 때문이다.
+     *
+     * <p><b>축소·드롭 후에는 다시 탐색한다.</b> 체류가 줄면 도착 시각이 전부 앞당겨져 식사
+     * 시간창 위반 항이 달라지므로, 이전 최적 순열이 더 이상 최적이 아니다. 재탐색하지 않으면
+     * "완전탐색은 정확해를 준다"는 이 설계의 전제를 스스로 깨는 셈이다. 최악의 탐색 횟수는
+     * {@code 1 + 1 + (n-3)}으로 {@code n=7}이면 여섯 번, 6ms 미만이다.
      */
     public RoutedDay optimize(RouteRequest request) {
         return optimize(request, MAX_BRUTE_FORCE_PLACES);
@@ -118,15 +127,123 @@ public class RouteOptimizer {
      * 이미 둘 있다({@code LlmRetryExecutor.Sleeper}, {@code OpenAiLlmClient}의 테스트 생성자).
      */
     RoutedDay optimize(RouteRequest request, int maxBruteForcePlaces) {
-        List<RoutePlace> places = request.places();
-        if (places.isEmpty()) {
+        if (request.places().isEmpty()) {
             return RoutedDay.empty(request.day(), request.dayStartTime());
         }
 
-        Context context = Context.of(request, places, defaultStayMinutes(places));
-        Schedule best = search(context, maxBruteForcePlaces);
+        // 임계값 판정은 진입 시 한 번이다. 드롭으로 장소가 줄어 임계값 아래로 내려가도 탐색을
+        // 재개하지 않는다 — 그러면 "8개짜리 날은 순서가 그대로인데 초과된 8개짜리 날만 순서가
+        // 통째로 바뀐다"는 설명하기 어려운 동작이 생긴다.
+        boolean bruteForce = request.places().size() <= maxBruteForcePlaces;
 
-        return toRoutedDay(request, places, best, context.stayMinutes(), List.of());
+        List<RoutePlace> places = new ArrayList<>(request.places());
+        List<RoutePlace> dropped = new ArrayList<>();
+        int[] stayMinutes = defaultStayMinutes(places);
+        boolean shrunk = false;
+
+        while (true) {
+            Context context = Context.of(request, places, stayMinutes);
+            Schedule best = search(context, bruteForce);
+
+            if (best.endMinutes() <= context.endMinutes()) {
+                return toRoutedDay(request, places, best, stayMinutes, dropped);
+            }
+
+            // ① 체류시간을 한 번 줄여본다.
+            if (!shrunk) {
+                stayMinutes = shrink(stayMinutes);
+                shrunk = true;
+                continue;
+            }
+
+            // ② 그래도 넘치면 후순위 장소를 하나 뺀다. ③ 세 개 아래로는 빼지 않는다.
+            if (places.size() <= MIN_PLACES_PER_DAY) {
+                return toRoutedDay(request, places, best, stayMinutes, dropped);
+            }
+
+            int victim = dropIndex(places);
+            dropped.add(places.remove(victim));
+            stayMinutes = removeAt(stayMinutes, victim);
+        }
+    }
+
+    /**
+     * 하루가 넘칠 때 체류시간에 곱하는 비율.
+     *
+     * <p>하한 상수를 따로 두지 않았다. 축소는 최대 한 번이고 가장 짧은 체류가 전망대 45분이라
+     * 축소 후 최소가 36분인데, 여기에 하한을 걸면 <b>절대 실행되지 않는 분기</b>가 생긴다.
+     */
+    private static final double SHRINK_RATIO = 0.8;
+
+    /**
+     * day 당 남겨야 하는 최소 장소 수. 이 아래로는 빼지 않고 <b>초과인 채로 반환</b>한다.
+     *
+     * <p>두 곳만 남은 하루는 코스라고 부르기 어렵다. 시간을 맞추는 것보다 코스의 형태를 지키는
+     * 쪽이 낫다는 판단이다.
+     */
+    private static final int MIN_PLACES_PER_DAY = 3;
+
+    /**
+     * 먼저 버려지는 슬롯 순서. <b>{@link SlotType#MEAL}은 목록에 없다 = 드롭 대상이 아니다.</b>
+     *
+     * <p>산책로·전망대·쇼핑은 대체 가능하고 체류가 짧아 하나 빠져도 컨셉이 유지된다. 관광명소와
+     * 체험은 그날의 목적 자체라 마지막까지 남긴다. "체류가 긴 체험(120분)을 빼야 초과가 빨리
+     * 풀린다"는 반대 논리는 <b>의도적으로 버렸다</b> — 목표는 시간을 맞추는 것이 아니라
+     * <b>가치를 최대한 남기고</b> 시간을 맞추는 것이다. 대신 드롭이 여러 번 반복되는 것을 허용한다.
+     *
+     * <p><b>{@code popularityWeight}를 기준으로 쓰지 않는다.</b> 그건 블로그 언급량을 랭킹에
+     * 얼마나 반영할지를 정하는 신호의 신뢰도이지 중요도가 아니다. 중요도로 오독하면
+     * 관광명소(0.2)가 카페(1.0)보다 먼저 버려진다 — "대릉원을 빼고 카페를 남긴다".
+     *
+     * <p>식사를 목록에서 통째로 빼면 "day 당 최소 한 끼"가 자명하게 보장된다. "식사가 둘이면
+     * 하나는 빼도 된다"는 규칙도 생각할 수 있으나, 식사가 서열 최하위인 이상
+     * {@link #MIN_PLACES_PER_DAY} 가드가 먼저 걸려 <b>도달할 수 없는 코드</b>가 된다.
+     */
+    private static final List<SlotType> DROP_ORDER = List.of(
+        SlotType.SHOPPING,
+        SlotType.WALK,
+        SlotType.VIEWPOINT,
+        SlotType.CAFE,
+        SlotType.ACTIVITY,
+        SlotType.ATTRACTION);
+
+    /**
+     * 다음에 뺄 장소의 인덱스. {@link #DROP_ORDER}가 앞선 슬롯부터, 같은 슬롯이면 <b>뒤에
+     * 있는 것부터</b> 뺀다.
+     *
+     * <p>드롭 대상이 하나도 없으면(전부 식사) {@code -1} 대신 예외를 낼 수도 있지만, 그 경우는
+     * {@link #MIN_PLACES_PER_DAY} 가드에 먼저 걸린다. 그래도 도달했다면 마지막 장소를 뺀다.
+     */
+    private static int dropIndex(List<RoutePlace> places) {
+        for (SlotType slotType : DROP_ORDER) {
+            for (int i = places.size() - 1; i >= 0; i--) {
+                if (places.get(i).slotType() == slotType) {
+                    return i;
+                }
+            }
+        }
+        return places.size() - 1;
+    }
+
+    /**
+     * 체류시간을 일괄 축소한다. <b>한 번 줄이면 되돌리지 않는다.</b>
+     *
+     * <p>드롭으로 여유가 생겼다고 원래 시간으로 되돌리면 "축소 → 드롭 → 확대"라는 비단조
+     * 동작이 되어, 루프가 끝난다는 것도 사용자에게 설명하는 것도 어려워진다.
+     */
+    private static int[] shrink(int[] stayMinutes) {
+        int[] shrunk = new int[stayMinutes.length];
+        for (int i = 0; i < stayMinutes.length; i++) {
+            shrunk[i] = (int) Math.round(stayMinutes[i] * SHRINK_RATIO);
+        }
+        return shrunk;
+    }
+
+    private static int[] removeAt(int[] values, int index) {
+        int[] remaining = new int[values.length - 1];
+        System.arraycopy(values, 0, remaining, 0, index);
+        System.arraycopy(values, index + 1, remaining, index, values.length - index - 1);
+        return remaining;
     }
 
     /**
@@ -177,16 +294,11 @@ public class RouteOptimizer {
     }
 
     /**
-     * 비용이 가장 낮은 순열을 찾는다. 장소가 임계값을 넘으면 입력 순서를 그대로 쓴다.
-     *
-     * <p>임계값 판정은 <b>진입 시 한 번</b>이다. 그래야 규칙이 "입력이 8개 이상이면 순서를
-     * 건드리지 않는다" 한 줄로 유지된다 — 나중에 장소가 빠져 7개가 되더라도 탐색을 재개하지
-     * 않으므로, "8개짜리 날은 순서가 그대로인데 초과된 8개짜리 날만 순서가 바뀐다"는 설명하기
-     * 어려운 동작이 생기지 않는다.
+     * 비용이 가장 낮은 순열을 찾는다. {@code bruteForce}가 꺼져 있으면 입력 순서를 그대로 쓴다.
      */
-    private Schedule search(Context context, int maxBruteForcePlaces) {
+    private Schedule search(Context context, boolean bruteForce) {
         int n = context.size();
-        if (n > maxBruteForcePlaces) {
+        if (!bruteForce) {
             return buildSchedule(identityOrder(n), context);
         }
 
