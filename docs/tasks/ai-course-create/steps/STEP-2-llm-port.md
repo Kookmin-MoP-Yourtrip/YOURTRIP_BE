@@ -37,7 +37,7 @@ V3 구조        단일 호출          →  5단계 파이프라인
 | (OpenAI, json_schema, 단일) | **V1+V2** | V3 |
 | **둘 다** | V1 / V2 / V3 각각 | — |
 
-덤이 하나 붙는다. [BASELINE-ARTIFACT-ANALYSIS.md](../BASELINE-ARTIFACT-ANALYSIS.md) 판정 3은 "파싱 실패 5건이 전부 절단이라 **구조화 출력으로는 안 사라진다**"고 결론냈는데, 이건 아직 추론이다. V2를 켠 판과 끈 판을 둘 다 재면 그 주장이 숫자로 확인된다.
+덤이 하나 붙는다. [BASELINE-ARTIFACT-ANALYSIS.md](../hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 판정 3은 "파싱 실패 5건이 전부 절단이라 **구조화 출력으로는 안 사라진다**"고 결론냈는데, 이건 아직 추론이다. V2를 켠 판과 끈 판을 둘 다 재면 그 주장이 숫자로 확인된다.
 
 모델 축도 붙는다 — 0단계가 `gpt-5.6-luna`의 한국어 지역 지식을 확인하지 못한 채 Curator에 배정했으므로(ROADMAP 0-4), luna/nano를 같은 조건으로 재서 확정한다.
 
@@ -274,7 +274,7 @@ luna는 `minimal`을, nano는 `none`을 거부한다. **두 모델을 같은 조
 
 ## 2-6 측정 결과 — 네 조합 전량 완료
 
-> **측정 자체의 해석과 결론은 [TASK-AI-HALLUCINATION-OPENAI.md](../TASK-AI-HALLUCINATION-OPENAI.md)로 분리했다** — before 측정([TASK-AI-HALLUCINATION-GEMINI.md](../TASK-AI-HALLUCINATION-GEMINI.md))과 짝을 이루는 문서라 같은 형식으로 두는 편이 낫다. 이 문서에는 **구현 기록**과 **수동 검증 판정 전량**만 남긴다.
+> **측정 자체의 해석과 결론은 [AI-HALLUCINATION-OPENAI.md](../hallucination/AI-HALLUCINATION-OPENAI.md)로 분리했다** — before 측정([AI-HALLUCINATION-GEMINI.md](../hallucination/AI-HALLUCINATION-GEMINI.md))과 짝을 이루는 문서라 같은 형식으로 두는 편이 낫다. 이 문서에는 **구현 기록**과 **수동 검증 판정 전량**만 남긴다.
 
 **공통 조건**: 추론 `low` / 의미 재시도 1회 / `max-output-tokens` 4096 / 온도 미전송(모델이 거부)
 **규모**: 4조합 × 30요청 = **120요청**, 총 약 32분
@@ -298,7 +298,7 @@ luna는 `minimal`을, nano는 `none`을 거부한다. **두 모델을 같은 조
 
 ### 판정 7 — Curator 모델은 `gpt-5.6-luna`로 확정한다 ★
 
-0단계는 `gpt-5.6-luna`의 한국어 지역 지식을 확인하지 못한 채 배정하고 **"2-6 실측으로 최종 확정"**을 숙제로 넘겼다(ROADMAP 0-4). 답이 나왔다 — **nano는 luna보다 환각률이 압도적으로 높다** — 자동 프록시 47.8% vs 6.4%(7.5배)이고, 수동 검증까지 반영한 **복합 지표로는 89.4% vs 7.5%(12배)**, 매칭 실패를 걷어낸 **진짜 환각률로는 41.7% vs 1.08%(38.6배)** 다. 해석과 결론은 [TASK-AI-HALLUCINATION-OPENAI.md](../TASK-AI-HALLUCINATION-OPENAI.md)에 있다.
+0단계는 `gpt-5.6-luna`의 한국어 지역 지식을 확인하지 못한 채 배정하고 **"2-6 실측으로 최종 확정"**을 숙제로 넘겼다(ROADMAP 0-4). 답이 나왔다 — **nano는 luna보다 환각률이 압도적으로 높다** — 자동 프록시 47.8% vs 6.4%(7.5배)이고, 수동 검증까지 반영한 **복합 지표로는 89.4% vs 7.5%(12배)**, 매칭 실패를 걷어낸 **진짜 환각률로는 41.7% vs 1.08%(38.6배)** 다. 해석과 결론은 [AI-HALLUCINATION-OPENAI.md](../hallucination/AI-HALLUCINATION-OPENAI.md)에 있다.
 
 nano 응답의 `NO_RESULT`가 40%를 넘는다는 것은 **AI가 부른 이름의 40%가 카카오에서 검색조차 안 된다**는 뜻이다. 실제로 뽑아보면 전형적인 환각이다.
 
@@ -364,7 +364,7 @@ nano 응답의 `NO_RESULT`가 40%를 넘는다는 것은 **AI가 부른 이름�
 
 ### 수동 검증 40건 — 복합 지표 완성
 
-밴드별 층화 추출(밴드당 10건, 시드 42) 표본을 하나씩 확인했다. 판정 규칙은 **원 측정과 동일하게 맞췄다** — 특히 `NO_RESULT` 밴드도 *"AI 원안이 실존하지 않으면 `LAUNDERED`"*로 본다(원 측정이 12/30을 그렇게 매겼다, [BASELINE-ARTIFACT-ANALYSIS.md](../BASELINE-ARTIFACT-ANALYSIS.md) 판정 4).
+밴드별 층화 추출(밴드당 10건, 시드 42) 표본을 하나씩 확인했다. 판정 규칙은 **원 측정과 동일하게 맞췄다** — 특히 `NO_RESULT` 밴드도 *"AI 원안이 실존하지 않으면 `LAUNDERED`"*로 본다(원 측정이 12/30을 그렇게 매겼다, [BASELINE-ARTIFACT-ANALYSIS.md](../hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 판정 4).
 
 | 밴드 | 표본 | CORRECT | LAUNDERED | WRONG_MATCH | UNVERIFIABLE | 전체 비중 |
 |---|---|---|---|---|---|---|
@@ -594,7 +594,7 @@ BASELINE 문서가 한계로 명시한 *"카카오에 미등록된 실존 업소
 ## 참고 문서
 
 - [ROADMAP.md](../ROADMAP.md) — 2단계 체크리스트
-- [TASK-AI-MULTI-AGENT.md](../TASK-AI-MULTI-AGENT.md) §6 — 포트 설계의 근거
-- [BASELINE-ARTIFACT-ANALYSIS.md](../BASELINE-ARTIFACT-ANALYSIS.md) 판정 3·4 — 절단 원인과 환각률 정의
+- [MULTI-AGENT-PIPELINE.md](../MULTI-AGENT-PIPELINE.md) §6 — 포트 설계의 근거
+- [BASELINE-ARTIFACT-ANALYSIS.md](../hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 판정 3·4 — 절단 원인과 환각률 정의
 - [STEP-0-prerequisites.md](STEP-0-prerequisites.md) — Spring AI 검증, 모델 배치
 - [STEP-1-existing-defects.md](STEP-1-existing-defects.md) — 1단계 실행 기록

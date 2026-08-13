@@ -1,6 +1,6 @@
 # Run E/F — 게이트·executor 제거 후 재측정, knee 재탐색
 
-> [run-d-signature-once.md](run-d-signature-once.md)가 Run D/D2로 확인한 "executor 큐 거부가 두 arm 모두 0으로 수렴한다"는 사전 신호를 근거로, `CloudFrontSigningGate`·`cloudFrontSigningExecutor`를 코드에서 제거([B1](../../TASK-PRESIGN-BOTTLENECK-FIX.md) 커밋)한 뒤 같은 환경에서 재측정했다. 여기에 도착률 상한을 3배(400→1200 req/s)로 올린 knee 재탐색(Run F)을 더했다.
+> [run-d-signature-once.md](run-d-signature-once.md)가 Run D/D2로 확인한 "executor 큐 거부가 두 arm 모두 0으로 수렴한다"는 사전 신호를 근거로, `CloudFrontSigningGate`·`cloudFrontSigningExecutor`를 코드에서 제거([B1](../TASK-PRESIGN-BOTTLENECK-FIX.md) 커밋)한 뒤 같은 환경에서 재측정했다. 여기에 도착률 상한을 3배(400→1200 req/s)로 올린 knee 재탐색(Run F)을 더했다.
 
 ## 측정 환경
 
