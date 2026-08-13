@@ -161,9 +161,17 @@ llm:
   # ("Only the default (1) value is supported"). 값을 넣으면 요청 자체가 실패한다.
   # 설정 키는 남겨둔다 — 온도를 받는 모델로 바꾸면 값만 채우면 되고, 구조를 지우면
   # "왜 차등하지 않는가"라는 정보도 함께 사라진다.
+  # [reasoning-effort] 설계 문서 §11의 "Curator와 PlaceProfile은 추론을 쓰지 않는다"를 실행하는
+  # 수단이다 — 두 에이전트는 추론 이득이 적은데 토큰 비중은 가장 크고, 추론 토큰은 출력 요금으로
+  # 과금된다. 안 낮추면 비용만 문제가 아니라 응답 자체가 안 나온다: gpt-5-nano는 기본 설정에서
+  # max-output-tokens 4096을 추론에만 쓰고 본문을 0바이트로 돌려줬다(2-6 스모크 실측).
+  #
+  # 지원값이 모델마다 다르다 — luna는 none/low/medium/high/xhigh, nano는 minimal/low 계열이다.
+  # 각각의 최저값을 쓰되, luna의 none 은 아직 1요청만 확인해 6단계 튜닝 후보로 남긴다.
   agents:
     # 권역이 틀리면 그 아래 Curator와 카카오 검색이 전부 오염된다 — 파급이 가장 큰데
-    # 출력은 ~350토큰이라 가장 싸게 투자할 수 있다.
+    # 출력은 ~350토큰이라 가장 싸게 투자할 수 있다. 셋 중 추론이 값을 하는 유일한 자리라
+    # reasoning-effort 를 비워 모델 기본값에 맡긴다.
     planner:
       model: gpt-5.6-luna
       max-output-tokens: 2048
@@ -174,11 +182,13 @@ llm:
     curator:
       model: gpt-5.6-luna
       max-output-tokens: 4096
+      reasoning-effort: low
     # 속성 추출이라 창의성이 아니라 충실성이 필요하다. 온도를 못 낮추는 것이 여기서는
     # 실제 손해이므로, 9단계에서 닫힌 태그 집합과 스키마 강제로 보완해야 한다.
     place-profile:
       model: gpt-5-nano
       max-output-tokens: 2048
+      reasoning-effort: minimal
 
   openai:
     # 기본값을 비워둔다 — 키가 없어도 기동은 성공하고, 실제 호출 시점에만 실패한다.
