@@ -225,7 +225,7 @@
 
 > 상세 실행 계획은 [STEP-9-place-profile.md](steps/STEP-9-place-profile.md) 참고. (미작성)
 
-- [ ] 9-1. `PlaceProfileAgent` — 블로그 `title`·`description`에서 **평가가 아니라 속성**을 추출. 요약 프롬프트가 "이 장소가 좋은가"를 물으면 협찬 문구를 그대로 받아 적는다. **광고비가 "루프탑이 있다"를 바꾸지는 못한다**. **모델 배정(`gpt-5-nano`) 재확인이 여기 걸린다** — 2-6에서 nano는 로컬 상호명 회상(지식 재현) 과제에서 luna 대비 진짜 환각률이 38.6배 나빴다. PlaceProfile의 과제(주어진 텍스트에서 속성 추출)는 성격이 달라 이번 결과가 직접 부정하지 않지만, 9-2의 닫힌 태그 집합 준수율로 별도 확인해야 한다([TASK-AI-HALLUCINATION-OPENAI.md](TASK-AI-HALLUCINATION-OPENAI.md) 결정 2)
+- [ ] 9-1. `PlaceProfileAgent` — 블로그 `title`·`description`에서 **평가가 아니라 속성**을 추출. 요약 프롬프트가 "이 장소가 좋은가"를 물으면 협찬 문구를 그대로 받아 적는다. **광고비가 "루프탑이 있다"를 바꾸지는 못한다**
 - [ ] 9-2. 닫힌 태그 집합 강제 + "원문에 없으면 비워라" 스키마 강제
 - [ ] 9-3. **조건부 확장** — `mood` 키워드가 있으면 ATTRACTION 슬롯도 대상에 포함, 없으면 MEAL/CAFE만. 전 슬롯 적용은 비용 문제로 돌아가고 전부 끄면 분위기 변별을 잃는다
 - [ ] 9-4. 데드라인 임박 시 스킵 (traits 없이 진행) + LLM 실패 시 traits 비우고 진행
