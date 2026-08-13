@@ -255,14 +255,14 @@
 | 측정점 | 시점 | 분리되는 변수 | 값 |
 |---|---|---|---|
 | Gemini 단일 호출 | 완료 | — | **25.6%** (자동 프록시 19.8% + 세탁 5.7%) |
-| **OpenAI 단일 호출** | 2단계 직후 | 모델 교체 효과 | **7.2%** (자동 프록시 6.4% + 세탁 0.86%) |
+| **OpenAI 단일 호출** | 2단계 직후 | 모델 교체 효과 | **7.5%** (자동 프록시 6.4% + 세탁 1.08%) |
 | OpenAI 파이프라인 | 8단계 직후 | 파이프라인 구조 효과 | 미측정 |
 
-**모델 교체만으로 25.6% → 7.2%, −18.4%p(72% 감소).** `UNVERIFIABLE`을 전부 환각으로 보는 상한도 9.3%로 before의 절반에 못 미친다.
+**모델 교체만으로 25.6% → 7.5%, −18.1%p(71% 감소).** `UNVERIFIABLE`을 전부 환각으로 보는 상한도 9.3%로 before의 절반에 못 미친다. 모델 선택의 대가는 크다 — 같은 조건에서 `gpt-5-nano`는 **89.4%**(진짜 환각률 41.7%)로 Gemini보다도 나쁘다. 상세는 [TASK-AI-HALLUCINATION-OPENAI.md](TASK-AI-HALLUCINATION-OPENAI.md)
 
 > **[2-6 중간 결과]** `gpt-5.6-luna` / 프롬프트지시 / 추론 `low` 조합 30요청 전량 성공, 장소 454개 기준 **자동 프록시 환각률 6.4%**(Gemini 19.8% → −13.4%p), **JSON 실패율 0.0%**(Gemini 16.7% → 0/30). `S8_10` 밴드 비중이 66.1% → 84.6%로 올랐다.
 >
-> **수동 검증 40건 완료** — 세탁된 환각률 0.86%p가 나와 복합 지표가 25.6%와 같은 정의로 완성됐다. 밴드별 `LAUNDERED`는 `NO_RESULT` 2/10 · `S1_4` 1/10 · `S5_7` 0/10 · `S8_10` 0/10이다.
+> **수동 검증 82건 완료**(luna 40 + nano 42) — luna의 세탁된 환각률 1.08%p가 나와 복합 지표가 25.6%와 같은 정의로 완성됐다. 밴드별 `LAUNDERED`는 `NO_RESULT` 3/10 · `S1_4` 1/10 · `S5_7` 0/10 · `S8_10` 0/10이다.
 >
 > **비중 84.6%인 `S8_10`에서 세탁이 0인 것은 표본운이 아니라 구조 때문이다** — `score()`의 가점 조합상 8점 이상은 반드시 이름 일치(+5)를 포함하므로, 지어낸 이름이 "카카오 상호명과 부분 일치 + 지역 일치"를 동시에 만족하기 어렵다. 반대로 **`S5_7`은 `5 = 주소3 + 카테고리2`로 이름이 하나도 안 맞아도 도달**하므로 위험 밴드라는 1-2의 진단이 여기서도 유효하다(다만 luna는 부른 이름이 전부 실존해 `LAUNDERED` 0건).
 >
@@ -329,7 +329,7 @@
 
 - [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md) — 멀티 에이전트 파이프라인 설계 (이 로드맵의 근거 문서)
 - [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md) — 환각률 baseline 실측 (before 값 25.6%)
-- [TASK-AI-HALLUCINATION-OPENAI.md](TASK-AI-HALLUCINATION-OPENAI.md) — **OpenAI 재측정 (중간 측정점 7.2%)**. luna/nano 비교로 Curator 모델을 확정한 근거
+- [TASK-AI-HALLUCINATION-OPENAI.md](TASK-AI-HALLUCINATION-OPENAI.md) — **OpenAI 재측정 (중간 측정점 7.5%)**. luna/nano 비교로 Curator 모델을 확정한 근거
 - [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) — 위 측정의 원본 산출물 재분석. **1-2 설계의 근거**(점수 밴드 분포, 밴드×verdict 교차표, 파싱 실패 원인)
 - [TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md) — 커넥션 풀 병목 실측. 목표 4의 근거
 - [TASK-PRESIGN-BOTTLENECK-FIX.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md) — 트랜잭션 경계 분리 선례
