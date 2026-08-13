@@ -185,16 +185,6 @@ class RouteOptimizerTimeModelTest {
         }
 
         @Test
-        @DisplayName("입력 순서를 그대로 유지한다 — 순서 선택은 다음 커밋의 일이다")
-        void keepsInputOrderForNow() {
-            RoutedDay day = optimizer.optimize(RouteRequest.of(1, List.of(
-                eastOf("멀리", SlotType.ATTRACTION, 10),
-                eastOf("가까이", SlotType.CAFE, 0))));
-
-            assertThat(RouteTestFixtures.namesOf(day)).containsExactly("멀리", "가까이");
-        }
-
-        @Test
         @DisplayName("장소가 없으면 빈 결과를 준다 — 예외가 아니다")
         void emptyInputProducesEmptyDay() {
             RoutedDay day = optimizer.optimize(RouteRequest.of(3, List.of()));
