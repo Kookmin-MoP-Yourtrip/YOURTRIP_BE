@@ -86,6 +86,8 @@ class MyCourseServiceImplTest {
     @Mock
     private MyCourseDetailReader myCourseDetailReader;
     @Mock
+    private AiCoursePersister aiCoursePersister;
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     private MyCourseServiceImpl myCourseService;
@@ -108,7 +110,7 @@ class MyCourseServiceImplTest {
             userService, s3Service, cloudFrontService, geminiService, objectMapper,
             travelCourseRepository, dayScheduleRepository, placeRepository,
             placeImageRepository, uploadCourseRepository, kakaoLocalClient,
-            myCourseDetailReader, eventPublisher
+            myCourseDetailReader, aiCoursePersister, eventPublisher
         );
     }
 

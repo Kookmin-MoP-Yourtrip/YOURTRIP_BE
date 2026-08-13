@@ -1,5 +1,6 @@
 package backend.yourtrip.domain.mycourse.mapper;
 
+import backend.yourtrip.domain.mycourse.dto.ai.ResolvedPlace;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceImageResponse;
@@ -7,7 +8,6 @@ import backend.yourtrip.domain.mycourse.dto.response.PlaceResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.place.Place;
-import backend.yourtrip.global.gemini.dto.GeminiCourseDto.PlaceDto;
 import java.util.List;
 import java.util.Objects;
 import lombok.AccessLevel;
@@ -83,11 +83,23 @@ public class PlaceMapper {
             .build();
     }
 
-    public static Place toEntityFromGeminiDto(PlaceDto placeDto, DaySchedule daySchedule) {
+    /**
+     * 카카오 검증이 끝난 중간 표현으로 Place를 만든다.
+     *
+     * <p>기존 {@code toEntityFromGeminiDto}를 대체한다. 그쪽은 좌표를 세팅하지 않아
+     * 빌더 기본값 0.0이 저장됐고(적도 앞바다), 좌표는 저장 후 더티체킹으로 채워졌다.
+     * 그 구조 때문에 카카오 호출이 트랜잭션 안에 있어야 했다.
+     */
+    public static Place toEntityFromResolved(ResolvedPlace resolvedPlace,
+        DaySchedule daySchedule) {
         return Place.builder()
-            .placeName(placeDto.placeName())
-            .startTime(placeDto.startTime())
             .daySchedule(daySchedule)
+            .placeName(resolvedPlace.placeName())
+            .startTime(resolvedPlace.startTime())
+            .latitude(resolvedPlace.latitude())
+            .longitude(resolvedPlace.longitude())
+            .placeUrl(resolvedPlace.placeUrl())
+            .placeLocation(resolvedPlace.placeLocation())
             .build();
     }
 }
