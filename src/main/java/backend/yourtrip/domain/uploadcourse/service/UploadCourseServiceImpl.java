@@ -439,8 +439,15 @@ public class UploadCourseServiceImpl implements UploadCourseService {
                 cacheSerializer(CourseListItemCacheItem.class);
             for (int i = 0; i < ids.size(); i++) {
                 byte[] raw = rawValues.get(i);
-                if (raw != null) {
-                    result.put(ids.get(i), serializer.deserialize(raw));
+                if (raw == null) {
+                    continue;
+                }
+                // 역직렬화가 예외 없이 null을 반환할 수 있다(캐시 값이 리터럴 "null"인 경우 등).
+                // 그대로 담으면 containsKey는 true라 캐시 미스로 잡히지 않고, 최종 응답 조립의
+                // filter(Objects::nonNull)에서 조용히 사라져 그 코스만 목록에서 누락된다.
+                CourseListItemCacheItem item = serializer.deserialize(raw);
+                if (item != null) {
+                    result.put(ids.get(i), item);
                 }
             }
         } catch (Exception e) {
