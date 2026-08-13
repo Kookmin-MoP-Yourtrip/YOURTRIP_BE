@@ -1,4 +1,4 @@
-# TASK-AI-HALLUCINATION-BASELINE. AI 여행 코스 생성 환각률 baseline 측정
+# TASK-AI-HALLUCINATION-GEMINI. AI 여행 코스 생성 환각률 baseline 측정
 
 > [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md)에서 AI 코스 생성을 멀티 에이전트 파이프라인으로 재설계하기로 했고, 그 설계의 1차 정량 지표를 **환각률**로 정했다. 이 문서는 파이프라인 구현 전, 현재 단일 Gemini 호출 구조가 실제로 얼마나 없는 장소를 지어내는지(환각) 측정한 기록이다 — 나중에 파이프라인 도입 후 재측정해 개선 여부를 비교할 before 값이다.
 

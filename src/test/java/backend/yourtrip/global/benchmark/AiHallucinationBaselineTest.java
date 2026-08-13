@@ -4,6 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
+import backend.yourtrip.global.ai.LlmCall;
+import backend.yourtrip.global.ai.LlmResponseParser;
+import backend.yourtrip.global.ai.LlmRetryExecutor;
+import backend.yourtrip.global.ai.config.AiLlmProperties;
+import backend.yourtrip.global.ai.exception.LlmParseException;
+import backend.yourtrip.global.ai.exception.LlmTransportException;
+import backend.yourtrip.global.ai.exception.LlmTruncatedResponseException;
+import backend.yourtrip.global.ai.openai.OpenAiLlmClient;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto.DayScheduleDto;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto.PlaceDto;
@@ -14,7 +22,6 @@ import backend.yourtrip.global.kakao.dto.KakaoSearchResponse;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.google.genai.Client;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -36,14 +43,18 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * AI 코스 생성(단일 Gemini 호출) 구조의 **환각률 baseline 측정** 하네스.
- * 멀티 에이전트 파이프라인(docs/tasks/TASK-AI-MULTI-AGENT.md) 도입 전 before 값을 남기는 것이 목적이며,
+ * AI 코스 생성(단일 LLM 호출) 구조의 **환각률 baseline 측정** 하네스.
+ * 멀티 에이전트 파이프라인(docs/tasks/TASK-AI-MULTI-AGENT.md) 도입 전 값을 남기는 것이 목적이며,
  * 도입 후 동일한 방법론으로 재측정해 before/after를 비교한다.
  *
- * <p><b>프로덕션 코드를 한 줄도 바꾸지 않는다.</b> before 값이 의미를 가지려면 현재 코드가 실제로 하는
- * 동작 그대로를 재야 하므로, {@code KakaoLocalClient.score()}가 private이지만 복제하지 않고
+ * <p><b>2단계에서 측정 대상 LLM이 Gemini에서 OpenAI로 바뀌었다.</b> 최초 측정(환각률 25.6%,
+ * JSON 실패율 16.7%)은 {@code gemini-2.5-flash} 기준이고, 지금 이 하네스는 같은 입력 세트와 같은
+ * 판정 로직으로 OpenAI를 잰다 — 아래 "측정 축" 참고.
+ *
+ * <p><b>판정 로직은 한 줄도 바꾸지 않는다.</b> 값이 비교 가능하려면 같은 자로 재야 하므로,
+ * {@code KakaoLocalClient.score()}가 private이지만 복제하지 않고
  * {@link ReflectionTestUtils#invokeMethod}로 원본을 그대로 호출한다(SigningBenchmarkTest가 만든 선례).
- * 복제하면 원본과 drift가 생겨 after 측정과의 비교 근거가 약해진다.
+ * 복제하면 원본과 drift가 생겨 비교 근거가 약해진다.
  *
  * <p><b>{@code findBestPlace()}가 아니라 {@code searchPlace()} + 리플렉션 {@code score()}를 쓰는 이유</b>:
  * {@code findBestPlace()}는 매칭된 Document만 돌려주고 점수를 버린다. 점수 없이는 hit과 below_threshold를
@@ -70,6 +81,38 @@ import org.springframework.test.util.ReflectionTestUtils;
  * 스모크:      HALLUCINATION_REQUEST_LIMIT=2 ./gradlew ... --rerun
  * 요청 간 지연: HALLUCINATION_DELAY_MS=8000 (기본 5000)
  * </pre>
+ *
+ * <h2>2단계: 측정 축이 둘로 늘었다</h2>
+ * <b>LLM 벤더가 Gemini에서 OpenAI로 바뀌므로</b>, 파이프라인 도입 후 값을 before(25.6%)와 그냥
+ * 비교하면 "모델 교체"와 "파이프라인 도입"이 섞여 개선폭을 어느 쪽에도 귀속시킬 수 없다. 그래서
+ * 중간 측정점을 찍는데, 실제로 바뀌는 변수는 셋이다.
+ * <pre>
+ *   V1 모델          gemini-2.5-flash          → OpenAI
+ *   V2 출력 강제     프롬프트에 스키마를 글로  → response_format.json_schema (디코딩 레벨 강제)
+ *   V3 구조          단일 호출                 → 5단계 파이프라인
+ * </pre>
+ * V2를 켠 판과 끈 판을 <b>둘 다</b> 재면 셋이 각각 분리된다. 덤으로
+ * {@code BASELINE-ARTIFACT-ANALYSIS.md} 판정 3의 <b>"파싱 실패의 원인은 절단이라 구조화 출력으로는
+ * 안 사라진다"는 추론이 데이터로 검증</b>된다.
+ *
+ * <p>모델 축이 하나 더 붙는다. {@code gpt-5.6-luna}의 한국어 지역 지식은 0단계에서 확인하지
+ * 못했으므로(ROADMAP 0-4), luna와 nano를 각각 재서 <b>Curator 모델을 감이 아니라 데이터로</b>
+ * 확정한다.
+ *
+ * <pre>
+ * 축 선택:  BASELINE_MODEL=luna|nano   BASELINE_SCHEMA_MODE=prompt|json_schema
+ * 예)      BASELINE_MODEL=nano BASELINE_SCHEMA_MODE=json_schema ./gradlew benchmarkTest ... --rerun
+ * </pre>
+ *
+ * <h2>비교 가능성을 위해 건드리지 않는 것</h2>
+ * 입력 세트(지역 10 × 키워드셋 3, 3일 고정), {@code KakaoLocalClient.score()} 리플렉션 호출과 점수
+ * 밴드, 층화 추출 시드 42, <b>그리고 프롬프트 95줄 원문</b>. 특히 json_schema 판에서도 프롬프트의
+ * 스키마 구간을 빼지 않는다 — 빼면 V2 외에 프롬프트까지 변수가 되어 측정이 무의미해진다
+ * (프롬프트 슬림화는 6단계의 일이다). 프롬프트는 복사하지 않고
+ * {@link GeminiService#buildPrompt}를 그대로 호출해 drift를 원천 차단한다.
+ *
+ * <p><b>의미 재시도는 끈다</b>({@code semantic-attempts: 1}). 깨진 응답을 한 번 더 물어서 고치면
+ * 파싱 실패율이 "재시도 후"의 값이 되는데, Gemini 측정값에는 그런 보정이 없었다.
  */
 @Tag("benchmark")
 class AiHallucinationBaselineTest {
@@ -77,8 +120,47 @@ class AiHallucinationBaselineTest {
     /** 여행 일수. 일수까지 변수로 두면 표본이 흩어져 지역·키워드 효과를 못 본다. */
     private static final int TRIP_DAYS = 3;
 
-    /** Gemini 무료 티어 RPM 방어용 요청 간 지연. -Dhallucination.delayMs 로 조정한다. */
+    /** RPM 방어용 요청 간 지연. -Dhallucination.delayMs 로 조정한다. */
     private static final long DEFAULT_DELAY_MS = 5_000L;
+
+    /**
+     * 측정 대상 모델. 0단계에서 Planner·Curator에 luna, PlaceProfile에 nano를 배정했지만
+     * luna의 한국어 지역 지식은 확인하지 못했다 — 여기서 둘을 같은 조건으로 재서 확정한다.
+     */
+    private static final Map<String, String> MODELS = Map.of(
+        "luna", "gpt-5.6-luna",
+        "nano", "gpt-5-nano");
+
+    /** 측정 축: 구조화 출력을 켤 것인가. */
+    private static final String SCHEMA_MODE_PROMPT = "prompt";
+    private static final String SCHEMA_MODE_JSON_SCHEMA = "json_schema";
+
+    /** 이 하네스가 재현하는 것은 파이프라인이 아니라 단일 호출이라, agent 이름도 하나뿐이다. */
+    private static final String AGENT_NAME = "baseline";
+
+    /** 프롬프트가 요구하는 응답 모양을 그대로 옮긴 스키마. 루트는 반드시 객체여야 한다(0-3b). */
+    private static final String SCHEMA_RESOURCE = "/schemas/single-call-course.json";
+
+    /**
+     * 프롬프트 원문이 요구하는 출력 상한과 맞춘다({@code GeminiService.getGenerationConfig}의
+     * {@code maxOutputTokens}). 이 값을 바꾸면 절단 발생률이 달라져 측정이 비교 불가능해진다.
+     */
+    private static final int MAX_OUTPUT_TOKENS = 4096;
+
+    /**
+     * <b>온도를 보내지 않는다(null).</b>
+     *
+     * <p>원래는 Gemini 측정과 같은 조건을 만들려고 프롬프트 원문의 {@code temperature 0.3}을 그대로
+     * 쓰려 했으나, 실호출에서 <b>{@code gpt-5.6-luna}·{@code gpt-5-nano} 모두 커스텀 온도를 400으로
+     * 거부</b>했다({@code "Only the default (1) value is supported"}).
+     *
+     * <p><b>이건 측정의 한계로 기록해야 한다.</b> Gemini는 0.3, OpenAI는 기본값 1로 도는 셈이라
+     * "모델 교체" 축에 <b>온도 변화가 함께 묶인다.</b> 분리할 방법이 없다 — 모델이 값을 받지 않으므로
+     * 이 차이는 모델 선택에 딸려오는 성질이지 우리가 고를 수 있는 변수가 아니다. 온도가 높을수록
+     * 환각이 늘어나는 경향을 감안하면 <b>OpenAI 쪽에 불리한 조건</b>이며, 그만큼 이 측정은
+     * 보수적인 하한이 된다.
+     */
+    private static final Double TEMPERATURE = null;
 
     /** 수동 검증 워크시트에서 점수 구간별로 뽑을 표본 수. */
     private static final int SAMPLES_PER_BAND = 10;
@@ -87,15 +169,13 @@ class AiHallucinationBaselineTest {
     private static final long SAMPLING_SEED = 42L;
 
     /**
-     * 429 재시도 횟수와 기본 백오프. 관찰된 429가 RPD(일일)인지 RPM(분당)인지 확정하지 못했으므로
-     * (짧은 백오프로 풀리는 사례가 실제로 있었다), 개별 요청 단위로도 충분히 버티게 여유를 둔다.
-     * 10s→20s→40s→80s(최대 150초 대기) — 이 정도로도 안 풀리면 그 요청은 포기하고, 배치 단위
-     * 재시도(바깥의 실행 스크립트에서 시간 간격을 두고 재실행)로 넘긴다.
+     * 호출이 연속 이 횟수만큼 최종 실패하면 쿼터 소진으로 보고 측정을 조기 중단한다.
+     *
+     * <p>개별 요청의 429 재시도는 더 이상 여기서 구현하지 않는다 —
+     * {@link LlmRetryExecutor}가 프로덕션과 같은 정책으로 처리하고, 그 값은
+     * {@link #baselineProperties}가 정한다. 하네스가 자체 재시도를 들고 있으면 프로덕션의
+     * 재시도와 곱해져 실제 시도 횟수를 알 수 없게 된다.
      */
-    private static final int MAX_CALL_RETRIES = 4;
-    private static final long RETRY_BASE_BACKOFF_MS = 10_000L;
-
-    /** 호출이 연속 이 횟수만큼 최종 실패하면 쿼터 소진으로 보고 측정을 조기 중단한다. */
     private static final int ABORT_AFTER_CONSECUTIVE_FAILURES = 3;
 
     /** CSV·콘솔에 남기는 예외 메시지의 최대 길이. */
@@ -160,9 +240,29 @@ class AiHallucinationBaselineTest {
         String matchedPlaceName, String matchedCategory, String matchedAddress, String matchedPlaceUrl
     ) {}
 
+    /**
+     * 요청 1건의 결말.
+     *
+     * <p><b>기존에는 이 넷이 {@code parseSuccess} 하나로 뭉쳐 있었다.</b> 그래서 "파싱 실패율
+     * 28.6%"가 실은 호출 실패 16건을 제외한 14건 기준이라는 것이 몇 달 뒤 재분석에서야 드러났고,
+     * 전체 30요청 기준으로는 16.7%였다({@code BASELINE-ARTIFACT-ANALYSIS.md} 판정 3).
+     * 분모를 명시하려면 분자부터 갈라져 있어야 한다.
+     */
+    private enum Outcome {
+        /** 정상 — 응답을 DTO로 역직렬화했다. */
+        OK,
+        /** 재시도를 소진하고도 응답을 못 받았다(429/5xx/타임아웃). 파싱 실패율의 분자가 아니다. */
+        CALL_FAILED,
+        /** 응답이 끝까지 오지 않았다. 구조화 출력으로 막히지 않는 실패라 따로 센다. */
+        TRUNCATED,
+        /** 응답은 왔는데 스키마를 어겼다. 구조화 출력이 없애야 하는 바로 그 실패다. */
+        PARSE_FAILED
+    }
+
     private record RequestOutcome(
         int requestId, String location, RegionTier tier, String keywordSetId,
-        boolean parseSuccess, String parseError,
+        Outcome outcome, String failureDetail,
+        String finishReason, int responseBytes,
         int dayCount, String placesPerDay, int totalPlaces,
         int duplicatePlaceCount, int startTimeViolationCount
     ) {}
@@ -170,25 +270,46 @@ class AiHallucinationBaselineTest {
     // ── 측정 ──────────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("현재 단일 Gemini 호출 구조의 환각률 baseline을 측정하고 수동 검증 워크시트를 생성한다")
+    @DisplayName("OpenAI 단일 호출 구조의 환각률 baseline을 측정하고 수동 검증 워크시트를 생성한다")
     void measureHallucinationBaseline() throws Exception {
         Map<String, String> env = loadDotEnv(Path.of(".env"));
-        String geminiKey = resolve(env, "GEMINI_API_KEY");
+        String openAiKey = resolve(env, "OPENAI_API_KEY");
         String kakaoKey = resolve(env, "KAKAO_API_KEY");
 
-        assumeTrue(geminiKey != null && kakaoKey != null,
-            "이 측정은 실제 GEMINI_API_KEY / KAKAO_API_KEY 가 필요하다 (.env 또는 환경변수)");
+        assumeTrue(openAiKey != null && kakaoKey != null,
+            "이 측정은 실제 OPENAI_API_KEY / KAKAO_API_KEY 가 필요하다 (.env 또는 환경변수)");
 
-        // 프로덕션 빈 구성과 동일하게 조립한다 (GeminiConfig / KakaoConfig 참고).
-        // WebClient는 KakaoConfig의 팩토리를 그대로 호출한다 — 여기서 따로 조립하면
-        // 타임아웃·커넥션 풀 설정이 프로덕션과 갈라져 측정이 실제 동작을 반영하지 못한다.
-        GeminiService geminiService = new GeminiService(Client.builder().apiKey(geminiKey).build());
-        KakaoLocalClient kakaoLocalClient = new KakaoLocalClient(
-            KakaoConfig.buildKakaoWebClient("https://dapi.kakao.com", kakaoKey));
+        String modelKey = text("baseline.model", "BASELINE_MODEL", "luna");
+        String schemaMode = text("baseline.schemaMode", "BASELINE_SCHEMA_MODE", SCHEMA_MODE_PROMPT);
+        String model = MODELS.get(modelKey);
+        assertThat(model).as("BASELINE_MODEL 은 %s 중 하나여야 한다", MODELS.keySet()).isNotNull();
+        assertThat(schemaMode).as("BASELINE_SCHEMA_MODE 는 prompt 또는 json_schema 여야 한다")
+            .isIn(SCHEMA_MODE_PROMPT, SCHEMA_MODE_JSON_SCHEMA);
+
+        // 구조화 출력을 끈 판에서는 스키마를 아예 보내지 않는다 — 그래야 Gemini 의
+        // responseMimeType(스키마 없는 JSON 모드)과 같은 조건이 되어 모델 교체만 분리된다.
+        String responseSchema = SCHEMA_MODE_JSON_SCHEMA.equals(schemaMode) ? loadSchema() : null;
+
+        // 추론 강도. 비워두면 보내지 않는다(모델 기본값). gpt-5-nano 는 기본값으로 두면
+        // max-output-tokens 4096을 추론에 다 쓰고 본문을 0바이트로 돌려주므로 낮춰야 한다.
+        String reasoningEffort = text("baseline.reasoningEffort", "BASELINE_REASONING_EFFORT", "");
 
         // MyCourseServiceImpl 이 주입받는 ObjectMapper 는 Spring Boot 자동설정이라 JavaTimeModule 이
         // 등록돼 있다(PlaceDto.startTime 이 LocalTime). 여기서는 수동으로 맞춰준다.
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
+
+        // 프로덕션 조립을 그대로 호출한다. 여기서 따로 조립하면 타임아웃·재시도·오류 분류가
+        // 프로덕션과 갈라져 측정이 실제 동작을 반영하지 못한다
+        // (KakaoConfig.buildKakaoWebClient 가 같은 이유로 만들어진 선례다).
+        AiLlmProperties llmProperties = baselineProperties(openAiKey, model, reasoningEffort);
+        CapturingParser parser = new CapturingParser(objectMapper);
+        OpenAiLlmClient llmClient = new OpenAiLlmClient(llmProperties, parser,
+            new LlmRetryExecutor(llmProperties),
+            OpenAiLlmClient.buildChatModel(llmProperties.openai().baseUrl(), openAiKey,
+                llmProperties.timeoutMs()));
+
+        KakaoLocalClient kakaoLocalClient = new KakaoLocalClient(
+            KakaoConfig.buildKakaoWebClient("https://dapi.kakao.com", kakaoKey));
 
         List<RequestSpec> fullInputSet = buildInputSet();
         // LLM API의 일일 한도가 측정 규모의 상한이라, 전체 입력 세트를 여러 배치로 나눠 돌린 뒤
@@ -203,11 +324,20 @@ class AiHallucinationBaselineTest {
         int endIndex = Math.min(startIndex + limit, fullInputSet.size());
         List<RequestSpec> inputSet = fullInputSet.subList(startIndex, endIndex);
 
+        // 산출물 이름에 측정 축을 박는다. 네 조합을 순차로 돌리므로 파일명만 보고 어느 판인지
+        // 알 수 있어야 하고, results/ 는 .gitignore 대상이라 이름이 유일한 라벨이다.
+        String runId = "openai-%s-%s%s".formatted(modelKey, schemaMode,
+            reasoningEffort.isBlank() ? "" : "-re" + reasoningEffort);
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
-        Path rawDir = RESULTS_DIR.resolve("raw-" + timestamp);
+        String runTag = runId + "-" + timestamp;
+        Path rawDir = RESULTS_DIR.resolve("raw-" + runTag);
         Files.createDirectories(rawDir);
 
         System.out.printf("%n=== AI 코스 생성 환각률 baseline 측정 시작 ===%n");
+        System.out.printf("모델 %s (%s) / 출력 강제 %s / 추론 강도 %s / 의미 재시도 %d회%n",
+            model, modelKey, schemaMode,
+            reasoningEffort.isBlank() ? "(모델 기본값)" : reasoningEffort,
+            llmProperties.retry().semanticAttempts());
         System.out.printf("요청 #%d~#%d (%d건 / 전체 %d건), 일수 %d, 요청 간 지연 %,dms%n%n",
             startIndex + 1, endIndex, inputSet.size(), fullInputSet.size(), TRIP_DAYS, delayMs);
 
@@ -222,13 +352,38 @@ class AiHallucinationBaselineTest {
                 processed, inputSet.size(), spec.requestId(), spec.region().name(),
                 spec.region().tier(), spec.keywordSet().id());
 
-            String json;
+            parser.reset();
+            GeminiCourseDto dto;
             try {
-                json = callWithRetry(geminiService, spec);
+                dto = llmClient.generate(new LlmCall<>(AGENT_NAME, null,
+                    GeminiService.buildPrompt(spec.region().name(), TRIP_DAYS,
+                        spec.keywordSet().keywords()),
+                    GeminiCourseDto.class, responseSchema));
                 consecutiveCallFailures = 0;
-            } catch (Exception e) {
-                System.out.printf("Gemini 호출 실패: %s%n", oneLine(e.toString()));
-                outcomes.add(failedRequest(spec, "GEMINI_CALL_FAILED: " + e));
+            } catch (LlmTruncatedResponseException e) {
+                // 구조화 출력으로 막히지 않는 실패다. finishReason 과 수신 길이를 남겨야
+                // "출력 상한에 닿았나, 스트림이 끊겼나"를 사후에 가를 수 있다.
+                System.out.printf("응답 절단: finishReason=%s, %d바이트%n",
+                    e.getFinishReason(), length(e.getPartialText()));
+                dumpRaw(rawDir, spec, e.getPartialText());
+                outcomes.add(failedRequest(spec, Outcome.TRUNCATED, e.getMessage(),
+                    e.getFinishReason(), length(e.getPartialText())));
+                consecutiveCallFailures = 0;
+                sleep(delayMs);
+                continue;
+            } catch (LlmParseException e) {
+                // 구조화 출력이 없애야 하는 바로 그 실패다.
+                System.out.printf("JSON 파싱 실패: %s%n", oneLine(e.getMessage()));
+                dumpRaw(rawDir, spec, e.getRawText());
+                outcomes.add(failedRequest(spec, Outcome.PARSE_FAILED, e.getMessage(),
+                    "", length(e.getRawText())));
+                consecutiveCallFailures = 0;
+                sleep(delayMs);
+                continue;
+            } catch (LlmTransportException e) {
+                System.out.printf("OpenAI 호출 실패(%d회 시도): %s%n",
+                    e.getAttempts(), oneLine(e.getMessage()));
+                outcomes.add(failedRequest(spec, Outcome.CALL_FAILED, e.getMessage(), "", 0));
                 consecutiveCallFailures++;
 
                 // 쿼터가 소진되면 남은 요청을 전부 태워도 실패만 쌓인다 — 조기 중단해 시간을 아끼고
@@ -247,37 +402,25 @@ class AiHallucinationBaselineTest {
                 continue;
             }
 
-            // 파싱 성공/실패와 무관하게 원본 응답을 남긴다 — 파싱 실패의 실제 원인(예: trailing comma)을
-            // 사후에 확인하려면 원본이 반드시 있어야 한다. 2026-08-11 실측에서 이게 없어 28.6%의
-            // 파싱 실패 원인을 확정하지 못했다.
-            Files.writeString(rawDir.resolve(String.format("response-%02d-%s-%s.json",
-                spec.requestId(), spec.region().name(), spec.keywordSet().id())), json,
-                StandardCharsets.UTF_8);
-
-            GeminiCourseDto dto;
-            try {
-                dto = objectMapper.readValue(json, GeminiCourseDto.class);
-            } catch (Exception e) {
-                // 파싱 실패 자체가 품질 지표다 — 현재 프롬프트의 JSON 예시에 trailing comma 가 있다
-                System.out.printf("JSON 파싱 실패: %s%n", oneLine(e.getMessage()));
-                outcomes.add(failedRequest(spec, "JSON_PARSE_FAILED: " + e.getMessage()));
-                sleep(delayMs);
-                continue;
-            }
+            // 성공한 응답의 원본도 남긴다 — Gemini 측정 때 이게 없어 파싱 실패의 원인을 확정하지
+            // 못했고, 정상 응답의 크기 분포가 있어야 "386바이트에서 잘렸다"가 이상하다는 판단을
+            // 할 수 있다.
+            dumpRaw(rawDir, spec, parser.lastRawText());
 
             List<PlaceRow> rowsForRequest = groundPlaces(spec, dto, kakaoLocalClient);
             placeRows.addAll(rowsForRequest);
-            outcomes.add(summarize(spec, dto, rowsForRequest.size()));
+            outcomes.add(summarize(spec, dto, rowsForRequest.size(),
+                length(parser.lastRawText())));
 
             System.out.printf("장소 %d개 검증 완료%n", rowsForRequest.size());
             sleep(delayMs);
         }
 
-        writePlaceCsv(timestamp, placeRows);
-        writeRequestCsv(timestamp, outcomes);
-        writeManualVerificationCsv(timestamp, placeRows);
+        writePlaceCsv(runTag, placeRows);
+        writeRequestCsv(runTag, outcomes);
+        writeManualVerificationCsv(runTag, placeRows);
 
-        report(placeRows, outcomes, timestamp);
+        report(placeRows, outcomes, runTag);
 
         assertThat(placeRows).as("측정된 장소 표본이 하나도 없다 — API 키나 네트워크를 확인하라").isNotEmpty();
     }
@@ -372,7 +515,8 @@ class AiHallucinationBaselineTest {
 
     // ── 부가 지표 집계 ─────────────────────────────────────────────────────────
 
-    private RequestOutcome summarize(RequestSpec spec, GeminiCourseDto dto, int totalPlaces) {
+    private RequestOutcome summarize(RequestSpec spec, GeminiCourseDto dto, int totalPlaces,
+        int responseBytes) {
         List<DayScheduleDto> days = dto.daySchedules() == null ? List.of() : dto.daySchedules();
 
         List<String> perDay = new ArrayList<>();
@@ -400,38 +544,93 @@ class AiHallucinationBaselineTest {
         }
 
         return new RequestOutcome(spec.requestId(), spec.region().name(), spec.region().tier(),
-            spec.keywordSet().id(), true, "",
+            spec.keywordSet().id(), Outcome.OK, "", "stop", responseBytes,
             days.size(), String.join("/", perDay), totalPlaces, duplicates, startTimeViolations);
     }
 
-    private RequestOutcome failedRequest(RequestSpec spec, String error) {
+    private RequestOutcome failedRequest(RequestSpec spec, Outcome outcome, String detail,
+        String finishReason, int responseBytes) {
         return new RequestOutcome(spec.requestId(), spec.region().name(), spec.region().tier(),
-            spec.keywordSet().id(), false, oneLine(error), 0, "", 0, 0, 0);
+            spec.keywordSet().id(), outcome, oneLine(detail), nullToEmpty(finishReason),
+            responseBytes, 0, "", 0, 0, 0);
+    }
+
+    // ── 2단계 측정 배선 ────────────────────────────────────────────────────────
+
+    /**
+     * 측정 전용 {@code AiLlmProperties}.
+     *
+     * <p>Spring 컨텍스트를 띄우지 않으므로 {@code application.yml}이 아니라 여기서 조립한다.
+     * <b>프로덕션 값과 일부러 다르게 두는 항목이 둘</b>이고, 둘 다 비교 가능성 때문이다.
+     * <ul>
+     *   <li>{@code semantic-attempts: 1} — 재시도가 깨진 응답을 고쳐버리면 파싱 실패율이
+     *       "재시도 후" 값이 되는데, Gemini 측정에는 그런 보정이 없었다</li>
+     *   <li>{@code temperature 0.3} / {@code max-output-tokens 4096} — 프롬프트 원문이 쓰던
+     *       {@code GeminiService.getGenerationConfig()} 값 그대로다. 모델만 바뀌어야 한다</li>
+     * </ul>
+     * 전송 재시도는 넉넉히 둔다 — 429로 측정이 중단되면 그날 배치를 다시 돌려야 한다.
+     */
+    private static AiLlmProperties baselineProperties(String apiKey, String model,
+        String reasoningEffort) {
+        return new AiLlmProperties(
+            "openai",
+            60_000,
+            1,
+            new AiLlmProperties.Retry(4, 1, 2.0, 30.0, 0.3),
+            Map.of(AGENT_NAME, new AiLlmProperties.Agent(
+                model, TEMPERATURE, MAX_OUTPUT_TOKENS, reasoningEffort)),
+            new AiLlmProperties.OpenAi(apiKey, "https://api.openai.com"));
     }
 
     /**
-     * 429(RPM 초과)는 잠깐 기다리면 풀리므로 지수 백오프로 재시도한다. 다만 일일 한도 소진이면
-     * 재시도해도 소용없어서, 최종 실패는 호출부의 조기 중단 로직이 받는다.
+     * 성공한 응답의 원문을 가로채기 위한 파서.
+     *
+     * <p>포트는 역직렬화된 DTO만 돌려주므로 성공 시 원문이 남지 않는다. 그런데 <b>정상 응답의 크기
+     * 분포가 있어야</b> 절단된 응답이 이상한지 판단할 수 있다 — Gemini 재분석에서 "정상은
+     * 1,400~1,660바이트인데 이 건은 386바이트"라는 비교가 원인 규명의 결정적 근거였다.
+     * 실패 경로의 원문은 예외가 이미 들고 온다.
      */
-    private String callWithRetry(GeminiService geminiService, RequestSpec spec) {
-        RuntimeException last = null;
-        for (int attempt = 0; attempt <= MAX_CALL_RETRIES; attempt++) {
-            try {
-                return geminiService.generateAICourse(
-                    spec.region().name(), TRIP_DAYS, spec.keywordSet().keywords());
-            } catch (RuntimeException e) {
-                last = e;
-                boolean retriable = String.valueOf(e.getMessage()).contains("429");
-                if (!retriable || attempt == MAX_CALL_RETRIES) {
-                    break;
-                }
-                long backoff = RETRY_BASE_BACKOFF_MS * (1L << attempt);   // 10s, 20s, 40s
-                System.out.printf("%n    429 — %,dms 후 재시도 (%d/%d) ... ",
-                    backoff, attempt + 1, MAX_CALL_RETRIES);
-                sleep(backoff);
-            }
+    private static final class CapturingParser extends LlmResponseParser {
+
+        private volatile String lastRawText;
+
+        private CapturingParser(ObjectMapper objectMapper) {
+            super(objectMapper);
         }
-        throw last;
+
+        @Override
+        public <T> T parse(String agentName, String rawText, Class<T> responseType) {
+            this.lastRawText = rawText;
+            return super.parse(agentName, rawText, responseType);
+        }
+
+        private void reset() {
+            this.lastRawText = null;
+        }
+
+        private String lastRawText() {
+            return lastRawText;
+        }
+    }
+
+    private static String loadSchema() throws IOException {
+        try (var in = AiHallucinationBaselineTest.class.getResourceAsStream(SCHEMA_RESOURCE)) {
+            if (in == null) {
+                throw new IOException("스키마 리소스를 찾을 수 없다: " + SCHEMA_RESOURCE);
+            }
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    /** 성공·실패를 가리지 않고 응답 원문을 남긴다. 원문 없이는 실패 원인을 확정할 수 없다. */
+    private static void dumpRaw(Path rawDir, RequestSpec spec, String rawText) throws IOException {
+        Files.writeString(rawDir.resolve(String.format("response-%02d-%s-%s.json",
+                spec.requestId(), spec.region().name(), spec.keywordSet().id())),
+            nullToEmpty(rawText), StandardCharsets.UTF_8);
+    }
+
+    private static int length(String s) {
+        return s == null ? 0 : s.length();
     }
 
     /** CSV·콘솔에 넣기 전에 개행을 없애고 길이를 제한한다 — 예외 메시지가 여러 줄이라 행이 깨진다. */
@@ -442,7 +641,7 @@ class AiHallucinationBaselineTest {
 
     // ── 산출물 ────────────────────────────────────────────────────────────────
 
-    private void writePlaceCsv(String timestamp, List<PlaceRow> rows) throws IOException {
+    private void writePlaceCsv(String runTag, List<PlaceRow> rows) throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("requestId,location,regionTier,keywordSet,day,placeIndex,aiPlaceName,")
             .append("kakaoTotalCount,bestScore,scoreBand,matchedPlaceName,matchedCategory,")
@@ -464,12 +663,15 @@ class AiHallucinationBaselineTest {
                 .append(csv(r.matchedAddress())).append(',')
                 .append(csv(r.matchedPlaceUrl())).append('\n');
         }
-        writeUtf8Bom(RESULTS_DIR.resolve("hallucination-baseline-" + timestamp + ".csv"), sb.toString());
+        writeUtf8Bom(RESULTS_DIR.resolve("hallucination-baseline-" + runTag + ".csv"), sb.toString());
     }
 
-    private void writeRequestCsv(String timestamp, List<RequestOutcome> outcomes) throws IOException {
+    private void writeRequestCsv(String runTag, List<RequestOutcome> outcomes) throws IOException {
         StringBuilder sb = new StringBuilder();
-        sb.append("requestId,location,regionTier,keywordSet,parseSuccess,parseError,")
+        // outcome 을 4값으로 나눠 남긴다 — 예전의 parseSuccess 한 칸으로는 "파싱 실패율의 분모가
+        // 전체 요청인지 호출 성공분인지"를 사후에 복원할 수 없었다.
+        sb.append("requestId,location,regionTier,keywordSet,outcome,failureDetail,")
+            .append("finishReason,responseBytes,")
             .append("dayCount,placesPerDay,totalPlaces,duplicatePlaceCount,startTimeViolationCount\n");
 
         for (RequestOutcome o : outcomes) {
@@ -477,15 +679,17 @@ class AiHallucinationBaselineTest {
                 .append(csv(o.location())).append(',')
                 .append(o.tier()).append(',')
                 .append(csv(o.keywordSetId())).append(',')
-                .append(o.parseSuccess()).append(',')
-                .append(csv(o.parseError())).append(',')
+                .append(o.outcome()).append(',')
+                .append(csv(o.failureDetail())).append(',')
+                .append(csv(o.finishReason())).append(',')
+                .append(o.responseBytes()).append(',')
                 .append(o.dayCount()).append(',')
                 .append(csv(o.placesPerDay())).append(',')
                 .append(o.totalPlaces()).append(',')
                 .append(o.duplicatePlaceCount()).append(',')
                 .append(o.startTimeViolationCount()).append('\n');
         }
-        writeUtf8Bom(RESULTS_DIR.resolve("hallucination-baseline-" + timestamp + "-requests.csv"),
+        writeUtf8Bom(RESULTS_DIR.resolve("hallucination-baseline-" + runTag + "-requests.csv"),
             sb.toString());
     }
 
@@ -496,7 +700,7 @@ class AiHallucinationBaselineTest {
      * 데이터로 확인해야 임계값(계획서의 min-kakao-score: 5)이 적절한지까지 판정할 수 있다.
      * 대신 전체 환각률을 추정할 때는 구간별 비율을 전체 비중으로 가중해야 한다.
      */
-    private void writeManualVerificationCsv(String timestamp, List<PlaceRow> rows) throws IOException {
+    private void writeManualVerificationCsv(String runTag, List<PlaceRow> rows) throws IOException {
         Map<String, List<PlaceRow>> byBand = new LinkedHashMap<>();
         for (String band : ALL_BANDS) {
             byBand.put(band, new ArrayList<>());
@@ -532,10 +736,10 @@ class AiHallucinationBaselineTest {
                     .append('\n'); // note
             }
         }
-        writeUtf8Bom(RESULTS_DIR.resolve("manual-verification-" + timestamp + ".csv"), sb.toString());
+        writeUtf8Bom(RESULTS_DIR.resolve("manual-verification-" + runTag + ".csv"), sb.toString());
     }
 
-    private void report(List<PlaceRow> rows, List<RequestOutcome> outcomes, String timestamp) {
+    private void report(List<PlaceRow> rows, List<RequestOutcome> outcomes, String runTag) {
         System.out.printf("%n=== 점수 구간 분포 (장소 표본 %,d개) ===%n", rows.size());
 
         Map<String, Integer> bandCounts = new LinkedHashMap<>();
@@ -565,15 +769,55 @@ class AiHallucinationBaselineTest {
                 tier, tierSuspect, tierRows.size(), pct(tierSuspect, tierRows.size()));
         }
 
-        System.out.printf("%n=== 부가 지표 (요청 %d건) ===%n", outcomes.size());
-        long parseFailed = outcomes.stream().filter(o -> !o.parseSuccess()).count();
+        System.out.printf("%n=== 요청 결말 (요청 %d건) ===%n", outcomes.size());
+
+        // 예전에는 이 넷이 한 칸에 뭉쳐 "JSON 파싱/호출 실패"로 나왔고, 그래서 28.6%가 무엇에 대한
+        // 비율인지 사후에 복원할 수 없었다. 분자와 분모를 둘 다 명시한다.
+        Map<Outcome, Long> byOutcome = new LinkedHashMap<>();
+        for (Outcome value : Outcome.values()) {
+            byOutcome.put(value, outcomes.stream().filter(o -> o.outcome() == value).count());
+        }
+        for (Map.Entry<Outcome, Long> e : byOutcome.entrySet()) {
+            System.out.printf("  %-14s %3d건 (%5.1f%%)%n",
+                e.getKey(), e.getValue(), pct(e.getValue(), outcomes.size()));
+        }
+
+        long callSucceeded = outcomes.size() - byOutcome.get(Outcome.CALL_FAILED);
+        long unusable = byOutcome.get(Outcome.TRUNCATED) + byOutcome.get(Outcome.PARSE_FAILED);
+
+        System.out.printf("%n=== JSON 실패율 (분모를 반드시 명시한다) ===%n");
+        System.out.printf("  전체 요청 기준        (절단+파싱실패) / 전체        = %d / %d = %.1f%%%n",
+            unusable, outcomes.size(), pct(unusable, outcomes.size()));
+        System.out.printf("  호출 성공분 기준      (절단+파싱실패) / 호출성공    = %d / %d = %.1f%%%n",
+            unusable, callSucceeded, pct(unusable, callSucceeded));
+        System.out.printf("  ※ Gemini 값 16.7%%(5/30)는 '전체 요청 기준'이다. 28.6%%는 호출 성공분(4/14) 기준이었다.%n");
+        System.out.printf("  ※ 절단은 구조화 출력으로 막히지 않는다 — 두 값을 갈라 봐야 그게 보인다.%n");
+
+        List<RequestOutcome> truncated = outcomes.stream()
+            .filter(o -> o.outcome() == Outcome.TRUNCATED).toList();
+        if (!truncated.isEmpty()) {
+            System.out.printf("%n=== 절단 상세 (출력 상한 %d 토큰) ===%n", MAX_OUTPUT_TOKENS);
+            for (RequestOutcome o : truncated) {
+                System.out.printf("  #%-2d %-4s finishReason=%-14s %,d바이트 수신%n",
+                    o.requestId(), o.location(), o.finishReason(), o.responseBytes());
+            }
+            System.out.printf("  ※ 정상 응답 크기와 비교하라. 훨씬 작으면 상한이 아니라 스트림 중단이다.%n");
+        }
+
+        java.util.IntSummaryStatistics okBytes = outcomes.stream()
+            .filter(o -> o.outcome() == Outcome.OK)
+            .mapToInt(RequestOutcome::responseBytes).summaryStatistics();
+        if (okBytes.getCount() > 0) {
+            System.out.printf("%n  정상 응답 크기 %,d ~ %,d바이트 (평균 %,.0f)%n",
+                okBytes.getMin(), okBytes.getMax(), okBytes.getAverage());
+        }
+
+        System.out.printf("%n=== 부가 지표 ===%n");
         long dayMismatch = outcomes.stream()
-            .filter(o -> o.parseSuccess() && o.dayCount() != TRIP_DAYS).count();
+            .filter(o -> o.outcome() == Outcome.OK && o.dayCount() != TRIP_DAYS).count();
         int duplicates = outcomes.stream().mapToInt(RequestOutcome::duplicatePlaceCount).sum();
         int violations = outcomes.stream().mapToInt(RequestOutcome::startTimeViolationCount).sum();
 
-        System.out.printf("  JSON 파싱/호출 실패      %d / %d (%.1f%%)%n",
-            parseFailed, outcomes.size(), pct(parseFailed, outcomes.size()));
         System.out.printf("  일수 불일치(≠%d)         %d / %d (%.1f%%)%n",
             TRIP_DAYS, dayMismatch, outcomes.size(), pct(dayMismatch, outcomes.size()));
 
@@ -581,7 +825,7 @@ class AiHallucinationBaselineTest {
         int totalDays = 0;
         int outOfRangeDays = 0;
         for (RequestOutcome o : outcomes) {
-            if (!o.parseSuccess() || o.placesPerDay().isBlank()) {
+            if (o.outcome() != Outcome.OK || o.placesPerDay().isBlank()) {
                 continue;
             }
             for (String count : o.placesPerDay().split("/")) {
@@ -600,11 +844,11 @@ class AiHallucinationBaselineTest {
             violations, pct(violations, rows.size()));
 
         System.out.printf("%n=== 산출물 ===%n");
-        System.out.printf("  Gemini 원본 응답 results/raw-%s/  ← 파싱 실패 원인 확인용%n", timestamp);
-        System.out.printf("  장소별 원본     results/hallucination-baseline-%s.csv%n", timestamp);
-        System.out.printf("  요청별 지표     results/hallucination-baseline-%s-requests.csv%n", timestamp);
+        System.out.printf("  LLM 원본 응답   results/raw-%s/  ← 성공·실패 모두 남긴다%n", runTag);
+        System.out.printf("  장소별 원본     results/hallucination-baseline-%s.csv%n", runTag);
+        System.out.printf("  요청별 지표     results/hallucination-baseline-%s-requests.csv%n", runTag);
         System.out.printf("  수동 검증 대상  results/manual-verification-%s.csv  ← verdict 를 채워주세요%n",
-            timestamp);
+            runTag);
         System.out.printf("%n  수동 검증 후 전체 환각률 추정:%n");
         System.out.printf("    세탁된 환각률 = Σ_구간 (구간별 LAUNDERED 비율 × 구간별 전체 비중)%n");
         System.out.printf("    전체 환각률   = 자동 프록시 환각률 + 세탁된 환각률%n");
@@ -674,6 +918,15 @@ class AiHallucinationBaselineTest {
         } catch (NumberFormatException e) {
             return defaultValue;
         }
+    }
+
+    /** {@link #setting}의 문자열 버전. 측정 축(모델·출력 강제 방식) 선택에 쓴다. */
+    private static String text(String systemProperty, String envVar, String defaultValue) {
+        String raw = System.getProperty(systemProperty);
+        if (raw == null || raw.isBlank()) {
+            raw = System.getenv(envVar);
+        }
+        return (raw == null || raw.isBlank()) ? defaultValue : raw.trim();
     }
 
     /** 실제 OS 환경변수가 있으면 그것을 우선한다 — spring-dotenv 와 동일한 우선순위. */

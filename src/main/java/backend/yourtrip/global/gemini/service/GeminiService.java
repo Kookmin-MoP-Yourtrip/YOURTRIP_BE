@@ -15,7 +15,27 @@ public class GeminiService {
     private final Client geminiClient;
 
     public String generateAICourse(String location, int days, List<KeywordType> keywords) {
-        String prompt = """
+        GenerateContentResponse response = geminiClient.models.generateContent("gemini-2.5-flash",
+            buildPrompt(location, days, keywords), getGenerationConfig());
+
+        return response.text();
+    }
+
+    /**
+     * 단일 호출 구조의 프롬프트를 조립한다.
+     *
+     * <p><b>이 메서드가 {@code static public}인 이유는 벤치마크 하네스 때문이다.</b>
+     * 2단계 baseline 재측정({@code AiHallucinationBaselineTest})은 "모델만 Gemini에서 OpenAI로
+     * 바꿨을 때 환각률이 어떻게 달라지는가"를 재는데, 그러려면 <b>프롬프트가 글자 하나까지
+     * 같아야</b> 한다. 하네스가 이 문자열을 복사해 가면 원본과 drift가 생겨 측정이 "모델 교체
+     * 효과"를 재는 것이 아니게 된다. {@code KakaoConfig.buildKakaoWebClient}가 같은 이유로
+     * 만들어진 선례다.
+     *
+     * <p>이 프롬프트는 8단계에서 통째로 사라진다 — 스키마·형식 강제는 구조화 출력이, 시간 배치와
+     * 동선은 {@code RouteOptimizer}가 맡게 되므로 "취향과 컨셉"만 남는다(설계 문서 §7).
+     */
+    public static String buildPrompt(String location, int days, List<KeywordType> keywords) {
+        return """
              당신은 한국인 여행자를 위한 전문 여행 코스 플래너 AI입니다.
              사용자의 선호도와 여행 정보를 바탕으로, 하루 단위로 잘 쪼개진 동선 최적화 여행 일정을 설계하세요.
 
@@ -114,11 +134,6 @@ public class GeminiService {
             days,
             KeywordType.buildKeywordsJson(keywords),
             days);
-
-        GenerateContentResponse response = geminiClient.models.generateContent("gemini-2.5-flash",
-            prompt, getGenerationConfig());
-
-        return response.text();
     }
 
     private GenerateContentConfig getGenerationConfig() {
