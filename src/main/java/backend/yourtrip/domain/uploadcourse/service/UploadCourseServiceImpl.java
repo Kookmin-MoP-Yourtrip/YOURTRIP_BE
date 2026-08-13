@@ -58,7 +58,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -108,6 +107,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private final UploadCourseRepository uploadCourseRepository;
     private final MyCourseService myCourseService;
     private final UploadCourseDetailReader uploadCourseDetailReader;
+    private final UploadCoursePopularReader uploadCoursePopularReader;
     private final UserService userService;
     private final S3Service s3Service;
     private final CloudFrontService cloudFrontService;
@@ -252,8 +252,12 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         );
     }
 
+    // getDetail과 같은 이유로 @Transactional을 두지 않는다. 이 경로는 랭킹 캐시 조회, 분산 락
+    // 획득·해제, 락 대기 재시도(최대 1초 Thread.sleep), 아이템 캐시 MGET/파이프라인 SET,
+    // CloudFront URL 조립까지 대부분이 DB와 무관한 작업이다. 트랜잭션을 걸면 캐시가 전부 히트해도
+    // DB 커넥션을 잡고, 최악의 경우 커넥션을 쥔 채로 1초를 sleep하게 된다.
+    // DB 접근은 UploadCoursePopularReader의 짧은 readOnly 트랜잭션에만 남겼다.
     @Override
-    @Transactional(readOnly = true)
     public UploadCourseListResponse getPopularCourses(KeywordType theme) {
         validateThemeIsMoodOrNull(theme);
 
@@ -294,13 +298,12 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
         if (locked == null) {
             // Redis 자체가 예외를 던진 경우 — 락 재시도 없이 바로 DB 직접 조회로 폴백(fail-open)
-            return uploadCourseRepository.findPopularCourseIds(theme, PageRequest.of(0, 5));
+            return uploadCoursePopularReader.readPopularCourseIds(theme);
         }
 
         if (locked) {
             try {
-                List<Long> ids = uploadCourseRepository.findPopularCourseIds(theme,
-                    PageRequest.of(0, 5));
+                List<Long> ids = uploadCoursePopularReader.readPopularCourseIds(theme);
                 writeRankingCache(cacheKey, ids);
                 return ids;
             } finally {
@@ -318,7 +321,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         }
 
         // 재시도로도 채워지지 않으면 캐싱 없이 DB 직접 조회로 최종 폴백
-        return uploadCourseRepository.findPopularCourseIds(theme, PageRequest.of(0, 5));
+        return uploadCoursePopularReader.readPopularCourseIds(theme);
     }
 
     /**
@@ -396,14 +399,14 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             .toList();
 
         if (!missingIds.isEmpty()) {
-            List<UploadCourse> uploadCourses = uploadCourseRepository.findAllByIdInWithKeywords(
+            // 캐시 미스분만 짧은 readOnly 트랜잭션으로 읽는다. 위의 MGET과 아래의 파이프라인 SET은
+            // 그 트랜잭션 밖에 있어야 하므로, 두 DB 조회를 Reader 메서드 하나로 합치면 안 된다.
+            List<CourseListItemCacheItem> loaded = uploadCoursePopularReader.readCourseListItems(
                 missingIds);
             Map<Long, CourseListItemCacheItem> newItems = new HashMap<>();
-            for (UploadCourse uploadCourse : uploadCourses) {
-                CourseListItemCacheItem item = UploadCourseMapper.toCourseListItemCacheItem(
-                    uploadCourse);
-                itemsById.put(uploadCourse.getId(), item);
-                newItems.put(uploadCourse.getId(), item);
+            for (CourseListItemCacheItem item : loaded) {
+                itemsById.put(item.uploadCourseId(), item);
+                newItems.put(item.uploadCourseId(), item);
             }
             // 개별 SET을 코스 개수만큼 반복하면 Redis 장애 시 타임아웃이 그만큼 곱해지는 문제가
             // 실측(fail-open 확인 중)으로 드러나, 파이프라인으로 한 번의 왕복에 모아 보낸다.
