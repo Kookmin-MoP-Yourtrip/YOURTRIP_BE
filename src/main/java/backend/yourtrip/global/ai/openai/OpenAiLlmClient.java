@@ -31,6 +31,7 @@ import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.ai.openai.api.ResponseFormat;
 import org.springframework.ai.openai.api.ResponseFormat.JsonSchema;
 import org.springframework.ai.retry.TransientAiException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
@@ -102,6 +103,11 @@ public class OpenAiLlmClient implements LlmClient {
     private final OpenAiChatModel chatModel;
     private final Semaphore concurrencyGate;
 
+    /**
+     * 생성자가 둘이라 주입 대상을 명시한다. 표시하지 않으면 Spring이 기본 생성자를 찾다가
+     * 컨텍스트가 통째로 깨진다.
+     */
+    @Autowired
     public OpenAiLlmClient(AiLlmProperties properties, LlmResponseParser responseParser,
         LlmRetryExecutor retryExecutor) {
         this(properties, responseParser, retryExecutor,

@@ -6,6 +6,7 @@ import backend.yourtrip.global.ai.exception.LlmTransportException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -34,6 +35,11 @@ public class LlmRetryExecutor {
     private final AiLlmProperties properties;
     private final Sleeper sleeper;
 
+    /**
+     * 생성자가 둘이라 어느 쪽으로 주입할지 명시해야 한다. 표시하지 않으면 Spring이 기본 생성자를
+     * 찾다가 {@code NoSuchMethodException}으로 컨텍스트 자체가 깨진다.
+     */
+    @Autowired
     public LlmRetryExecutor(AiLlmProperties properties) {
         this(properties, Thread::sleep);
     }
