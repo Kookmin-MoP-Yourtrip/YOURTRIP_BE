@@ -8,7 +8,7 @@
 >
 > **LLM 벤더는 OpenAI로 확정됐다.** 설계 문서 초안은 Gemini를 현행으로 두고 OpenAI 전환 "가능성"을 전제로 쓰였으나, 확정에 따라 설계 문서 본문(§6·§7·§11·§13·§15)이 갱신됐다. 이 로드맵은 그 갱신된 설계를 기준으로 한다.
 >
-> 진행 상황: **2단계 코드 작업 완료**(2-1 ~ 2-5, 테스트 103개 통과 + 앱 기동 확인). **2-6 baseline 재측정만 남았고 실행 승인 대기 중이다.** 0단계 검증 항목은 전부 통과했고 OpenAI·네이버 키도 발급됐다.
+> 진행 상황: **2단계 완료**(2-1 ~ 2-6, 테스트 103개 통과 + 앱 기동 확인 + baseline 재측정 4조합 120요청). 남은 것은 수동 검증 40건뿐이다. 다음은 3단계(`RouteOptimizer`). 0단계 검증 항목은 전부 통과했고 OpenAI·네이버 키도 발급됐다.
 >
 > 1단계에서 **로드맵 1-2의 처방이 데이터와 반대라는 것이 드러나 방향을 바꿨다.** 아래 1-2 항목의 정정과 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) 참고.
 
@@ -43,7 +43,7 @@
 |---|---|---|
 | LLM 벤더 | "Gemini는 고정이 아니다. OpenAI로 전환할 가능성이 높다"(§6) | **OpenAI 확정.** Gemini 어댑터는 만들지 않는다 |
 | 어댑터 구현 | "Gemini 쪽이 막히면 OpenAI 어댑터만 Spring AI"(§6) | **Spring AI `1.1.8` 채택.** `LlmClient` 포트는 그대로 유지. 2.0.x는 Spring Boot 4를 요구해 쓸 수 없다(0단계 판정) |
-| 모델 배치 | Gemini 기준 `thinking-budget` | **Planner·Curator = `gpt-5.6-luna`, PlaceProfile = `gpt-5-nano`** (약 $0.0030/요청). Curator 모델은 2-6 실측으로 최종 확정 |
+| 모델 배치 | Gemini 기준 `thinking-budget` | **Planner·Curator = `gpt-5.6-luna`, PlaceProfile = `gpt-5-nano`** (약 $0.0030/요청). **2-6 실측으로 Curator=luna 확정** — nano는 환각률이 7배라 후보에서 탈락했다. `thinking-budget`의 OpenAI 대응물은 `reasoning-effort`로 확인돼 agent별 설정에 들어갔다 |
 | 네이버 API 키 | "착수 전 확인 필요"(§15) | **미보유.** 0단계에서 발급 — 4단계의 블로커 |
 | before/after 비교 | 환각률 25.6%(Gemini 단일 호출) | **OpenAI 단일 호출 baseline을 2단계에서 재측정**해 3점 비교 |
 | V1 범위 | Critic·Refiner 제외(§10) | 유지. §13의 11단계 전부가 이 로드맵의 범위 |
@@ -52,7 +52,11 @@
 
 **Spring AI를 고르는 근거.** OpenAI의 `response_format: json_schema`는 업계 표준에 가깝게 정착돼 있어 프레임워크 지원이 안정적일 가능성이 높고, 이 저장소는 이미 `@Bean`·`application.yml` 기반 Spring 관용구가 전역에 깔려 있다. 다만 **포트를 없애고 Spring AI의 `ChatClient`를 에이전트가 직접 쓰지는 않는다** — 오케스트레이션은 어떤 프레임워크를 쓰든 직접 짜야 하는 도메인 로직이고, 툴 자율 호출·`VectorStore`·대화 메모리는 이 파이프라인에 대응물이 없다. Spring AI는 `OpenAiLlmClient` 내부의 전송 계층으로만 가둔다.
 
-**에이전트별 모델 차등의 근거.** 현재 코드의 단일 `temperature 0.3`은 "장소 선정은 다양해야 하고 판정은 일관돼야 한다"는 상충 요구를 하나로 뭉갠 값이다. Curator는 후보 3개가 서로 비슷하면 대체재로서 의미가 없으므로 온도를 올리고, PlaceProfile은 속성 추출이라 창의성이 아니라 충실성이 필요하므로 낮춘다. 모델도 같은 논리로 나눈다 — Planner(컨셉·권역 설계)만 추론 이득이 있고, Curator(지역 상식 회상)·PlaceProfile(속성 추출)은 이득이 적으면서 토큰 비중은 가장 크다. 구체 모델 ID와 단가는 0단계에서 확정한다.
+**에이전트별 모델 차등의 근거.** ~~현재 코드의 단일 `temperature 0.3`은~~
+
+> **[정정]** 아래 온도 차등 계획은 **실행할 수 없다.** 2-6 실호출에서 `gpt-5.6-luna`·`gpt-5-nano` 모두 커스텀 `temperature`를 400으로 거부하는 것이 확인됐다(`"Only the default (1) value is supported"`). Curator 쪽 의도(높은 온도)는 기본값 1이 이미 높아 우연히 충족되지만, **PlaceProfile 쪽(낮은 온도로 충실성 확보)은 그대로 손해**라 9단계에서 닫힌 태그 집합과 스키마 강제로 보완해야 한다. 대신 **`reasoning-effort`가 실질적인 차등 수단**이 됐다 — 안 낮추면 nano는 출력 예산을 추론에 다 쓰고 본문을 0바이트로 돌려준다. 상세는 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 판정 6
+
+원래 근거는 다음과 같았다. 현재 코드의 단일 `temperature 0.3`은 "장소 선정은 다양해야 하고 판정은 일관돼야 한다"는 상충 요구를 하나로 뭉갠 값이다. Curator는 후보 3개가 서로 비슷하면 대체재로서 의미가 없으므로 온도를 올리고, PlaceProfile은 속성 추출이라 창의성이 아니라 충실성이 필요하므로 낮춘다. 모델도 같은 논리로 나눈다 — Planner(컨셉·권역 설계)만 추론 이득이 있고, Curator(지역 상식 회상)·PlaceProfile(속성 추출)은 이득이 적으면서 토큰 비중은 가장 크다. 구체 모델 ID와 단가는 0단계에서 확정한다.
 
 ## 문서 작성 원칙
 
@@ -119,9 +123,22 @@
   >
   > **재시도 계층이 셋으로 흩어져 있던 것을 발견해 제거했다** — 설정한 3회가 실제 HTTP 요청 6회로 관측됐다. ① Spring AI `OpenAiChatModel`의 자체 `RetryTemplate` ② **선언조차 되지 않은 전이 의존성** Apache HttpClient 5가 `detect()`에 선택돼 429를 자체적으로 1회 더 시도 ③ 우리 executor. 또 **Spring AI는 429를 `NonTransientAiException`(재시도 무의미)으로 분류**하는데 실제로는 정반대라, 상태 코드를 보존하는 `responseErrorHandler`를 주입해 분류를 직접 소유한다. 근거는 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 판정 1·2
 - [x] 2-5. 포트 기반 단위 테스트 — 에이전트 코드가 벤더 SDK 타입을 import하지 않는다는 것을 테스트로 확인. 에이전트는 6단계에 생기므로 **소스 import 스캔 + 포트 목킹 데모** 두 가지로 갈음했다. 어댑터가 실제로 벤더 SDK를 쓴다는 것도 함께 단언해 검사기가 헛돌지 않음을 보인다
-- [ ] 2-6. **OpenAI 단일 호출 baseline 재측정** — 기존 `AiHallucinationBaselineTest` 하네스의 LLM만 교체하고 입력 세트·`score()` 로직은 그대로. **환각률과 JSON 파싱 실패율을 함께 집계하고, 이번에는 결과 산출물을 파일로 남긴다**(Gemini 측정 때 파싱 실패율 28.6%가 수치만 남고 산출물이 남지 않아 재확인이 불가능했다)
+- [x] 2-6. **OpenAI 단일 호출 baseline 재측정** — 기존 `AiHallucinationBaselineTest` 하네스의 LLM만 교체하고 입력 세트·`score()` 로직은 그대로. **환각률과 JSON 파싱 실패율을 함께 집계하고, 이번에는 결과 산출물을 파일로 남긴다**(Gemini 측정 때 파싱 실패율 28.6%가 수치만 남고 산출물이 남지 않아 재확인이 불가능했다)
 
-  **하네스 교체는 완료됐고 측정 실행만 남았다**(외부 API 비용이 들어 승인 대기). 측정 축이 둘로 늘었다 — `BASELINE_MODEL`(luna/nano)과 `BASELINE_SCHEMA_MODE`(prompt/json_schema)의 **4조합 120요청**. 구조화 출력을 켠 판과 끈 판을 둘 다 재야 "모델 교체"·"구조화 출력"·"파이프라인" 세 변수가 각각 분리되고, 덤으로 판정 3의 "절단은 구조화 출력으로 안 사라진다"는 추론이 데이터로 검증된다. 요청 결말도 `OK`/`CALL_FAILED`/`TRUNCATED`/`PARSE_FAILED` 넷으로 갈라 **두 분모를 모두 출력**한다
+  측정 축이 둘로 늘었다 — `BASELINE_MODEL`(luna/nano) × `BASELINE_SCHEMA_MODE`(prompt/json_schema)의 **4조합 120요청, 전량 완료**(약 32분). 요청 결말을 `OK`/`CALL_FAILED`/`TRUNCATED`/`PARSE_FAILED` 넷으로 갈라 **두 분모를 모두 출력**한다.
+
+  | 조합 | 자동 프록시 환각률 | JSON 실패(전체 요청) | 응답 크기 평균 |
+  |---|---|---|---|
+  | **luna / 프롬프트지시** | **6.4%** | 0.0% | 1,503B |
+  | luna / json_schema | 7.8% | 0.0% | 786B |
+  | nano / 프롬프트지시 | 47.8% | 3.3% (1/30) | 1,553B |
+  | nano / json_schema | 50.7% | 0.0% | 798B |
+
+  > **[중요] 측정이 이 로드맵의 전제 두 개를 뒤집었다.** 상세는 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 판정 7·8·9.
+  >
+  > ① **Curator 모델은 `gpt-5.6-luna`로 확정한다**(0-4가 2-6에 넘긴 숙제). `gpt-5-nano`는 환각률이 **7배 이상**이고 `NO_RESULT` 밴드가 40%를 넘는다 — AI가 부른 이름의 40%가 카카오에서 검색조차 안 된다(`"경주 전통찜닭골목"`, `"부산항대교 남항스카이워크"` 같은 그럴듯한 조어). 비용을 아끼려고 Curator를 nano로 내리면 1차 목표를 정면으로 훼손한다.
+  >
+  > ② **위 "목표 1"의 인과가 틀렸다.** 구조화 출력은 환각률을 낮추지 않았고(오히려 +1.4~2.9%p, 표본 오차 범위) 낮출 수도 없다 — **스키마는 형식을 강제하지 내용을 강제하지 않는다.** JSON 실패를 해결한 것은 구조화 출력이 아니라 **모델 교체**다(120요청 중 절단 0건). 구조화 출력의 실익은 다른 데 있었다: **출력 바이트 −48%**(pretty-print 제거, §11이 지목한 Curator 출력 비용에 직결)와 **스키마 밖 필드 차단**(유일한 파싱 실패 1건이 프롬프트 내부 불일치인 `placeLocation`이었고 `additionalProperties: false`가 이를 없앴다).
 
 ### 3. `RouteOptimizer` + `SlotType` + `GeoUtils`
 
