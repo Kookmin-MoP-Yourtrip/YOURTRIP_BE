@@ -39,7 +39,7 @@ class LlmRetryExecutorTest {
     private LlmRetryExecutor executorWith(Retry retry) {
         AiLlmProperties properties = new AiLlmProperties(
             "openai", 20_000, 2, retry,
-            Map.of("curator", new Agent("gpt-5.6-luna", 0.9, 4096)),
+            Map.of("curator", new Agent("gpt-5.6-luna", 0.9, 4096, null)),
             new OpenAi("", "https://api.openai.com"));
         return new LlmRetryExecutor(properties, sleeps::add);
     }

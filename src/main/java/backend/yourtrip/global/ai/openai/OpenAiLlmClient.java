@@ -179,6 +179,11 @@ public class OpenAiLlmClient implements LlmClient {
 
         return OpenAiChatModel.builder()
             .openAiApi(api)
+            // 빈 defaultOptions 로 덮는다. Spring AI의 Builder는 defaultOptions 를
+            // temperature 0.7 로 초기화해두는데, 호출마다 옵션을 만들어 넘겨도 우리가 지정하지
+            // 않은 필드는 이 기본값이 병합돼 실려 나간다 — gpt-5 계열은 커스텀 온도를 400으로
+            // 거부하므로, "안 보내는 것"이 실제로 안 보내지려면 기본값 자체를 비워야 한다.
+            .defaultOptions(OpenAiChatOptions.builder().build())
             .retryTemplate(RetryTemplate.builder().maxAttempts(1).build())
             .build();
     }
@@ -257,14 +262,26 @@ public class OpenAiLlmClient implements LlmClient {
     private <T> OpenAiChatOptions buildOptions(LlmCall<T> call, boolean correcting) {
         AiLlmProperties.Agent agent = properties.agent(call.agentName());
 
-        return OpenAiChatOptions.builder()
+        OpenAiChatOptions.Builder options = OpenAiChatOptions.builder()
             .model(agent.model())
-            .temperature(correcting ? CORRECTION_TEMPERATURE : agent.temperature())
             // max_tokens 가 아니라 max_completion_tokens 다 — 추론 계열 모델은 추론 토큰이
             // 출력에 포함되므로 이쪽이 실제 상한을 가리킨다.
             .maxCompletionTokens(agent.maxOutputTokens())
-            .responseFormat(buildResponseFormat(call))
-            .build();
+            .responseFormat(buildResponseFormat(call));
+
+        // 온도를 지원하지 않는 모델이 있다 — gpt-5 계열은 커스텀 값을 400으로 거부한다.
+        // 설정이 비어 있으면 필드를 아예 싣지 않는다. 보정 재시도에서도 마찬가지다:
+        // "일관성을 위해 0으로 내린다"는 것도 값을 보내는 행위라 똑같이 거부된다.
+        if (agent.temperature() != null) {
+            options.temperature(correcting ? CORRECTION_TEMPERATURE : agent.temperature());
+        }
+        // 추론 강도. 설계 문서 §6이 Gemini 전용 thinking-budget 을 제거하며 "대응 설정이 있다면
+        // 어댑터에서 다룬다"고 열어둔 자리다. 낮추지 않으면 max-output-tokens 를 추론이 다 먹고
+        // 본문이 0바이트로 오는 일이 실제로 발생한다.
+        if (agent.reasoningEffort() != null && !agent.reasoningEffort().isBlank()) {
+            options.reasoningEffort(agent.reasoningEffort());
+        }
+        return options.build();
     }
 
     /**

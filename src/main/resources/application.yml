@@ -154,24 +154,30 @@ llm:
   # 에이전트별 모델 배치는 "추론 난이도"가 아니라 "틀렸을 때의 파급 ÷ 토큰량"으로 골랐다.
   # 근거와 단가 계산은 docs/tasks/ai-course-create/steps/STEP-0-prerequisites.md 참고.
   # 실제 에이전트 구현은 6·9단계에 생긴다.
+  #
+  # [temperature 를 비워둔 이유] 설계 문서 §6은 agent별 온도 차등을 계획했지만
+  # (Planner 0.7 / Curator 0.9 / PlaceProfile 0.2), 2단계 실호출에서 gpt-5.6-luna 와
+  # gpt-5-nano 가 모두 커스텀 온도를 400으로 거부하는 것이 확인됐다
+  # ("Only the default (1) value is supported"). 값을 넣으면 요청 자체가 실패한다.
+  # 설정 키는 남겨둔다 — 온도를 받는 모델로 바꾸면 값만 채우면 되고, 구조를 지우면
+  # "왜 차등하지 않는가"라는 정보도 함께 사라진다.
   agents:
     # 권역이 틀리면 그 아래 Curator와 카카오 검색이 전부 오염된다 — 파급이 가장 큰데
     # 출력은 ~350토큰이라 가장 싸게 투자할 수 있다.
     planner:
       model: gpt-5.6-luna
-      temperature: 0.7
       max-output-tokens: 2048
-    # 후보 3개가 서로 비슷하면 대체재로서 의미가 없으므로 온도를 올린다.
     # 슬롯 5개 × 후보 3개라 출력이 가장 크고, 금액의 62%를 차지한다.
     # 모델은 2-6 baseline 재측정의 luna/nano 비교로 최종 확정한다.
+    # 원래 의도는 "후보 3개가 서로 비슷하면 대체재로서 의미가 없으므로 온도를 올린다"였는데,
+    # 기본값 1이 이미 높은 쪽이라 의도와 어긋나지는 않는다.
     curator:
       model: gpt-5.6-luna
-      temperature: 0.9
       max-output-tokens: 4096
-    # 속성 추출이라 창의성이 아니라 충실성이 필요하다. 닫힌 태그 집합이라 출력도 짧다.
+    # 속성 추출이라 창의성이 아니라 충실성이 필요하다. 온도를 못 낮추는 것이 여기서는
+    # 실제 손해이므로, 9단계에서 닫힌 태그 집합과 스키마 강제로 보완해야 한다.
     place-profile:
       model: gpt-5-nano
-      temperature: 0.2
       max-output-tokens: 2048
 
   openai:

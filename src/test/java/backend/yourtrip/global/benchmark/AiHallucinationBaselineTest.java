@@ -147,8 +147,20 @@ class AiHallucinationBaselineTest {
      */
     private static final int MAX_OUTPUT_TOKENS = 4096;
 
-    /** 프롬프트 원문의 {@code temperature 0.3}을 그대로 쓴다. */
-    private static final double TEMPERATURE = 0.3;
+    /**
+     * <b>온도를 보내지 않는다(null).</b>
+     *
+     * <p>원래는 Gemini 측정과 같은 조건을 만들려고 프롬프트 원문의 {@code temperature 0.3}을 그대로
+     * 쓰려 했으나, 실호출에서 <b>{@code gpt-5.6-luna}·{@code gpt-5-nano} 모두 커스텀 온도를 400으로
+     * 거부</b>했다({@code "Only the default (1) value is supported"}).
+     *
+     * <p><b>이건 측정의 한계로 기록해야 한다.</b> Gemini는 0.3, OpenAI는 기본값 1로 도는 셈이라
+     * "모델 교체" 축에 <b>온도 변화가 함께 묶인다.</b> 분리할 방법이 없다 — 모델이 값을 받지 않으므로
+     * 이 차이는 모델 선택에 딸려오는 성질이지 우리가 고를 수 있는 변수가 아니다. 온도가 높을수록
+     * 환각이 늘어나는 경향을 감안하면 <b>OpenAI 쪽에 불리한 조건</b>이며, 그만큼 이 측정은
+     * 보수적인 하한이 된다.
+     */
+    private static final Double TEMPERATURE = null;
 
     /** 수동 검증 워크시트에서 점수 구간별로 뽑을 표본 수. */
     private static final int SAMPLES_PER_BAND = 10;
@@ -278,6 +290,10 @@ class AiHallucinationBaselineTest {
         // responseMimeType(스키마 없는 JSON 모드)과 같은 조건이 되어 모델 교체만 분리된다.
         String responseSchema = SCHEMA_MODE_JSON_SCHEMA.equals(schemaMode) ? loadSchema() : null;
 
+        // 추론 강도. 비워두면 보내지 않는다(모델 기본값). gpt-5-nano 는 기본값으로 두면
+        // max-output-tokens 4096을 추론에 다 쓰고 본문을 0바이트로 돌려주므로 낮춰야 한다.
+        String reasoningEffort = text("baseline.reasoningEffort", "BASELINE_REASONING_EFFORT", "");
+
         // MyCourseServiceImpl 이 주입받는 ObjectMapper 는 Spring Boot 자동설정이라 JavaTimeModule 이
         // 등록돼 있다(PlaceDto.startTime 이 LocalTime). 여기서는 수동으로 맞춰준다.
         ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
@@ -285,7 +301,7 @@ class AiHallucinationBaselineTest {
         // 프로덕션 조립을 그대로 호출한다. 여기서 따로 조립하면 타임아웃·재시도·오류 분류가
         // 프로덕션과 갈라져 측정이 실제 동작을 반영하지 못한다
         // (KakaoConfig.buildKakaoWebClient 가 같은 이유로 만들어진 선례다).
-        AiLlmProperties llmProperties = baselineProperties(openAiKey, model);
+        AiLlmProperties llmProperties = baselineProperties(openAiKey, model, reasoningEffort);
         CapturingParser parser = new CapturingParser(objectMapper);
         OpenAiLlmClient llmClient = new OpenAiLlmClient(llmProperties, parser,
             new LlmRetryExecutor(llmProperties),
@@ -310,15 +326,18 @@ class AiHallucinationBaselineTest {
 
         // 산출물 이름에 측정 축을 박는다. 네 조합을 순차로 돌리므로 파일명만 보고 어느 판인지
         // 알 수 있어야 하고, results/ 는 .gitignore 대상이라 이름이 유일한 라벨이다.
-        String runId = "openai-%s-%s".formatted(modelKey, schemaMode);
+        String runId = "openai-%s-%s%s".formatted(modelKey, schemaMode,
+            reasoningEffort.isBlank() ? "" : "-re" + reasoningEffort);
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
         String runTag = runId + "-" + timestamp;
         Path rawDir = RESULTS_DIR.resolve("raw-" + runTag);
         Files.createDirectories(rawDir);
 
         System.out.printf("%n=== AI 코스 생성 환각률 baseline 측정 시작 ===%n");
-        System.out.printf("모델 %s (%s) / 출력 강제 %s / 의미 재시도 %d회%n",
-            model, modelKey, schemaMode, llmProperties.retry().semanticAttempts());
+        System.out.printf("모델 %s (%s) / 출력 강제 %s / 추론 강도 %s / 의미 재시도 %d회%n",
+            model, modelKey, schemaMode,
+            reasoningEffort.isBlank() ? "(모델 기본값)" : reasoningEffort,
+            llmProperties.retry().semanticAttempts());
         System.out.printf("요청 #%d~#%d (%d건 / 전체 %d건), 일수 %d, 요청 간 지연 %,dms%n%n",
             startIndex + 1, endIndex, inputSet.size(), fullInputSet.size(), TRIP_DAYS, delayMs);
 
@@ -551,13 +570,15 @@ class AiHallucinationBaselineTest {
      * </ul>
      * 전송 재시도는 넉넉히 둔다 — 429로 측정이 중단되면 그날 배치를 다시 돌려야 한다.
      */
-    private static AiLlmProperties baselineProperties(String apiKey, String model) {
+    private static AiLlmProperties baselineProperties(String apiKey, String model,
+        String reasoningEffort) {
         return new AiLlmProperties(
             "openai",
             60_000,
             1,
             new AiLlmProperties.Retry(4, 1, 2.0, 30.0, 0.3),
-            Map.of(AGENT_NAME, new AiLlmProperties.Agent(model, TEMPERATURE, MAX_OUTPUT_TOKENS)),
+            Map.of(AGENT_NAME, new AiLlmProperties.Agent(
+                model, TEMPERATURE, MAX_OUTPUT_TOKENS, reasoningEffort)),
             new AiLlmProperties.OpenAi(apiKey, "https://api.openai.com"));
     }
 

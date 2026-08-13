@@ -64,17 +64,32 @@ class AiLlmPropertiesTest {
     }
 
     @Test
-    @DisplayName("에이전트마다 model·temperature·max-output-tokens 가 모두 지정돼 있다")
+    @DisplayName("에이전트마다 model 과 max-output-tokens 가 지정돼 있다")
     void everyAgentIsFullyConfigured() throws IOException {
         Map<String, Agent> agents = bindFromApplicationYml().agents();
 
         assertThat(agents.values()).allSatisfy(agent -> {
             assertThat(agent.model()).isNotBlank();
-            assertThat(agent.temperature()).isBetween(0.0, 2.0);
             // 절단이 파싱 실패의 실제 원인이었으므로(BASELINE-ARTIFACT-ANALYSIS 판정 3)
             // 출력 상한이 비어 있으면 안 된다.
             assertThat(agent.maxOutputTokens()).isNotNull().isPositive();
+            // temperature 는 비어 있는 것이 정상이다 — gpt-5 계열이 커스텀 값을 400으로 거부한다.
+            // 값이 있다면 온도를 받는 모델로 바꿨다는 뜻이므로 범위만 확인한다.
+            if (agent.temperature() != null) {
+                assertThat(agent.temperature()).isBetween(0.0, 2.0);
+            }
         });
+    }
+
+    @Test
+    @DisplayName("현재 배치된 모델들은 커스텀 temperature 를 받지 않으므로 설정이 비어 있어야 한다")
+    void temperatureIsUnsetForGpt5Models() throws IOException {
+        Map<String, Agent> agents = bindFromApplicationYml().agents();
+
+        assertThat(agents.values())
+            .filteredOn(agent -> agent.model().startsWith("gpt-5"))
+            .as("값을 넣으면 400 'Only the default (1) value is supported' 로 요청이 실패한다")
+            .allSatisfy(agent -> assertThat(agent.temperature()).isNull());
     }
 
     @Test

@@ -117,6 +117,25 @@ class OpenAiLlmClientTest {
         }
 
         @Test
+        @DisplayName("temperature 가 비어 있으면 필드를 아예 싣지 않는다 — gpt-5 계열은 커스텀 값을 거부한다")
+        void omitsTemperatureWhenUnset() throws Exception {
+            stubSuccess("{\\\"title\\\":\\\"t\\\"}", "stop");
+
+            AiLlmProperties noTemperature = new AiLlmProperties("openai", 5_000, 2,
+                new Retry(3, 2, 0.01, 0.02, 0.0),
+                Map.of(AGENT, new Agent("gpt-5.6-luna", null, 2048, null)),
+                new OpenAi("test-api-key", "http://localhost"));
+
+            clientWith(noTemperature).generate(call(SCHEMA));
+
+            // 값을 실으면 400 "Only the default (1) value is supported" 로 요청 자체가 실패한다.
+            assertThat(lastRequestBody().has("temperature"))
+                .as("설정이 비어 있으면 temperature 를 보내면 안 된다")
+                .isFalse();
+            assertThat(lastRequestBody().path("model").asText()).isEqualTo("gpt-5.6-luna");
+        }
+
+        @Test
         @DisplayName("스키마가 없으면 json_object 모드로 떨어진다 — 2-6 재측정의 프롬프트지시 측정점")
         void fallsBackToJsonObjectWithoutSchema() throws Exception {
             stubSuccess("{\\\"title\\\":\\\"t\\\"}", "stop");
@@ -306,7 +325,7 @@ class OpenAiLlmClientTest {
 
     private static AiLlmProperties properties(int maxConcurrentCalls, Retry retry) {
         return new AiLlmProperties("openai", 5_000, maxConcurrentCalls, retry,
-            Map.of(AGENT, new Agent("gpt-5.6-luna", 0.7, 2048)),
+            Map.of(AGENT, new Agent("gpt-5.6-luna", 0.7, 2048, null)),
             new OpenAi("test-api-key", "http://localhost"));
     }
 

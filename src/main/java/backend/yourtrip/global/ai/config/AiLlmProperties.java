@@ -90,20 +90,38 @@ public record AiLlmProperties(
     /**
      * 에이전트 1개의 모델 파라미터.
      *
-     * <p><b>agent별로 나누는 것이 이 설정의 핵심</b>이다. 현재 코드의 단일 {@code temperature 0.3}은
-     * "장소 선정은 다양해야 하고 판정은 일관돼야 한다"는 상충 요구를 하나로 뭉갠 값이다.
-     * 모델도 같은 논리로 나눈다 — 셋 중 추론 이득이 실제로 있는 건 Planner(컨셉·권역 설계)뿐이고,
-     * Curator·PlaceProfile은 이득이 적으면서 토큰 비중은 가장 크다.
+     * <p><b>agent별로 나누는 것이 이 설정의 핵심</b>이다. 모델은 셋 중 추론 이득이 실제로 있는
+     * Planner(컨셉·권역 설계)만 상위로 두고, Curator·PlaceProfile은 이득이 적으면서 토큰 비중은
+     * 가장 크므로 낮춘다.
      *
+     * @param temperature     <b>null이면 아예 보내지 않는다.</b> 설계 문서 §6은 agent별로 온도를
+     *                        차등하려 했지만(Planner 0.7 / Curator 0.9 / PlaceProfile 0.2),
+     *                        2단계 실호출에서 <b>{@code gpt-5.6-luna}·{@code gpt-5-nano} 모두
+     *                        커스텀 온도를 거부</b>하는 것이 확인됐다
+     *                        ({@code "temperature does not support 0.3 with this model.
+     *                        Only the default (1) value is supported"}, 400).
+     *                        <p>그래서 nullable로 둔다 — 값을 강제로 넣으면 요청 자체가 실패하고,
+     *                        0을 넣는 것도 "기본값 1"과 다른 값이라 거부된다. 온도를 받는 모델로
+     *                        바꾸면 그때 값을 채우면 되므로 <b>설정 구조는 유지</b>한다
      * @param maxOutputTokens 출력 상한. <b>설계 문서 §6에는 없던 항목을 추가했다</b> —
      *                        Gemini baseline의 파싱 실패 5건이 전부 응답 절단이었고
      *                        ({@code BASELINE-ARTIFACT-ANALYSIS.md} 판정 3), 절단은 구조화
-     *                        출력으로 막히지 않으므로 출력 여유를 설정으로 다룰 수 있어야 한다
+     *                        출력으로 막히지 않으므로 출력 여유를 설정으로 다룰 수 있어야 한다.
+     *                        <p><b>추론 계열 모델에서는 이 상한에 추론 토큰이 포함된다.</b>
+     *                        실제로 {@code gpt-5-nano}는 4096을 추론에만 다 쓰고 본문을 한 글자도
+     *                        내지 못했다({@code finish_reason=length}, 수신 0바이트)
+     * @param reasoningEffort 추론 강도({@code minimal}/{@code low}/{@code medium}/{@code high}).
+     *                        null이면 보내지 않는다. 설계 문서 §6은 Gemini 전용
+     *                        {@code thinking-budget}을 제거하면서 <b>"OpenAI에 대응하는 추론 강도
+     *                        설정이 있다면 어댑터 내부에서 model과 함께 다룬다"</b>고 열어뒀는데,
+     *                        그 자리가 이것이다. §11의 "Curator·PlaceProfile은 추론을 쓰지 않는다"
+     *                        —— 추론 이득이 적은데 토큰 비중은 가장 크다 —— 를 실행하는 수단이기도 하다
      */
     public record Agent(
         @NotBlank String model,
-        @NotNull Double temperature,
-        @Positive Integer maxOutputTokens
+        Double temperature,
+        @Positive Integer maxOutputTokens,
+        String reasoningEffort
     ) {}
 
     /**
