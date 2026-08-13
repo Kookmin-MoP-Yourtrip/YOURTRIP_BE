@@ -107,8 +107,11 @@ compileTestJava {
 }
 
 tasks.named('test') {
-    // test/presigned-url-bottleneck: SigningBenchmarkTest(@Tag("benchmark"))는 openssl 프로세스
-    // 호출과 12,000회 반복 서명을 포함해 일반 빌드에 넣기엔 느리다 — 일반 빌드/CI에서는 제외하고,
+    // @Tag("benchmark")가 붙는 이유는 두 가지이고, 둘 다 일반 빌드/CI에 넣으면 안 되는 사유다.
+    //   ① 느리다 — SigningBenchmarkTest는 openssl 프로세스 호출과 12,000회 반복 서명을,
+    //      RouteOptimizerBenchmarkTest는 순열 수만큼의 반복 측정을 포함한다.
+    //   ② 돈과 쿼터를 쓴다 — AiHallucinationBaselineTest와 SpringAiStructuredOutputVerificationTest의
+    //      실 API 케이스는 OpenAI를 실제로 호출한다. CI가 매 푸시마다 돌리면 안 된다.
     // 아래 `benchmarkTest` 태스크(`./gradlew benchmarkTest`)로만 명시적으로 돌린다.
     useJUnitPlatform {
         excludeTags 'benchmark'
@@ -116,7 +119,7 @@ tasks.named('test') {
 }
 
 tasks.register('benchmarkTest', Test) {
-    description = 'presign/CloudFront 서명 1회 비용 마이크로벤치마크만 실행한다 (test/presigned-url-bottleneck)'
+    description = '@Tag("benchmark") 테스트만 실행한다 — 마이크로벤치마크와 외부 API 실호출 측정'
     group = 'verification'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
