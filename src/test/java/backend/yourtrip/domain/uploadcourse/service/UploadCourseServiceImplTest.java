@@ -2,12 +2,15 @@ package backend.yourtrip.domain.uploadcourse.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
@@ -16,10 +19,12 @@ import backend.yourtrip.domain.mycourse.entity.place.PlaceImage;
 import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
 import backend.yourtrip.domain.mycourse.entity.travelCourse.enums.TravelCourseType;
 import backend.yourtrip.domain.mycourse.service.MyCourseService;
+import backend.yourtrip.domain.uploadcourse.dto.cache.CourseListItemCacheItem;
 import backend.yourtrip.domain.uploadcourse.dto.request.DayScheduleUpdateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.request.PlaceUpdateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.request.UploadCourseUpdateRequest;
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailResponse;
+import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListResponse;
 import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.domain.uploadcourse.event.UploadCourseCacheRefreshEvent;
@@ -33,22 +38,30 @@ import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.s3.service.S3Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.RedisScript;
+import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class UploadCourseServiceImplTest {
@@ -61,6 +74,9 @@ class UploadCourseServiceImplTest {
 
     @Mock
     private UploadCourseDetailReader uploadCourseDetailReader;
+
+    @Mock
+    private UploadCoursePopularReader uploadCoursePopularReader;
 
     @Mock
     private UserService userService;
@@ -81,13 +97,33 @@ class UploadCourseServiceImplTest {
     private UploadCourseViewCountService uploadCourseViewCountService;
 
     @Mock
-    private RedisTemplate<String, Object> cacheValueRedisTemplate;
+    private RedisTemplate<String, String> redisTemplate;
 
     @Mock
-    private ObjectMapper objectMapper;
+    private RedisTemplate<String, Object> cacheValueRedisTemplate;
+
+    // mock이 아니라 실제 ObjectMapper를 쓴다. 서비스의 cacheSerializer()가 이 인스턴스로
+    // Jackson2JsonRedisSerializer를 만드는데, mock이면 역직렬화가 항상 null을 반환해
+    // "캐시 히트" 테스트가 거짓 통과한다(히트한 항목이 null로 담겼다가 응답 조립의
+    // filter(Objects::nonNull)에서 사라지는데도 예외 없이 빈 목록이 나온다).
+    // CourseListItemCacheItem에는 java.time 필드가 없어 기본 설정으로 충분하다.
+    @Spy
+    private ObjectMapper objectMapper = new ObjectMapper();
 
     @InjectMocks
     private UploadCourseServiceImpl uploadCourseService;
+
+    /**
+     * 서비스 생성자는 RedisTemplate을 두 개(redisTemplate, cacheValueRedisTemplate) 받는데,
+     * 제네릭이 소거되면 Mockito의 생성자 주입에는 둘 다 같은 타입으로 보여 한쪽 mock이 양쪽에
+     * 주입된다(실제로 그렇게 동작하는 것을 확인했다). 필드명으로 명시 주입해 바로잡는다.
+     */
+    @BeforeEach
+    void injectRedisTemplatesByName() {
+        ReflectionTestUtils.setField(uploadCourseService, "redisTemplate", redisTemplate);
+        ReflectionTestUtils.setField(uploadCourseService, "cacheValueRedisTemplate",
+            cacheValueRedisTemplate);
+    }
 
     @Test
     @DisplayName("작성자가 아닌 사용자가 코스 수정을 시도하면 NOT_OWNED_UPLOAD_COURSE 예외가 발생한다")
@@ -449,6 +485,181 @@ class UploadCourseServiceImplTest {
         // then
         verify(popularCoursesCache).evict("ALL");
         verify(popularCoursesCache, never()).evict("FOOD");
+    }
+
+    // ==========================
+    //  인기 코스 조회 — 트랜잭션 밖 캐시 경로
+    // ==========================
+
+    @Test
+    @DisplayName("랭킹·아이템 캐시가 모두 히트하면 DB 조회를 담당하는 Reader와 리포지토리를 전혀 호출하지 않는다")
+    void getPopularCourses_AllCacheHit_DoesNotTouchDatabase() {
+        // given
+        givenRankingCacheHit("ALL", List.of(1L, 2L));
+        givenItemCacheReturns(
+            serialize(cacheItem(1L, "코스1", "thumb-1.png")),
+            serialize(cacheItem(2L, "코스2", "thumb-2.png"))
+        );
+        given(cloudFrontService.getPublicUrl("thumb-1.png")).willReturn("https://cdn/thumb-1.png");
+        given(cloudFrontService.getPublicUrl("thumb-2.png")).willReturn("https://cdn/thumb-2.png");
+
+        // when
+        UploadCourseListResponse response = uploadCourseService.getPopularCourses(null);
+
+        // then — 캐시 히트 경로가 DB 커넥션을 전혀 쓰지 않는 것이 이 구조의 핵심이다
+        verifyNoInteractions(uploadCoursePopularReader, uploadCourseRepository);
+        // 랭킹이 히트했으면 분산 락을 시도할 이유도 없다
+        verifyNoInteractions(redisTemplate);
+        assertThat(response.uploadCourses()).hasSize(2);
+        assertThat(response.uploadCourses().get(0).thumbnailImageUrl())
+            .isEqualTo("https://cdn/thumb-1.png");
+    }
+
+    @Test
+    @DisplayName("랭킹 캐시 미스 시 락을 잡은 요청만 Reader로 DB를 읽고 결과를 캐시에 저장한 뒤 락을 해제한다")
+    void getPopularCourses_RankingCacheMiss_LockAcquired_DelegatesToReader() {
+        // given
+        Cache popularCoursesCache = givenRankingCacheHit("ALL", null);
+        givenLockAcquired(true);
+        given(uploadCoursePopularReader.readPopularCourseIds(null)).willReturn(List.of(3L));
+        givenItemCacheReturns(serialize(cacheItem(3L, "코스3", null)));
+
+        // when
+        uploadCourseService.getPopularCourses(null);
+
+        // then
+        verify(uploadCoursePopularReader).readPopularCourseIds(null);
+        verify(popularCoursesCache).put("ALL", List.of(3L));
+        // 락 해제(compare-and-delete Lua)까지 반드시 수행돼야 한다
+        verify(redisTemplate).execute(ArgumentMatchers.<RedisScript<Long>>any(),
+            ArgumentMatchers.<List<String>>any(), ArgumentMatchers.<Object>any());
+    }
+
+    @Test
+    @DisplayName("락 획득이 Redis 예외로 실패하면 재시도 없이 즉시 DB로 폴백하고 캐시에 저장하지 않는다")
+    void getPopularCourses_LockAcquisitionThrows_FallsBackImmediately() {
+        // given
+        Cache popularCoursesCache = givenRankingCacheHit("ALL", null);
+        ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
+        given(redisTemplate.opsForValue()).willReturn(valueOperations);
+        given(valueOperations.setIfAbsent(ArgumentMatchers.anyString(), ArgumentMatchers.anyString(),
+            ArgumentMatchers.any(java.time.Duration.class)))
+            .willThrow(new RuntimeException("redis down"));
+        given(uploadCoursePopularReader.readPopularCourseIds(null)).willReturn(List.of(4L));
+        givenItemCacheReturns(serialize(cacheItem(4L, "코스4", null)));
+
+        // when — 재시도 루프(10 * 100ms)를 타면 1초가 걸리므로 시간으로 경로를 판별한다
+        assertTimeoutPreemptively(java.time.Duration.ofMillis(700),
+            () -> uploadCourseService.getPopularCourses(null));
+
+        // then
+        verify(uploadCoursePopularReader, times(1)).readPopularCourseIds(null);
+        verify(popularCoursesCache, never()).put(ArgumentMatchers.any(), ArgumentMatchers.any());
+    }
+
+    @Test
+    @DisplayName("아이템 캐시가 일부만 히트하면 누락된 ID만 DB에서 읽고 랭킹 순서를 그대로 복원한다")
+    void getPopularCourses_PartialItemCacheMiss_ReadsOnlyMissingIds() {
+        // given — 랭킹은 [1, 2, 3]인데 아이템 캐시에는 2번만 있다
+        givenRankingCacheHit("ALL", List.of(1L, 2L, 3L));
+        givenItemCacheReturns(null, serialize(cacheItem(2L, "코스2", null)), null);
+        given(uploadCoursePopularReader.readCourseListItems(List.of(1L, 3L)))
+            .willReturn(List.of(cacheItem(1L, "코스1", null), cacheItem(3L, "코스3", null)));
+
+        // when
+        UploadCourseListResponse response = uploadCourseService.getPopularCourses(null);
+
+        // then
+        verify(uploadCoursePopularReader).readCourseListItems(List.of(1L, 3L));
+        // IN 조회는 순서를 보장하지 않으므로 랭킹 순서로 재정렬돼야 한다
+        assertThat(response.uploadCourses())
+            .extracting(item -> item.uploadCourseId())
+            .containsExactly(1L, 2L, 3L);
+    }
+
+    @Test
+    @DisplayName("mood 카테고리가 아닌 테마로 인기 코스를 조회하면 캐시나 DB에 손대기 전에 예외가 발생한다")
+    void getPopularCourses_InvalidTheme_ThrowsBeforeTouchingCacheOrDatabase() {
+        // when & then
+        assertThatThrownBy(() -> uploadCourseService.getPopularCourses(KeywordType.FAMILY))
+            .isInstanceOf(BusinessException.class)
+            .hasFieldOrPropertyWithValue("errorCode", UploadCourseErrorCode.INVALID_THEME_TYPE);
+
+        verifyNoInteractions(cacheManager, uploadCoursePopularReader, uploadCourseRepository);
+    }
+
+    @Test
+    @DisplayName("랭킹 조회와 아이템 조회 사이에 삭제된 코스는 응답에서 조용히 제외된다")
+    void getPopularCourses_CourseDeletedBetweenQueries_ExcludedFromResponse() {
+        // given — 랭킹에는 99번이 남아 있지만 아이템 조회 시점에는 이미 삭제돼 반환되지 않는다.
+        // 트랜잭션을 분리하면 두 조회 사이의 창이 넓어지므로 이 동작을 고정해 둔다.
+        givenRankingCacheHit("ALL", List.of(1L, 99L));
+        givenItemCacheReturns(serialize(cacheItem(1L, "코스1", null)), null);
+        given(uploadCoursePopularReader.readCourseListItems(List.of(99L))).willReturn(List.of());
+
+        // when
+        UploadCourseListResponse response = uploadCourseService.getPopularCourses(null);
+
+        // then
+        assertThat(response.uploadCourses())
+            .extracting(item -> item.uploadCourseId())
+            .containsExactly(1L);
+    }
+
+    @Test
+    @DisplayName("캐시 값이 null로 역직렬화되면 히트로 오인하지 않고 DB에서 다시 읽는다")
+    void getPopularCourses_DeserializedNull_TreatedAsCacheMiss() {
+        // given — 리터럴 "null"이 저장돼 있으면 역직렬화가 예외 없이 null을 반환한다.
+        // 이를 map에 그대로 담으면 containsKey가 true라 미스로 잡히지 않고, 최종
+        // filter(Objects::nonNull)에서 사라져 해당 코스만 목록에서 누락된다.
+        givenRankingCacheHit("ALL", List.of(5L));
+        givenItemCacheReturns("null".getBytes(StandardCharsets.UTF_8));
+        given(uploadCoursePopularReader.readCourseListItems(List.of(5L)))
+            .willReturn(List.of(cacheItem(5L, "코스5", null)));
+
+        // when
+        UploadCourseListResponse response = uploadCourseService.getPopularCourses(null);
+
+        // then
+        verify(uploadCoursePopularReader).readCourseListItems(List.of(5L));
+        assertThat(response.uploadCourses())
+            .extracting(item -> item.uploadCourseId())
+            .containsExactly(5L);
+    }
+
+    /**
+     * 랭킹 캐시가 주어진 값을 반환하도록 stub한다. cachedIds가 null이면 캐시 미스다.
+     */
+    private Cache givenRankingCacheHit(String cacheKey, List<Long> cachedIds) {
+        Cache popularCoursesCache = mock(Cache.class);
+        given(cacheManager.getCache("popularCourses")).willReturn(popularCoursesCache);
+        given(popularCoursesCache.get(eq(cacheKey), eq(List.class))).willReturn(cachedIds);
+        return popularCoursesCache;
+    }
+
+    private void givenLockAcquired(boolean acquired) {
+        ValueOperations<String, String> valueOperations = mock(ValueOperations.class);
+        given(redisTemplate.opsForValue()).willReturn(valueOperations);
+        given(valueOperations.setIfAbsent(ArgumentMatchers.anyString(), ArgumentMatchers.anyString(),
+            ArgumentMatchers.any(java.time.Duration.class))).willReturn(acquired);
+    }
+
+    /**
+     * 아이템 캐시 MGET 결과를 stub한다. 인자 순서가 조회 ID 순서와 대응하며, null은 그 ID의 미스다.
+     */
+    private void givenItemCacheReturns(byte[]... rawValues) {
+        given(cacheValueRedisTemplate.execute(
+            ArgumentMatchers.<RedisCallback<List<byte[]>>>any()))
+            .willReturn(java.util.Arrays.asList(rawValues));
+    }
+
+    private CourseListItemCacheItem cacheItem(Long id, String title, String thumbnailS3Key) {
+        return new CourseListItemCacheItem(id, title, "경주", thumbnailS3Key, 0, List.of());
+    }
+
+    private byte[] serialize(CourseListItemCacheItem item) {
+        return new Jackson2JsonRedisSerializer<>(new ObjectMapper(),
+            CourseListItemCacheItem.class).serialize(item);
     }
 
     private void setEntityId(Object entity, Long id) {
