@@ -5,12 +5,13 @@ import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
 import java.util.List;
 
 public record AICourseCreateRequest(
-    @NotBlank(message = "코스 제목은 필수 입력 항목입니다.")
+    @NotBlank(message = "여행지는 필수 입력 항목입니다.")
     @Schema(example = "경주")
     String location,
 
@@ -22,6 +23,9 @@ public record AICourseCreateRequest(
     @Schema(example = "2025-11-02", description = "여행 종료 날짜")
     LocalDate endDate,
 
+    // 빈 리스트도 막는다. buildKeywordsJson에 빈 리스트를 넘기면 "{}"가 나와
+    // 취향이 하나도 반영되지 않은 코스가 생성되는데, 그건 이 API의 목적에 맞지 않는다.
+    @NotEmpty(message = "여행 스타일 키워드는 최소 1개 이상 선택해야 합니다.")
     @ArraySchema(
         schema = @Schema(
             implementation = KeywordType.class
