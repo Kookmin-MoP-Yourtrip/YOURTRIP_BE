@@ -20,7 +20,14 @@ final class RouteTestFixtures {
     /** 기준 경도. */
     static final double BASE_LON = 129.2094;
 
-    /** {@link #BASE_LAT} 위도에서 동쪽으로 1km 이동하는 데 필요한 경도 차이. */
+    /**
+     * {@link #BASE_LAT} 위도에서 동쪽으로 1km 이동하는 데 필요한 경도 차이(근사).
+     *
+     * <p>흔히 쓰는 상수 111.32를 그대로 써서 실제 거리는 1km보다 약 0.1% <b>짧게</b> 나온다.
+     * 이 오차를 굳이 없애지 않는다 — 정확히 1.000000km를 만들면 이동시간이
+     * {@code 60/15 = 4.0}이라는 <b>정수 경계에 정확히 걸터앉게</b> 되고, 부동소수점 마지막
+     * 비트에 따라 4분이 되기도 5분이 되기도 한다. 조금 모자라게 두는 편이 테스트를 안정시킨다.
+     */
     static final double ONE_KM_IN_LON_DEGREES = 1.0 / (111.32 * Math.cos(Math.toRadians(BASE_LAT)));
 
     private RouteTestFixtures() {
