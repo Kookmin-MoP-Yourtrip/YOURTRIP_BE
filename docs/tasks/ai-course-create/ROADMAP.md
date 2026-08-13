@@ -8,7 +8,7 @@
 >
 > **LLM 벤더는 OpenAI로 확정됐다.** 설계 문서 초안은 Gemini를 현행으로 두고 OpenAI 전환 "가능성"을 전제로 쓰였으나, 확정에 따라 설계 문서 본문(§6·§7·§11·§13·§15)이 갱신됐다. 이 로드맵은 그 갱신된 설계를 기준으로 한다.
 >
-> 진행 상황: **3단계 완료**(3-1 ~ 3-6, 테스트 234개 통과 + 앱 기동 확인 + 완전탐색 벤치마크 n=6~9 실측). 다음은 4단계(`NaverBlogClient`). 0단계 검증 항목은 전부 통과했고 OpenAI·네이버 키도 발급됐다.
+> 진행 상황: **3단계 완료**(3-1 ~ 3-6, 테스트 234개 통과 + 앱 기동 확인 + 완전탐색 벤치마크 n=6~9 실측). 2단계에서 복합 환각률 25.6% → **7.5%**(luna, 수동 검증 82건)를 확인했고 Curator 모델은 `gpt-5.6-luna`로 확정됐다. 다음은 4단계(`NaverBlogClient`). 0단계 검증 항목은 전부 통과했고 OpenAI·네이버 키도 발급됐다.
 >
 > 1단계에서 **로드맵 1-2의 처방이 데이터와 반대라는 것이 드러나 방향을 바꿨다.** 아래 1-2 항목의 정정과 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) 참고.
 
@@ -16,7 +16,7 @@
 
 1. **JSON 파싱 실패로 요청이 통째로 실패하는 것을 없앤다.** 단일 호출 구조의 실측 파싱 실패율은 **28.6%** — 사용자가 AI 코스 생성을 4번 시도하면 1번 이상 503을 받는다는 뜻이다. 스키마를 프롬프트 텍스트가 아니라 **디코딩 레벨에서 강제**하면(구조화 출력) 이 실패 자체가 사라진다. 현재 프롬프트의 JSON 예시에 trailing comma가 들어 있는 것이 유력한 원인이라, 프롬프트에서 예시를 걷어내는 것만으로도 상당 부분 해소될 가능성이 높다.
 
-2. **환각 장소가 사용자 코스에 실리는 비율을 낮춘다.** 현재 실측 환각률은 **25.6%**([TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)) — 코스 하나를 받으면 평균 4곳 중 1곳이 존재하지 않는 장소다. 후보를 3배로 늘리고 카카오 매칭 점수에 하한선을 두어, 검증을 통과하지 못한 장소는 파이프라인에 아예 존재하지 않게 만든다.
+2. **환각 장소가 사용자 코스에 실리는 비율을 낮춘다.** 현재 실측 환각률은 **25.6%**([TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md)) — 코스 하나를 받으면 평균 4곳 중 1곳이 존재하지 않는 장소다. 후보를 3배로 늘리고 카카오 매칭 점수에 하한선을 두어, 검증을 통과하지 못한 장소는 파이프라인에 아예 존재하지 않게 만든다.
 
 3. **동선·시간 배치를 LLM 추측에서 실좌표 계산으로 옮긴다.** 좌표를 확보한 뒤 완전탐색으로 최적 순열을 고르므로, "시간 겹침 없음"·"day당 식사 1회"·"동선 역주행 없음"이 프롬프트 규칙이 아니라 **알고리즘 불변식**이 된다.
 
@@ -191,7 +191,7 @@
 
 > 상세 실행 계획은 [STEP-5-grounding.md](steps/STEP-5-grounding.md) 참고. (미작성)
 
-- [ ] 5-1. 스레드풀 2개 신설 — `aiAgentExecutor`(LLM)와 `placeGroundingExecutor`(카카오·네이버 공유). **벌크헤드로 나누는 이유**는 외부 장소 API가 느려질 때 그 대기가 LLM 슬롯을 잠식하면 안 되기 때문이다(LLM은 3~10초짜리 소수, 장소 API는 0.15~0.3초짜리 다수)
+- [ ] 5-1. 스레드풀 2개 신설 — `aiAgentExecutor`(LLM)와 `placeGroundingExecutor`(카카오·네이버 공유). **벌크헤드로 나누는 이유**는 외부 장소 API가 느려질 때 그 대기가 LLM 슬롯을 잠식하면 안 되기 때문이다(LLM은 3~10초짜리 소수, 장소 API는 0.15~0.3초짜리 다수). **여기서 `llm.max-concurrent-calls: 2`를 재실측한다** — 2-6 측정은 요청 간 5초 지연·동시 호출 1이라는 느슨한 조건이었고(429 0/120), day별 Curator가 실제로 동시에 몰리는 이 단계에서 재야 초기값의 근거가 된다
 - [ ] 5-2. `GroundingStage` — 후보 병렬 검증, 점수 하한 미달 탈락, `kakaoId` 기준 전 day dedupe. **여기를 통과 못 한 장소는 파이프라인에 존재하지 않는다**
 - [ ] 5-3. 슬롯별 카테고리 하드 제약 — 현재 `category_group_code`를 가점 +2로만 쓰는 것을 하드 제약으로 승격(MEAL←FD6, CAFE←CE7, ATTRACTION←AT4/CT1). 비용이 사실상 0인데 "점심에 호프집"이 구조적으로 사라진다
 - [ ] 5-4. `PlaceSignalStage` — 카카오 생존 후보에만 네이버 조회. **fail-open**: 네이버 장애 시 3·4층 전체를 스킵하고 진행
@@ -263,7 +263,7 @@
 
 ### 11. 실측 결과 기록
 
-- [ ] 11-1. 3점 비교 결과를 [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md)와 [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)에 추가
+- [ ] 11-1. 3점 비교 결과를 [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md)와 [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md)에 추가
 - [ ] 11-2. 지연 예산 실측치와 설계 추정치(p50 12~16초 / p95 22~30초) 대조 → **202 Accepted 전환 여부를 데이터로 판단**
 - [ ] 11-3. 커넥션 점유 시간 before/after, 실제 토큰 비용, `mood` 키워드 포함 비율 기록
 
@@ -274,14 +274,14 @@
 | 측정점 | 시점 | 분리되는 변수 | 값 |
 |---|---|---|---|
 | Gemini 단일 호출 | 완료 | — | **25.6%** (자동 프록시 19.8% + 세탁 5.7%) |
-| **OpenAI 단일 호출** | 2단계 직후 | 모델 교체 효과 | **7.2%** (자동 프록시 6.4% + 세탁 0.86%) |
+| **OpenAI 단일 호출** | 2단계 직후 | 모델 교체 효과 | **7.5%** (자동 프록시 6.4% + 세탁 1.08%) |
 | OpenAI 파이프라인 | 8단계 직후 | 파이프라인 구조 효과 | 미측정 |
 
-**모델 교체만으로 25.6% → 7.2%, −18.4%p(72% 감소).** `UNVERIFIABLE`을 전부 환각으로 보는 상한도 9.3%로 before의 절반에 못 미친다.
+**모델 교체만으로 25.6% → 7.5%, −18.1%p(71% 감소).** `UNVERIFIABLE`을 전부 환각으로 보는 상한도 9.3%로 before의 절반에 못 미친다. 모델 선택의 대가는 크다 — 같은 조건에서 `gpt-5-nano`는 **89.4%**(진짜 환각률 41.7%)로 Gemini보다도 나쁘다. 상세는 [TASK-AI-HALLUCINATION-OPENAI.md](TASK-AI-HALLUCINATION-OPENAI.md)
 
 > **[2-6 중간 결과]** `gpt-5.6-luna` / 프롬프트지시 / 추론 `low` 조합 30요청 전량 성공, 장소 454개 기준 **자동 프록시 환각률 6.4%**(Gemini 19.8% → −13.4%p), **JSON 실패율 0.0%**(Gemini 16.7% → 0/30). `S8_10` 밴드 비중이 66.1% → 84.6%로 올랐다.
 >
-> **수동 검증 40건 완료** — 세탁된 환각률 0.86%p가 나와 복합 지표가 25.6%와 같은 정의로 완성됐다. 밴드별 `LAUNDERED`는 `NO_RESULT` 2/10 · `S1_4` 1/10 · `S5_7` 0/10 · `S8_10` 0/10이다.
+> **수동 검증 82건 완료**(luna 40 + nano 42) — luna의 세탁된 환각률 1.08%p가 나와 복합 지표가 25.6%와 같은 정의로 완성됐다. 밴드별 `LAUNDERED`는 `NO_RESULT` 3/10 · `S1_4` 1/10 · `S5_7` 0/10 · `S8_10` 0/10이다.
 >
 > **비중 84.6%인 `S8_10`에서 세탁이 0인 것은 표본운이 아니라 구조 때문이다** — `score()`의 가점 조합상 8점 이상은 반드시 이름 일치(+5)를 포함하므로, 지어낸 이름이 "카카오 상호명과 부분 일치 + 지역 일치"를 동시에 만족하기 어렵다. 반대로 **`S5_7`은 `5 = 주소3 + 카테고리2`로 이름이 하나도 안 맞아도 도달**하므로 위험 밴드라는 1-2의 진단이 여기서도 유효하다(다만 luna는 부른 이름이 전부 실존해 `LAUNDERED` 0건).
 >
@@ -296,7 +296,7 @@
   ./gradlew benchmarkTest --tests '*AiHallucinationBaselineTest*' --rerun
   ```
 - **동일 입력 세트(지역 10곳 × 스타일 3조합 = 30요청, 여행 일수 3일 고정)와 동일한 `score()` 로직을 유지해야** 세 측정점이 비교 가능하다. 1-2에서 매칭 로직을 바꾸므로, 하네스의 판정 로직은 변경 전 기준을 그대로 쓰도록 고정한다
-- **환각률의 산출 정의를 고정한다** — 아래 절차를 그대로 따라야 세 측정점이 같은 것을 재게 된다. 근거와 한계는 [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)의 "25.6%의 정의"에 있다
+- **환각률의 산출 정의를 고정한다** — 아래 절차를 그대로 따라야 세 측정점이 같은 것을 재게 된다. 근거와 한계는 [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md)의 "25.6%의 정의"에 있다
 
   ```
   환각률 = 자동 프록시(매칭 실패율) + 세탁된 환각률
@@ -332,7 +332,7 @@
 ## 미해결 · 확인 필요
 
 - ~~**Spring AI ↔ Spring Boot 버전 스큐**~~ — **2단계에서 문제 없이 통과했다.** 어댑터 구현·WireMock 검증·앱 기동 전부에서 `NoSuchMethodError`가 관측되지 않았다. 다만 아직 쓰지 않은 경로(스트리밍, 툴 콜링)가 남아 있으므로 완전히 닫힌 항목은 아니다
-- **OpenAI RPM/TPM 티어** — `llm.max-concurrent-calls` 초기값 2의 근거. **2-6 측정 중 429 빈도로 실측한다.** 2단계에서 확인된 사실 하나: Spring AI는 429를 재시도 대상으로 보지 않으므로(위 2-4 정정) 티어에 걸려도 자동 복구되지 않는다 — 우리 분류가 그걸 막고 있다
+- **OpenAI RPM/TPM 티어** — `llm.max-concurrent-calls` 초기값 2의 근거. **2-6에서 1차 확인: 120요청 중 429 0건.** 다만 요청 간 5초 지연·동시 호출 1이라 조건이 느슨해 초기값의 근거로 삼기엔 부족하다 — **5단계 병렬화 이후 실제 동시 호출 조건에서 재실측이 필요하다**(5-1 참고). 2단계에서 확인된 사실 하나: Spring AI는 429를 재시도 대상으로 보지 않으므로(위 2-4 정정) 티어에 걸려도 자동 복구되지 않는다 — 우리 분류가 그걸 막고 있다
 - **`max_completion_tokens` 대 `max_tokens`** — 추론 계열 모델은 추론 토큰이 출력에 포함되므로 전자를 쓴다. 실제로 gpt-5 계열이 `max_tokens`를 거부하는지는 2-6 실호출에서 확인된다(WireMock은 필드가 실려 나가는 것까지만 검증한다)
 - **NAVER API HUB의 블로그 검색 경로와 응답 스키마** — 새 Base URL(`naverapihub.apigw.ntruss.com`) 아래에서 `/v1/search/blog.json`이 유지되는지, 3·4층이 의존하는 `total`·`postdate`·`title`·`description`이 그대로인지. 4단계 착수 시 실호출로 확정
 - ~~**네이버 일 25,000건 한도 초과 시의 응답 코드**~~ — **429로 확인됨.** 4단계에서 이 코드는 재시도 대상이 아니라 그날의 쿼터 소진으로 다뤄야 한다(지수 백오프를 태우면 이미 소진된 쿼터에 지연 예산만 낭비된다)
@@ -347,7 +347,8 @@
 ## 참고 문서
 
 - [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md) — 멀티 에이전트 파이프라인 설계 (이 로드맵의 근거 문서)
-- [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md) — 환각률 baseline 실측 (before 값 25.6%)
+- [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md) — 환각률 baseline 실측 (before 값 25.6%)
+- [TASK-AI-HALLUCINATION-OPENAI.md](TASK-AI-HALLUCINATION-OPENAI.md) — **OpenAI 재측정 (중간 측정점 7.5%)**. luna/nano 비교로 Curator 모델을 확정한 근거
 - [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) — 위 측정의 원본 산출물 재분석. **1-2 설계의 근거**(점수 밴드 분포, 밴드×verdict 교차표, 파싱 실패 원인)
 - [TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md) — 커넥션 풀 병목 실측. 목표 4의 근거
 - [TASK-PRESIGN-BOTTLENECK-FIX.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md) — 트랜잭션 경계 분리 선례

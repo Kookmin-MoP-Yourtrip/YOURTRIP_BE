@@ -243,6 +243,6 @@ SHOPPING → WALK → VIEWPOINT → CAFE → ACTIVITY → ATTRACTION
 ## 참고 문서
 
 - [ROADMAP.md](../ROADMAP.md) — 3단계 체크리스트
-- [TASK-AI-MULTI-AGENT.md](../TASK-AI-MULTI-AGENT.md) — 설계 문서 §5-1(`SlotType`)·§5-2(`RouteOptimizer`)·§9(지연 예산)
+- [MULTI-AGENT-PIPELINE.md](../MULTI-AGENT-PIPELINE.md) — 설계 문서 §5-1(`SlotType`)·§5-2(`RouteOptimizer`)·§9(지연 예산)
 - [STEP-2-llm-port.md](STEP-2-llm-port.md) — 직전 단계. 이 문서의 형식을 승계했다
 - [STEP-1-existing-defects.md](STEP-1-existing-defects.md) — 1-1의 좌표 `0.0/0.0` 결함. `RoutePlace`가 좌표를 primitive 로 받는 근거

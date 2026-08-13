@@ -1,6 +1,6 @@
 # BASELINE 산출물 재분석 — 점수 밴드 분포와 파싱 실패 원인
 
-> [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)의 환각률 측정이 남긴 **원본 산출물(`results/*.csv`)을 집계한 기록**이다. [ROADMAP.md](ROADMAP.md) 1-2("카카오 점수 하한선 도입, 임계값은 BASELINE 측정의 점수 밴드 분포를 근거로 정한다")를 실행하려면 그 분포가 필요한데, 산출물이 `.gitignore` 대상이라 레포에 남지 않는다. 이 문서가 그 대체물이다.
+> [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md)의 환각률 측정이 남긴 **원본 산출물(`results/*.csv`)을 집계한 기록**이다. [ROADMAP.md](ROADMAP.md) 1-2("카카오 점수 하한선 도입, 임계값은 BASELINE 측정의 점수 밴드 분포를 근거로 정한다")를 실행하려면 그 분포가 필요한데, 산출물이 `.gitignore` 대상이라 레포에 남지 않는다. 이 문서가 그 대체물이다.
 >
 > 결론부터: **점수 하한선은 이 데이터에서 역효과다.** 로드맵이 전제한 "점수가 높을수록 정확하다"가 성립하지 않는다. 그리고 부수적으로, 로드맵이 미해결로 남긴 항목 두 개(파싱 실패 산출물 소실, 실패 원인 추정)가 **둘 다 정정 대상**임이 드러났다.
 >
@@ -248,7 +248,7 @@ BASELINE 문서의 수치를 원본에서 재계산했다. **매칭 실패율과
 
 **값을 고치지 않는다.** 이 지표의 목적은 "절대적으로 정확한 환각률"이 아니라 **파이프라인 도입 전후를 같은 자로 재는 것**이다. 25.6%를 5.7%로 바꾸면 2단계·8단계 재측정도 전부 같은 정의로 다시 계산해야 하는데, 그 비용에 비해 얻는 것은 before 값 하나의 정확도뿐이다. **비교 가능성이 정확성보다 이 지표의 목적에 부합한다.**
 
-대신 산출 절차를 [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)의 "25.6%의 정의"와 [ROADMAP.md](ROADMAP.md) 성공 기준에 고정했다. 앞으로 이 값을 인용할 때 **"매칭 실패율을 포함한 복합 지표"** 라는 것을 함께 밝힌다 — 그래야 "AI가 코스의 4분의 1을 지어낸다"로 잘못 읽히지 않는다.
+대신 산출 절차를 [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md)의 "25.6%의 정의"와 [ROADMAP.md](ROADMAP.md) 성공 기준에 고정했다. 앞으로 이 값을 인용할 때 **"매칭 실패율을 포함한 복합 지표"** 라는 것을 함께 밝힌다 — 그래야 "AI가 코스의 4분의 1을 지어낸다"로 잘못 읽히지 않는다.
 
 이 지표를 **재정의해야 하는 시점은 골든 데이터셋이 생길 때**다(로드맵 "범위에서 제외한 것" 참고). 사람 채점이나 LLM-as-judge 평가 인프라가 갖춰지면 프록시 지표 자체가 필요 없어진다.
 
@@ -298,7 +298,7 @@ BASELINE 문서의 수치를 원본에서 재계산했다. **매칭 실패율과
 
 ## 참고 문서
 
-- [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md) — 이 산출물을 만든 측정의 방법론과 요약
+- [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md) — 이 산출물을 만든 측정의 방법론과 요약
 - [ROADMAP.md](ROADMAP.md) — 1-2의 설계가 이 분석에 근거한다
 - [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md) — 점수 하한선·카테고리 하드 제약의 원 설계
 - `src/test/java/backend/yourtrip/global/benchmark/AiHallucinationBaselineTest.java` — 측정 하네스
