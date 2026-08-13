@@ -8,7 +8,9 @@
 >
 > **LLM 벤더는 OpenAI로 확정됐다.** 설계 문서 초안은 Gemini를 현행으로 두고 OpenAI 전환 "가능성"을 전제로 쓰였으나, 확정에 따라 설계 문서 본문(§6·§7·§11·§13·§15)이 갱신됐다. 이 로드맵은 그 갱신된 설계를 기준으로 한다.
 >
-> 진행 상황: **0단계 완료.** 검증 항목 전부 통과했고 OpenAI·네이버 키도 모두 발급됐다. 다음은 1단계(기존 결함 수정).
+> 진행 상황: **1단계 코드 작업 완료**(E2E 검증만 남음). 0단계 검증 항목은 전부 통과했고 OpenAI·네이버 키도 발급됐다. 다음은 2단계(`LlmClient` 포트 + baseline 재측정).
+>
+> 1단계에서 **로드맵 1-2의 처방이 데이터와 반대라는 것이 드러나 방향을 바꿨다.** 아래 1-2 항목의 정정과 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) 참고.
 
 ## 목표
 
@@ -90,14 +92,17 @@
 
 동작 변화 **있음(버그 수정)**. 파이프라인과 **완전히 독립적으로 옳은 수정**이라 리뷰가 쉽고, 작업이 중단돼도 가치가 남는다. 그래서 맨 앞에 둔다.
 
-> 상세 실행 계획은 [STEP-1-existing-defects.md](steps/STEP-1-existing-defects.md) 참고. (미작성)
+> 상세 실행 기록은 [STEP-1-existing-defects.md](steps/STEP-1-existing-defects.md) 참고.
 
-- [ ] 1-1. `Place`의 `@Builder` 파라미터를 `double` → `Double`로 교체 (좌표 `0.0/0.0` 저장 차단) + `PlaceMapper.toCopyEntity`의 언박싱 NPE 수정
-- [ ] 1-2. `KakaoLocalClient.score()`에 점수 하한선 도입 — 미달 후보는 매칭 실패로 처리. **임계값은 BASELINE 측정의 점수 밴드 분포를 근거로 정한다**
-- [ ] 1-3. `KakaoConfig`의 `WebClient`에 connect/response 타임아웃 + 커넥션 풀 명시, `.block(Duration.ofSeconds(20))` 제거. 현재는 타임아웃 초과 시 `IllegalStateException`이 던져져 `WebClientResponseException` catch를 빠져나가 원시 500이 된다
-- [ ] 1-4. `buildKeywordsJson(null)` NPE 수정 + `AICourseCreateRequest.keywords`에 검증 추가
-- [ ] 1-5. `createAICourse`의 `@Transactional` 경계 분리 — 외부 I/O를 트랜잭션 밖으로 빼고 저장만 짧은 트랜잭션으로. **`AiCoursePersister`를 반드시 별도 빈으로 둔다**(같은 클래스 내부 호출은 Spring AOP 프록시를 우회해 트랜잭션이 아예 안 걸린다). 이 저장소에 `MyCourseDetailReader`라는 동일한 분리 선례가 있다
-- [ ] 1-6. 회귀 테스트 + 커넥션 점유 시간 before/after 확인
+- [x] 1-1. `Place`의 `@Builder` 파라미터를 `double` → `Double`로 교체 (좌표 `0.0/0.0` 저장 차단) + `PlaceMapper.toCopyEntity`의 언박싱 NPE 수정. **응답 DTO 3종과 `PlaceCacheItem`도 함께 승격해야 했다** — 게터를 읽는 쪽이 전부 새 언박싱 NPE 후보가 되기 때문이다. 응답의 좌표가 nullable이 되므로 **API 계약 변경이고 FE 공유가 필요하다**
+- [x] 1-2. ~~`KakaoLocalClient.score()`에 점수 하한선 도입~~ → **이름 정규화 + 이름 일치 필수 게이트**
+
+  > **[정정]** 산출물을 집계해보니 **총점 하한선은 역효과**였다. `S1_4`(3점)는 표본 18건이 전부 정답인데 `S5_7`(5·7점)은 31%가 불량이라, `≥5` 하한선은 정답 밴드를 버리고 불량 밴드를 남긴다. 원인은 검색 키워드가 "지역명 + 장소명"이라 주소(+3)·카테고리(+2) 가점이 거의 자동으로 붙어 **이름이 하나도 안 맞아도 5점이 나오는** 구조다. 그래서 하한선이 아니라 이름 일치를 별도 조건으로 두고, `contains`의 거짓 음성(띄어쓰기·중점)은 정규화로 없앴다. **`score()`는 건드리지 않았다** — 하네스가 리플렉션으로 직접 호출하므로 재측정 비교 가능성이 깨진다. 근거는 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) 판정 1·2
+- [x] 1-3. `KakaoConfig`의 `WebClient`에 connect/response 타임아웃 + 커넥션 풀 명시, `.block(Duration.ofSeconds(20))` 제거. 현재는 타임아웃 초과 시 `IllegalStateException`이 던져져 `WebClientResponseException` catch를 빠져나가 원시 500이 된다 → **catch를 `WebClientException`으로 확장하는 것이 한 세트여야 한다.** 호출당 최악 지연 20초 → 5초
+- [x] 1-4. `buildKeywordsJson(null)` NPE 수정 + `AICourseCreateRequest.keywords`에 검증 추가(`@NotEmpty`)
+- [x] 1-5. `createAICourse`의 `@Transactional` 경계 분리 — 외부 I/O를 트랜잭션 밖으로 빼고 저장만 짧은 트랜잭션으로. **`AiCoursePersister`를 반드시 별도 빈으로 둔다**(같은 클래스 내부 호출은 Spring AOP 프록시를 우회해 트랜잭션이 아예 안 걸린다). 이 저장소에 `MyCourseDetailReader`라는 동일한 분리 선례가 있다. **걸림돌은 어노테이션이 아니라 더티체킹 의존이었다** — `ResolvedPlace`/`ResolvedDay` 중간 표현으로 "결과를 다 모은 뒤 저장" 순서로 뒤집었다
+- [x] 1-6. 회귀 테스트 (56 → 73개). ~~커넥션 점유 시간 before/after 확인~~ → **8단계 E2E로 미룬다** — AI 코스 생성은 요청마다 LLM을 호출해 부하 테스트가 부적합하고, 스텁으로 대체하면 측정의 의미가 옅어진다
+- [ ] 1-7. **E2E 검증** — 실제 요청으로 ① 좌표 저장 ② 매칭 실패 시 `null` 저장·응답 ③ `keywords` 누락 시 400 확인. 기동 확인은 완료(14.4초, 빈 배선 정상)
 
 ### 2. `LlmClient` 벤더 중립 추상화 + 설정 외부화 + baseline 재측정
 
