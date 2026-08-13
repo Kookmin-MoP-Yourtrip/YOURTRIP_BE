@@ -9,7 +9,7 @@
 > 가치가 얇고(특히 ATTRACTION 슬롯은 외부 근거 없이 Curator와 같은 지식으로 재추측하는 것에
 > 가깝다), 판단 기준도 아직 미확정이며, 효과를 측정할 인프라도 없다. 반면 Planner·Curator·
 > Grounding·PlaceSignal·RouteOptimizer만으로도 환각 차단·동선 계산·인기도 랭킹이라는 확실한
-> 개선이 있고, [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md) 실측에서
+> 개선이 있고, [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md) 실측에서
 > **JSON 파싱 실패율 28.6%**라는 더 크고 확실한 문제가 이미 드러나 우선순위가 그쪽에 있다.
 >
 > **LLM 벤더**: 이 문서의 초안은 Gemini를 현행으로 두고 OpenAI 전환 "가능성"을 전제로 썼으나,
@@ -489,7 +489,7 @@ public record LlmCall<T>(
 
 `com.google.genai.Client`는 **`public final class`**이고 `models`도 **`public final` 필드**다.
 Mockito로 목킹할 수 없다. 지금 코드에서 LLM 호출부의 단위 테스트가 사실상 불가능한 이유가 정확히
-이것이고, [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)의 측정 하네스가
+이것이고, [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md)의 측정 하네스가
 Spring 컨텍스트 없이 `new GeminiService(...)`를 수동 조립해 **실제 API를 때리는 방식**을 택한 것도
 같은 제약 때문이다. 포트를 두면 에이전트(V1: Planner·Curator·PlaceProfile 3개)의 테스트가
 **벤더 SDK 타입을 한 개도 import하지 않는다.** "추상화를 위한 추상화"가 아니라 테스트 가능성이라는
@@ -807,7 +807,7 @@ before/after 실측 문화가 있으므로(`docs/tasks/*`) 그 관례를 따른�
    품질 향상"이다.
 4. **효과를 측정할 인프라가 없다.** §15에서 골든 데이터셋 평가를 범위 밖으로 미뤄뒀다. 그 인프라
    없이는 Critic을 만들어도 "진짜 도움이 됐는지"를 확인할 방법이 없다.
-5. **더 크고 확실한 문제가 이미 실측됐다.** [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)에서
+5. **더 크고 확실한 문제가 이미 실측됐다.** [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md)에서
    단일 Gemini 호출의 **JSON 파싱 실패율이 28.6%**로 나왔다. 이건 추정이 아니라 실측이고, 사용자가
    AI 코스 생성을 4번 시도하면 1번 이상 503을 받는다는 뜻이다. 불확실하고 작은 문제(Critic이 잡을
    나머지 컨셉 미스매치)보다 확실하고 큰 문제(파싱 실패)에 먼저 투자하는 게 맞다.
@@ -1047,7 +1047,7 @@ mini급 모델을 배정한 것과 같은 근거이며, 실제로 §6의 `model`
 
 1. **환각률 프록시** — `ai.grounding.match{result=below_threshold}` 비율의 before/after 비교.
    지금 당장 측정 가능하고, 이 작업의 **1차 정량 지표**로 삼는다.
-   → **before 값은 구현 착수 전에 이미 측정했다: [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md).**
+   → **before 값은 구현 착수 전에 이미 측정했다: [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md).**
    그 문서에 측정 하네스·방법론·자동 프록시의 한계(거짓 양성/거짓 음성)와 after 측정 재현 절차가
    정리돼 있으므로, 파이프라인 도입 후 **동일한 입력 세트와 동일한 `score()` 로직으로** 재측정한다.
 

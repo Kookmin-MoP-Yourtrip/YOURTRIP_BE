@@ -1,6 +1,6 @@
 # TASK-AI-HALLUCINATION-OPENAI. OpenAI 단일 호출 환각률 재측정 (luna vs nano)
 
-> [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)가 잰 **before 값(Gemini 25.6%)** 의 짝이 되는 측정이다. [ROADMAP.md](ROADMAP.md) 2단계에서 LLM 벤더가 Gemini → OpenAI로 바뀌었으므로, 파이프라인 도입 후 값을 before와 그냥 비교하면 **"모델 교체"와 "파이프라인 도입" 두 변수가 섞여** 개선폭을 어느 쪽에도 귀속시킬 수 없다. 이 문서는 **파이프라인 없이 모델만 바꾼 중간 측정점**을 남긴다.
+> [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md)가 잰 **before 값(Gemini 25.6%)** 의 짝이 되는 측정이다. [ROADMAP.md](ROADMAP.md) 2단계에서 LLM 벤더가 Gemini → OpenAI로 바뀌었으므로, 파이프라인 도입 후 값을 before와 그냥 비교하면 **"모델 교체"와 "파이프라인 도입" 두 변수가 섞여** 개선폭을 어느 쪽에도 귀속시킬 수 없다. 이 문서는 **파이프라인 없이 모델만 바꾼 중간 측정점**을 남긴다.
 >
 > 동시에 0단계가 넘긴 숙제 하나를 닫는다 — `gpt-5.6-luna`의 한국어 지역 지식을 확인하지 못한 채 Curator에 배정했으므로(ROADMAP 0-4), **luna와 nano를 같은 조건으로 재서 Curator 모델을 데이터로 확정**한다.
 >
@@ -172,7 +172,7 @@ before의 "세탁된 환각률"과 같은 식이다.
 
 ## 참고 문서
 
-- [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md) — before 값(25.6%)과 그 정의
+- [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md) — before 값(25.6%)과 그 정의
 - [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) — before 산출물 재분석. 25.6%의 구성과 이중 계산 문제
 - [steps/STEP-2-llm-port.md](steps/STEP-2-llm-port.md) — 이 측정을 가능하게 한 구현과, 측정 중 드러난 구현 이슈. 수동 검증 판정 전량
 - [ROADMAP.md](ROADMAP.md) — 3점 비교의 위치와 성공 기준

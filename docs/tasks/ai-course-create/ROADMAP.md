@@ -16,7 +16,7 @@
 
 1. **JSON 파싱 실패로 요청이 통째로 실패하는 것을 없앤다.** 단일 호출 구조의 실측 파싱 실패율은 **28.6%** — 사용자가 AI 코스 생성을 4번 시도하면 1번 이상 503을 받는다는 뜻이다. 스키마를 프롬프트 텍스트가 아니라 **디코딩 레벨에서 강제**하면(구조화 출력) 이 실패 자체가 사라진다. 현재 프롬프트의 JSON 예시에 trailing comma가 들어 있는 것이 유력한 원인이라, 프롬프트에서 예시를 걷어내는 것만으로도 상당 부분 해소될 가능성이 높다.
 
-2. **환각 장소가 사용자 코스에 실리는 비율을 낮춘다.** 현재 실측 환각률은 **25.6%**([TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)) — 코스 하나를 받으면 평균 4곳 중 1곳이 존재하지 않는 장소다. 후보를 3배로 늘리고 카카오 매칭 점수에 하한선을 두어, 검증을 통과하지 못한 장소는 파이프라인에 아예 존재하지 않게 만든다.
+2. **환각 장소가 사용자 코스에 실리는 비율을 낮춘다.** 현재 실측 환각률은 **25.6%**([TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md)) — 코스 하나를 받으면 평균 4곳 중 1곳이 존재하지 않는 장소다. 후보를 3배로 늘리고 카카오 매칭 점수에 하한선을 두어, 검증을 통과하지 못한 장소는 파이프라인에 아예 존재하지 않게 만든다.
 
 3. **동선·시간 배치를 LLM 추측에서 실좌표 계산으로 옮긴다.** 좌표를 확보한 뒤 완전탐색으로 최적 순열을 고르므로, "시간 겹침 없음"·"day당 식사 1회"·"동선 역주행 없음"이 프롬프트 규칙이 아니라 **알고리즘 불변식**이 된다.
 
@@ -244,7 +244,7 @@
 
 ### 11. 실측 결과 기록
 
-- [ ] 11-1. 3점 비교 결과를 [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md)와 [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)에 추가
+- [ ] 11-1. 3점 비교 결과를 [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md)와 [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md)에 추가
 - [ ] 11-2. 지연 예산 실측치와 설계 추정치(p50 12~16초 / p95 22~30초) 대조 → **202 Accepted 전환 여부를 데이터로 판단**
 - [ ] 11-3. 커넥션 점유 시간 before/after, 실제 토큰 비용, `mood` 키워드 포함 비율 기록
 
@@ -277,7 +277,7 @@
   ./gradlew benchmarkTest --tests '*AiHallucinationBaselineTest*' --rerun
   ```
 - **동일 입력 세트(지역 10곳 × 스타일 3조합 = 30요청, 여행 일수 3일 고정)와 동일한 `score()` 로직을 유지해야** 세 측정점이 비교 가능하다. 1-2에서 매칭 로직을 바꾸므로, 하네스의 판정 로직은 변경 전 기준을 그대로 쓰도록 고정한다
-- **환각률의 산출 정의를 고정한다** — 아래 절차를 그대로 따라야 세 측정점이 같은 것을 재게 된다. 근거와 한계는 [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md)의 "25.6%의 정의"에 있다
+- **환각률의 산출 정의를 고정한다** — 아래 절차를 그대로 따라야 세 측정점이 같은 것을 재게 된다. 근거와 한계는 [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md)의 "25.6%의 정의"에 있다
 
   ```
   환각률 = 자동 프록시(매칭 실패율) + 세탁된 환각률
@@ -328,7 +328,7 @@
 ## 참고 문서
 
 - [TASK-AI-MULTI-AGENT.md](TASK-AI-MULTI-AGENT.md) — 멀티 에이전트 파이프라인 설계 (이 로드맵의 근거 문서)
-- [TASK-AI-HALLUCINATION-BASELINE.md](TASK-AI-HALLUCINATION-BASELINE.md) — 환각률 baseline 실측 (before 값 25.6%)
+- [TASK-AI-HALLUCINATION-GEMINI.md](TASK-AI-HALLUCINATION-GEMINI.md) — 환각률 baseline 실측 (before 값 25.6%)
 - [TASK-AI-HALLUCINATION-OPENAI.md](TASK-AI-HALLUCINATION-OPENAI.md) — **OpenAI 재측정 (중간 측정점 7.5%)**. luna/nano 비교로 Curator 모델을 확정한 근거
 - [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md) — 위 측정의 원본 산출물 재분석. **1-2 설계의 근거**(점수 밴드 분포, 밴드×verdict 교차표, 파싱 실패 원인)
 - [TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md) — 커넥션 풀 병목 실측. 목표 4의 근거

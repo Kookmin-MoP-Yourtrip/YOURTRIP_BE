@@ -274,7 +274,7 @@ luna는 `minimal`을, nano는 `none`을 거부한다. **두 모델을 같은 조
 
 ## 2-6 측정 결과 — 네 조합 전량 완료
 
-> **측정 자체의 해석과 결론은 [TASK-AI-HALLUCINATION-OPENAI.md](../TASK-AI-HALLUCINATION-OPENAI.md)로 분리했다** — before 측정([TASK-AI-HALLUCINATION-BASELINE.md](../TASK-AI-HALLUCINATION-BASELINE.md))과 짝을 이루는 문서라 같은 형식으로 두는 편이 낫다. 이 문서에는 **구현 기록**과 **수동 검증 판정 전량**만 남긴다.
+> **측정 자체의 해석과 결론은 [TASK-AI-HALLUCINATION-OPENAI.md](../TASK-AI-HALLUCINATION-OPENAI.md)로 분리했다** — before 측정([TASK-AI-HALLUCINATION-GEMINI.md](../TASK-AI-HALLUCINATION-GEMINI.md))과 짝을 이루는 문서라 같은 형식으로 두는 편이 낫다. 이 문서에는 **구현 기록**과 **수동 검증 판정 전량**만 남긴다.
 
 **공통 조건**: 추론 `low` / 의미 재시도 1회 / `max-output-tokens` 4096 / 온도 미전송(모델이 거부)
 **규모**: 4조합 × 30요청 = **120요청**, 총 약 32분
