@@ -1,0 +1,76 @@
+# worktree 작업 가이드 — gitignore된 파일 다루기
+
+이 저장소는 `git worktree`로 작업 브랜치를 분리해서 쓴다. 그런데 실행에 꼭 필요한 파일 상당수(`.env`, terraform state·키, AI 지침 등)가 `.gitignore` 대상이라 **git으로는 worktree 간에 공유되지 않는다.** 이 공백을 [`.worktreeinclude`](../../.worktreeinclude) 목록과 `post-checkout` 훅이 메운다.
+
+이 문서는 그 메커니즘의 동작 방식과, 그로 인해 실제로 겪은 함정들을 정리한다.
+
+## 동작 방식
+
+`post-checkout` 훅(`.git/hooks/post-checkout`)이 `git worktree add` 시점에 `.worktreeinclude`의 각 줄을 읽어 메인 저장소에서 새 worktree로 복사한다. 핵심은 세 가지다.
+
+1. **단방향이다** — 메인 저장소 → worktree. 반대 방향은 없다.
+2. **덮어쓰지 않는다** — 대상 경로가 이미 존재하면(`[ ! -e "$DST_PATH" ]`) 건너뛴다.
+3. **메인 저장소에서는 아무 일도 하지 않는다** — `MAIN_DIR == TARGET_DIR`이면 즉시 종료한다.
+
+즉 **실질적으로 "새 worktree를 만드는 순간 1회"만 동작한다.**
+
+## 반드시 알아야 할 함정 3가지
+
+### 1. worktree에서 수정한 gitignore 파일은 어디에도 전파되지 않는다
+
+`.env`나 `CLAUDE.md`, `.claude/rules/*.md`를 worktree에서 고쳐도 **메인 저장소와 다른 worktree는 모른다.** git이 추적하지 않으니 커밋으로도 옮겨지지 않고, 훅은 단방향이라 역방향 복사도 없다.
+
+→ **이런 파일을 고쳤으면 메인 저장소 사본도 직접 갱신해야 한다.** 그러지 않으면 다음에 만드는 worktree는 옛 버전을 받는다.
+
+### 2. 메인에서 고쳐도 기존 worktree에는 반영되지 않는다
+
+훅이 덮어쓰지 않기 때문에, 이미 그 파일을 갖고 있는 worktree는 계속 옛 버전을 쓴다.
+
+실제 사례: 메인의 `.env`에 `NAVER_CLIENT_ID`·`OPENAI_API_KEY`가 추가됐지만, 8/5에 만든 worktree는 그 키들이 없는 채로 남아 있었다. 새 환경변수를 요구하는 코드가 머지되면 그 worktree에서만 기동이 실패한다.
+
+→ 다른 worktree에서 새 설정을 추가했다는 걸 알게 되면, 쓰기 전에 메인과 비교한다.
+
+### 3. 새로 생긴 파일은 등록해야 다음 worktree가 받는다
+
+`terraform init`이 만드는 `.terraform.lock.hcl`처럼, 작업 중 새로 생기는 gitignore 파일이 있다. `.worktreeinclude`에 추가하지 않으면 다음 worktree는 그 파일 없이 시작한다.
+
+## 목록에 넣을지 판단하는 기준
+
+`.worktreeinclude`에 **넣어야 하는 것**:
+
+- **재생성이 불가능한 것** — `terraform.tfstate`(이미 apply된 실제 인프라의 유일한 진실 공급원), SSH·CloudFront 키페어, `terraform.tfvars`(환경별 실제 값)
+- **재생성은 되지만 그러면 의미가 깨지는 것** — `.terraform.lock.hcl`. `terraform init`으로 다시 만들 수는 있으나 그 시점의 최신 provider를 새로 고르므로, "어느 worktree에서 apply해도 같은 버전으로 재현된다"는 lock의 목적이 사라진다
+- **모든 worktree에서 동일해야 하는 설정** — `.env`, `CLAUDE.md`, `.claude/rules/`, `.claude/settings.json`
+
+**넣지 말아야 하는 것**:
+
+- **재생성으로 충분한 캐시** — `.gradle/`, `build/`, `out/`, `bin/`, `.terraform/`(플러그인 캐시). 복사 비용만 낭비다
+- **절대경로가 박힌 것** — `.idea/`. 다른 경로의 worktree에 복사하면 오히려 깨진 설정이 된다
+- **그 worktree에서만 의미 있는 것** — `.claude/plans/`. 계획 파일은 해당 작업의 맥락 문서라, 통째로 복사하면 남의 계획서가 새 worktree마다 딸려가고 같은 파일명이 여러 곳에 중복된다
+- **자기 자신을 포함하는 경로** — `.claude/worktrees/`. 여기에 모든 worktree가 들어 있어 복사하면 worktree 안에 다른 worktree 전체가 중첩된다(실제로 `.claude/worktrees/A/.claude/worktrees/B/...` 형태가 관측됐다)
+
+디렉터리를 통째로 지정하기 전에 **그 안에 위 "넣지 말아야 할 것"이 섞여 있지 않은지** 확인한다. `.claude/`가 정확히 그 사례였고, 지금은 `rules/`와 `settings.json`만 개별 지정한다.
+
+## 작업 체크리스트
+
+worktree에서 작업을 마칠 때:
+
+1. `git status --ignored --short`로 새로 생긴 gitignore 파일이 있는지 확인한다
+2. 새 파일이 위 "넣어야 하는 것" 기준에 해당하면 `.worktreeinclude`에 등록한다(이 파일은 git 추적 대상이라 커밋된다)
+3. gitignore된 파일을 새로 만들었거나 고쳤으면 **메인 저장소 사본도 갱신한다**
+
+메인과 worktree 사본을 비교하려면:
+
+```bash
+MAIN=/c/YOURTRIP/YOURTRIP_BE/YOURTRIP_BE
+WT=$MAIN/.claude/worktrees/<worktree-name>
+for f in $(grep -vE '^\s*#|^\s*$' "$MAIN/.worktreeinclude"); do
+  diff -q "$MAIN/$f" "$WT/$f" >/dev/null 2>&1 || echo "DIFF: $f"
+done
+```
+
+## 참고
+
+- [.worktreeinclude](../../.worktreeinclude) — 실제 목록. 각 항목을 포함/제외한 이유가 주석에 있다
+- `.git/hooks/post-checkout` — 훅 구현(git 추적 대상이 아니므로 로컬에만 존재)
+- [terraform/loadtest/README.md](../../terraform/loadtest/README.md) — 부하테스트 인프라의 state·키 파일이 왜 재생성 불가능한지
