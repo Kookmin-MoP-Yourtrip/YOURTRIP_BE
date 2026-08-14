@@ -107,9 +107,26 @@ LIST="$(grep -vE '^\s*#|^\s*$' "$WT/.worktreeinclude" | tr -d '\r')"
 
 echo "== 1) 목록에 없는 gitignore 파일 (등록할지 판단) =="
 git status --ignored --short | grep '^!!' | sed 's/^!! //' | while IFS= read -r p; do
-  # 재생성되는 캐시·산출물은 애초에 복사 대상이 아니다("넣지 말아야 하는 것" 참고)
+  # 재생성되는 캐시·산출물, 개인/환경 전용 설정은 애초에 복사 대상이 아니다
+  # ("넣지 말아야 하는 것" 참고). .gitignore 항목과 대조해 유지한다.
   case "$p" in
-    .gradle/|.idea/|build/|out/|bin/|.terraform/|*/.terraform/|*.log|*.output) continue;;
+    # 빌드·캐시 산출물
+    .gradle/|build/|out/|bin/|dist/|.apt_generated/|.sts4-cache/) continue;;
+    # IDE 설정 — 절대경로가 박혀 있어 다른 경로의 worktree에서는 오히려 깨진다
+    .idea/|.vscode/|.settings/|.classpath|.project|.factorypath|.springBeans) continue;;
+    *.iml|*.iws|*.ipr) continue;;
+    nbproject/|nbbuild/|nbdist/|.nb-gradle/) continue;;
+    # terraform 플러그인 캐시·plan 산출물·로컬 오버라이드(그 환경 전용)
+    .terraform/|*/.terraform/|*.tfplan|tfplan*|*/tfplan*) continue;;
+    override.tf|override.tf.json|*_override.tf|*_override.tf.json) continue;;
+    */override.tf|*/override.tf.json|*/*_override.tf|*/*_override.tf.json) continue;;
+    .terraformrc|terraform.rc|*/.terraformrc|*/terraform.rc) continue;;
+    # state 백업 — terraform이 자동 생성하는 타임스탬프 백업과 손으로 뜬 백업.
+    # 목록에 있는 표준 terraform.tfstate.backup은 [0-9] 조건 덕분에 걸리지 않는다.
+    *.tfstate.[0-9]*.backup|*/*.tfstate.[0-9]*.backup) continue;;
+    *.pre-import-*|*/*.pre-import-*|*.bak-[0-9]*|*/*.bak-[0-9]*) continue;;
+    # 로그·부하테스트 결과(k6 --summary-export 산출물)
+    *.log|*.output|results/|*/results/) continue;;
   esac
   # 이미 목록에 있거나(하위 포함), 목록 항목의 상위 디렉터리로 뭉쳐 나온 경우 제외
   skip=0
@@ -134,7 +151,16 @@ done
 }
 ```
 
-**①의 필터가 하는 일**: `git status --ignored`는 gitignore된 것을 **전부** 나열해서(이 저장소 기준 22줄) 그대로 두면 `.gradle/`·`build/`·`.idea/` 같은 산출물과 이미 등록된 항목이 뒤섞여 매번 눈으로 걸러야 한다. 그래서 위 "넣지 말아야 하는 것" 기준을 `case` 패턴으로 넣고, `.worktreeinclude`에 이미 있는 항목도 제외했다. **출력이 비어 있는 게 정상 상태**이고, 뭔가 찍히면 그때만 판단하면 된다.
+**①의 필터가 하는 일**: `git status --ignored`는 gitignore된 것을 **전부** 나열해서(이 저장소 기준 24줄) 그대로 두면 `.gradle/`·`build/`·`.idea/` 같은 산출물과 이미 등록된 항목이 뒤섞여 매번 눈으로 걸러야 한다. 그래서 위 "넣지 말아야 하는 것" 기준을 `case` 패턴으로 넣고, `.worktreeinclude`에 이미 있는 항목도 제외했다. **출력이 비어 있는 게 정상 상태**이고, 뭔가 찍히면 그때만 판단하면 된다.
+
+필터 목록은 `.gitignore`와 대조해 유지한다. 특히 실수하기 쉬운 것들:
+
+- **`results/`** — k6가 `--summary-export=results/...`로 남기는 부하테스트 결과. 로컬에서 k6를 한 번만 돌려도 생긴다
+- **`*.tfplan` / `tfplan*`** — `terraform plan -out=tfplan`의 산출물([terraform/loadtest/README.md](../../terraform/loadtest/README.md)의 표준 절차에 있다)
+- **`override.tf` 계열, `.terraformrc`** — terraform 로컬 오버라이드. 그 환경 전용이라 오히려 복사하면 안 된다
+- **state 백업** — terraform이 자동으로 만드는 `*.tfstate.<timestamp>.backup`과 손으로 뜬 `*.pre-import-*`. 목록에 있는 표준 `terraform.tfstate.backup`은 패턴의 `[0-9]` 조건 덕분에 걸러지지 않는다
+
+`.gitignore`에 새 항목이 추가됐는데 그게 산출물·캐시 성격이라면 이 필터에도 함께 넣는다. 그러지 않으면 매번 "검토 필요"로 떠서 진짜 신호를 가린다.
 
 한 가지 한계: `git status --ignored --short`는 디렉터리를 뭉쳐서 출력한다(`.claude/` 한 줄). 그래서 `.claude/` 안에 새 파일이 생겨도 개별로는 드러나지 않는다. 목록에 부분만 등록된 디렉터리(`.claude/rules/`, `.claude/settings.json`)의 내부를 확인하려면 `git status --ignored=matching --short .claude/`처럼 경로를 좁혀서 다시 본다.
 
