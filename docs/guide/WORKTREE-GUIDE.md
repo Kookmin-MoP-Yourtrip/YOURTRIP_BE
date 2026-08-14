@@ -24,15 +24,19 @@ WT="$(git rev-parse --show-toplevel)"                        # 지금 있는 워
 
 ## 동작 방식
 
-`post-checkout` 훅(`.git/hooks/post-checkout`)이 `git worktree add` 시점에 `.worktreeinclude`의 각 줄을 읽어 메인 저장소에서 새 worktree로 복사한다. 핵심은 세 가지다.
+`post-checkout` 훅(`.git/hooks/post-checkout`)이 `.worktreeinclude`의 각 줄을 읽어 메인 워킹트리에서 지금 워킹트리로 복사한다. 핵심은 세 가지다.
 
-1. **단방향이다** — 메인 저장소 → worktree. 반대 방향은 없다.
+1. **단방향이다** — 메인 워킹트리 → linked worktree. 반대 방향은 없다.
 2. **덮어쓰지 않는다** — 대상 경로가 이미 존재하면(`[ ! -e "$DST_PATH" ]`) 건너뛴다.
-3. **메인 저장소에서는 아무 일도 하지 않는다** — `MAIN_DIR == TARGET_DIR`이면 즉시 종료한다.
+3. **메인 워킹트리에서는 아무 일도 하지 않는다** — `MAIN_DIR == TARGET_DIR`이면 즉시 종료한다.
 
 즉 **실질적으로 "새 worktree를 만드는 순간 1회"만 동작한다.**
 
-## 반드시 알아야 할 함정 3가지
+2번이 중요한 이유: `post-checkout`은 이름 그대로 **모든 체크아웃에서 실행된다.** `git worktree add`뿐 아니라 worktree 안에서 `git checkout`/`git switch`로 브랜치를 옮길 때마다 돈다. 만약 덮어쓰기로 동작했다면, 작업 중 브랜치를 잠깐 옮기는 것만으로 수정해 둔 `.env`나 `terraform.tfstate`가 메인 것으로 덮여 날아간다. 이 가드는 **로컬 상태를 보호하는 장치**이지 불필요한 제약이 아니다.
+
+그 대가로 "메인의 갱신이 기존 worktree에 전파되지 않는다"(함정 2)가 생기는데, 이건 덮어쓰기로 풀 문제가 아니라 아래 체크리스트로 사람이 확인할 문제다.
+
+## 반드시 알아야 할 함정 4가지
 
 ### 1. worktree에서 수정한 gitignore 파일은 어디에도 전파되지 않는다
 
@@ -52,19 +56,22 @@ WT="$(git rev-parse --show-toplevel)"                        # 지금 있는 워
 
 `terraform init`이 만드는 `.terraform.lock.hcl`처럼, 작업 중 새로 생기는 gitignore 파일이 있다. `.worktreeinclude`에 추가하지 않으면 다음 worktree는 그 파일 없이 시작한다.
 
-### 4. `.worktreeinclude`를 고쳐도 메인 워킹트리가 그 브랜치에 있어야 적용된다
+### 4. 훅은 git으로 공유되지 않는다
 
-훅은 **메인 워킹트리의 `.worktreeinclude`를 읽는다**(`$MAIN_DIR/.worktreeinclude`). 이 파일은 git 추적 대상이라 **브랜치마다 내용이 다르다.** 그래서 worktree에서 목록을 고쳐 커밋·머지해도, 메인 워킹트리가 그 커밋을 포함하지 않는 브랜치를 체크아웃하고 있으면 **새 worktree에는 여전히 옛 목록이 적용된다.**
+훅은 `.git/hooks/post-checkout`에 있고 **git 추적 대상이 아니다.** 즉 저장소를 새로 clone한 사람에게는 훅이 없어서 `.worktreeinclude`만 받고 **복사 자체가 동작하지 않는다.** 지금은 사실상 1인이 쓰는 구조라 드러나지 않지만, 훅을 `scripts/hooks/`에 두고 `core.hooksPath`로 가리키게 하면 git으로 공유할 수 있다.
 
-실제 사례: `.claude/` 항목을 `rules/`·`settings.json`으로 좁힌 커밋을 `dev`에 넣었지만, 메인 워킹트리가 `dev-ai-course`를 보고 있어 그 시점에는 옛 목록(`.claude/` 통째)이 그대로 쓰이고 있었다.
+이 때문에 훅의 동작이 환경마다 다를 수 있다는 점도 유의한다. 아래 "읽는 목록" 관련 수정도 이 저장소의 로컬 훅에만 적용돼 있다.
 
-→ 목록 변경이 실제로 발효되려면 **메인 워킹트리에서 해당 브랜치를 체크아웃하거나 머지된 브랜치로 갱신**해야 한다. 확인 방법:
-
-```bash
-MAIN="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
-git -C "$MAIN" rev-parse --abbrev-ref HEAD   # 메인이 보고 있는 브랜치
-diff "$MAIN/.worktreeinclude" "$(git rev-parse --show-toplevel)/.worktreeinclude"
-```
+> **[해소됨] 훅이 메인의 목록을 읽던 문제**
+>
+> 원래 훅은 `$MAIN_DIR/.worktreeinclude`를 읽었다. 이 파일은 git 추적 대상이라 브랜치마다 내용이 다른데, 그래서 worktree에서 목록을 고쳐 커밋해도 **메인 워킹트리가 다른 브랜치를 보고 있으면 반영되지 않았다.** 실제로 `.claude/` 항목을 좁힌 커밋을 `dev`에 넣었지만 메인이 `dev-ai-course`를 보고 있어 옛 목록이 쓰이고 있었다.
+>
+> 지금은 **대상 워킹트리의 목록을 우선 읽도록** 고쳤다(없으면 메인으로 폴백). `.worktreeinclude`는 추적 파일이라 checkout 시점에 대상에도 이미 존재하고, "지금 이 브랜치에 필요한 파일 목록"이라는 의미에도 그쪽이 맞다.
+>
+> ```sh
+> WORKTREE_INCLUDE="$TARGET_DIR/.worktreeinclude"
+> [ -f "$WORKTREE_INCLUDE" ] || WORKTREE_INCLUDE="$MAIN_DIR/.worktreeinclude"
+> ```
 
 ## 목록에 넣을지 판단하는 기준
 
@@ -94,8 +101,8 @@ MAIN="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
 WT="$(cd "$(git rev-parse --show-toplevel)" && pwd)"
 [ "$MAIN" = "$WT" ] && echo "메인 워킹트리 — 확인 불필요" || {
 
-# 목록은 반드시 지금 worktree의 .worktreeinclude를 읽는다.
-# 메인 워킹트리는 다른 브랜치를 체크아웃하고 있을 수 있어 목록이 옛 버전일 수 있다(함정 4).
+# 목록은 지금 worktree의 .worktreeinclude를 읽는다(훅과 동일한 기준).
+# 메인 워킹트리는 다른 브랜치를 체크아웃하고 있을 수 있어 목록이 옛 버전일 수 있다.
 LIST="$(grep -vE '^\s*#|^\s*$' "$WT/.worktreeinclude" | tr -d '\r')"
 
 echo "== 1) 목록에 없는 gitignore 파일 (등록할지 판단) =="
