@@ -4,6 +4,24 @@
 
 이 문서는 그 메커니즘의 동작 방식과, 그로 인해 실제로 겪은 함정들을 정리한다.
 
+## 용어 — "상위 브랜치"라고 부르지 않는다
+
+이 문서가 다루는 복사는 **브랜치가 아니라 디렉터리 사이의 파일 복사**다. git과 무관한 파일시스템 작업이라, 브랜치 용어로 부르면 반드시 오해가 생긴다.
+
+| 용어 | 가리키는 것 | 실제 경로 |
+|---|---|---|
+| **main working tree** (메인 워킹트리) | 저장소를 처음 clone한 원본 디렉터리. 여기 아래에 worktree들이 들어 있다 | `C:\YOURTRIP\YOURTRIP_BE\YOURTRIP_BE` |
+| **linked working tree** (연결 워킹트리) | `git worktree add`로 만든 작업 디렉터리 | `<메인>\.claude\worktrees\<이름>` |
+
+**"상위 브랜치"·"부모 브랜치"라는 표현은 쓰지 않는다.** 그렇게 쓰면 `dev`/`main` 같은 base 브랜치나 upstream 브랜치로 읽혀서, "dev에 커밋해서 반영한다"는 전혀 다른 행동으로 이어진다. 실제로 해야 하는 일은 **메인 워킹트리 디렉터리에 파일을 복사하는 것**이며, 대상 파일이 `.gitignore`되어 있어 커밋으로는 옮길 수 없다는 게 이 문서의 출발점이다.
+
+셸에서 두 경로를 얻는 방법(훅이 쓰는 것과 동일):
+
+```bash
+MAIN="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"   # 메인 워킹트리
+WT="$(git rev-parse --show-toplevel)"                        # 지금 있는 워킹트리
+```
+
 ## 동작 방식
 
 `post-checkout` 훅(`.git/hooks/post-checkout`)이 `git worktree add` 시점에 `.worktreeinclude`의 각 줄을 읽어 메인 저장소에서 새 worktree로 복사한다. 핵심은 세 가지다.
@@ -34,6 +52,20 @@
 
 `terraform init`이 만드는 `.terraform.lock.hcl`처럼, 작업 중 새로 생기는 gitignore 파일이 있다. `.worktreeinclude`에 추가하지 않으면 다음 worktree는 그 파일 없이 시작한다.
 
+### 4. `.worktreeinclude`를 고쳐도 메인 워킹트리가 그 브랜치에 있어야 적용된다
+
+훅은 **메인 워킹트리의 `.worktreeinclude`를 읽는다**(`$MAIN_DIR/.worktreeinclude`). 이 파일은 git 추적 대상이라 **브랜치마다 내용이 다르다.** 그래서 worktree에서 목록을 고쳐 커밋·머지해도, 메인 워킹트리가 그 커밋을 포함하지 않는 브랜치를 체크아웃하고 있으면 **새 worktree에는 여전히 옛 목록이 적용된다.**
+
+실제 사례: `.claude/` 항목을 `rules/`·`settings.json`으로 좁힌 커밋을 `dev`에 넣었지만, 메인 워킹트리가 `dev-ai-course`를 보고 있어 그 시점에는 옛 목록(`.claude/` 통째)이 그대로 쓰이고 있었다.
+
+→ 목록 변경이 실제로 발효되려면 **메인 워킹트리에서 해당 브랜치를 체크아웃하거나 머지된 브랜치로 갱신**해야 한다. 확인 방법:
+
+```bash
+MAIN="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
+git -C "$MAIN" rev-parse --abbrev-ref HEAD   # 메인이 보고 있는 브랜치
+diff "$MAIN/.worktreeinclude" "$(git rev-parse --show-toplevel)/.worktreeinclude"
+```
+
 ## 목록에 넣을지 판단하는 기준
 
 `.worktreeinclude`에 **넣어야 하는 것**:
@@ -51,23 +83,69 @@
 
 디렉터리를 통째로 지정하기 전에 **그 안에 위 "넣지 말아야 할 것"이 섞여 있지 않은지** 확인한다. `.claude/`가 정확히 그 사례였고, 지금은 `rules/`와 `settings.json`만 개별 지정한다.
 
-## 작업 체크리스트
+## PR을 올리기 전 체크리스트
 
-worktree에서 작업을 마칠 때:
+**이 확인은 PR 생성 직전에 한다.** worktree는 PR을 올린 뒤 정리(삭제)되는 경우가 많은데, 그때까지 메인 워킹트리에 반영하지 않은 gitignore 파일은 **worktree와 함께 사라진다.** 커밋에 포함되지 않으니 되돌릴 방법도 없다.
 
-1. `git status --ignored --short`로 새로 생긴 gitignore 파일이 있는지 확인한다
-2. 새 파일이 위 "넣어야 하는 것" 기준에 해당하면 `.worktreeinclude`에 등록한다(이 파일은 git 추적 대상이라 커밋된다)
-3. gitignore된 파일을 새로 만들었거나 고쳤으면 **메인 저장소 사본도 갱신한다**
-
-메인과 worktree 사본을 비교하려면:
+아래 한 덩어리를 실행하면 1·3번이 한 번에 확인된다:
 
 ```bash
-MAIN=/c/YOURTRIP/YOURTRIP_BE/YOURTRIP_BE
-WT=$MAIN/.claude/worktrees/<worktree-name>
-for f in $(grep -vE '^\s*#|^\s*$' "$MAIN/.worktreeinclude"); do
-  diff -q "$MAIN/$f" "$WT/$f" >/dev/null 2>&1 || echo "DIFF: $f"
+MAIN="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
+WT="$(cd "$(git rev-parse --show-toplevel)" && pwd)"
+[ "$MAIN" = "$WT" ] && echo "메인 워킹트리 — 확인 불필요" || {
+
+# 목록은 반드시 지금 worktree의 .worktreeinclude를 읽는다.
+# 메인 워킹트리는 다른 브랜치를 체크아웃하고 있을 수 있어 목록이 옛 버전일 수 있다(함정 4).
+LIST="$(grep -vE '^\s*#|^\s*$' "$WT/.worktreeinclude" | tr -d '\r')"
+
+echo "== 1) 목록에 없는 gitignore 파일 (등록할지 판단) =="
+git status --ignored --short | grep '^!!' | sed 's/^!! //' | while IFS= read -r p; do
+  # 재생성되는 캐시·산출물은 애초에 복사 대상이 아니다("넣지 말아야 하는 것" 참고)
+  case "$p" in
+    .gradle/|.idea/|build/|out/|bin/|.terraform/|*/.terraform/|*.log|*.output) continue;;
+  esac
+  # 이미 목록에 있거나(하위 포함), 목록 항목의 상위 디렉터리로 뭉쳐 나온 경우 제외
+  skip=0
+  while IFS= read -r inc; do
+    [ -z "$inc" ] && continue
+    case "$p"   in "$inc"|"$inc"/*) skip=1; break;; esac
+    case "$inc" in "$p"*)           skip=1; break;; esac
+  done <<EOF
+$LIST
+EOF
+  [ $skip -eq 1 ] && continue
+  echo "  검토 필요: $p"
 done
+echo "  (출력 없으면 새로 챙길 것 없음)"
+
+echo "== 2) 목록에 있는데 메인과 내용이 다른 것 =="
+printf '%s\n' "$LIST" | while IFS= read -r f; do
+  [ -e "$WT/$f" ] || continue
+  if [ ! -e "$MAIN/$f" ]; then echo "  MISSING in main : $f"
+  elif ! diff -qr "$MAIN/$f" "$WT/$f" >/dev/null 2>&1; then echo "  DIFFERENT       : $f"; fi
+done
+}
 ```
+
+**①의 필터가 하는 일**: `git status --ignored`는 gitignore된 것을 **전부** 나열해서(이 저장소 기준 22줄) 그대로 두면 `.gradle/`·`build/`·`.idea/` 같은 산출물과 이미 등록된 항목이 뒤섞여 매번 눈으로 걸러야 한다. 그래서 위 "넣지 말아야 하는 것" 기준을 `case` 패턴으로 넣고, `.worktreeinclude`에 이미 있는 항목도 제외했다. **출력이 비어 있는 게 정상 상태**이고, 뭔가 찍히면 그때만 판단하면 된다.
+
+한 가지 한계: `git status --ignored --short`는 디렉터리를 뭉쳐서 출력한다(`.claude/` 한 줄). 그래서 `.claude/` 안에 새 파일이 생겨도 개별로는 드러나지 않는다. 목록에 부분만 등록된 디렉터리(`.claude/rules/`, `.claude/settings.json`)의 내부를 확인하려면 `git status --ignored=matching --short .claude/`처럼 경로를 좁혀서 다시 본다.
+
+출력에 따라:
+
+1. **새 gitignore 파일이 있으면** — "넣어야 하는 것" 기준에 해당하는지 판단하고, 해당하면 `.worktreeinclude`에 등록한다. 이 파일은 git 추적 대상이라 PR에 함께 담기면 된다
+2. **`MISSING in main` / `DIFFERENT`가 나오면** — 메인 워킹트리 사본을 갱신한다. 어느 쪽이 최신인지 먼저 확인할 것 — worktree가 최신인 경우(내가 고친 것)와 메인이 최신인 경우(다른 worktree에서 추가된 설정)가 둘 다 있다
+
+   ```bash
+   diff "$MAIN/<경로>" "$WT/<경로>"      # 무엇이 다른지 먼저 본다
+   cp "$WT/<경로>" "$MAIN/<경로>"        # worktree가 최신일 때
+   ```
+
+3. **`.env`처럼 비밀값이 든 파일**은 diff 출력을 그대로 붙여넣지 말고 키 이름만 비교한다
+
+   ```bash
+   diff <(grep -oE '^[A-Z_]+=' "$MAIN/.env" | sort) <(grep -oE '^[A-Z_]+=' "$WT/.env" | sort)
+   ```
 
 ## 참고
 
