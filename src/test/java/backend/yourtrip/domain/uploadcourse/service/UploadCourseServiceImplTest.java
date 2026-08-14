@@ -123,6 +123,11 @@ class UploadCourseServiceImplTest {
         ReflectionTestUtils.setField(uploadCourseService, "redisTemplate", redisTemplate);
         ReflectionTestUtils.setField(uploadCourseService, "cacheValueRedisTemplate",
             cacheValueRedisTemplate);
+        // 캐시 직렬화기는 @PostConstruct에서 만들어지는데, Mockito의 @InjectMocks는 생성자만
+        // 호출하고 생명주기 콜백은 타지 않는다. 초기화를 빠뜨리면 직렬화기가 null이라
+        // 캐시 읽기가 fail-open(NPE를 삼키고 미스 처리)으로 빠져 히트 테스트가 조용히 거짓
+        // 통과하므로, 여기서 명시적으로 불러준다.
+        ReflectionTestUtils.invokeMethod(uploadCourseService, "initCacheSerializers");
     }
 
     @Test

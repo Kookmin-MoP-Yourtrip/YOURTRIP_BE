@@ -40,6 +40,7 @@ import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.config.RedisConfig;
 import backend.yourtrip.global.s3.service.S3Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -123,11 +124,26 @@ public class UploadCourseServiceImpl implements UploadCourseService {
      * 심지 않아, 캐시 히트 시 원래 레코드 타입이 아닌 LinkedHashMap으로 역직렬화되는 문제가 있었다
      * (courseDetail 캐시에서 IllegalStateException으로 실측 확인, courseListItem은 instanceof 체크가
      * 조용히 항상 실패하는 방식으로 같은 문제를 겪고 있었다). 캐시 값 타입을 이미 알고 있는 경우
-     * 굳이 타입 힌트에 의존할 필요가 없으므로, 캐시별로 타입을 명시한 Jackson2JsonRedisSerializer를
-     * 즉석에서 만들어 쓴다.
+     * 굳이 타입 힌트에 의존할 필요가 없으므로, 캐시별로 타입을 명시한 Jackson2JsonRedisSerializer를 쓴다.
+     * <p>
+     * 이전에는 필요할 때마다 {@code new Jackson2JsonRedisSerializer<>(objectMapper, type)}으로 즉석
+     * 생성했는데, 캐시 값 타입이 아래 두 개로 고정돼 있어 매번 만들 이유가 없다. 그 생성자는
+     * {@code objectMapper.getTypeFactory().constructType(type)}을 타고, 캐시 히트 경로는 요청당 최소
+     * 1회 이 지점을 지난다(EC2 실측 기준 초당 수천 회). serialize/deserialize는 stateless하고
+     * ObjectMapper도 설정을 바꾸지 않는 한 thread-safe하므로 인스턴스를 공유해도 안전하다.
+     * <p>
+     * objectMapper가 생성자 주입 필드라 static으로는 만들 수 없어 {@code @PostConstruct}에서 초기화한다
+     * (Mockito 단위 테스트는 @PostConstruct를 호출하지 않으므로 테스트에서 직접 불러줘야 한다).
      */
-    private <T> Jackson2JsonRedisSerializer<T> cacheSerializer(Class<T> type) {
-        return new Jackson2JsonRedisSerializer<>(objectMapper, type);
+    private Jackson2JsonRedisSerializer<CourseListItemCacheItem> listItemCacheSerializer;
+    private Jackson2JsonRedisSerializer<UploadCourseDetailCacheItem> detailCacheSerializer;
+
+    @PostConstruct
+    void initCacheSerializers() {
+        this.listItemCacheSerializer =
+            new Jackson2JsonRedisSerializer<>(objectMapper, CourseListItemCacheItem.class);
+        this.detailCacheSerializer =
+            new Jackson2JsonRedisSerializer<>(objectMapper, UploadCourseDetailCacheItem.class);
     }
 
     @Override
@@ -435,8 +451,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             if (rawValues == null) {
                 return result;
             }
-            Jackson2JsonRedisSerializer<CourseListItemCacheItem> serializer =
-                cacheSerializer(CourseListItemCacheItem.class);
+            Jackson2JsonRedisSerializer<CourseListItemCacheItem> serializer = listItemCacheSerializer;
             for (int i = 0; i < ids.size(); i++) {
                 byte[] raw = rawValues.get(i);
                 if (raw == null) {
@@ -464,7 +479,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private void writeItemCache(Long uploadCourseId, CourseListItemCacheItem item) {
         try {
             byte[] key = itemCacheKeyBytes(uploadCourseId);
-            byte[] value = cacheSerializer(CourseListItemCacheItem.class).serialize(item);
+            byte[] value = listItemCacheSerializer.serialize(item);
             long ttlSeconds = RedisConfig.COURSE_LIST_ITEM_TTL.getSeconds();
             cacheValueRedisTemplate.execute((RedisCallback<Object>) connection -> {
                 connection.stringCommands()
@@ -488,8 +503,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             return;
         }
         try {
-            Jackson2JsonRedisSerializer<CourseListItemCacheItem> serializer =
-                cacheSerializer(CourseListItemCacheItem.class);
+            Jackson2JsonRedisSerializer<CourseListItemCacheItem> serializer = listItemCacheSerializer;
             long ttlSeconds = RedisConfig.COURSE_LIST_ITEM_TTL.getSeconds();
 
             cacheValueRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
@@ -524,7 +538,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
     // RedisConfig의 RedisCacheManager("courseDetail" 캐시, GenericJackson2JsonRedisSerializer 경유)를
     // 쓰지 않는 이유: 그 직렬화기는 타입 정보(@class)를 심지 않아 Cache.get(key, Class)가
-    // IllegalStateException을 던진다(실측 확인, cacheSerializer() 주석 참고). courseListItem과
+    // IllegalStateException을 던진다(실측 확인, detailCacheSerializer 선언부 주석 참고). courseListItem과
     // 동일하게 타입을 명시한 Jackson2JsonRedisSerializer로 원시 Redis 커맨드를 직접 다룬다.
     //
     // TTL은 RedisConfig.COURSE_DETAIL_TTL(2시간)을 쓴다. courseListItem과 같은 2시간이지만 별도
@@ -547,7 +561,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             if (raw == null) {
                 return null;
             }
-            return cacheSerializer(UploadCourseDetailCacheItem.class).deserialize(raw);
+            return detailCacheSerializer.deserialize(raw);
         } catch (Exception e) {
             // fail-open: Redis 장애/지연 시 캐시가 없는 것으로 취급하고 DB 조회로 폴백한다
             log.warn("상세 캐시 조회 실패, DB로 폴백합니다. uploadCourseId={}", uploadCourseId, e);
@@ -558,7 +572,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private void writeDetailCache(Long uploadCourseId, UploadCourseDetailCacheItem item) {
         try {
             byte[] key = detailCacheKeyBytes(uploadCourseId);
-            byte[] value = cacheSerializer(UploadCourseDetailCacheItem.class).serialize(item);
+            byte[] value = detailCacheSerializer.serialize(item);
             cacheValueRedisTemplate.execute((RedisCallback<Object>) connection -> {
                 connection.stringCommands().set(key, value,
                     Expiration.seconds(RedisConfig.COURSE_DETAIL_TTL.getSeconds()),
