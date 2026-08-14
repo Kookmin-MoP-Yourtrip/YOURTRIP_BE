@@ -4,11 +4,21 @@
 #  - .gradle/build/out/bin은 재빌드 시 자동 재생성되는 캐시라 복사 비용만 낭비된다.
 .env
 CLAUDE.md
-.claude/
 GEMINI.md
 .gemini/
 .agents/
 src/main/resources/data.sql
+
+# .claude/는 통째로 복사하지 않고 필요한 항목만 지정한다:
+#  - rules/, settings.json: 모든 worktree에서 동일하게 적용돼야 하는 작업 규칙·설정.
+#  - plans/(제외): 계획 파일은 그 worktree의 작업 맥락에만 의미가 있다. 통째로 복사하면
+#    메인 저장소에 쌓인 남의 계획서가 새 worktree마다 딸려가고, 같은 파일명이 여러 곳에
+#    중복 존재하게 된다.
+#  - worktrees/(제외): 여기에 모든 worktree가 들어 있어, 통째로 복사하면 worktree 안에
+#    다른 worktree 전체가 중첩 복사된다(실제로 .claude/worktrees/A/.claude/worktrees/B/...
+#    형태로 관측됨). 디스크 낭비이자 경로 혼동의 원인이다.
+.claude/rules/
+.claude/settings.json
 
 # terraform/.terraform/(provider 플러그인 캐시)는 `terraform init`으로 즉시 재생성되므로
 # .gradle/build와 같은 이유로 제외한다. 아래는 재생성이 불가능한 실제 상태/설정/키 파일이다:
