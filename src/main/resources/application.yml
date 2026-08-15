@@ -16,9 +16,10 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: ${DB_DDL_AUTO}
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+    # hibernate.dialect는 일부러 명시하지 않는다. Hibernate가 JDBC 연결 메타데이터로
+    # PostgreSQLDialect를 알아서 고르고, 굳이 적으면 기동할 때마다 아래 경고가 뜬다.
+    #   HHH90000025: PostgreSQLDialect does not need to be specified explicitly ...
+    # 다시 추가하지 말 것.
 
   mail:
     host: smtp.gmail.com
