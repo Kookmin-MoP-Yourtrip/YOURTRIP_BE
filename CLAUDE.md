@@ -1,4 +1,4 @@
-﻿# CLAUDE.md
+# CLAUDE.md
 
 이 파일은 이 저장소에서 Claude Code(claude.ai/code)가 작업할 때 참고하는 가이드다.
 

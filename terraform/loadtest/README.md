@@ -1,4 +1,4 @@
-﻿# Terraform — EC2 + RDS + ElastiCache 분리 부하테스트 환경
+# Terraform — EC2 + RDS + ElastiCache 분리 부하테스트 환경
 
 이 디렉토리는 [`docs/tasks/connection-pool-bottleneck/stage0/production/ec2-rds.md`](../../docs/tasks/connection-pool-bottleneck/stage0/production/ec2-rds.md)의
 "개선 제안 — 배포 환경(EC2 + RDS) 분리 부하테스트" 절을 실행하기 위한 **일회성·임시 인프라**를 관리한다.

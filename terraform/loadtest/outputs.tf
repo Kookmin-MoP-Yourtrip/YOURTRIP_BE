@@ -1,4 +1,4 @@
-﻿output "app_public_ip" {
+output "app_public_ip" {
   description = "App EC2 공인 IP — 로컬 prometheus.yml 스크레이프 타겟, Swagger 접속, k6 BASE_URL에 사용"
   value       = aws_instance.app.public_ip
 }

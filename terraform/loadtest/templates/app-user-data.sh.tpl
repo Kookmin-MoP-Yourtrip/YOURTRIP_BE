@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 # App EC2 부트스트랩 — Amazon Linux 2023
 # 이 파일은 Terraform templatefile()로 렌더링된다. 중괄호로 감싼 변수 참조는 전부
 # Terraform 변수 치환 대상이고, 순수 bash 변수는 $VAR(중괄호 없이)로만 참조해 충돌을 피한다.
