@@ -1,4 +1,11 @@
 spring:
+  # 활성 프로필이 하나도 지정되지 않았을 때만 쓰이는 기본값이다.
+  # spring.profiles.active에 기본값을 박으면 배포에서 SPRING_PROFILES_ACTIVE=prod를 줬을 때
+  # 덮어쓰기 동작이 헷갈리므로, "명시가 없을 때만" 적용되는 default를 쓴다.
+  # 이 파일은 환경 공통 설정만 담고, 환경별 로깅 정책은 application-{local,prod}.yml이 책임진다.
+  profiles:
+    default: local
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
