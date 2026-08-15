@@ -33,6 +33,7 @@ import backend.yourtrip.domain.uploadcourse.event.UploadCourseImagesCleanupEvent
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
+import backend.yourtrip.global.config.BenchmarkProperties;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
@@ -109,6 +110,13 @@ class UploadCourseServiceImplTest {
     // CourseListItemCacheItem에는 java.time 필드가 없어 기본 설정으로 충분하다.
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
+
+    // mock이 아니라 실제 인스턴스를 쓴다. 이 클래스의 기본값(ENABLED + SEPARATED)이 곧 운영
+    // 동작이라, 아래 캐시 경로 테스트들이 검증하려는 대상이 정확히 이 기본값 상태다.
+    // mock이면 boolean 기본 반환값(false)에 우연히 기대어 통과하는 셈이 되고, 나중에 게이트
+    // 조건이 바뀌어도 테스트가 그대로 통과해버린다.
+    @Spy
+    private BenchmarkProperties benchmarkProperties = new BenchmarkProperties();
 
     @InjectMocks
     private UploadCourseServiceImpl uploadCourseService;
@@ -630,6 +638,83 @@ class UploadCourseServiceImplTest {
         assertThat(response.uploadCourses())
             .extracting(item -> item.uploadCourseId())
             .containsExactly(5L);
+    }
+
+    // ==========================
+    //  벤치마크 토글 (캐싱 효과 부하테스트의 A0 arm)
+    // ==========================
+
+    @Test
+    @DisplayName("캐시를 끄면 인기 코스 조회가 캐시와 분산 락을 모두 건너뛰고 DB로 직행한다")
+    void getPopularCourses_CacheDisabled_BypassesCacheAndLock() {
+        // given
+        benchmarkProperties.setUploadCourseCache(
+            BenchmarkProperties.UploadCourseCacheMode.DISABLED);
+        given(uploadCoursePopularReader.readPopularCourseIds(null)).willReturn(List.of(7L));
+        given(uploadCoursePopularReader.readCourseListItems(List.of(7L)))
+            .willReturn(List.of(cacheItem(7L, "코스7", null)));
+
+        // when
+        UploadCourseListResponse response = uploadCourseService.getPopularCourses(null);
+
+        // then — 캐시를 아예 건드리지 않는다(읽기도 쓰기도)
+        verifyNoInteractions(cacheManager, cacheValueRedisTemplate);
+        // 그리고 분산 락도 시도하지 않는다. 이게 중요한 이유: 락 경로에 들어가면 락을 못 잡은
+        // 요청이 "절대 채워지지 않을 캐시"를 최대 1초(10 * 100ms) 기다리며 Thread.sleep하고,
+        // 그 sleep이 톰캣 워커 스레드를 잡아 포화 VU 판정을 오염시킨다.
+        verifyNoInteractions(redisTemplate);
+        verify(uploadCoursePopularReader).readPopularCourseIds(null);
+        assertThat(response.uploadCourses())
+            .extracting(item -> item.uploadCourseId())
+            .containsExactly(7L);
+    }
+
+    @Test
+    @DisplayName("캐시를 끄면 상세 조회가 캐시를 건너뛰고 매번 DB를 읽는다")
+    void getDetail_CacheDisabled_AlwaysReadsFromDatabase() {
+        // given
+        benchmarkProperties.setUploadCourseCache(
+            BenchmarkProperties.UploadCourseCacheMode.DISABLED);
+        Long uploadCourseId = 1L;
+
+        User owner = User.builder().email("owner@test.com").password("pass").nickname("owner")
+            .build();
+        setEntityId(owner, 10L);
+        TravelCourse travelCourse = TravelCourse.builder()
+            .user(owner).title("경주 여행").location("경주")
+            .startDate(LocalDate.now()).endDate(LocalDate.now())
+            .type(TravelCourseType.UPLOADED).build();
+        setEntityId(travelCourse, 100L);
+        UploadCourse uploadCourse = UploadCourse.builder()
+            .title("경주 여행").introduction("소개").travelCourse(travelCourse)
+            .user(owner).location("경주").build();
+
+        given(uploadCourseDetailReader.read(uploadCourseId)).willReturn(
+            new UploadCourseDetailReader.UploadCourseDetailReadResult(uploadCourse, List.of()));
+
+        // when
+        uploadCourseService.getDetail(uploadCourseId, "u5");
+
+        // then — 상세 캐시 읽기(GET)도 쓰기(SET)도 일어나지 않아야 한다
+        verifyNoInteractions(cacheValueRedisTemplate);
+        verify(uploadCourseDetailReader).read(uploadCourseId);
+        // 조회수 경로는 캐시 토글과 무관하게 항상 동작한다(두 arm의 공통 통제 변수)
+        verify(uploadCourseViewCountService).incrementViewCountIfNotDuplicate(uploadCourseId, "u5");
+    }
+
+    @Test
+    @DisplayName("캐시를 끄면 랭킹 갱신(refresh-ahead)이 랭킹 쿼리를 실행하지 않는다")
+    void refreshAllPopularCoursesCache_CacheDisabled_DoesNothing() {
+        // given — 갱신할 캐시가 없는데 그냥 두면 스케줄러 주기(10분)마다 랭킹 쿼리 8회가
+        // 측정 구간 한복판에서 실행되어, 캐시가 꺼진 arm에만 없던 DB 부하가 얹힌다.
+        benchmarkProperties.setUploadCourseCache(
+            BenchmarkProperties.UploadCourseCacheMode.DISABLED);
+
+        // when
+        uploadCourseService.refreshAllPopularCoursesCache();
+
+        // then
+        verifyNoInteractions(uploadCoursePopularReader, cacheManager, redisTemplate);
     }
 
     /**
