@@ -25,3 +25,9 @@ logging:
     # SQL의 ?에 실제로 어떤 값이 바인딩됐는지 보여준다. Hibernate 6부터 이 로거 이름이
     # org.hibernate.type.descriptor.sql에서 아래로 바뀌었다(Spring Boot 3.5 = Hibernate 6.x).
     org.hibernate.orm.jdbc.bind: TRACE
+
+    # generate_statistics: true(공통 설정)를 켜면 Hibernate가 세션이 끝날 때마다 통계
+    # 요약을 INFO로 남긴다. 요청 하나에 한 덩어리씩 쌓여 로컬에서는 소음이 크므로 이 로거만
+    # 눌러둔다 — 메트릭(hibernate_statements_total) 수집에는 영향이 없다.
+    # prod/test는 org.hibernate: WARN이라 이미 억제된 상태다.
+    org.hibernate.engine.internal.StatisticalLoggingSessionEventListener: WARN
