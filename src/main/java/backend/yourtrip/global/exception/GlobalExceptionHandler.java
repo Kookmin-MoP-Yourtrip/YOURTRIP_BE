@@ -19,7 +19,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<Map<String, Object>> handleBusinessException(BusinessException e) {
         ErrorCode errorCode = e.getErrorCode();
-        log.warn("BusinessException 발생: {}", errorCode);
+
+        // 4xx는 잘못된 비밀번호, 없는 리소스 조회처럼 클라이언트 입력에서 비롯된 것이라
+        // 서버가 경고할 일이 아니다. 전부 WARN으로 남기면 정작 조치가 필요한 5xx가 묻힌다.
+        if (errorCode.getStatus().is5xxServerError()) {
+            log.error("BusinessException 발생: {}", errorCode);
+        } else {
+            log.debug("BusinessException 발생: {}", errorCode);
+        }
 
         String code = (errorCode instanceof Enum)
             ? ((Enum<?>) errorCode).name()
