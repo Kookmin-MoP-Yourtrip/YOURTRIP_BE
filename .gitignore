@@ -68,8 +68,10 @@ terraform/.terraformrc
 terraform/terraform.rc
 
 ### Terraform (loadtest 루트 모듈 — 별도 state, 위와 동일한 패턴) ###
+# .terraform.lock.hcl은 제외하지 않는다 — provider 버전을 고정해 어느 환경에서 init해도
+# 같은 버전으로 재현되게 하는 파일이라 커밋 대상이다(terraform 공식 권장이며, 루트 모듈의
+# terraform/.terraform.lock.hcl도 추적 중이다). 민감정보 없이 provider 이름·버전·해시만 담는다.
 terraform/loadtest/.terraform/
-terraform/loadtest/.terraform.lock.hcl
 terraform/loadtest/*.tfstate
 terraform/loadtest/*.tfstate.*
 terraform/loadtest/*.tfvars
