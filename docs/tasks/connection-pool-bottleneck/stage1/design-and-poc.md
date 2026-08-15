@@ -1,6 +1,6 @@
 # 1단계 설계 — Signed Cookie 기각과 Custom Policy 와일드카드 채택
 
-> [TASK-PRESIGN-BOTTLENECK-FIX.md](../TASK-PRESIGN-BOTTLENECK-FIX.md)의 1단계("mycourse 이미지 접근을 Signed URL에서 Signed Cookie로 전환")를 실제로 착수하면서, **원안을 기각하고 다른 방식(Custom Policy + 와일드카드 `Resource`)을 채택한 근거**를 정리한 문서다. 두 방식은 "요청당 서명 1회"라는 목표가 같지만 클라이언트·인프라 비용이 전혀 다르다. 이 문서는 설계 결정과 PoC 검증까지 다루고, 실제 부하 측정 결과는 별도 문서([run-d-signature-once.md](run-d-signature-once.md))로 뺀다.
+> [PRESIGN-BOTTLENECK-FIX.md](../PRESIGN-BOTTLENECK-FIX.md)의 1단계("mycourse 이미지 접근을 Signed URL에서 Signed Cookie로 전환")를 실제로 착수하면서, **원안을 기각하고 다른 방식(Custom Policy + 와일드카드 `Resource`)을 채택한 근거**를 정리한 문서다. 두 방식은 "요청당 서명 1회"라는 목표가 같지만 클라이언트·인프라 비용이 전혀 다르다. 이 문서는 설계 결정과 PoC 검증까지 다루고, 실제 부하 측정 결과는 별도 문서([run-d-signature-once.md](run-d-signature-once.md))로 뺀다.
 
 ## 문제 재확인 — 0·3단계가 남긴 것
 
@@ -281,7 +281,7 @@ openssl PoC가 통과해도 "앱이 만든 쿼리스트링"이 동일한지는 �
 
 ## 참고 문서
 
-- [TASK-PRESIGN-BOTTLENECK-FIX.md](../TASK-PRESIGN-BOTTLENECK-FIX.md) — 전체 계획(이 문서가 1단계를 대체한다)
+- [PRESIGN-BOTTLENECK-FIX.md](../PRESIGN-BOTTLENECK-FIX.md) — 전체 계획(이 문서가 1단계를 대체한다)
 - [stage0/production/abortpolicy-gate-verification.md](../stage0/production/abortpolicy-gate-verification.md) — 3단계 결과. 이 문서의 CPU 예산 역산이 그 실측치에 기반한다
 - [run-d-signature-once.md](run-d-signature-once.md) — 서명 1회 전환의 부하 측정 결과(Run D/D2)
 - [run-e-infra-removed.md](run-e-infra-removed.md) — 게이트·executor 제거 후 재측정(Run E/F)

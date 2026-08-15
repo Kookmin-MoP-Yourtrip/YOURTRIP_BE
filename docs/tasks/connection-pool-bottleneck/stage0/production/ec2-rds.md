@@ -1,4 +1,4 @@
-﻿# EC2+RDS 분리 환경 측정 결과 (0단계 재검증)
+# EC2+RDS 분리 환경 측정 결과 (0단계 재검증)
 
 > [index.md](../local/index.md)의 Phase C가 "로컬 벤치마크는 앱·PostgreSQL·Redis·Prometheus·Grafana·k6를 전부 한 머신에서 같이 돌린 비격리 환경이라, mycourse에 남은 잔여 병목이 진짜 구조적 문제인지 로컬 CPU 경합 노이즈인지 구분할 수 없다"고 결론 내렸다. 이 문서는 그 노이즈를 제거하기 위해 앱(EC2)·RDS·ElastiCache·k6(별도 EC2)를 물리적으로 분리한 환경을 구축하고, **0단계(트랜잭션 분리) 적용 전/후**를 재검증한 기록이다. 인덱스 자체의 EC2+RDS 재검증은 아직 미착수다.
 
@@ -61,7 +61,7 @@
 
 ## 참고 문서
 
-- [TASK-PRESIGN-BOTTLENECK-FIX.md](../../TASK-PRESIGN-BOTTLENECK-FIX.md) — 이 실측이 속한 단계별 계획 문서
+- [PRESIGN-BOTTLENECK-FIX.md](../../PRESIGN-BOTTLENECK-FIX.md) — 이 실측이 속한 단계별 계획 문서
 - [index.md](../local/index.md) — 이 환경 분리 재검증을 제안하게 된 선행 실측(Phase A/B/C)
 - [terraform/loadtest/README.md](../../../../../terraform/loadtest/README.md) — 이 인프라의 구축/철거 절차
 - [docs/guide/ec2-rds-loadtest.md](../../../../guide/ec2-rds-loadtest.md) — 인프라가 이미 구축된 이후의 부하테스트 실행 절차

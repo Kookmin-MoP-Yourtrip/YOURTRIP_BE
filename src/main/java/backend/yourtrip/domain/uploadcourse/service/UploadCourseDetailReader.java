@@ -14,7 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 // UploadCourseServiceImpl.getDetail이 캐시 미스일 때의 DB 조회만 짧은 트랜잭션으로 묶기
 // 위해 분리한 협력 빈. Spring @Transactional은 프록시 기반이라 같은 클래스 안에서의
 // this.메서드() 호출(self-invocation)에는 적용되지 않아, 이 부분만 별도 빈으로 뺐다
-// (TASK-PRESIGN-BOTTLENECK-FIX.md 0단계). 캐시 조회(Redis)와 URL 조립(CloudFront)은
+// (PRESIGN-BOTTLENECK-FIX.md 0단계). 캐시 조회(Redis)와 URL 조립(CloudFront)은
 // 이 트랜잭션 밖에서 실행된다 — 특히 캐시 히트 경로는 이 빈을 아예 호출하지 않으므로
 // DB 커넥션을 전혀 쓰지 않는다.
 @Service

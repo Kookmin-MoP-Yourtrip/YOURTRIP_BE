@@ -1,8 +1,8 @@
-﻿# EC2 + RDS + ElastiCache 분리 배포 환경 부하테스트 가이드
+# EC2 + RDS + ElastiCache 분리 배포 환경 부하테스트 가이드
 
 ## 배경
 
-[TASK-PRESIGN-BOTTLENECK-FIX.md의 "개선 제안 — 배포 환경(EC2 + RDS) 분리 부하테스트"](../tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md)가 지목한 문제 — 지금까지의 모든 부하테스트가 앱·PostgreSQL·Redis·Prometheus·Grafana·k6를 전부 로컬 개발 노트북 한 대에서 동시에 돌린 결과라, "인덱스 추가 이후 남은 병목이 진짜 구조적 문제(HikariCP 20:1 풀 크기)인지, 로컬 머신의 CPU 경합 노이즈인지" 구분이 안 됐다 — 를 해소하기 위해 앱은 EC2, DB는 RDS, 캐시는 ElastiCache, 부하생성기는 별도 EC2로 분리한 환경이다.
+[PRESIGN-BOTTLENECK-FIX.md의 "개선 제안 — 배포 환경(EC2 + RDS) 분리 부하테스트"](../tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK-FIX.md)가 지목한 문제 — 지금까지의 모든 부하테스트가 앱·PostgreSQL·Redis·Prometheus·Grafana·k6를 전부 로컬 개발 노트북 한 대에서 동시에 돌린 결과라, "인덱스 추가 이후 남은 병목이 진짜 구조적 문제(HikariCP 20:1 풀 크기)인지, 로컬 머신의 CPU 경합 노이즈인지" 구분이 안 됐다 — 를 해소하기 위해 앱은 EC2, DB는 RDS, 캐시는 ElastiCache, 부하생성기는 별도 EC2로 분리한 환경이다.
 
 이 문서는 그 분리 환경이 **이미 배포된 이후**의 부하테스트 실행 절차(Prometheus 재조준 → k6 실행 → 병목 확인 → 지표 측정)를 다룬다. 인프라를 처음부터 구축/재구축하는 절차(Terraform apply/destroy)는 [terraform/loadtest/README.md](../../terraform/loadtest/README.md)를 따로 참고한다 — 이 문서와 역할이 겹치지 않게 분리했다.
 
@@ -164,7 +164,7 @@ AWS_PROFILE=terraform-admin aws cloudwatch get-metric-statistics \
 
 **판정 기준**:
 - mycourse의 포화 시작 VU가 20보다 뚜렷이 뒤로 밀리거나 `acquire_seconds`/`pending`이 크게 줄었다면 → 로컬에서 관찰된 잔여 병목은 **환경 노이즈였음이 확정**된다.
-- 거의 변화가 없다면 → TASK-PRESIGN-BOTTLENECK-FIX.md 4단계(HikariCP 풀 크기 재검토)가 **진짜 구조적 병목**이라는 뜻이다.
+- 거의 변화가 없다면 → PRESIGN-BOTTLENECK-FIX.md 4단계(HikariCP 풀 크기 재검토)가 **진짜 구조적 병목**이라는 뜻이다.
 
 ## 7. 트러블슈팅 — 실측으로 발견된 함정
 
@@ -248,7 +248,7 @@ App/k6 EC2뿐 아니라 RDS·ElastiCache·VPC까지 전부 삭제해 과금을 �
 ## 참고 문서
 
 - [terraform/loadtest/README.md](../../terraform/loadtest/README.md) — 인프라 구축/철거 절차(이 문서와 역할 분리)
-- [TASK-PRESIGN-BOTTLENECK-FIX.md](../tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md) — 이 부하테스트가 속한 단계별 계획 문서
+- [PRESIGN-BOTTLENECK-FIX.md](../tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK-FIX.md) — 이 부하테스트가 속한 단계별 계획 문서
 - [ec2-rds.md](../tasks/connection-pool-bottleneck/stage0/production/ec2-rds.md) — 이 부하테스트의 목적이 된 로컬 실측 기록과 실제 측정 결과
 - [load-testing.md](load-testing.md) — k6/JFR 사용법 전반
 - [monitoring.md](monitoring.md) — Prometheus/Grafana 구축 및 기본 사용법

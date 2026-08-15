@@ -37,7 +37,7 @@ Hibernate는 지연 커넥션 획득(`DELAYED_ACQUISITION_AND_RELEASE_AFTER_TRAN
 | after (`6637534`) | 2,956.3/s | 6.51ms | 11.48ms | 0% | **0회** | 73,932 |
 | 증감 | **+4.9%** | -5.1% | -2.8% | 동일 | **-100%** | — |
 
-**판정 1 — H1은 성립한다. before는 DB 쿼리를 한 건도 하지 않으면서 요청마다 정확히 1회씩 커넥션을 대여했다.** 대여 횟수와 요청 수가 70,468 : 70,468으로 완전히 1:1이다. 데이터가 없어 실행된 SQL이 0건이라는 점을 감안하면, 이건 "일은 하나도 안 하면서 커넥션만 점유"의 직접 증거다 — `TASK-PRESIGN-BOTTLENECK.md`의 직접 증거 3(SQL 0건인데 pending 급증)과 같은 논증 구조다.
+**판정 1 — H1은 성립한다. before는 DB 쿼리를 한 건도 하지 않으면서 요청마다 정확히 1회씩 커넥션을 대여했다.** 대여 횟수와 요청 수가 70,468 : 70,468으로 완전히 1:1이다. 데이터가 없어 실행된 SQL이 0건이라는 점을 감안하면, 이건 "일은 하나도 안 하면서 커넥션만 점유"의 직접 증거다 — `PRESIGN-BOTTLENECK.md`의 직접 증거 3(SQL 0건인데 pending 급증)과 같은 논증 구조다.
 
 **판정 2 — after는 커넥션을 전혀 대여하지 않는다.** 73,932요청 동안 증분 0회. 리팩터링이 의도한 "캐시 히트 경로가 DB 커넥션을 아예 획득하지 않는다"가 런타임에서 확인됐다.
 
@@ -69,6 +69,6 @@ Phase 0 게이트는 통과했으므로 EC2 측정으로 진행한다. 다만 �
 
 ## 참고 문서
 
-- [TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md) — "SQL 0건인데 pending 급증" 논증의 원본
+- [PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/PRESIGN-BOTTLENECK.md) — "SQL 0건인데 pending 급증" 논증의 원본
 - [stage0/production/ec2-rds.md](../connection-pool-bottleneck/stage0/production/ec2-rds.md) — 상세조회에 같은 처리를 했을 때의 EC2 실측(pending 187→0)
 - [stage0/local/index.md](../connection-pool-bottleneck/stage0/local/index.md) — 로컬 단일 머신 측정의 한계를 규명한 선행 기록

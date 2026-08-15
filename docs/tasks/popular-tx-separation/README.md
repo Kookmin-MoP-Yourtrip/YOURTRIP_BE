@@ -1,4 +1,4 @@
-﻿# 인기 코스 트랜잭션 분리 — 성능 측정
+# 인기 코스 트랜잭션 분리 — 성능 측정
 
 > 커밋 `6637534`(`perf: 인기 코스 조회 캐시 경로를 트랜잭션 밖으로 분리`)의 효과를 실측으로 입증하기 위한 측정 기록 모음이다. `getPopularCourses`에서 `@Transactional(readOnly = true)`을 제거하고 DB 조회만 `UploadCoursePopularReader`의 짧은 readOnly 트랜잭션으로 좁힌 변경이며, PR #70이 상세조회에 적용한 것과 같은 패턴이다.
 >
@@ -8,7 +8,7 @@
 
 - 대상 변경: `UploadCourseServiceImpl.getPopularCourses`의 `@Transactional` 제거 + `UploadCoursePopularReader` 신설
 - 선례: [stage0/production/ec2-rds.md](../connection-pool-bottleneck/stage0/production/ec2-rds.md) — 상세조회에 같은 처리를 했을 때 `pending` 187→0, TPS +45.4%
-- 공백: `/popular`을 대상으로 한 k6 부하테스트는 이 저장소에 존재한 적이 없다. 인기 코스의 유일한 선행 측정([redis-caching/popular-list-cache.md](../redis-caching/popular-list-cache.md))은 로컬 + 커밋되지 않은 Node.js 스크립트 기반이라 이번 비교에 쓸 수 없다
+- 공백: `/popular`을 대상으로 한 k6 부하테스트는 이 저장소에 존재한 적이 없다. 인기 코스의 유일한 선행 측정([redis-caching/task/popular-list-cache.md](../redis-caching/task/popular-list-cache.md))은 로컬 + 커밋되지 않은 Node.js 스크립트 기반이라 이번 비교에 쓸 수 없다
 
 ## 측정 단계
 

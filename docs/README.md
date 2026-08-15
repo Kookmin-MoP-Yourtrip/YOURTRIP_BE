@@ -1,4 +1,4 @@
-﻿# 문서 인덱스
+# 문서 인덱스
 
 문서는 **갱신 의무**를 기준으로 나눈다.
 
@@ -31,8 +31,8 @@
 
 | 문서 | 내용 |
 |---|---|
-| [tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md](tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md) | presigned URL CPU 병목 가설의 실측 검증 |
-| [tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md](tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md) | 병목 해소 계획 |
+| [tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK.md](tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK.md) | presigned URL CPU 병목 가설의 실측 검증 |
+| [tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK-FIX.md](tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK-FIX.md) | 병목 해소 계획 |
 | [tasks/connection-pool-bottleneck/stage0/](tasks/connection-pool-bottleneck/stage0/) | 0단계 — 인덱스 추가·트랜잭션 분리의 로컬/EC2 실측, CallerRuns·AbortPolicy 검증 |
 | [tasks/connection-pool-bottleneck/stage1/](tasks/connection-pool-bottleneck/stage1/) | 1단계 — Signed Cookie 기각과 Custom Policy 채택, Run D~I 측정 |
 | [tasks/TASK-CLOUDFRONT.md](tasks/TASK-CLOUDFRONT.md) | presigned URL → CloudFront 전환과 도입 전/후 성능 측정 |

@@ -1,14 +1,14 @@
-﻿# Redis 인기 코스 캐싱 전략
+# Redis 인기 코스 캐싱 전략
 
 이 문서는 캐싱 작업 전체의 **설계 원칙과 계획**이자 이 폴더의 진입점이다. 개별 작업 기록은 아래에 있다.
 
 | 문서 | 내용 |
 |---|---|
 | [current-status.md](current-status.md) | 적용 중인 캐시 항목과 TTL 정책 현황 |
-| [0-preparation.md](0-preparation.md) | 사전 준비 |
-| [popular-list-cache.md](popular-list-cache.md) | 인기 코스 상위 5개 목록 캐싱 |
-| [detail-cache.md](detail-cache.md) | 상세 조회 캐싱 |
-| [view-counter.md](view-counter.md) | Redis 조회수 카운터와 스케줄러 동기화 |
+| [0-preparation.md](task/0-preparation.md) | 사전 준비 |
+| [popular-list-cache.md](task/popular-list-cache.md) | 인기 코스 상위 5개 목록 캐싱 |
+| [detail-cache.md](task/detail-cache.md) | 상세 조회 캐싱 |
+| [view-counter.md](task/view-counter.md) | Redis 조회수 카운터와 스케줄러 동기화 |
 | [../popular-tx-separation/](../popular-tx-separation/README.md) | 후속 작업 — 캐시 경로를 트랜잭션 밖으로 분리 |
 
 > **옛 파일명 대응.** 이 문서들은 원래 `docs/CACHING-ROADMAP.md`, `CACHING-STATUS.md`,
@@ -44,7 +44,7 @@
 ## 설계 원칙
 
 1. **presigned URL은 캐싱하지 않는다.** [S3Service.java](../../../src/main/java/backend/yourtrip/global/s3/service/S3Service.java)의 presigned URL은 유효기간이 15분이다. 완성된 응답 DTO를 통째로 캐싱하면 캐시 TTL이 URL 만료에 종속되고, 만료된 URL이 나갈 위험이 생긴다. 따라서 **S3 key만 캐싱하고 URL은 응답 조립 시점에 생성**한다.
-   > **[TASK-4.md](detail-cache.md)와 [TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md)에서 확정적으로 반증됨** — ~~"presign은 네트워크 호출 없는 로컬 HMAC 서명이라 비용이 작다"~~. 실측 결과 presign 1회 비용은 약 382us(마이크로벤치마크)로 결코 작지 않고, 무엇보다 이 URL 생성이 `@Transactional(readOnly = true)` 트랜잭션(= JDBC 커넥션) 안에서 일어나는 구조가 결합되면 HikariCP 커넥션 점유 시간이 초 단위로 증폭되는 병목으로 이어질 수 있다는 것이 CPU 프로파일링(JFR)과 HikariCP 지표로 직접 확인됐다. "S3 key만 캐싱한다"는 결론 자체는 여전히 유효하지만(URL 만료 문제는 그대로다), "presign이 저렴하다"는 전제는 폐기한다.
+   > **[TASK-4.md](task/detail-cache.md)와 [PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/PRESIGN-BOTTLENECK.md)에서 확정적으로 반증됨** — ~~"presign은 네트워크 호출 없는 로컬 HMAC 서명이라 비용이 작다"~~. 실측 결과 presign 1회 비용은 약 382us(마이크로벤치마크)로 결코 작지 않고, 무엇보다 이 URL 생성이 `@Transactional(readOnly = true)` 트랜잭션(= JDBC 커넥션) 안에서 일어나는 구조가 결합되면 HikariCP 커넥션 점유 시간이 초 단위로 증폭되는 병목으로 이어질 수 있다는 것이 CPU 프로파일링(JFR)과 HikariCP 지표로 직접 확인됐다. "S3 key만 캐싱한다"는 결론 자체는 여전히 유효하지만(URL 만료 문제는 그대로다), "presign이 저렴하다"는 전제는 폐기한다.
 
 2. **조회수 증가는 캐싱 경계 바깥에 둔다.** 상세 조회 메서드에 `@Cacheable`을 그대로 걸면 캐시 히트 시 메서드 전체가 스킵되어 조회수 증가도 건너뛴다. 인기 코스일수록 히트율이 높으므로, 결과적으로 인기 코스의 조회수만 집계되지 않는 결과가 나온다. 조회수 증가는 캐시 조회와 분리된, 항상 실행되는 경로에 둔다.
 
@@ -54,7 +54,7 @@
 
 5. **fail-open은 짧은 타임아웃과 반드시 세트로 적용한다.** Lettuce의 기본 command timeout은 60초다. Redis가 완전히 죽은 게 아니라 응답이 느려지는 상황에서는 예외가 발생하지 않아 fail-open이 동작하지 않고, 요청 스레드가 60초씩 묶여 스레드 풀이 고갈된다. 즉 **타임아웃 없는 fail-open은 사실상 무의미**하다. 타임아웃을 짧게(1초) 설정해야 fail-open이 실질적으로 작동한다.
 
-6. **갱신 주기**: 조회수 DB 동기화 10분(= 인기 목록 실질 갱신 주기), 인기 목록 안전망 TTL 30분(스케줄러가 멈췄을 때 대비), 상세 캐시 TTL 2시간(아이템 캐시와 동일, jitter 없음 — 자세한 재검토 근거는 [TASK-4.md](detail-cache.md) 참고). 조회수는 API 응답에 노출되지 않으므로 사용자가 지연을 인지할 수 없는 수준이다.
+6. **갱신 주기**: 조회수 DB 동기화 10분(= 인기 목록 실질 갱신 주기), 인기 목록 안전망 TTL 30분(스케줄러가 멈췄을 때 대비), 상세 캐시 TTL 2시간(아이템 캐시와 동일, jitter 없음 — 자세한 재검토 근거는 [TASK-4.md](task/detail-cache.md) 참고). 조회수는 API 응답에 노출되지 않으므로 사용자가 지연을 인지할 수 없는 수준이다.
 
 ## 문서 작성 원칙
 
@@ -76,7 +76,7 @@
 
 ### 0. 사전 준비
 
-> 발견한 개선점은 [TASK-0.md](0-preparation.md) 참고.
+> 발견한 개선점은 [TASK-0.md](task/0-preparation.md) 참고.
 
 - [x] 0-1. `build.gradle`에 `spring-boot-starter-data-redis`, `commons-pool2` 의존성만 추가
 - [x] 0-2. `docker-compose.yml` 작성 (redis:7-alpine, maxmemory 정책 포함)
@@ -96,7 +96,7 @@
 
 ### 3. 인기 상위 5개 목록 — 읽기 경로부터 단계적으로
 
-> 설계 논의, 발견한 버그, 성능 측정 결과의 전체 기록은 [TASK-3.md](popular-list-cache.md) 참고.
+> 설계 논의, 발견한 버그, 성능 측정 결과의 전체 기록은 [TASK-3.md](task/popular-list-cache.md) 참고.
 
 - [x] 3-1. Repository에 상위 5개 ID만 조회하는 쿼리 추가 (캐싱 없이 기능만)
 - [x] 3-2. Repository에 ID 목록으로 `LEFT JOIN FETCH` 조회하는 쿼리 추가
@@ -110,7 +110,7 @@
 
 ### 4. 상세 조회 캐싱
 
-> 설계 논의, 발견한 버그, 성능 측정 결과의 전체 기록은 [TASK-4.md](detail-cache.md) 참고.
+> 설계 논의, 발견한 버그, 성능 측정 결과의 전체 기록은 [TASK-4.md](task/detail-cache.md) 참고.
 
 - [x] 4-1. `UploadCourseDetailCacheItem`/`DayScheduleCacheItem`/`PlaceCacheItem`/`PlaceImageCacheItem` 캐시 DTO 추가
 - [x] 4-2. 캐시 조회/저장 로직 추가
@@ -146,4 +146,4 @@
 - **Sentinel 없이 master + replica만 두는 구성은 진짜 HA가 아니다.** Lettuce/Spring은 master 장애를 자동 감지해 replica를 승격시켜주지 않는다. 자동 failover가 목표라면 최소 3대(quorum 확보용 홀수)의 Sentinel이 함께 필요하며, `application.yml`의 `spring.data.redis.host`/`port`(단일 노드 전용)를 `spring.data.redis.sentinel.master`/`sentinel.nodes`로 교체해야 한다 — 이 교체만으로 Spring Boot가 Sentinel-aware 커넥션을 자동 구성하므로 Java 코드 변경은 불필요하다.
 - `docker-compose.yml`에는 현재 `redis` 서비스 하나만 정의되어 있다. `--replicaof` 옵션을 가진 replica 서비스, (Sentinel을 쓴다면) sentinel 서비스들을 추가하면 되고 기존 `redis` 서비스 정의와 충돌하지 않는다.
 - 읽기 트래픽까지 replica로 분산하려면 Lettuce `ReadFrom` 설정이 별도로 필요하다(기본값은 읽기/쓰기 모두 master로만 라우팅). 조회수 카운터(`INCR`/`SADD`, 5단계에서 추가 예정)는 쓰기이므로 이 설정과 무관하게 항상 master로 간다.
-- [TASK-0.md](0-preparation.md)에 이미 기록한 볼륨 미설정 이슈도 함께 고려한다 — replica가 재기동될 때 마스터의 영속 데이터가 없으면 매번 풀 리싱크(전체 데이터 재동기화) 비용이 발생한다.
+- [TASK-0.md](task/0-preparation.md)에 이미 기록한 볼륨 미설정 이슈도 함께 고려한다 — replica가 재기동될 때 마스터의 영속 데이터가 없으면 매번 풀 리싱크(전체 데이터 재동기화) 비용이 발생한다.

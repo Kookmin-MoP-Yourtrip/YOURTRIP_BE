@@ -16,7 +16,7 @@
 //        Connection.setReadOnly(true) 호출도 커넥션을 요구한다.
 //   H2 — 그 결과 before의 처리량이 풀 크기 10에 묶인다(Tomcat 200스레드 : 커넥션 10개 = 20:1).
 // 결정적 증거 형태: hibernate_statements_total 증분이 0인데 hikaricp_connections_active가 10
-// — "일은 하나도 안 하면서 커넥션만 점유". TASK-PRESIGN-BOTTLENECK.md의 직접 증거 3과 같은 구조다.
+// — "일은 하나도 안 하면서 커넥션만 점유". PRESIGN-BOTTLENECK.md의 직접 증거 3과 같은 구조다.
 //
 // [사전 준비] seed-benchmark.sql + seed-popular.sql 시딩 후, 캐시를 워밍한 상태에서 실행한다
 // (S1/S2). 워밍은 8키(ALL + mood 7종)를 curl로 한 번씩 긁으면 된다. 콜드 캐시 측정(S3)은
