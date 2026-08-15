@@ -40,7 +40,7 @@ WT="$(git rev-parse --show-toplevel)"                        # 지금 있는 워
 
 ### 1. worktree에서 수정한 gitignore 파일은 어디에도 전파되지 않는다
 
-`.env`나 `CLAUDE.md`를 worktree에서 고쳐도 **메인 저장소와 다른 worktree는 모른다.** git이 추적하지 않으니 커밋으로도 옮겨지지 않고, 훅은 단방향이라 역방향 복사도 없다.
+`.env`나 `GEMINI.md`, `terraform.tfvars`처럼 **아직 gitignore로 남아 있는 파일**을 worktree에서 고쳐도 메인 저장소와 다른 worktree는 모른다. git이 추적하지 않으니 커밋으로도 옮겨지지 않고, 훅은 단방향이라 역방향 복사도 없다.
 
 → **이런 파일을 고쳤으면 메인 저장소 사본도 직접 갱신해야 한다.** 그러지 않으면 다음에 만드는 worktree는 옛 버전을 받는다.
 
@@ -80,13 +80,13 @@ WT="$(git rev-parse --show-toplevel)"                        # 지금 있는 워
 `.worktreeinclude`에 **넣어야 하는 것**:
 
 - **재생성이 불가능한 것** — `terraform.tfstate`(이미 apply된 실제 인프라의 유일한 진실 공급원), SSH·CloudFront 키페어, `terraform.tfvars`(환경별 실제 값)
-- **모든 worktree에서 동일해야 하지만 커밋할 수 없는 것** — `.env`, `CLAUDE.md`. 비밀값이 들어 있거나(`.env`) 개인 작업 지침이라 저장소에 올리지 않는 파일이다
+- **모든 worktree에서 동일해야 하지만 커밋할 수 없는 것** — `.env`(비밀값), `GEMINI.md`·`.gemini/`(개인 도구 지침). 공유 가치가 있으면서 비밀값이 없다면 이 목록이 아니라 git 추적으로 보내는 것이 먼저다(바로 아래 참고)
 
 **목록에 넣기 전에 "애초에 git으로 추적하면 되는 것 아닌가"를 먼저 따진다.** 이 목록은 `.gitignore` 때문에 git으로 공유할 수 없는 파일을 위한 우회로다. gitignore가 정당한 이유 없이 걸려 있다면, 목록에 추가하는 것보다 **gitignore에서 빼고 커밋하는 쪽이 낫다** — 훅 복사는 worktree 사이에서만 동작해서 저장소를 clone한 사람에게는 전달되지 않기 때문이다.
 
 `terraform/loadtest/.terraform.lock.hcl`이 그 사례였다. provider 버전을 고정하는 파일이라 `terraform init`으로 재생성은 되지만 그 시점의 최신 버전을 새로 고르므로, 복사로 공유하는 것만으로는 "어디서 apply해도 같은 버전"이라는 목적을 지킬 수 없었다. 게다가 루트 모듈의 `terraform/.terraform.lock.hcl`은 이미 git이 추적하고 있어 같은 성격의 파일이 모듈마다 다르게 관리되는 상태였다. 그래서 이 목록에 넣는 대신 **`.gitignore`에서 제외를 풀고 커밋하도록 바꿨다.**
 
-`.claude/rules/`와 `.claude/settings.json`도 같은 판단으로 목록에서 뺐다. 작업 규칙과 공용 설정은 worktree 사이뿐 아니라 **저장소를 clone한 사람에게도 동일하게 적용돼야 하는데**, 훅 복사로는 거기까지 닿지 않는다(함정 4). 비밀값이 없어 커밋하지 못할 이유도 없었다. 다만 `.claude/` 전체를 푼 것은 아니고, `plans/`(worktree 전용 맥락)·`worktrees/`(저장소 자기 중첩)·`settings.local.json`(개인 설정)은 계속 gitignore로 남긴다 — 이유는 [.gitignore](../../.gitignore)의 해당 주석에 있다.
+`CLAUDE.md`, `.claude/rules/`, `.claude/settings.json`도 같은 판단으로 목록에서 뺐다. 작업 규칙과 공용 설정은 worktree 사이뿐 아니라 **저장소를 clone한 사람에게도 동일하게 적용돼야 하는데**, 훅 복사로는 거기까지 닿지 않는다(함정 4). 비밀값이 없어 커밋하지 못할 이유도 없었다. 다만 `.claude/` 전체를 푼 것은 아니고, `plans/`(worktree 전용 맥락)·`worktrees/`(저장소 자기 중첩)·`settings.local.json`(개인 설정)은 계속 gitignore로 남긴다 — 이유는 [.gitignore](../../.gitignore)의 해당 주석에 있다.
 
 **넣지 말아야 하는 것**:
 
@@ -201,10 +201,10 @@ done
    | 파일 | 최신 | 이유 |
    |---|---|---|
    | `terraform.tfstate` | worktree | 내가 `terraform import`로 고쳤다 |
-   | `CLAUDE.md` | worktree | 내가 프로필 관련 내용을 추가했다 |
+   | `terraform.tfvars` | worktree | 내가 인스턴스 타입을 바꿨다 |
    | `.env` | **메인** | 다른 worktree가 `NAVER_CLIENT_ID` 등 3개를 추가했고, 내 worktree는 생성 당시 버전이었다 |
 
-   > 당시에는 `.claude/rules/*.md`도 이 표에 있었다. 지금은 git 추적 대상이라 커밋으로 공유되므로 더 이상 수동 복사 대상이 아니다.
+   > 당시에는 `CLAUDE.md`와 `.claude/rules/*.md`도 이 표에 있었다. 지금은 둘 다 git 추적 대상이라 커밋으로 공유되므로 더 이상 수동 복사 대상이 아니다.
 
 4. **`.env`처럼 비밀값이 든 파일**은 diff 출력을 그대로 보지 말고 아래처럼 비교한다. 값을 화면에 띄우지 않으면서 "어느 키가, 어느 쪽이" 다른지 알 수 있다.
 

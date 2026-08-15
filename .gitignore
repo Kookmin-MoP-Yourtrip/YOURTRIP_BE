@@ -35,7 +35,9 @@ out/
 ### VS Code ###
 .vscode/
 
-CLAUDE.md
+# CLAUDE.md는 git이 추적한다. 작업 지침은 worktree뿐 아니라 저장소를 clone한 사람에게도
+# 동일하게 적용돼야 하는데, .worktreeinclude 훅 복사는 거기까지 닿지 않는다.
+# (GEMINI.md는 개인 도구 지침이라 계속 제외한다.)
 
 # .claude/는 통째로 무시하지 않는다. 작업 규칙(rules/)과 공용 설정(settings.json)은 모든
 # worktree·팀원에게 동일하게 적용돼야 하므로 git이 직접 추적한다(.worktreeinclude 복사는
