@@ -55,6 +55,9 @@ terraform/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.*
 terraform/*.tfvars
+# tfvars를 손으로 백업할 때(terraform.tfvars.bak 등) 확장자가 뒤에 붙으면 위 *.tfvars
+# 패턴에 걸리지 않아 비밀값이 그대로 추적 후보가 된다. 실제로 겪은 사고라 패턴을 넓힌다.
+terraform/*.tfvars.*
 terraform/*.tfplan
 terraform/tfplan
 terraform/crash.log
@@ -68,11 +71,15 @@ terraform/.terraformrc
 terraform/terraform.rc
 
 ### Terraform (loadtest 루트 모듈 — 별도 state, 위와 동일한 패턴) ###
+# .terraform.lock.hcl은 제외하지 않는다 — provider 버전을 고정해 어느 환경에서 init해도
+# 같은 버전으로 재현되게 하는 파일이라 커밋 대상이다(terraform 공식 권장이며, 루트 모듈의
+# terraform/.terraform.lock.hcl도 추적 중이다). 민감정보 없이 provider 이름·버전·해시만 담는다.
 terraform/loadtest/.terraform/
-terraform/loadtest/.terraform.lock.hcl
 terraform/loadtest/*.tfstate
 terraform/loadtest/*.tfstate.*
 terraform/loadtest/*.tfvars
+# 위 루트 모듈과 동일한 이유 — tfvars 백업(*.tfvars.pre-import-bak 등)이 패턴에서 새지 않게 한다
+terraform/loadtest/*.tfvars.*
 terraform/loadtest/*.tfplan
 terraform/loadtest/tfplan*
 terraform/loadtest/crash.log
