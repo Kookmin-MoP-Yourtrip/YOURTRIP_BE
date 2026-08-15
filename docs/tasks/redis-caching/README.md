@@ -1,4 +1,28 @@
-# Redis 인기 코스 캐싱 전략
+﻿# Redis 인기 코스 캐싱 전략
+
+이 문서는 캐싱 작업 전체의 **설계 원칙과 계획**이자 이 폴더의 진입점이다. 개별 작업 기록은 아래에 있다.
+
+| 문서 | 내용 |
+|---|---|
+| [current-status.md](current-status.md) | 적용 중인 캐시 항목과 TTL 정책 현황 |
+| [0-preparation.md](0-preparation.md) | 사전 준비 |
+| [popular-list-cache.md](popular-list-cache.md) | 인기 코스 상위 5개 목록 캐싱 |
+| [detail-cache.md](detail-cache.md) | 상세 조회 캐싱 |
+| [view-counter.md](view-counter.md) | Redis 조회수 카운터와 스케줄러 동기화 |
+| [../popular-tx-separation/](../popular-tx-separation/README.md) | 후속 작업 — 캐시 경로를 트랜잭션 밖으로 분리 |
+
+> **옛 파일명 대응.** 이 문서들은 원래 `docs/CACHING-ROADMAP.md`, `CACHING-STATUS.md`,
+> `docs/tasks/TASK-0/3/4/5.md`였다. 각 기록의 본문에는 그 시절 이름(`TASK-3`, `TASK-4` 등)이
+> 그대로 남아 있는데, **작성 시점의 기록이라 일부러 고치지 않았다.** 아래 대응으로 읽는다.
+>
+> | 옛 이름 | 지금 |
+> |---|---|
+> | `CACHING-ROADMAP.md` | 이 문서 |
+> | `CACHING-STATUS.md` | `current-status.md` |
+> | `TASK-0` | `0-preparation.md` |
+> | `TASK-3` | `popular-list-cache.md` |
+> | `TASK-4` | `detail-cache.md` |
+> | `TASK-5` | `view-counter.md` |
 
 ## 목표
 
@@ -12,15 +36,15 @@
 앱 홈 화면의 진입점은 인기 코스 목록이고, 여기서 상세로 들어가는 것이 가장 굵은 트래픽 동선이다. 현재 구조에는 다음 세 가지 문제가 있다.
 
 **① 목록 조회가 매번 전체 스캔이다.**
-`UploadCourseRepository.findAllByKeywordsOrderByViewCountDesc`([UploadCourseRepository.java:66-81](../src/main/java/backend/yourtrip/domain/uploadcourse/repository/UploadCourseRepository.java))는 `UploadCourse` 전체를 `LEFT JOIN FETCH` + 상관 서브쿼리로 훑고, 페이징이 없어 데이터가 늘수록 선형으로 느려진다.
+`UploadCourseRepository.findAllByKeywordsOrderByViewCountDesc`([UploadCourseRepository.java:66-81](../../../src/main/java/backend/yourtrip/domain/uploadcourse/repository/UploadCourseRepository.java))는 `UploadCourse` 전체를 `LEFT JOIN FETCH` + 상관 서브쿼리로 훑고, 페이징이 없어 데이터가 늘수록 선형으로 느려진다.
 
 **② 상세 조회 1건의 비용이 목록보다 크다.**
-`findWithMyCourseAndKeywords` → `existsById` → `getDaySchedulesWithPlaces`로 쿼리가 이어지고, **장소 이미지 개수만큼 presigned URL을 생성**한다([MyCourseServiceImpl.java:200-220](../src/main/java/backend/yourtrip/domain/mycourse/service/MyCourseServiceImpl.java)). 목록만 캐싱하면 트래픽을 막는 게 아니라 상세 조회로 떠넘기는 셈이 된다.
+`findWithMyCourseAndKeywords` → `existsById` → `getDaySchedulesWithPlaces`로 쿼리가 이어지고, **장소 이미지 개수만큼 presigned URL을 생성**한다([MyCourseServiceImpl.java:200-220](../../../src/main/java/backend/yourtrip/domain/mycourse/service/MyCourseServiceImpl.java)). 목록만 캐싱하면 트래픽을 막는 게 아니라 상세 조회로 떠넘기는 셈이 된다.
 
 ## 설계 원칙
 
-1. **presigned URL은 캐싱하지 않는다.** [S3Service.java](../src/main/java/backend/yourtrip/global/s3/service/S3Service.java)의 presigned URL은 유효기간이 15분이다. 완성된 응답 DTO를 통째로 캐싱하면 캐시 TTL이 URL 만료에 종속되고, 만료된 URL이 나갈 위험이 생긴다. 따라서 **S3 key만 캐싱하고 URL은 응답 조립 시점에 생성**한다.
-   > **[TASK-4.md](tasks/TASK-4.md)와 [TASK-PRESIGN-BOTTLENECK.md](tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md)에서 확정적으로 반증됨** — ~~"presign은 네트워크 호출 없는 로컬 HMAC 서명이라 비용이 작다"~~. 실측 결과 presign 1회 비용은 약 382us(마이크로벤치마크)로 결코 작지 않고, 무엇보다 이 URL 생성이 `@Transactional(readOnly = true)` 트랜잭션(= JDBC 커넥션) 안에서 일어나는 구조가 결합되면 HikariCP 커넥션 점유 시간이 초 단위로 증폭되는 병목으로 이어질 수 있다는 것이 CPU 프로파일링(JFR)과 HikariCP 지표로 직접 확인됐다. "S3 key만 캐싱한다"는 결론 자체는 여전히 유효하지만(URL 만료 문제는 그대로다), "presign이 저렴하다"는 전제는 폐기한다.
+1. **presigned URL은 캐싱하지 않는다.** [S3Service.java](../../../src/main/java/backend/yourtrip/global/s3/service/S3Service.java)의 presigned URL은 유효기간이 15분이다. 완성된 응답 DTO를 통째로 캐싱하면 캐시 TTL이 URL 만료에 종속되고, 만료된 URL이 나갈 위험이 생긴다. 따라서 **S3 key만 캐싱하고 URL은 응답 조립 시점에 생성**한다.
+   > **[TASK-4.md](detail-cache.md)와 [TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md)에서 확정적으로 반증됨** — ~~"presign은 네트워크 호출 없는 로컬 HMAC 서명이라 비용이 작다"~~. 실측 결과 presign 1회 비용은 약 382us(마이크로벤치마크)로 결코 작지 않고, 무엇보다 이 URL 생성이 `@Transactional(readOnly = true)` 트랜잭션(= JDBC 커넥션) 안에서 일어나는 구조가 결합되면 HikariCP 커넥션 점유 시간이 초 단위로 증폭되는 병목으로 이어질 수 있다는 것이 CPU 프로파일링(JFR)과 HikariCP 지표로 직접 확인됐다. "S3 key만 캐싱한다"는 결론 자체는 여전히 유효하지만(URL 만료 문제는 그대로다), "presign이 저렴하다"는 전제는 폐기한다.
 
 2. **조회수 증가는 캐싱 경계 바깥에 둔다.** 상세 조회 메서드에 `@Cacheable`을 그대로 걸면 캐시 히트 시 메서드 전체가 스킵되어 조회수 증가도 건너뛴다. 인기 코스일수록 히트율이 높으므로, 결과적으로 인기 코스의 조회수만 집계되지 않는 결과가 나온다. 조회수 증가는 캐시 조회와 분리된, 항상 실행되는 경로에 둔다.
 
@@ -30,11 +54,11 @@
 
 5. **fail-open은 짧은 타임아웃과 반드시 세트로 적용한다.** Lettuce의 기본 command timeout은 60초다. Redis가 완전히 죽은 게 아니라 응답이 느려지는 상황에서는 예외가 발생하지 않아 fail-open이 동작하지 않고, 요청 스레드가 60초씩 묶여 스레드 풀이 고갈된다. 즉 **타임아웃 없는 fail-open은 사실상 무의미**하다. 타임아웃을 짧게(1초) 설정해야 fail-open이 실질적으로 작동한다.
 
-6. **갱신 주기**: 조회수 DB 동기화 10분(= 인기 목록 실질 갱신 주기), 인기 목록 안전망 TTL 30분(스케줄러가 멈췄을 때 대비), 상세 캐시 TTL 2시간(아이템 캐시와 동일, jitter 없음 — 자세한 재검토 근거는 [TASK-4.md](tasks/TASK-4.md) 참고). 조회수는 API 응답에 노출되지 않으므로 사용자가 지연을 인지할 수 없는 수준이다.
+6. **갱신 주기**: 조회수 DB 동기화 10분(= 인기 목록 실질 갱신 주기), 인기 목록 안전망 TTL 30분(스케줄러가 멈췄을 때 대비), 상세 캐시 TTL 2시간(아이템 캐시와 동일, jitter 없음 — 자세한 재검토 근거는 [TASK-4.md](detail-cache.md) 참고). 조회수는 API 응답에 노출되지 않으므로 사용자가 지연을 인지할 수 없는 수준이다.
 
 ## 문서 작성 원칙
 
-이 로드맵과, 섹션별 상세 기록(`docs/tasks/TASK-N.md`)을 나눠 쓰는 규칙은 [.claude/rules/roadmap-and-task-docs.md](../.claude/rules/roadmap-and-task-docs.md)를 따른다. 이 문서에는 체크리스트만 남기고, 설계 논의·발견한 버그·성능 측정 결과 같은 상세 내용은 해당 섹션의 TASK 파일에 적는다.
+이 문서(로드맵)와 섹션별 상세 기록을 나눠 쓴다. **이 문서에는 설계 원칙과 체크리스트만 남기고**, 설계 논의·발견한 버그·성능 측정 결과 같은 상세 내용은 해당 섹션의 개별 문서(위 표)에 적는다.
 
 ## 적용 원칙 (진행 방식)
 
@@ -45,14 +69,14 @@
 - **체크리스트 항목을 진행하다가 요구사항, 설계, 구현 방식 중 모르거나 애매한 부분이 있으면 절대 임의로 판단해서 진행하지 않는다. 반드시 작업을 멈추고 사용자에게 먼저 질문한 뒤, 답변을 받고 나서 진행한다.**
 - **매 `### N. ...` 섹션(0~8)이 끝날 때마다 애플리케이션을 실행해 정상 기동/동작하는지 확인한다.** 컴파일 성공만으로 끝내지 않고, 실제 구동(`bootRun` 등)까지 확인한 뒤 다음 섹션으로 넘어간다.
 - **해당 섹션의 변경사항이 API 동작에 영향을 주는 경우, Playwright MCP로 E2E 검증을 실시한다.** 새 API 추가, 기존 API의 응답/동작 변경, 캐싱으로 인한 응답 경로 변경 등이 해당된다. 설정 추가처럼 API 동작에 영향이 없는 섹션은 대상에서 제외한다.
-- 이 원칙은 [CLAUDE.md](../CLAUDE.md)의 "안정성 우선 원칙(대용량 트래픽 가정)"과 연결된다.
+- 이 원칙은 [CLAUDE.md](../../../CLAUDE.md)의 "안정성 우선 원칙(대용량 트래픽 가정)"과 연결된다.
 - 완료된 항목을 `- [x]`로 반영해야 한다.
 
 ## 적용 체크리스트
 
 ### 0. 사전 준비
 
-> 발견한 개선점은 [TASK-0.md](tasks/TASK-0.md) 참고.
+> 발견한 개선점은 [TASK-0.md](0-preparation.md) 참고.
 
 - [x] 0-1. `build.gradle`에 `spring-boot-starter-data-redis`, `commons-pool2` 의존성만 추가
 - [x] 0-2. `docker-compose.yml` 작성 (redis:7-alpine, maxmemory 정책 포함)
@@ -72,7 +96,7 @@
 
 ### 3. 인기 상위 5개 목록 — 읽기 경로부터 단계적으로
 
-> 설계 논의, 발견한 버그, 성능 측정 결과의 전체 기록은 [TASK-3.md](tasks/TASK-3.md) 참고.
+> 설계 논의, 발견한 버그, 성능 측정 결과의 전체 기록은 [TASK-3.md](popular-list-cache.md) 참고.
 
 - [x] 3-1. Repository에 상위 5개 ID만 조회하는 쿼리 추가 (캐싱 없이 기능만)
 - [x] 3-2. Repository에 ID 목록으로 `LEFT JOIN FETCH` 조회하는 쿼리 추가
@@ -86,7 +110,7 @@
 
 ### 4. 상세 조회 캐싱
 
-> 설계 논의, 발견한 버그, 성능 측정 결과의 전체 기록은 [TASK-4.md](tasks/TASK-4.md) 참고.
+> 설계 논의, 발견한 버그, 성능 측정 결과의 전체 기록은 [TASK-4.md](detail-cache.md) 참고.
 
 - [x] 4-1. `UploadCourseDetailCacheItem`/`DayScheduleCacheItem`/`PlaceCacheItem`/`PlaceImageCacheItem` 캐시 DTO 추가
 - [x] 4-2. 캐시 조회/저장 로직 추가
@@ -117,9 +141,9 @@
 
 ### 현재 구조가 이 계획에 미치는 영향 (사전 검토)
 
-현재까지 만든 코드/설정은 이 계획을 막지 않는다. [RedisConfig.java](../src/main/java/backend/yourtrip/global/config/RedisConfig.java)의 `redisTemplate`, `redisCacheManager` 빈은 모두 Spring Boot가 `spring.data.redis.*` 프로퍼티로 자동 구성해주는 `RedisConnectionFactory`를 주입받아 쓸 뿐, 연결 토폴로지(단일 노드/Sentinel/Cluster)를 코드 어디에서도 직접 알지 않는다. 즉 **`RedisConfig`, `RedisCacheErrorHandler`는 Master-Replica 전환 시 수정할 필요가 없다** — 아래 항목들은 기존 것을 고치는 게 아니라 새로 추가하는 작업이다.
+현재까지 만든 코드/설정은 이 계획을 막지 않는다. [RedisConfig.java](../../../src/main/java/backend/yourtrip/global/config/RedisConfig.java)의 `redisTemplate`, `redisCacheManager` 빈은 모두 Spring Boot가 `spring.data.redis.*` 프로퍼티로 자동 구성해주는 `RedisConnectionFactory`를 주입받아 쓸 뿐, 연결 토폴로지(단일 노드/Sentinel/Cluster)를 코드 어디에서도 직접 알지 않는다. 즉 **`RedisConfig`, `RedisCacheErrorHandler`는 Master-Replica 전환 시 수정할 필요가 없다** — 아래 항목들은 기존 것을 고치는 게 아니라 새로 추가하는 작업이다.
 
 - **Sentinel 없이 master + replica만 두는 구성은 진짜 HA가 아니다.** Lettuce/Spring은 master 장애를 자동 감지해 replica를 승격시켜주지 않는다. 자동 failover가 목표라면 최소 3대(quorum 확보용 홀수)의 Sentinel이 함께 필요하며, `application.yml`의 `spring.data.redis.host`/`port`(단일 노드 전용)를 `spring.data.redis.sentinel.master`/`sentinel.nodes`로 교체해야 한다 — 이 교체만으로 Spring Boot가 Sentinel-aware 커넥션을 자동 구성하므로 Java 코드 변경은 불필요하다.
 - `docker-compose.yml`에는 현재 `redis` 서비스 하나만 정의되어 있다. `--replicaof` 옵션을 가진 replica 서비스, (Sentinel을 쓴다면) sentinel 서비스들을 추가하면 되고 기존 `redis` 서비스 정의와 충돌하지 않는다.
 - 읽기 트래픽까지 replica로 분산하려면 Lettuce `ReadFrom` 설정이 별도로 필요하다(기본값은 읽기/쓰기 모두 master로만 라우팅). 조회수 카운터(`INCR`/`SADD`, 5단계에서 추가 예정)는 쓰기이므로 이 설정과 무관하게 항상 master로 간다.
-- [TASK-0.md](tasks/TASK-0.md)에 이미 기록한 볼륨 미설정 이슈도 함께 고려한다 — replica가 재기동될 때 마스터의 영속 데이터가 없으면 매번 풀 리싱크(전체 데이터 재동기화) 비용이 발생한다.
+- [TASK-0.md](0-preparation.md)에 이미 기록한 볼륨 미설정 이슈도 함께 고려한다 — replica가 재기동될 때 마스터의 영속 데이터가 없으면 매번 풀 리싱크(전체 데이터 재동기화) 비용이 발생한다.

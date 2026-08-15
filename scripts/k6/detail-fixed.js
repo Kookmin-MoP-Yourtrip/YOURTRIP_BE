@@ -1,6 +1,6 @@
 // test/presigned-url-bottleneck — 고정 동시성 프로파일 (과거 4회 벤치마크와 직접 비교용)
 //
-// TASK-4.md/TASK-CLOUDFRONT.md와 동일한 파라미터: 동시성 50/200, 각 600건.
+// redis-caching/detail-cache.md, TASK-CLOUDFRONT.md와 동일한 파라미터: 동시성 50/200, 각 600건.
 // 이 스크립트 하나로 4가지 조합(도메인 2 × 시나리오 2)을 환경변수로 선택한다.
 //
 // 사용 예 (arm P, uploadcourse, hot, 동시성 50):

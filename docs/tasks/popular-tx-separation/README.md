@@ -8,7 +8,7 @@
 
 - 대상 변경: `UploadCourseServiceImpl.getPopularCourses`의 `@Transactional` 제거 + `UploadCoursePopularReader` 신설
 - 선례: [stage0/production/ec2-rds.md](../connection-pool-bottleneck/stage0/production/ec2-rds.md) — 상세조회에 같은 처리를 했을 때 `pending` 187→0, TPS +45.4%
-- 공백: `/popular`을 대상으로 한 k6 부하테스트는 이 저장소에 존재한 적이 없다. 인기 코스의 유일한 선행 측정([TASK-3.md](../TASK-3.md))은 로컬 + 커밋되지 않은 Node.js 스크립트 기반이라 이번 비교에 쓸 수 없다
+- 공백: `/popular`을 대상으로 한 k6 부하테스트는 이 저장소에 존재한 적이 없다. 인기 코스의 유일한 선행 측정([redis-caching/popular-list-cache.md](../redis-caching/popular-list-cache.md))은 로컬 + 커밋되지 않은 Node.js 스크립트 기반이라 이번 비교에 쓸 수 없다
 
 ## 측정 단계
 

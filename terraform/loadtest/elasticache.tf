@@ -5,7 +5,7 @@ resource "aws_elasticache_subnet_group" "this" {
 
 # maxmemory-policy만 오버라이드 — 로컬 docker-compose.yml의
 # `redis-server --maxmemory-policy allkeys-lru`와 동일한 축출 정책을 관리형에서도 유지한다
-# (순수 캐시라 원본은 항상 DB에 있음, CACHING-ROADMAP.md 설계 원칙 참고).
+# (순수 캐시라 원본은 항상 DB에 있음, docs/tasks/redis-caching/README.md 설계 원칙 참고).
 # maxmemory 자체는 오버라이드하지 않는다 — ElastiCache는 노드 타입별 예약 메모리를
 # 제외한 나머지를 자동으로 maxmemory로 산정해주므로 수동 설정이 오히려 위험하다.
 resource "aws_elasticache_parameter_group" "this" {

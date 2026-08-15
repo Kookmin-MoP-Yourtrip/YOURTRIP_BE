@@ -89,7 +89,7 @@ Run D~F까지의 비교에는 구멍이 둘 있었다. ①극한 부하(1200 req
 
 **적용 조건**: 1단계(Signed Cookie 전환)가 당장 부담스럽거나(클라이언트 마이그레이션 비용, 접근 제어 재설계 범위) 보류될 경우의 대안, 또는 1단계 전까지의 과도기적 완화책.
 
-**무엇을**: [CACHING-ROADMAP.md 설계 원칙 1](../../CACHING-ROADMAP.md)의 "presigned URL은 캐싱하지 않는다"를 재검토한다. 서명 URL 자체(S3 key가 아니라 완성된 URL)를 Redis에 만료시간보다 충분히 짧은 TTL로 캐싱한다(예: 60분 유효 → 10분 캐시).
+**무엇을**: [redis-caching 설계 원칙 1](../redis-caching/README.md)의 "presigned URL은 캐싱하지 않는다"를 재검토한다. 서명 URL 자체(S3 key가 아니라 완성된 URL)를 Redis에 만료시간보다 충분히 짧은 TTL로 캐싱한다(예: 60분 유효 → 10분 캐시).
 
 **근거**: [Ben Nadel의 케이스 스터디](https://www.bennadel.com/blog/3685-performance-case-study-caching-cryptographically-signed-urls-in-redis-in-lucee-5-2-9-40.htm)가 동일한 패턴으로 p95 URL 생성 시간을 1/3로 줄인 실측 사례를 보고한다.
 
@@ -180,5 +180,5 @@ Resilience4j `Bulkhead.Type.THREADPOOL`/`Type.SEMAPHORE`를 검토하고 기각�
 - [stage1/run-e-infra-removed.md](stage1/run-e-infra-removed.md) — 3단계 게이트·executor 제거 후 재측정(Run E) + knee 재탐색(Run F). 인프라 제거가 처리량·지연을 악화시키지 않음을 확인, Tomcat `maxThreads`(200)가 실제 처리량 상한임을 특정
 - [stage1/run-g-before-code-max-rate.md](stage1/run-g-before-code-max-rate.md) — 도입 전 코드를 Run F와 같은 극한 부하(1200 req/s)로 재측정(Run G). "처리량 천장은 원래도 같았지만 도입 전은 응답의 64.8%에 이미지가 빠져 있었다"를 확인. t3 `unlimited` 모드에서 `CPUCreditBalance=0`이 스로틀링을 뜻하지 않는다는 방법론 정정 포함
 - [stage1/run-h-i-closed-loop.md](stage1/run-h-i-closed-loop.md) — 닫힌 루프로 도입 전/후 포화점 비교(Run H/I). 무손실 최대 처리량 197.9→379.0 req/s, 품질 유지 동시 사용자 50명→400명 이상. 닫힌 루프의 "빠른 거부 역설"을 실측으로 확인
-- [CACHING-ROADMAP.md](../../CACHING-ROADMAP.md) — 2단계와 관련된 기존 캐싱 설계 원칙
+- [redis-caching/README.md](../redis-caching/README.md) — 2단계와 관련된 기존 캐싱 설계 원칙
 - GitHub 이슈 [#67](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/67) — 0단계에 대응. 1/3/5단계는 착수 시점에 별도 이슈로 분리하는 것을 검토한다.

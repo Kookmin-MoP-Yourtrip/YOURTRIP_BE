@@ -164,7 +164,7 @@ sequenceDiagram
 
 ### 채택한 방식
 
-[UploadCourseRepository.java](../../src/main/java/backend/yourtrip/domain/uploadcourse/repository/UploadCourseRepository.java)에 Postgres `unnest()`로 두 병렬 배열(ids, increments)을 행 집합으로 풀어 조인하는 네이티브 멀티로우 UPDATE를 추가했다:
+[UploadCourseRepository.java](../../../src/main/java/backend/yourtrip/domain/uploadcourse/repository/UploadCourseRepository.java)에 Postgres `unnest()`로 두 병렬 배열(ids, increments)을 행 집합으로 풀어 조인하는 네이티브 멀티로우 UPDATE를 추가했다:
 
 ```sql
 UPDATE upload_course uc

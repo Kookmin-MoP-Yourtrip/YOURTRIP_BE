@@ -1,7 +1,7 @@
 # TASK-CLOUDFRONT. presigned URL → CloudFront 전환 및 도입 전/후 성능 측정
 
-> Redis 캐싱 로드맵([CACHING-ROADMAP.md](../CACHING-ROADMAP.md))과는 별개의 작업이다.
-> 상세 조회 캐싱([TASK-4.md](TASK-4.md))이 "캐시 히트 시에도 이미지 개수만큼 presigned URL을 순차 발급하는 것이 새로운 병목"이라는 걸 발견한 데서 출발해, presigned URL(S3)을 CloudFront(공개 콘텐츠는 서명 없는 URL, 비공개 콘텐츠는 Signed URL)로 전면 교체했다. 이 문서는 그 전환의 설계 근거와, "실제로 효과가 있었는가"를 실측한 결과를 남긴다.
+> Redis 캐싱 로드맵([redis-caching/README.md](redis-caching/README.md))과는 별개의 작업이다.
+> 상세 조회 캐싱([redis-caching/detail-cache.md](redis-caching/detail-cache.md))이 "캐시 히트 시에도 이미지 개수만큼 presigned URL을 순차 발급하는 것이 새로운 병목"이라는 걸 발견한 데서 출발해, presigned URL(S3)을 CloudFront(공개 콘텐츠는 서명 없는 URL, 비공개 콘텐츠는 Signed URL)로 전면 교체했다. 이 문서는 그 전환의 설계 근거와, "실제로 효과가 있었는가"를 실측한 결과를 남긴다.
 
 ## 배경
 

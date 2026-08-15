@@ -24,13 +24,8 @@
 
 | 문서 | 내용 |
 |---|---|
-| [CACHING-ROADMAP.md](CACHING-ROADMAP.md) | Redis 인기 코스 캐싱 전략(전체 계획) |
-| [CACHING-STATUS.md](CACHING-STATUS.md) | 적용 중인 캐시 항목과 TTL 정책 현황 |
-| [tasks/TASK-0.md](tasks/TASK-0.md) | 사전 준비 |
-| [tasks/TASK-3.md](tasks/TASK-3.md) | 인기 코스 상위 5개 목록 캐싱 |
-| [tasks/TASK-4.md](tasks/TASK-4.md) | 상세 조회 캐싱 |
-| [tasks/TASK-5.md](tasks/TASK-5.md) | Redis 조회수 카운터와 스케줄러 동기화 |
-| [tasks/popular-tx-separation/](tasks/popular-tx-separation/README.md) | 인기 코스 조회의 캐시 경로를 트랜잭션 밖으로 분리하고 EC2에서 실측 |
+| [tasks/redis-caching/](tasks/redis-caching/README.md) | **진입점** — 캐싱 전략(설계 원칙·계획)과 개별 작업 기록 5건 |
+| [tasks/popular-tx-separation/](tasks/popular-tx-separation/README.md) | 후속 작업 — 캐시 경로를 트랜잭션 밖으로 분리하고 EC2에서 실측 |
 
 ### 커넥션 풀 / presigned URL 병목
 
