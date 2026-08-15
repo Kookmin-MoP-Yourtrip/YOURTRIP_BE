@@ -36,7 +36,18 @@ WT="$(git rev-parse --show-toplevel)"                        # 지금 있는 워
 
 그 대가로 "메인의 갱신이 기존 worktree에 전파되지 않는다"(함정 2)가 생기는데, 이건 덮어쓰기로 풀 문제가 아니라 아래 체크리스트로 사람이 확인할 문제다.
 
-## 반드시 알아야 할 함정 4가지
+> **[해소됨] 훅이 메인의 목록을 읽던 문제**
+>
+> 원래 훅은 `$MAIN_DIR/.worktreeinclude`를 읽었다. 이 파일은 git 추적 대상이라 브랜치마다 내용이 다른데, 그래서 worktree에서 목록을 고쳐 커밋해도 **메인 워킹트리가 다른 브랜치를 보고 있으면 반영되지 않았다.** 실제로 `.claude/` 항목을 좁힌 커밋을 `dev`에 넣었지만 메인이 `dev-ai-course`를 보고 있어 옛 목록이 쓰이고 있었다.
+>
+> 지금은 **대상 워킹트리의 목록을 우선 읽도록** 고쳤다(없으면 메인으로 폴백). `.worktreeinclude`는 추적 파일이라 checkout 시점에 대상에도 이미 존재하고, "지금 이 브랜치에 필요한 파일 목록"이라는 의미에도 그쪽이 맞다. 아래 PR 체크리스트도 같은 기준(지금 worktree의 목록)을 쓴다.
+>
+> ```sh
+> WORKTREE_INCLUDE="$TARGET_DIR/.worktreeinclude"
+> [ -f "$WORKTREE_INCLUDE" ] || WORKTREE_INCLUDE="$MAIN_DIR/.worktreeinclude"
+> ```
+
+## 반드시 알아야 할 함정 3가지
 
 ### 1. worktree에서 수정한 gitignore 파일은 어디에도 전파되지 않는다
 
@@ -58,23 +69,6 @@ WT="$(git rev-parse --show-toplevel)"                        # 지금 있는 워
 
 이때 선택지가 둘이다 — **`.gitignore`에서 빼고 git으로 추적하거나**, 그럴 수 없는 파일이면 `.worktreeinclude`에 등록한다. 아래 "목록에 넣을지 판단하는 기준"에서 다루듯 전자가 가능하면 전자가 낫다. 위 lock 파일은 실제로 전자로 처리했다.
 
-### 4. 훅은 git으로 공유되지 않는다
-
-훅은 `.git/hooks/post-checkout`에 있고 **git 추적 대상이 아니다.** 즉 저장소를 새로 clone한 사람에게는 훅이 없어서 `.worktreeinclude`만 받고 **복사 자체가 동작하지 않는다.** 지금은 사실상 1인이 쓰는 구조라 드러나지 않지만, 훅을 `scripts/hooks/`에 두고 `core.hooksPath`로 가리키게 하면 git으로 공유할 수 있다.
-
-이 때문에 훅의 동작이 환경마다 다를 수 있다는 점도 유의한다. 아래 "읽는 목록" 관련 수정도 이 저장소의 로컬 훅에만 적용돼 있다.
-
-> **[해소됨] 훅이 메인의 목록을 읽던 문제**
->
-> 원래 훅은 `$MAIN_DIR/.worktreeinclude`를 읽었다. 이 파일은 git 추적 대상이라 브랜치마다 내용이 다른데, 그래서 worktree에서 목록을 고쳐 커밋해도 **메인 워킹트리가 다른 브랜치를 보고 있으면 반영되지 않았다.** 실제로 `.claude/` 항목을 좁힌 커밋을 `dev`에 넣었지만 메인이 `dev-ai-course`를 보고 있어 옛 목록이 쓰이고 있었다.
->
-> 지금은 **대상 워킹트리의 목록을 우선 읽도록** 고쳤다(없으면 메인으로 폴백). `.worktreeinclude`는 추적 파일이라 checkout 시점에 대상에도 이미 존재하고, "지금 이 브랜치에 필요한 파일 목록"이라는 의미에도 그쪽이 맞다.
->
-> ```sh
-> WORKTREE_INCLUDE="$TARGET_DIR/.worktreeinclude"
-> [ -f "$WORKTREE_INCLUDE" ] || WORKTREE_INCLUDE="$MAIN_DIR/.worktreeinclude"
-> ```
-
 ## 목록에 넣을지 판단하는 기준
 
 `.worktreeinclude`에 **넣어야 하는 것**:
@@ -86,7 +80,7 @@ WT="$(git rev-parse --show-toplevel)"                        # 지금 있는 워
 
 `terraform/loadtest/.terraform.lock.hcl`이 그 사례였다. provider 버전을 고정하는 파일이라 `terraform init`으로 재생성은 되지만 그 시점의 최신 버전을 새로 고르므로, 복사로 공유하는 것만으로는 "어디서 apply해도 같은 버전"이라는 목적을 지킬 수 없었다. 게다가 루트 모듈의 `terraform/.terraform.lock.hcl`은 이미 git이 추적하고 있어 같은 성격의 파일이 모듈마다 다르게 관리되는 상태였다. 그래서 이 목록에 넣는 대신 **`.gitignore`에서 제외를 풀고 커밋하도록 바꿨다.**
 
-`CLAUDE.md`, `.claude/rules/`, `.claude/settings.json`도 같은 판단으로 목록에서 뺐다. 작업 규칙과 공용 설정은 worktree 사이뿐 아니라 **저장소를 clone한 사람에게도 동일하게 적용돼야 하는데**, 훅 복사로는 거기까지 닿지 않는다(함정 4). 비밀값이 없어 커밋하지 못할 이유도 없었다. 다만 `.claude/` 전체를 푼 것은 아니고, `plans/`(worktree 전용 맥락)·`worktrees/`(저장소 자기 중첩)·`settings.local.json`(개인 설정)은 계속 gitignore로 남긴다 — 이유는 [.gitignore](../../.gitignore)의 해당 주석에 있다.
+`CLAUDE.md`, `.claude/rules/`, `.claude/settings.json`도 같은 판단으로 목록에서 뺐다. 작업 규칙과 공용 설정은 worktree 사이뿐 아니라 **저장소를 clone한 사람에게도 동일하게 적용돼야 하는데**, 훅 복사로는 거기까지 닿지 않는다. 비밀값이 없어 커밋하지 못할 이유도 없었다. 다만 `.claude/` 전체를 푼 것은 아니고, `plans/`(worktree 전용 맥락)·`worktrees/`(저장소 자기 중첩)·`settings.local.json`(개인 설정)은 계속 gitignore로 남긴다 — 이유는 [.gitignore](../../.gitignore)의 해당 주석에 있다.
 
 **넣지 말아야 하는 것**:
 
