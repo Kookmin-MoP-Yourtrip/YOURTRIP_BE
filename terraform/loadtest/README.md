@@ -1,4 +1,4 @@
-# Terraform — EC2 + RDS + ElastiCache 분리 부하테스트 환경
+﻿# Terraform — EC2 + RDS + ElastiCache 분리 부하테스트 환경
 
 이 디렉토리는 [`docs/tasks/connection-pool-bottleneck/stage0/production/ec2-rds.md`](../../docs/tasks/connection-pool-bottleneck/stage0/production/ec2-rds.md)의
 "개선 제안 — 배포 환경(EC2 + RDS) 분리 부하테스트" 절을 실행하기 위한 **일회성·임시 인프라**를 관리한다.
@@ -91,7 +91,7 @@ terraform output -raw rds_endpoint
 
 ### 2. App JAR 로컬 빌드
 
-App EC2는 빌드를 하지 않는다 — JAR는 로컬에서 미리 빌드해 scp로 전달한다(이유는 `templates/app-user-data.sh.tpl` 상단 주석과 [EC2-RDS-LOADTEST-GUIDE.md](../../docs/guide/EC2-RDS-LOADTEST-GUIDE.md) 참고 — t3.micro에서 직접 빌드하면 CPU 크레딧을 미리 갉아먹어 측정 시작 조건이 매번 달라지는 문제가 있었다).
+App EC2는 빌드를 하지 않는다 — JAR는 로컬에서 미리 빌드해 scp로 전달한다(이유는 `templates/app-user-data.sh.tpl` 상단 주석과 [ec2-rds-loadtest.md](../../docs/guide/ec2-rds-loadtest.md) 참고 — t3.micro에서 직접 빌드하면 CPU 크레딧을 미리 갉아먹어 측정 시작 조건이 매번 달라지는 문제가 있었다).
 
 ```bash
 # 저장소 루트에서, terraform.tfvars의 app_git_ref와 동일한 커밋을 체크아웃한 상태로
@@ -258,7 +258,7 @@ terraform plan                                         # destroy가 0인지 확�
 
 ### 상태·설정 파일은 gitignore 대상이다
 
-`terraform.tfstate(.backup)`과 `terraform.tfvars`는 `.gitignore` 대상이라 커밋으로 공유되지 않는다. worktree에서 이 파일들이 바뀌었으면(import·apply 후) **메인 워킹트리 사본도 갱신해야 한다.** 절차는 [docs/guide/WORKTREE-GUIDE.md](../../docs/guide/WORKTREE-GUIDE.md) 참고.
+`terraform.tfstate(.backup)`과 `terraform.tfvars`는 `.gitignore` 대상이라 커밋으로 공유되지 않는다. worktree에서 이 파일들이 바뀌었으면(import·apply 후) **메인 워킹트리 사본도 갱신해야 한다.** 절차는 [docs/guide/worktree.md](../../docs/guide/worktree.md) 참고.
 
 ## 알아둬야 할 것
 

@@ -1,4 +1,4 @@
-# 인기 코스 트랜잭션 분리 — 성능 측정
+﻿# 인기 코스 트랜잭션 분리 — 성능 측정
 
 > 커밋 `6637534`(`perf: 인기 코스 조회 캐시 경로를 트랜잭션 밖으로 분리`)의 효과를 실측으로 입증하기 위한 측정 기록 모음이다. `getPopularCourses`에서 `@Transactional(readOnly = true)`을 제거하고 DB 조회만 `UploadCoursePopularReader`의 짧은 readOnly 트랜잭션으로 좁힌 변경이며, PR #70이 상세조회에 적용한 것과 같은 패턴이다.
 >
@@ -57,7 +57,7 @@ psql -h localhost -p 15432 -U postgres -d yourtrip -f scripts/sql/seed-popular.s
 
 ## 실행 절차
 
-기본 절차는 [EC2-RDS-LOADTEST-GUIDE.md](../../guide/EC2-RDS-LOADTEST-GUIDE.md)를 따른다. arm 전환 시마다 빌드→배포→재기동→재시딩→FLUSHALL이 필요하다(`DB_DDL_AUTO=create`).
+기본 절차는 [ec2-rds-loadtest.md](../../guide/ec2-rds-loadtest.md)를 따른다. arm 전환 시마다 빌드→배포→재기동→재시딩→FLUSHALL이 필요하다(`DB_DDL_AUTO=create`).
 
 ### 공통 — 캐시 워밍 (S1/S2/S5용)
 

@@ -1,4 +1,4 @@
-# EC2 + RDS + ElastiCache 분리 배포 환경 부하테스트 가이드
+﻿# EC2 + RDS + ElastiCache 분리 배포 환경 부하테스트 가이드
 
 ## 배경
 
@@ -75,9 +75,9 @@ Prometheus는 능동적으로 5초마다 대상 주소에 HTTP GET을 날려 지
 docker compose up -d prometheus grafana
 ```
 
-**확인**: `http://localhost:9090` → `Status` → `Targets`에서 `presign` job이 `UP`인지 확인한다(`cloudfront` job은 이번 환경에서 쓰지 않으므로 `DOWN`이 정상 — [MONITORING-GUIDE.md](MONITORING-GUIDE.md) §3-2 참고).
+**확인**: `http://localhost:9090` → `Status` → `Targets`에서 `presign` job이 `UP`인지 확인한다(`cloudfront` job은 이번 환경에서 쓰지 않으므로 `DOWN`이 정상 — [monitoring.md](monitoring.md) §3-2 참고).
 
-Grafana(`localhost:3000`, admin/admin)는 아무것도 바꿀 필요 없다 — `Dashboards → Bottleneck Test → Presign CPU Bottleneck`에서 그대로 확인 가능([MONITORING-GUIDE.md](MONITORING-GUIDE.md) §4 참고).
+Grafana(`localhost:3000`, admin/admin)는 아무것도 바꿀 필요 없다 — `Dashboards → Bottleneck Test → Presign CPU Bottleneck`에서 그대로 확인 가능([monitoring.md](monitoring.md) §4 참고).
 
 **측정이 끝나면 반드시 원상복구한다**:
 
@@ -94,7 +94,7 @@ cd terraform/loadtest
 ssh -i ./yourtrip-loadtest-ssh ec2-user@<k6 EC2 공인 IP>
 ```
 
-접속 후, App EC2를 대상으로 mycourse/uploadcourse 각각 ramping 프로파일(VU 1→200, 450초, [LOAD-TESTING-GUIDE.md §6](LOAD-TESTING-GUIDE.md) 참고)을 실행한다:
+접속 후, App EC2를 대상으로 mycourse/uploadcourse 각각 ramping 프로파일(VU 1→200, 450초, [load-testing.md §6](load-testing.md) 참고)을 실행한다:
 
 ```bash
 cd /opt/app
@@ -122,7 +122,7 @@ k6 run -e BASE_URL=http://<App EC2 공인 IP>:8080 -e DOMAIN=mycourse   -e MODE=
 
 ### 5-2. 포화 시작 VU(knee) 판정
 
-`hikaricp_connections_pending`이 0을 넘기 시작하는 시점을 k6 ramping 스테이지 경계(60/60/60/90/90/90초 = VU 5/10/20/50/100/200)와 대조해 "몇 VU부터 포화가 시작됐는가"를 특정한다. [LOAD-TESTING-GUIDE.md §6](LOAD-TESTING-GUIDE.md)의 knee 개념과 동일한 방법론이다.
+`hikaricp_connections_pending`이 0을 넘기 시작하는 시점을 k6 ramping 스테이지 경계(60/60/60/90/90/90초 = VU 5/10/20/50/100/200)와 대조해 "몇 VU부터 포화가 시작됐는가"를 특정한다. [load-testing.md §6](load-testing.md)의 knee 개념과 동일한 방법론이다.
 
 ### 5-3. CloudWatch에서 확인 (환경 자체의 한계 여부 판별용)
 
@@ -250,5 +250,5 @@ App/k6 EC2뿐 아니라 RDS·ElastiCache·VPC까지 전부 삭제해 과금을 �
 - [terraform/loadtest/README.md](../../terraform/loadtest/README.md) — 인프라 구축/철거 절차(이 문서와 역할 분리)
 - [TASK-PRESIGN-BOTTLENECK-FIX.md](../tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md) — 이 부하테스트가 속한 단계별 계획 문서
 - [ec2-rds.md](../tasks/connection-pool-bottleneck/stage0/production/ec2-rds.md) — 이 부하테스트의 목적이 된 로컬 실측 기록과 실제 측정 결과
-- [LOAD-TESTING-GUIDE.md](LOAD-TESTING-GUIDE.md) — k6/JFR 사용법 전반
-- [MONITORING-GUIDE.md](MONITORING-GUIDE.md) — Prometheus/Grafana 구축 및 기본 사용법
+- [load-testing.md](load-testing.md) — k6/JFR 사용법 전반
+- [monitoring.md](monitoring.md) — Prometheus/Grafana 구축 및 기본 사용법

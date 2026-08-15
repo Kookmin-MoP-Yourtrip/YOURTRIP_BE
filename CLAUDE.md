@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 이 파일은 이 저장소에서 Claude Code(claude.ai/code)가 작업할 때 참고하는 가이드다.
 
@@ -68,7 +68,7 @@ YOURTRIP_BE/
 - **Security**: Spring Security + JWT(`io.jsonwebtoken:jjwt` 0.11.5) 기반 인증/인가
 - **DB**: PostgreSQL + Spring Data JPA (Hibernate) — 테스트만 H2 인메모리(PostgreSQL 호환 모드)
 - **캐시**: Redis (Spring Data Redis + Lettuce) — 인기 코스 목록/상세 캐싱, 조회수 카운터, 랭킹 갱신 분산 락. 캐시 실패는 `RedisCacheErrorHandler`가 잡아 DB 폴백으로 처리한다
-- **모니터링**: Spring Boot Actuator + Micrometer Prometheus (`/actuator/prometheus`) — 로컬은 docker-compose의 Prometheus/Grafana로 관측 ([MONITORING-GUIDE.md](docs/guide/MONITORING-GUIDE.md))
+- **모니터링**: Spring Boot Actuator + Micrometer Prometheus (`/actuator/prometheus`) — 로컬은 docker-compose의 Prometheus/Grafana로 관측 ([monitoring.md](docs/guide/monitoring.md))
 - **AI**: Gemini (`com.google.genai:google-genai` 1.28.0) — 코스 추천 생성
 - **외부 연동**: Kakao(자체 WebClient 클라이언트, 전용 SDK 없음 — 지도/장소 검색만 사용, 카카오 로그인은 제거됨), AWS SDK v2(S3 + CloudFront Signed URL), Spring Mail
 - **문서화**: springdoc-openapi 2.6.0 (Swagger UI: `/swagger-ui.html`)
@@ -107,7 +107,7 @@ docker compose up -d redis
 - **배포 서버는 `SPRING_PROFILES_ACTIVE=prod`가 필수다.** 누락되면 앱이 정상 동작하는 것처럼 보이면서 조용히 `local`로 떠서 SQL을 전량 로깅한다.
 - **`@SpringBootTest`에는 반드시 `@ActiveProfiles("test")`를 붙인다.** 빠뜨리면 그 테스트만 `local`로 떠서 `.env`의 개발용 PostgreSQL에 붙고, `DB_DDL_AUTO=create` 탓에 **개발 DB의 테이블이 drop/create 된다.** `@ExtendWith(MockitoExtension.class)` 단위 테스트는 컨텍스트를 안 띄우므로 대상이 아니다.
 
-각 프로필의 설정 근거, 배포 적용·확인 절차, H2의 한계는 [docs/guide/PROFILE-GUIDE.md](docs/guide/PROFILE-GUIDE.md)에 정리돼 있다. 개별 설정을 왜 그렇게 뒀는지는 해당 yml 파일의 주석에도 적혀 있다.
+각 프로필의 설정 근거, 배포 적용·확인 절차, H2의 한계는 [docs/guide/profile.md](docs/guide/profile.md)에 정리돼 있다. 개별 설정을 왜 그렇게 뒀는지는 해당 yml 파일의 주석에도 적혀 있다.
 
 ## 예외 처리 구조
 
@@ -134,7 +134,7 @@ docker compose up -d redis
 - worktree에서 gitignore된 파일(`.env`, `CLAUDE.md`, `.claude/rules/*` 등)을 새로 만들거나 수정했으면 **메인 저장소 사본도 함께 갱신한다.** 그러지 않으면 그 변경은 이 worktree에만 남는다.
 - 작업 중 새로 생긴 gitignore 파일이 다른 worktree에도 필요하면 `.worktreeinclude`에 등록한다(이 파일은 git 추적 대상이라 커밋된다).
 
-판단 기준·함정·비교 방법은 [docs/guide/WORKTREE-GUIDE.md](docs/guide/WORKTREE-GUIDE.md)에 정리돼 있다.
+판단 기준·함정·비교 방법은 [docs/guide/worktree.md](docs/guide/worktree.md)에 정리돼 있다.
 
 ## 인프라(terraform) 변경 규칙
 

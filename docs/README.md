@@ -1,4 +1,4 @@
-# 문서 인덱스
+﻿# 문서 인덱스
 
 문서는 **갱신 의무**를 기준으로 나눈다.
 
@@ -12,11 +12,11 @@
 
 | 문서 | 내용 |
 |---|---|
-| [PROFILE-GUIDE.md](guide/PROFILE-GUIDE.md) | Spring 프로필(`local`/`prod`/`test`) 구성 원칙, 배포 서버 적용·확인 절차 |
-| [WORKTREE-GUIDE.md](guide/WORKTREE-GUIDE.md) | `git worktree`에서 gitignore된 파일을 다루는 법, `.worktreeinclude` 메커니즘 |
-| [MONITORING-GUIDE.md](guide/MONITORING-GUIDE.md) | Prometheus·Grafana 구축과 사용 |
-| [LOAD-TESTING-GUIDE.md](guide/LOAD-TESTING-GUIDE.md) | k6 + Actuator + Hibernate Statistics 부하 테스트, JFR 프로파일링 |
-| [EC2-RDS-LOADTEST-GUIDE.md](guide/EC2-RDS-LOADTEST-GUIDE.md) | EC2 + RDS + ElastiCache 분리 환경에서의 부하테스트 실행 절차 |
+| [profile.md](guide/profile.md) | Spring 프로필(`local`/`prod`/`test`) 구성 원칙, 배포 서버 적용·확인 절차 |
+| [worktree.md](guide/worktree.md) | `git worktree`에서 gitignore된 파일을 다루는 법, `.worktreeinclude` 메커니즘 |
+| [monitoring.md](guide/monitoring.md) | Prometheus·Grafana 구축과 사용 |
+| [load-testing.md](guide/load-testing.md) | k6 + Actuator + Hibernate Statistics 부하 테스트, JFR 프로파일링 |
+| [ec2-rds-loadtest.md](guide/ec2-rds-loadtest.md) | EC2 + RDS + ElastiCache 분리 환경에서의 부하테스트 실행 절차 |
 
 ## `tasks/` — 작업별 설계와 실측 기록
 

@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # App EC2 부트스트랩 — Amazon Linux 2023
 # 이 파일은 Terraform templatefile()로 렌더링된다. 중괄호로 감싼 변수 참조는 전부
 # Terraform 변수 치환 대상이고, 순수 bash 변수는 $VAR(중괄호 없이)로만 참조해 충돌을 피한다.
@@ -30,7 +30,7 @@ mkdir -p /opt/app
 # spring.profiles.default) DEBUG + SQL을 전량 로깅한다. 부하테스트에서는 그 로깅 비용이
 # 측정값 자체를 오염시키므로 반드시 필요하다. 아래 .env는 systemd EnvironmentFile로 읽히니
 # 실제 OS 환경변수로 주입되고, spring-dotenv의 로딩 시점 문제를 타지 않는다
-# (docs/guide/PROFILE-GUIDE.md 참고).
+# (docs/guide/profile.md 참고).
 cat > /opt/app/.env <<'ENVEOF'
 SPRING_PROFILES_ACTIVE=prod
 DB_URL=jdbc:postgresql://${db_host}:5432/${db_name}
