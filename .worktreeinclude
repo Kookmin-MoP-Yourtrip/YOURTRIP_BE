@@ -39,15 +39,13 @@ terraform/cloudfront_public_key.pem
 #  - terraform.tfvars: rds_password 등 환경별 실제 값.
 #  - yourtrip-loadtest-ssh(.pub): App/k6 EC2 SSH 접속 전용 키페어. .pub은 key_pair.tf가
 #    plan/apply 때마다 file()로 읽으므로 없으면 plan 자체가 실패한다.
-#  - .terraform.lock.hcl: provider 버전 고정 파일(현재 aws 5.100.0). `terraform init`으로
-#    재생성되긴 하지만 그 시점의 최신 버전을 다시 고르므로, "어느 worktree에서 apply해도 같은
-#    provider로 재현된다"는 lock의 목적이 깨진다. .terraform/(플러그인 캐시)와 달리 이건
-#    복사해야 하는 이유다. 참고로 루트 모듈의 terraform/.terraform.lock.hcl은 .gitignore
-#    대상이 아니라 git이 직접 추적하고 있어 이 목록에 없어도 된다 — loadtest 모듈만
-#    .gitignore에 별도로 등록돼 있어(terraform/loadtest/.terraform.lock.hcl) 여기서 챙긴다.
+#
+# .terraform.lock.hcl은 이 목록에 없다 — .gitignore에서 빼고 git이 직접 추적하도록 바꿨기
+# 때문이다(루트 모듈의 terraform/.terraform.lock.hcl과 동일한 취급). provider 버전 고정은
+# worktree뿐 아니라 팀원·CI에도 동일하게 적용돼야 하는데, 훅 복사로는 이 저장소를 clone한
+# 사람에게 전달되지 않는다.
 terraform/loadtest/terraform.tfstate
 terraform/loadtest/terraform.tfstate.backup
 terraform/loadtest/terraform.tfvars
 terraform/loadtest/yourtrip-loadtest-ssh
 terraform/loadtest/yourtrip-loadtest-ssh.pub
-terraform/loadtest/.terraform.lock.hcl

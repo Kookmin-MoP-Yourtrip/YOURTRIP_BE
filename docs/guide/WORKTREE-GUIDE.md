@@ -54,7 +54,9 @@ WT="$(git rev-parse --show-toplevel)"                        # 지금 있는 워
 
 ### 3. 새로 생긴 파일은 등록해야 다음 worktree가 받는다
 
-`terraform init`이 만드는 `.terraform.lock.hcl`처럼, 작업 중 새로 생기는 gitignore 파일이 있다. `.worktreeinclude`에 추가하지 않으면 다음 worktree는 그 파일 없이 시작한다.
+`terraform init`이 만드는 `.terraform.lock.hcl`처럼, 작업 중 새로 생기는 gitignore 파일이 있다. 그대로 두면 다음 worktree는 그 파일 없이 시작한다.
+
+이때 선택지가 둘이다 — **`.gitignore`에서 빼고 git으로 추적하거나**, 그럴 수 없는 파일이면 `.worktreeinclude`에 등록한다. 아래 "목록에 넣을지 판단하는 기준"에서 다루듯 전자가 가능하면 전자가 낫다. 위 lock 파일은 실제로 전자로 처리했다.
 
 ### 4. 훅은 git으로 공유되지 않는다
 
@@ -78,8 +80,11 @@ WT="$(git rev-parse --show-toplevel)"                        # 지금 있는 워
 `.worktreeinclude`에 **넣어야 하는 것**:
 
 - **재생성이 불가능한 것** — `terraform.tfstate`(이미 apply된 실제 인프라의 유일한 진실 공급원), SSH·CloudFront 키페어, `terraform.tfvars`(환경별 실제 값)
-- **재생성은 되지만 그러면 의미가 깨지는 것** — `.terraform.lock.hcl`. `terraform init`으로 다시 만들 수는 있으나 그 시점의 최신 provider를 새로 고르므로, "어느 worktree에서 apply해도 같은 버전으로 재현된다"는 lock의 목적이 사라진다
 - **모든 worktree에서 동일해야 하는 설정** — `.env`, `CLAUDE.md`, `.claude/rules/`, `.claude/settings.json`
+
+**목록에 넣기 전에 "애초에 git으로 추적하면 되는 것 아닌가"를 먼저 따진다.** 이 목록은 `.gitignore` 때문에 git으로 공유할 수 없는 파일을 위한 우회로다. gitignore가 정당한 이유 없이 걸려 있다면, 목록에 추가하는 것보다 **gitignore에서 빼고 커밋하는 쪽이 낫다** — 훅 복사는 worktree 사이에서만 동작해서 저장소를 clone한 사람에게는 전달되지 않기 때문이다.
+
+`terraform/loadtest/.terraform.lock.hcl`이 그 사례였다. provider 버전을 고정하는 파일이라 `terraform init`으로 재생성은 되지만 그 시점의 최신 버전을 새로 고르므로, 복사로 공유하는 것만으로는 "어디서 apply해도 같은 버전"이라는 목적을 지킬 수 없었다. 게다가 루트 모듈의 `terraform/.terraform.lock.hcl`은 이미 git이 추적하고 있어 같은 성격의 파일이 모듈마다 다르게 관리되는 상태였다. 그래서 이 목록에 넣는 대신 **`.gitignore`에서 제외를 풀고 커밋하도록 바꿨다.**
 
 **넣지 말아야 하는 것**:
 
