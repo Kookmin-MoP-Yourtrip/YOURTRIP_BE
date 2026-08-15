@@ -25,7 +25,14 @@ mkdir -p /opt/app
 # CloudFront 개인키는 기존 terraform/README.md와 동일한 원칙으로 Terraform state에
 # 절대 넣지 않는다. app.jar와 마찬가지로 apply 이후 `scp`로 전달해야 한다
 # (README.md "실행 순서" 참고).
+#
+# SPRING_PROFILES_ACTIVE=prod: 이 줄이 없으면 앱이 local 프로필로 떠서(application.yml의
+# spring.profiles.default) DEBUG + SQL을 전량 로깅한다. 부하테스트에서는 그 로깅 비용이
+# 측정값 자체를 오염시키므로 반드시 필요하다. 아래 .env는 systemd EnvironmentFile로 읽히니
+# 실제 OS 환경변수로 주입되고, spring-dotenv의 로딩 시점 문제를 타지 않는다
+# (docs/guide/PROFILE-DEPLOYMENT.md 참고).
 cat > /opt/app/.env <<'ENVEOF'
+SPRING_PROFILES_ACTIVE=prod
 DB_URL=jdbc:postgresql://${db_host}:5432/${db_name}
 DB_USERNAME=${db_username}
 DB_PASSWORD=${db_password}
