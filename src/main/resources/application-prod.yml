@@ -1,5 +1,5 @@
 # 배포 전용 프로필. SPRING_PROFILES_ACTIVE=prod 일 때만 적용된다.
-# 서버에 이 환경변수를 넣는 절차는 docs/guide/PROFILE-DEPLOYMENT.md 참고.
+# 서버에 이 환경변수를 넣는 절차는 docs/guide/PROFILE-GUIDE.md 참고.
 #
 # 이 프로필이 적용되지 않으면(= 환경변수 누락) 배포 서버가 local로 떠서 DEBUG + SQL을
 # 전량 로깅하게 된다. 배포 후 기동 로그로 프로필을 반드시 확인한다.
