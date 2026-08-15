@@ -9,6 +9,34 @@
 # 테스트에 그대로 쓰지는 않는다 - 이 프로필은 로깅 외에 외부 API 스텁 같은 테스트 전용 설정도
 # 함께 담는 자리이기 때문이다.
 
+spring:
+  datasource:
+    # MODE=PostgreSQL: 엔티티의 columnDefinition("TEXT", "int default 0",
+    #   "boolean default false")은 Hibernate가 가공 없이 DDL에 그대로 넣으므로 PG 호환 모드가 필수다.
+    # DATABASE_TO_LOWER=TRUE: PG는 따옴표 없는 식별자를 소문자로, H2는 대문자로 접는다.
+    # DB_CLOSE_DELAY=-1: 마지막 커넥션이 닫히는 순간 인메모리 DB가 통째로 사라진다.
+    #   HikariCP가 유휴 커넥션을 정리할 때 스키마가 날아가는 사고를 막는다.
+    url: jdbc:h2:mem:yourtrip;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    # username/password도 반드시 덮어쓴다. 안 그러면 application.yml의 ${DB_USERNAME}/
+    # ${DB_PASSWORD}가 내려와 테스트가 다시 .env에 묶인다.
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      # 공통 설정의 ${DB_DDL_AUTO}(= .env의 create)를 덮어쓴다. 이걸로 테스트가 .env에서
+      # 분리되고, 개발 DB를 드롭하던 경로가 끊긴다.
+      ddl-auto: create-drop
+
+  sql:
+    init:
+      # spring.sql.init.mode 기본값 embedded는 H2를 대상으로 삼아 src/main/resources/data.sql
+      # (465줄, PostgreSQL용 시드)을 자동 실행한다. 게다가 defer-datasource-initialization이
+      # 꺼져 있어 Hibernate가 테이블을 만들기 전에 INSERT를 때려 확정적으로 실패한다.
+      # 지금까지는 PostgreSQL이 embedded가 아니라 실행되지 않았을 뿐이므로 반드시 끈다.
+      mode: never
+
 logging:
   level:
     # prod와 마찬가지로 root는 INFO를 유지한다. 컨텍스트 로딩 실패나 빈 등록 오류는
