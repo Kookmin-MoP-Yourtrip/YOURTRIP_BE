@@ -80,7 +80,7 @@ export default function () {
   }
 
   // uploadcourse는 서명(게이트)을 거치지 않는 공개 URL 경로라 이 체크의 대상이 아니다
-  // (docs/tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md 참고).
+  // (docs/tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK-FIX.md 참고).
   if (DOMAIN !== 'mycourse') {
     return;
   }

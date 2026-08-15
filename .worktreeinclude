@@ -3,22 +3,18 @@
 #  - .idea는 절대경로가 박혀 있어 다른 경로의 worktree에 복사하면 오히려 깨진 설정이 된다.
 #  - .gradle/build/out/bin은 재빌드 시 자동 재생성되는 캐시라 복사 비용만 낭비된다.
 .env
-CLAUDE.md
 GEMINI.md
 .gemini/
 .agents/
 src/main/resources/data.sql
 
-# .claude/는 통째로 복사하지 않고 필요한 항목만 지정한다:
-#  - rules/, settings.json: 모든 worktree에서 동일하게 적용돼야 하는 작업 규칙·설정.
-#  - plans/(제외): 계획 파일은 그 worktree의 작업 맥락에만 의미가 있다. 통째로 복사하면
-#    메인 저장소에 쌓인 남의 계획서가 새 worktree마다 딸려가고, 같은 파일명이 여러 곳에
-#    중복 존재하게 된다.
-#  - worktrees/(제외): 여기에 모든 worktree가 들어 있어, 통째로 복사하면 worktree 안에
-#    다른 worktree 전체가 중첩 복사된다(실제로 .claude/worktrees/A/.claude/worktrees/B/...
-#    형태로 관측됨). 디스크 낭비이자 경로 혼동의 원인이다.
-.claude/rules/
-.claude/settings.json
+# .claude/ 항목은 이 목록에 없다 — rules/와 settings.json을 .gitignore에서 빼고 git이 직접
+# 추적하도록 바꿨기 때문이다(.terraform.lock.hcl과 동일한 취급). 작업 규칙과 공용 설정은
+# worktree뿐 아니라 팀원에게도 동일하게 적용돼야 하는데, 훅 복사로는 이 저장소를 clone한
+# 사람에게 전달되지 않는다.
+#
+# .claude/ 아래에서 계속 gitignore로 남는 것과 그 이유는 .gitignore의 해당 주석 참고
+# (plans/는 worktree 전용 맥락, worktrees/는 저장소 자기 중첩, settings.local.json은 개인 설정).
 
 # terraform/.terraform/(provider 플러그인 캐시)는 `terraform init`으로 즉시 재생성되므로
 # .gradle/build와 같은 이유로 제외한다. 아래는 재생성이 불가능한 실제 상태/설정/키 파일이다:

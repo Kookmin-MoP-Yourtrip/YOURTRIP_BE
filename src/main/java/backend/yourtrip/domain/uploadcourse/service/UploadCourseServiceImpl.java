@@ -200,8 +200,8 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
         UploadCourseDetailCacheItem cached = readDetailCache(uploadCourseId);
         if (cached != null) {
-            // 캐시 히트 — DB 커넥션을 전혀 획득하지 않는다(TASK-PRESIGN-BOTTLENECK-FIX.md
-            // 0단계, TASK-PRESIGN-BOTTLENECK.md 직접 증거 3이 지목한 "SQL 0건인데 커넥션은
+            // 캐시 히트 — DB 커넥션을 전혀 획득하지 않는다(PRESIGN-BOTTLENECK-FIX.md
+            // 0단계, PRESIGN-BOTTLENECK.md 직접 증거 3이 지목한 "SQL 0건인데 커넥션은
             // 붙잡힌다"는 경로를 여기서 원천 차단한다).
             return UploadCourseMapper.toDetailResponse(cached,
                 getThumbnailUrlFromDetailCache(cached),

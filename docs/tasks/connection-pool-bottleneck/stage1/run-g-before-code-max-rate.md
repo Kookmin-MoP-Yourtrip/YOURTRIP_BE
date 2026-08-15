@@ -100,7 +100,7 @@ k6의 `partial_responses`는 전체 합계만 나오지만, 서버측 카운터�
 
 ## 방법론 정정 — t3 `unlimited` 모드에서 `CPUCreditBalance=0`은 위험 신호가 아니다
 
-[EC2-RDS-LOADTEST-GUIDE.md §5-3](../../../guide/EC2-RDS-LOADTEST-GUIDE.md)은 "`CPUCreditBalance`가 0에 가까워지면 측정 신뢰도를 재평가해야 한다"고 적고 있다. 이번 측정에서 App EC2의 `CPUCreditBalance`가 **0.0**으로 나와 그 기준대로면 결과를 폐기해야 했지만, 확인해보니 **이 인스턴스들은 `unlimited` 모드**였다(`aws ec2 describe-instance-credit-specifications`).
+[ec2-rds-loadtest.md §5-3](../../../guide/ec2-rds-loadtest.md)은 "`CPUCreditBalance`가 0에 가까워지면 측정 신뢰도를 재평가해야 한다"고 적고 있다. 이번 측정에서 App EC2의 `CPUCreditBalance`가 **0.0**으로 나와 그 기준대로면 결과를 폐기해야 했지만, 확인해보니 **이 인스턴스들은 `unlimited` 모드**였다(`aws ec2 describe-instance-credit-specifications`).
 
 `unlimited` 모드에서는 잔량이 0이어도 스로틀링되지 않고 **서플러스 크레딧을 빌려 풀스피드로 계속 돈다**(초과분은 과금). 실제로 같은 구간에서 `CPUSurplusCreditBalance`가 0.15 → 5.47로 증가했고, CPU 사용률도 99.44%까지 올라갔다 — 스로틀링(t3.small 베이스라인 20%)이 걸렸다면 나올 수 없는 수치다.
 

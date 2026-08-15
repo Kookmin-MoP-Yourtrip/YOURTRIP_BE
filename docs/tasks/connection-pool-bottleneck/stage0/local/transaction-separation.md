@@ -1,6 +1,6 @@
 # 0단계(트랜잭션 분리) 로컬 실측 결과
 
-> [TASK-PRESIGN-BOTTLENECK-FIX.md](../../TASK-PRESIGN-BOTTLENECK-FIX.md)의 0단계(서명 호출을 트랜잭션 경계 밖으로 분리, 이슈 #67)를 로컬 개발 머신에서 구현·재검증한 기록이다. 여기서 발견한 "mycourse가 개선되지 않은 진짜 원인"이 다음 실측([인덱스 추가 결과](index.md))으로 이어진다.
+> [PRESIGN-BOTTLENECK-FIX.md](../../PRESIGN-BOTTLENECK-FIX.md)의 0단계(서명 호출을 트랜잭션 경계 밖으로 분리, 이슈 #67)를 로컬 개발 머신에서 구현·재검증한 기록이다. 여기서 발견한 "mycourse가 개선되지 않은 진짜 원인"이 다음 실측([인덱스 추가 결과](index.md))으로 이어진다.
 
 ## 0단계 구현 결과 (실측 완료)
 
@@ -15,7 +15,7 @@
 | 0단계 적용 전 | 1,521/s | 104ms | 181 | 10 |
 | 0단계 적용 후 | 2,054/s | 68ms | **0** | 1 |
 
-uploadcourse는 캐시 히트 경로가 이제 DB 커넥션을 아예 획득하지 않는다. `pending`이 0으로 완전히 사라진 게 그 직접 증거다. TASK-PRESIGN-BOTTLENECK.md 직접 증거 3(SQL 0건인데 pending 급증)이 지목한 경로가 실측으로도 막혔다.
+uploadcourse는 캐시 히트 경로가 이제 DB 커넥션을 아예 획득하지 않는다. `pending`이 0으로 완전히 사라진 게 그 직접 증거다. PRESIGN-BOTTLENECK.md 직접 증거 3(SQL 0건인데 pending 급증)이 지목한 경로가 실측으로도 막혔다.
 
 **결과 2 — mycourse: 코드는 맞았지만 `spring.jpa.open-in-view`가 효과를 무력화하고 있었다**
 
@@ -73,6 +73,6 @@ Execution Time: 15.112 ms              -- place_image 테이블 6만 행 전체 
 
 ## 참고 문서
 
-- [TASK-PRESIGN-BOTTLENECK-FIX.md](../../TASK-PRESIGN-BOTTLENECK-FIX.md) — 이 실측이 속한 단계별 계획 문서
+- [PRESIGN-BOTTLENECK-FIX.md](../../PRESIGN-BOTTLENECK-FIX.md) — 이 실측이 속한 단계별 계획 문서
 - [index.md](index.md) — 여기서 규명한 인덱스 누락 문제를 실제로 고친 후속 실측
-- [TASK-PRESIGN-BOTTLENECK.md](../../TASK-PRESIGN-BOTTLENECK.md) — 원인 규명(이 실험의 근거)
+- [PRESIGN-BOTTLENECK.md](../../PRESIGN-BOTTLENECK.md) — 원인 규명(이 실험의 근거)

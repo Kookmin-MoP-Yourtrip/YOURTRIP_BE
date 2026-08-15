@@ -1,6 +1,6 @@
 # Run E/F — 게이트·executor 제거 후 재측정, knee 재탐색
 
-> [run-d-signature-once.md](run-d-signature-once.md)가 Run D/D2로 확인한 "executor 큐 거부가 두 arm 모두 0으로 수렴한다"는 사전 신호를 근거로, `CloudFrontSigningGate`·`cloudFrontSigningExecutor`를 코드에서 제거([B1](../../TASK-PRESIGN-BOTTLENECK-FIX.md) 커밋)한 뒤 같은 환경에서 재측정했다. 여기에 도착률 상한을 3배(400→1200 req/s)로 올린 knee 재탐색(Run F)을 더했다.
+> [run-d-signature-once.md](run-d-signature-once.md)가 Run D/D2로 확인한 "executor 큐 거부가 두 arm 모두 0으로 수렴한다"는 사전 신호를 근거로, `CloudFrontSigningGate`·`cloudFrontSigningExecutor`를 코드에서 제거([B1](../PRESIGN-BOTTLENECK-FIX.md) 커밋)한 뒤 같은 환경에서 재측정했다. 여기에 도착률 상한을 3배(400→1200 req/s)로 올린 knee 재탐색(Run F)을 더했다.
 
 ## 측정 환경
 
@@ -49,11 +49,11 @@ Run D/D2와 동일(App EC2 t3.small, RDS db.t3.micro, ElastiCache cache.t3.micro
 - **[방법론 정정] 이 인스턴스들은 t3 `unlimited` 모드라 `CPUCreditBalance=0`이 스로틀링을 뜻하지 않는다.** 가이드의 "크레딧이 0에 가까우면 신뢰도 재평가" 기준은 `standard` 모드를 전제한 것이었다 — 자세한 근거는 [run-g-before-code-max-rate.md](run-g-before-code-max-rate.md)의 "방법론 정정" 절 참고. 이 정정은 Run D/D2/E/F에도 소급 적용된다.
 - 각 arm은 반복 없이 1회 측정이다.
 - **Run F는 k6의 `maxVUs`(1000) 한계와 뒤섞여 있다.** `dropped_iterations`가 36,279건(다른 arm의 15~30배)으로 k6가 목표 도착률(1200 req/s)을 스스로 유지하지 못했다는 뜻이다 — 서버가 응답을 늦게 줄수록 그 응답을 기다리는 VU가 늘어 남은 VU 풀이 고갈되고, k6는 새 반복을 시작하지 못한 채 건너뛴다. 즉 판정 3의 "처리량이 안 오른다"는 관찰은 서버 병목(Tomcat maxThreads)과 k6 자체의 부하 생성 한계가 섞인 결과일 수 있다 — 다만 `tomcat_threads_busy_threads=200`(서버 쪽 지표)이 독립적인 증거로 남아있어 서버 병목이 실재한다는 결론 자체는 유효하다. `preAllocatedVUs`/`maxVUs`를 3000 이상으로 올려 이 confound를 제거하는 재측정은 후속 과제로 남긴다.
-- `maxThreads=200`이 병목이라는 결론은 이번 실측(스레드 busy 지표 + Little's Law 자릿수 일치)으로 뒷받침되지만, **`maxThreads`를 실제로 올려 처리량이 실제로 오르는지는 검증하지 않았다** — 4단계(커넥션 풀/DB 계층 튜닝, TASK-PRESIGN-BOTTLENECK-FIX.md)의 "지금 문제를 풀 크기로 덮지 않는다"는 원칙과 같은 이유로 이번 범위에서는 보류한다. 스레드를 늘리면 코어 수(2 vCPU) 대비 컨텍스트 스위칭 오버헤드가 오히려 늘 수 있다는 경고(HikariCP 위키의 풀 사이징 원칙과 같은 논리가 Tomcat 스레드에도 적용된다)도 함께 검토해야 한다.
+- `maxThreads=200`이 병목이라는 결론은 이번 실측(스레드 busy 지표 + Little's Law 자릿수 일치)으로 뒷받침되지만, **`maxThreads`를 실제로 올려 처리량이 실제로 오르는지는 검증하지 않았다** — 4단계(커넥션 풀/DB 계층 튜닝, PRESIGN-BOTTLENECK-FIX.md)의 "지금 문제를 풀 크기로 덮지 않는다"는 원칙과 같은 이유로 이번 범위에서는 보류한다. 스레드를 늘리면 코어 수(2 vCPU) 대비 컨텍스트 스위칭 오버헤드가 오히려 늘 수 있다는 경고(HikariCP 위키의 풀 사이징 원칙과 같은 논리가 Tomcat 스레드에도 적용된다)도 함께 검토해야 한다.
 - t3.small 인프라 선택은 "실제 배포 스펙과 동일 유지" 원칙에서 의도적으로 벗어난 것이다.
 
 ## 참고 문서
 
 - [run-d-signature-once.md](run-d-signature-once.md) — 서명 1회 전환 실측(Run D/D2), 이 문서가 정정하는 사전 판정 기준의 원본
 - [design-and-poc.md](design-and-poc.md) — 1단계 설계와 PoC
-- [../TASK-PRESIGN-BOTTLENECK-FIX.md](../TASK-PRESIGN-BOTTLENECK-FIX.md) — 4단계(커넥션 풀/DB 계층 튜닝) — Tomcat maxThreads 조정이 다음 논의 대상이라면 이 절과 연결된다
+- [../PRESIGN-BOTTLENECK-FIX.md](../PRESIGN-BOTTLENECK-FIX.md) — 4단계(커넥션 풀/DB 계층 튜닝) — Tomcat maxThreads 조정이 다음 논의 대상이라면 이 절과 연결된다

@@ -19,7 +19,7 @@ output "k6_public_ip" {
 }
 
 output "k6_instance_id" {
-  description = "k6 EC2 인스턴스 ID — stop-instances/start-instances 대상 지정 시 사용(EC2-RDS-LOADTEST-GUIDE.md §8-1 참고)"
+  description = "k6 EC2 인스턴스 ID — stop-instances/start-instances 대상 지정 시 사용(ec2-rds-loadtest.md §8-1 참고)"
   value       = aws_instance.k6.id
 }
 

@@ -1,0 +1,27 @@
+# 로컬 개발 전용 프로필. 프로필을 지정하지 않고 실행하면 이 프로필이 적용된다
+# (application.yml의 spring.profiles.default: local).
+#
+# application.yml을 먼저 읽고 그 위에 이 파일이 덮어써지는 구조라, 여기에는 환경별로
+# "달라지는 것"만 둔다. DB/Redis/S3 같은 공통 설정을 복붙하면 두 프로필이 갈라지는 순간
+# 원인 추적이 어려워진다.
+
+spring:
+  jpa:
+    properties:
+      hibernate:
+        # 한 줄로 길게 붙어 나오는 SQL을 들여쓰기해서 읽을 수 있게 만든다.
+        format_sql: true
+
+logging:
+  level:
+    # 우리가 직접 짠 코드만 DEBUG로 연다. root를 건드리면 서드파티 로그까지 전부 열려
+    # 정작 필요한 로그가 묻힌다.
+    backend.yourtrip: DEBUG
+
+    # spring.jpa.show-sql: true 대신 로거로 켠다. show-sql은 SQL을 System.out으로 직접
+    # 출력해서 logback을 아예 거치지 않는다 - 레벨/포맷/출력 대상 제어가 전부 안 먹는다.
+    org.hibernate.SQL: DEBUG
+
+    # SQL의 ?에 실제로 어떤 값이 바인딩됐는지 보여준다. Hibernate 6부터 이 로거 이름이
+    # org.hibernate.type.descriptor.sql에서 아래로 바뀌었다(Spring Boot 3.5 = Hibernate 6.x).
+    org.hibernate.orm.jdbc.bind: TRACE

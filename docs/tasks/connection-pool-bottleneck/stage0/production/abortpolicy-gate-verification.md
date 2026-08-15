@@ -12,9 +12,9 @@
 
 0단계(트랜잭션 분리)가 이 우연한 유량제한을 걷어내자, 4개월 가까이 도달 불가능했던 분기가 갑자기 주경로가 됐다 — 초당 약 1,450회, 총 413,366회. **이건 "잘못된 선택을 했다"는 이야기가 아니라, "한 곳의 최적화(0단계)가 다른 곳(CallerRunsPolicy)의 암묵적 전제를 조용히 무너뜨렸다"는 이야기다.** fail-open 철학 자체는 유지하되(입장 게이트 거부 시 이미지 개별 실패가 아니라 요청 단위 503으로 전환하는 트레이드오프는 별도로 있다 — 아래 "구현 방식 검토" 참고), 실행 메커니즘을 `AbortPolicy` + 요청 단위 세마포어 게이트로 교체한 근거가 이 경위에서 나온다.
 
-## `TASK-PRESIGN-BOTTLENECK-FIX.md` 3단계 서술 정정
+## `PRESIGN-BOTTLENECK-FIX.md` 3단계 서술 정정
 
-[TASK-PRESIGN-BOTTLENECK-FIX.md의 3단계](../../TASK-PRESIGN-BOTTLENECK-FIX.md)는 "`cloudFrontSigningExecutor`가 Bulkhead 패턴의 절반은 이미 구현돼 있었고, 0단계가 적용되면 이 실행자가 비로소 제 역할을 하게 된다"고 온건하게 서술했다. [callerruns-verification.md](callerruns-verification.md)의 실측은 이 서술을 정정한다 — 실행자가 "제 역할을 하게" 된 게 아니라 **압도적으로 오버플로우해 CallerRunsPolicy로 새는 상태**였다.
+[PRESIGN-BOTTLENECK-FIX.md의 3단계](../../PRESIGN-BOTTLENECK-FIX.md)는 "`cloudFrontSigningExecutor`가 Bulkhead 패턴의 절반은 이미 구현돼 있었고, 0단계가 적용되면 이 실행자가 비로소 제 역할을 하게 된다"고 온건하게 서술했다. [callerruns-verification.md](callerruns-verification.md)의 실측은 이 서술을 정정한다 — 실행자가 "제 역할을 하게" 된 게 아니라 **압도적으로 오버플로우해 CallerRunsPolicy로 새는 상태**였다.
 
 **"절반 구현"이라는 표현을 더 정확히 하면**: 별도 스레드풀로 서명 작업을 분리해둔 것 자체는 Bulkhead의 겉모습(구조)을 갖췄지만, Bulkhead의 실질적 목적("한쪽의 과부하가 다른 쪽으로 전염되지 않게 막는 것")은 지금 구조에서 보장되지 않는다. `CallerRunsPolicy`는 큐가 가득 찼을 때 "거부된 작업을 제출 스레드가 직접 실행"하는 정책인데, 여기서 제출 스레드는 Tomcat 요청 스레드다 — 즉 격리벽이 가장 필요한 과부하 순간에 격리벽 스스로가 열려 서명 작업이 요청 스레드로 역류한다. 즉 "3단계(Bulkhead 정식화)"는 없던 걸 새로 만드는 게 아니라, **지금의 무늬만 격리인 구조를 실제로 격리가 보장되는 구현으로 교체하는 것**을 뜻한다 — 이 실측이 그 교체의 필요성을 뒷받침한다.
 
@@ -157,7 +157,7 @@ Run C에 남은 11.6%의 브라운아웃도 CallerRunsPolicy 자체가 만든 �
 ## 참고 문서
 
 - [callerruns-verification.md](callerruns-verification.md) — 이 문서가 해결하는 문제(CallerRunsPolicy가 원인임)를 확정한 선행 실측
-- [TASK-PRESIGN-BOTTLENECK-FIX.md](../../TASK-PRESIGN-BOTTLENECK-FIX.md) — 3단계를 포함한 전체 계획 문서
+- [PRESIGN-BOTTLENECK-FIX.md](../../PRESIGN-BOTTLENECK-FIX.md) — 3단계를 포함한 전체 계획 문서
 - [CloudFrontExecutorConfig.java](../../../../../src/main/java/backend/yourtrip/global/cloudfront/config/CloudFrontExecutorConfig.java) — `AbortPolicy` 전환·큐 사이징 구현
 - [CloudFrontSigningGate.java](../../../../../src/main/java/backend/yourtrip/global/cloudfront/service/CloudFrontSigningGate.java) — 요청 단위 세마포어 게이트 구현
 - [CloudFrontSigningGateTest.java](../../../../../src/test/java/backend/yourtrip/global/cloudfront/service/CloudFrontSigningGateTest.java) — 거부·불변식 경로 단위 테스트

@@ -2,7 +2,7 @@
 
 ## 배경
 
-[TASK-PRESIGN-BOTTLENECK-FIX.md의 "개선 제안 — 배포 환경(EC2 + RDS) 분리 부하테스트"](../tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md)가 지목한 문제 — 지금까지의 모든 부하테스트가 앱·PostgreSQL·Redis·Prometheus·Grafana·k6를 전부 로컬 개발 노트북 한 대에서 동시에 돌린 결과라, "인덱스 추가 이후 남은 병목이 진짜 구조적 문제(HikariCP 20:1 풀 크기)인지, 로컬 머신의 CPU 경합 노이즈인지" 구분이 안 됐다 — 를 해소하기 위해 앱은 EC2, DB는 RDS, 캐시는 ElastiCache, 부하생성기는 별도 EC2로 분리한 환경이다.
+[PRESIGN-BOTTLENECK-FIX.md의 "개선 제안 — 배포 환경(EC2 + RDS) 분리 부하테스트"](../tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK-FIX.md)가 지목한 문제 — 지금까지의 모든 부하테스트가 앱·PostgreSQL·Redis·Prometheus·Grafana·k6를 전부 로컬 개발 노트북 한 대에서 동시에 돌린 결과라, "인덱스 추가 이후 남은 병목이 진짜 구조적 문제(HikariCP 20:1 풀 크기)인지, 로컬 머신의 CPU 경합 노이즈인지" 구분이 안 됐다 — 를 해소하기 위해 앱은 EC2, DB는 RDS, 캐시는 ElastiCache, 부하생성기는 별도 EC2로 분리한 환경이다.
 
 이 문서는 그 분리 환경이 **이미 배포된 이후**의 부하테스트 실행 절차(Prometheus 재조준 → k6 실행 → 병목 확인 → 지표 측정)를 다룬다. 인프라를 처음부터 구축/재구축하는 절차(Terraform apply/destroy)는 [terraform/loadtest/README.md](../../terraform/loadtest/README.md)를 따로 참고한다 — 이 문서와 역할이 겹치지 않게 분리했다.
 
@@ -75,9 +75,9 @@ Prometheus는 능동적으로 5초마다 대상 주소에 HTTP GET을 날려 지
 docker compose up -d prometheus grafana
 ```
 
-**확인**: `http://localhost:9090` → `Status` → `Targets`에서 `presign` job이 `UP`인지 확인한다(`cloudfront` job은 이번 환경에서 쓰지 않으므로 `DOWN`이 정상 — [MONITORING-GUIDE.md](MONITORING-GUIDE.md) §3-2 참고).
+**확인**: `http://localhost:9090` → `Status` → `Targets`에서 `presign` job이 `UP`인지 확인한다(`cloudfront` job은 이번 환경에서 쓰지 않으므로 `DOWN`이 정상 — [monitoring.md](monitoring.md) §3-2 참고).
 
-Grafana(`localhost:3000`, admin/admin)는 아무것도 바꿀 필요 없다 — `Dashboards → Bottleneck Test → Presign CPU Bottleneck`에서 그대로 확인 가능([MONITORING-GUIDE.md](MONITORING-GUIDE.md) §4 참고).
+Grafana(`localhost:3000`, admin/admin)는 아무것도 바꿀 필요 없다 — `Dashboards → Bottleneck Test → Presign CPU Bottleneck`에서 그대로 확인 가능([monitoring.md](monitoring.md) §4 참고).
 
 **측정이 끝나면 반드시 원상복구한다**:
 
@@ -94,7 +94,7 @@ cd terraform/loadtest
 ssh -i ./yourtrip-loadtest-ssh ec2-user@<k6 EC2 공인 IP>
 ```
 
-접속 후, App EC2를 대상으로 mycourse/uploadcourse 각각 ramping 프로파일(VU 1→200, 450초, [LOAD-TESTING-GUIDE.md §6](LOAD-TESTING-GUIDE.md) 참고)을 실행한다:
+접속 후, App EC2를 대상으로 mycourse/uploadcourse 각각 ramping 프로파일(VU 1→200, 450초, [load-testing.md §6](load-testing.md) 참고)을 실행한다:
 
 ```bash
 cd /opt/app
@@ -122,7 +122,7 @@ k6 run -e BASE_URL=http://<App EC2 공인 IP>:8080 -e DOMAIN=mycourse   -e MODE=
 
 ### 5-2. 포화 시작 VU(knee) 판정
 
-`hikaricp_connections_pending`이 0을 넘기 시작하는 시점을 k6 ramping 스테이지 경계(60/60/60/90/90/90초 = VU 5/10/20/50/100/200)와 대조해 "몇 VU부터 포화가 시작됐는가"를 특정한다. [LOAD-TESTING-GUIDE.md §6](LOAD-TESTING-GUIDE.md)의 knee 개념과 동일한 방법론이다.
+`hikaricp_connections_pending`이 0을 넘기 시작하는 시점을 k6 ramping 스테이지 경계(60/60/60/90/90/90초 = VU 5/10/20/50/100/200)와 대조해 "몇 VU부터 포화가 시작됐는가"를 특정한다. [load-testing.md §6](load-testing.md)의 knee 개념과 동일한 방법론이다.
 
 ### 5-3. CloudWatch에서 확인 (환경 자체의 한계 여부 판별용)
 
@@ -164,7 +164,7 @@ AWS_PROFILE=terraform-admin aws cloudwatch get-metric-statistics \
 
 **판정 기준**:
 - mycourse의 포화 시작 VU가 20보다 뚜렷이 뒤로 밀리거나 `acquire_seconds`/`pending`이 크게 줄었다면 → 로컬에서 관찰된 잔여 병목은 **환경 노이즈였음이 확정**된다.
-- 거의 변화가 없다면 → TASK-PRESIGN-BOTTLENECK-FIX.md 4단계(HikariCP 풀 크기 재검토)가 **진짜 구조적 병목**이라는 뜻이다.
+- 거의 변화가 없다면 → PRESIGN-BOTTLENECK-FIX.md 4단계(HikariCP 풀 크기 재검토)가 **진짜 구조적 병목**이라는 뜻이다.
 
 ## 7. 트러블슈팅 — 실측으로 발견된 함정
 
@@ -248,7 +248,7 @@ App/k6 EC2뿐 아니라 RDS·ElastiCache·VPC까지 전부 삭제해 과금을 �
 ## 참고 문서
 
 - [terraform/loadtest/README.md](../../terraform/loadtest/README.md) — 인프라 구축/철거 절차(이 문서와 역할 분리)
-- [TASK-PRESIGN-BOTTLENECK-FIX.md](../tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md) — 이 부하테스트가 속한 단계별 계획 문서
+- [PRESIGN-BOTTLENECK-FIX.md](../tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK-FIX.md) — 이 부하테스트가 속한 단계별 계획 문서
 - [ec2-rds.md](../tasks/connection-pool-bottleneck/stage0/production/ec2-rds.md) — 이 부하테스트의 목적이 된 로컬 실측 기록과 실제 측정 결과
-- [LOAD-TESTING-GUIDE.md](LOAD-TESTING-GUIDE.md) — k6/JFR 사용법 전반
-- [MONITORING-GUIDE.md](MONITORING-GUIDE.md) — Prometheus/Grafana 구축 및 기본 사용법
+- [load-testing.md](load-testing.md) — k6/JFR 사용법 전반
+- [monitoring.md](monitoring.md) — Prometheus/Grafana 구축 및 기본 사용법

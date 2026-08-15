@@ -144,7 +144,7 @@ public class MyCourseServiceImpl implements MyCourseService {
         Long userId = userService.getCurrentUserId();
         // 존재·소유권 확인 + DB 조회는 MyCourseDetailReader의 짧은 트랜잭션 안에서 끝난다.
         // 아래 서명은 트랜잭션 밖에서 실행돼 HikariCP 커넥션이 서명 시간만큼 묶이지 않는다
-        // (TASK-PRESIGN-BOTTLENECK-FIX.md 0단계 — self-invocation 문제로 같은 클래스 안
+        // (PRESIGN-BOTTLENECK-FIX.md 0단계 — self-invocation 문제로 같은 클래스 안
         // 메서드 분리로는 트랜잭션을 못 좁혀 별도 협력 빈으로 뺐다).
         DaySchedule daySchedule = myCourseDetailReader.readDaySchedule(courseId, dayId, userId);
 
@@ -153,7 +153,7 @@ public class MyCourseServiceImpl implements MyCourseService {
 
         // 이미지가 몇 장이든 서명은 코스당 1회다 — custom policy의 Resource를
         // private/{courseId}/* 와일드카드로 잡아 그 결과 쿼리스트링을 모든 이미지 URL에
-        // 재사용한다(TASK-PRESIGN-BOTTLENECK-FIX.md 1단계). 서명은 반드시 위 소유권 검증
+        // 재사용한다(PRESIGN-BOTTLENECK-FIX.md 1단계). 서명은 반드시 위 소유권 검증
         // 이후에 해야 한다 — 순서가 뒤집히면 인가 실패 요청에도 서명이 발급된다.
         //
         // 전용 스레드풀/세마포어 게이트를 거치지 않고 직접 호출한다 — 서명이 요청당 1회로
