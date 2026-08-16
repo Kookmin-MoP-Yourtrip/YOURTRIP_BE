@@ -2,13 +2,13 @@
 
 > [멀티 에이전트 파이프라인 설계](멀티-에이전트-파이프라인.md)에서 AI 코스 생성(`POST /api/my-courses/ai`)을 단일 LLM 호출에서 멀티 에이전트 파이프라인으로 재설계하기로 했다. 이 문서는 그 설계를 **어떤 순서로, 무엇을 만들고, 무엇을 확인해야 다음으로 넘어가는지**로 옮긴 실행 로드맵이다.
 >
-> 설계 문서 §13에 11단계 "도입 순서" 표가 있지만 각 단계가 한 줄 요약이라 착수/완료 판정 기준이 없다. 이 로드맵은 그 표를 승계하되 **0단계(사전 준비)를 앞에 추가**하고, 각 단계를 체크 가능한 항목으로 분해한다.
+> 설계 문서의 도입 순서에 11단계 "도입 순서" 표가 있지만 각 단계가 한 줄 요약이라 착수/완료 판정 기준이 없다. 이 로드맵은 그 표를 승계하되 **0단계(사전 준비)를 앞에 추가**하고, 각 단계를 체크 가능한 항목으로 분해한다.
 >
-> V1 범위는 **Planner · Curator · Grounding · PlaceSignal · RouteOptimizer 다섯 단계**다. `CriticAgent`·`CandidateRefiner`는 설계 문서 §5-3/§5-4에 설계만 남기고 제외했다(근거는 설계 문서 §10).
+> V1 범위는 **Planner · Curator · Grounding · PlaceSignal · RouteOptimizer 다섯 단계**다. `CriticAgent`·`CandidateRefiner`는 설계 문서의 CriticAgent 설계/CandidateRefiner 설계에 설계만 남기고 제외했다(근거는 설계 문서의 지연 예산).
 >
-> **[개정] 3단계 완료 후 Curator 앞에 `CandidateRetrievalStage`(후보 공급 층)가 추가됐다.** Curator가 파라메트릭 지식만으로 상호명을 회상하면 모델이 모르는 지방 도시에서 재현율이 무너지므로, 네이버 지역검색 인기순 시드 + 카카오 키워드 검색으로 실존 후보 목록을 먼저 만들고 Curator는 그 목록에서 **선별**한다. 새 단계 번호를 매기지 않고 4단계(`NaverLocalClient`, 4-7)·5단계(`CandidateRetrievalStage`, 5-8·5-9)·6단계(Curator 계약 변경, 6-4·6-7)에 항목으로 붙였다. 근거는 설계 문서 §5-0·§14.
+> **[개정] 3단계 완료 후 Curator 앞에 `CandidateRetrievalStage`(후보 공급 층)가 추가됐다.** Curator가 파라메트릭 지식만으로 상호명을 회상하면 모델이 모르는 지방 도시에서 재현율이 무너지므로, 네이버 지역검색 인기순 시드 + 카카오 키워드 검색으로 실존 후보 목록을 먼저 만들고 Curator는 그 목록에서 **선별**한다. 새 단계 번호를 매기지 않고 4단계(`NaverLocalClient`, 4-7)·5단계(`CandidateRetrievalStage`, 5-8·5-9)·6단계(Curator 계약 변경, 6-4·6-7)에 항목으로 붙였다. 근거는 설계 문서의 후보 공급·기각한 대안.
 >
-> **LLM 벤더는 OpenAI로 확정됐다.** 설계 문서 초안은 Gemini를 현행으로 두고 OpenAI 전환 "가능성"을 전제로 쓰였으나, 확정에 따라 설계 문서 본문(§6·§7·§11·§13·§15)이 갱신됐다. 이 로드맵은 그 갱신된 설계를 기준으로 한다.
+> **LLM 벤더는 OpenAI로 확정됐다.** 설계 문서 초안은 Gemini를 현행으로 두고 OpenAI 전환 "가능성"을 전제로 쓰였으나, 확정에 따라 설계 문서 본문(LLM 포트 설계·프롬프트 전략·비용 분석·도입 순서·남는 한계)이 갱신됐다. 이 로드맵은 그 갱신된 설계를 기준으로 한다.
 >
 > 진행 상황: **3단계 완료**(3-1 ~ 3-6, 테스트 234개 통과 + 앱 기동 확인 + 완전탐색 벤치마크 n=6~9 실측). 2단계에서 복합 환각률 25.6% → **7.5%**(luna, 수동 검증 82건)를 확인했고 Curator 모델은 `gpt-5.6-luna`로 확정됐다. 다음은 4단계(`NaverBlogClient`). 0단계 검증 항목은 전부 통과했고 OpenAI·네이버 키도 발급됐다.
 >
@@ -43,12 +43,12 @@
 
 | 항목 | 설계 문서 상태 | 확정 |
 |---|---|---|
-| LLM 벤더 | "Gemini는 고정이 아니다. OpenAI로 전환할 가능성이 높다"(§6) | **OpenAI 확정.** Gemini 어댑터는 만들지 않는다 |
-| 어댑터 구현 | "Gemini 쪽이 막히면 OpenAI 어댑터만 Spring AI"(§6) | **Spring AI `1.1.8` 채택.** `LlmClient` 포트는 그대로 유지. 2.0.x는 Spring Boot 4를 요구해 쓸 수 없다(0단계 판정) |
+| LLM 벤더 | "Gemini는 고정이 아니다. OpenAI로 전환할 가능성이 높다"(LLM 포트 설계) | **OpenAI 확정.** Gemini 어댑터는 만들지 않는다 |
+| 어댑터 구현 | "Gemini 쪽이 막히면 OpenAI 어댑터만 Spring AI"(LLM 포트 설계) | **Spring AI `1.1.8` 채택.** `LlmClient` 포트는 그대로 유지. 2.0.x는 Spring Boot 4를 요구해 쓸 수 없다(0단계 판정) |
 | 모델 배치 | Gemini 기준 `thinking-budget` | **Planner·Curator = `gpt-5.6-luna`, PlaceProfile = `gpt-5-nano`** (약 $0.0030/요청). **2-6 실측으로 Curator=luna 확정** — nano는 환각률이 7배라 후보에서 탈락했다. `thinking-budget`의 OpenAI 대응물은 `reasoning-effort`로 확인돼 agent별 설정에 들어갔다 |
-| 네이버 API 키 | "착수 전 확인 필요"(§15) | **미보유.** 0단계에서 발급 — 4단계의 블로커 |
+| 네이버 API 키 | "착수 전 확인 필요"(남는 한계) | **미보유.** 0단계에서 발급 — 4단계의 블로커 |
 | before/after 비교 | 환각률 25.6%(Gemini 단일 호출) | **OpenAI 단일 호출 baseline을 2단계에서 재측정**해 3점 비교 |
-| V1 범위 | Critic·Refiner 제외(§10) | 유지. §13의 11단계 전부가 이 로드맵의 범위 |
+| V1 범위 | Critic·Refiner 제외(지연 예산) | 유지. 도입 순서의 11단계 전부가 이 로드맵의 범위 |
 
 **OpenAI 확정의 근거와 파급.** 설계 문서가 벤더 중립 포트를 정당화한 두 축(향후 전환 대비 / 테스트 가능성) 중 첫 번째는 이제 "이미 일어난 전환"이 됐고, 두 번째는 그대로 남는다. 즉 `LlmClient` 포트는 여전히 필요하지만 **어댑터는 OpenAI 하나만 만든다.** Gemini 어댑터를 만들어 A/B를 유지하는 선택지는 유지 비용 대비 얻는 게 없어 채택하지 않는다 — 2단계 baseline 재측정이 끝나면 Gemini 경로는 8단계에서 삭제된다.
 
@@ -78,7 +78,7 @@
 
 ## 적용 체크리스트
 
-단계 순서는 설계 문서 §13을 따른다. **동작 변화가 없는 커밋을 앞에 쌓고, 스위치는 8단계 하나로 몰아** 문제 시 그 커밋만 revert할 수 있게 하는 것이 이 순서의 요지다.
+단계 순서는 설계 문서의 도입 순서를 따른다. **동작 변화가 없는 커밋을 앞에 쌓고, 스위치는 8단계 하나로 몰아** 문제 시 그 커밋만 revert할 수 있게 하는 것이 이 순서의 요지다.
 
 ### 0. 사전 준비
 
@@ -89,8 +89,8 @@
 - [x] 0-1. OpenAI API 키 발급 + 크레딧 충전 완료. 충전 전에는 401이 아닌 `429 insufficient_quota`가 반환돼 키 자체는 처음부터 유효했음이 확인됐다
 - [x] 0-2. **NCP 콘솔의 NAVER API HUB**에서 블로그(NAVER Search Blog API) 선택 후 키 발급 완료. 검색 API가 developers.naver.com에서 네이버 클라우드 플랫폼으로 옮겨가 발급처·엔드포인트·인증 헤더가 바뀌었다(요금 정책은 무료 그대로). **한도 초과 시 429 반환** — 4단계 fail-open 분기의 기준
 - [x] 0-3. **Spring AI 구조화 출력 검증 — 전제 성립.** 스키마는 `messages[].content`에 섞이지 않고 전부 `response_format.json_schema`에 `strict: true`로 전송된다(WireMock으로 요청 본문 확인). 공식 SDK 폴백 불필요. 실 API 검증(0-3b)도 통과 — **`gpt-5.6-luna`·`gpt-5-nano` 모두 strict json_schema 지원**, 그리고 **최상위 배열 스키마는 400으로 거부**되는 것을 확인했다(6단계 Curator 스키마 설계의 제약)
-- [x] 0-4. 모델 배치 확정 — **Planner·Curator = `gpt-5.6-luna`, PlaceProfile = `gpt-5-nano`** (약 $0.0030/요청). 부수적으로 §11의 "비용은 전부 4층에서 나온다"는 전제가 금액 기준으로는 틀렸다는 것이 드러나 재계산했다
-- [x] 0-5. 쿼터·과금 확인 — 네이버 검색 **0원 / 일 25,000건**(요청당 35회 → **약 714요청**), 카카오 100,000/일(요청당 45회 → 약 2,222요청). **네이버가 먼저 한계에 닿지만 fail-open이라 서비스가 죽지는 않는다.** 이관 후에도 무료라 설계 문서 §11의 "3층은 비용 증가가 0" 전제는 유효하다. OpenAI RPM/TPM은 키 발급 후 확인
+- [x] 0-4. 모델 배치 확정 — **Planner·Curator = `gpt-5.6-luna`, PlaceProfile = `gpt-5-nano`** (약 $0.0030/요청). 부수적으로 비용 분석의 "비용은 전부 4층에서 나온다"는 전제가 금액 기준으로는 틀렸다는 것이 드러나 재계산했다
+- [x] 0-5. 쿼터·과금 확인 — 네이버 검색 **0원 / 일 25,000건**(요청당 35회 → **약 714요청**), 카카오 100,000/일(요청당 45회 → 약 2,222요청). **네이버가 먼저 한계에 닿지만 fail-open이라 서비스가 죽지는 않는다.** 이관 후에도 무료라 설계 문서의 비용 분석의 "3층은 비용 증가가 0" 전제는 유효하다. OpenAI RPM/TPM은 키 발급 후 확인
 - [x] 0-6. **테스트 인프라 신설** — `src/test/resources` + `application-test.yml`, `wiremock-standalone` 추가. 셰이딩판을 고른 이유는 이 레포의 테스트 클래스패스에 Jackson·Guava가 이미 여러 버전으로 경합 중이기 때문이다(추가 후 해석 결과 변화 없음을 확인)
 - [x] 0-7. `build.gradle`에 Java 21 toolchain 고정 — 바이트코드 major version 65 확인
 
@@ -118,10 +118,10 @@
 
 - [x] 2-1. `LlmClient` 포트 + `LlmCall` record 정의. `responseJsonSchema`는 벤더 타입이 아니라 **JSON 문자열**로 받는다 — 이게 벤더 중립의 핵심이다. ~~스키마는 `resources/schemas/*.json`~~ → **프로덕션 스키마 디렉터리는 6단계에 만든다**(실제 에이전트 스키마가 그때 생긴다). 2-6 측정용 스키마만 `src/test/resources/schemas/`에 뒀다. 부수적으로 `responseJsonSchema`를 **nullable로 확장**했다 — 2-6이 "구조화 출력을 끈" 측정점을 필요로 하고, 스키마 강제를 포트의 요구사항으로 못박으면 오히려 중립성이 좁아진다
 - [x] 2-2. `OpenAiLlmClient` 어댑터 구현 — 전송 계층은 Spring AI(0-3 판정대로 공식 SDK 폴백 불필요). **auto-config를 쓰지 않고 어댑터가 `OpenAiChatModel`을 직접 조립한다** — 켜면 API 키가 기동 필수가 되어 이 단계가 동작 변화를 만들고, `baseUrl`을 못 바꿔 WireMock 검증이 불가능해진다
-- [x] 2-3. `AiLlmProperties` 등 `@ConfigurationProperties` 도입 — agent별 model/temperature, `timeout-ms`, `max-concurrent-calls`, retry 설정. **이 저장소 최초의 `@ConfigurationProperties`다**(현재 전 설정이 `@Value` 필드 주입). 설계 문서 §6에 없던 **`max-output-tokens`를 agent별로 추가**했다 — 절단이 파싱 실패의 실제 원인이므로 출력 여유가 설정 대상이어야 한다
+- [x] 2-3. `AiLlmProperties` 등 `@ConfigurationProperties` 도입 — agent별 model/temperature, `timeout-ms`, `max-concurrent-calls`, retry 설정. **이 저장소 최초의 `@ConfigurationProperties`다**(현재 전 설정이 `@Value` 필드 주입). 설계 문서의 LLM 포트 설계에 없던 **`max-output-tokens`를 agent별로 추가**했다 — 절단이 파싱 실패의 실제 원인이므로 출력 여유가 설정 대상이어야 한다
 - [x] 2-4. `LlmResponseParser` + 재시도 2계층 — 전송 계층(429/5xx 지수 백오프 + 지터)과 의미 계층(200 OK인데 깨진 JSON → 1회만 재시도). 2회 이상은 지연 예산만 태운다
 
-  > **[정정]** 설계 문서 §6 표는 의미 재시도를 `LlmResponseParser`의 책임으로 적었지만 **재호출은 파서가 할 수 없다.** 파서는 순수 변환만 맡고, 전송 재시도는 `LlmRetryExecutor`로 떼어냈으며(백오프 계산을 순수 함수로 테스트하기 위해), 의미 재시도는 어댑터가 오케스트레이션한다.
+  > **[정정]** 설계 문서의 LLM 포트 설계 표는 의미 재시도를 `LlmResponseParser`의 책임으로 적었지만 **재호출은 파서가 할 수 없다.** 파서는 순수 변환만 맡고, 전송 재시도는 `LlmRetryExecutor`로 떼어냈으며(백오프 계산을 순수 함수로 테스트하기 위해), 의미 재시도는 어댑터가 오케스트레이션한다.
   >
   > **재시도 계층이 셋으로 흩어져 있던 것을 발견해 제거했다** — 설정한 3회가 실제 HTTP 요청 6회로 관측됐다. ① Spring AI `OpenAiChatModel`의 자체 `RetryTemplate` ② **선언조차 되지 않은 전이 의존성** Apache HttpClient 5가 `detect()`에 선택돼 429를 자체적으로 1회 더 시도 ③ 우리 executor. 또 **Spring AI는 429를 `NonTransientAiException`(재시도 무의미)으로 분류**하는데 실제로는 정반대라, 상태 코드를 보존하는 `responseErrorHandler`를 주입해 분류를 직접 소유한다. 근거는 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 판정 1·2
 - [x] 2-5. 포트 기반 단위 테스트 — 에이전트 코드가 벤더 SDK 타입을 import하지 않는다는 것을 테스트로 확인. 에이전트는 6단계에 생기므로 **소스 import 스캔 + 포트 목킹 데모** 두 가지로 갈음했다. 어댑터가 실제로 벤더 SDK를 쓴다는 것도 함께 단언해 검사기가 헛돌지 않음을 보인다
@@ -140,7 +140,7 @@
   >
   > ① **Curator 모델은 `gpt-5.6-luna`로 확정한다**(0-4가 2-6에 넘긴 숙제). `gpt-5-nano`는 환각률이 **7배 이상**이고 `NO_RESULT` 밴드가 40%를 넘는다 — AI가 부른 이름의 40%가 카카오에서 검색조차 안 된다(`"경주 전통찜닭골목"`, `"부산항대교 남항스카이워크"` 같은 그럴듯한 조어). 비용을 아끼려고 Curator를 nano로 내리면 1차 목표를 정면으로 훼손한다.
   >
-  > ② **위 "목표 1"의 인과가 틀렸다.** 구조화 출력은 환각률을 낮추지 않았고(오히려 +1.4~2.9%p, 표본 오차 범위) 낮출 수도 없다 — **스키마는 형식을 강제하지 내용을 강제하지 않는다.** JSON 실패를 해결한 것은 구조화 출력이 아니라 **모델 교체**다(120요청 중 절단 0건). 구조화 출력의 실익은 다른 데 있었다: **출력 바이트 −48%**(pretty-print 제거, §11이 지목한 Curator 출력 비용에 직결)와 **스키마 밖 필드 차단**(유일한 파싱 실패 1건이 프롬프트 내부 불일치인 `placeLocation`이었고 `additionalProperties: false`가 이를 없앴다).
+  > ② **위 "목표 1"의 인과가 틀렸다.** 구조화 출력은 환각률을 낮추지 않았고(오히려 +1.4~2.9%p, 표본 오차 범위) 낮출 수도 없다 — **스키마는 형식을 강제하지 내용을 강제하지 않는다.** JSON 실패를 해결한 것은 구조화 출력이 아니라 **모델 교체**다(120요청 중 절단 0건). 구조화 출력의 실익은 다른 데 있었다: **출력 바이트 −48%**(pretty-print 제거, 비용 분석이 지목한 Curator 출력 비용에 직결)와 **스키마 밖 필드 차단**(유일한 파싱 실패 1건이 프롬프트 내부 불일치인 `placeLocation`이었고 `additionalProperties: false`가 이를 없앴다).
 
 ### 3. `RouteOptimizer` + `SlotType` + `GeoUtils`
 
@@ -172,7 +172,7 @@
   | 8 | 40,320 | 4,995µs | **14.99ms** |
   | 9 | 362,880 | 74,055µs | **222.16ms** |
 
-  **임계값 7이 데이터로 뒷받침된다** — 설계 문서 §9의 예산은 `<10ms`인데 `n=8`은 3일 기준 15ms로 이미 넘고 `n=9`는 20배 초과다. **NN + 2-opt 폴백은 구현하지 않았다**(Planner가 슬롯을 3~6개로 clamp해 현재 도달 경로가 없다 — 도달하지 않는 코드는 검증되지 않은 채 썩는다). 임계값 가드만 두고 초과 시 입력 순서를 유지한다
+  **임계값 7이 데이터로 뒷받침된다** — 설계 문서의 부분 실패 전략의 예산은 `<10ms`인데 `n=8`은 3일 기준 15ms로 이미 넘고 `n=9`는 20배 초과다. **NN + 2-opt 폴백은 구현하지 않았다**(Planner가 슬롯을 3~6개로 clamp해 현재 도달 경로가 없다 — 도달하지 않는 코드는 검증되지 않은 채 썩는다). 임계값 가드만 두고 초과 시 입력 순서를 유지한다
 
 ### 4. `NaverBlogClient` + `PopularityScorer` + 컨셉 사전
 
@@ -186,7 +186,7 @@
 - [ ] 4-4. `traits` 닫힌 태그 집합 정의 + 키워드↔traits 결정론 사전. **여기에 LLM을 쓰지 않는다** — 사전은 순수 함수라 완전히 테스트 가능하고, 자유 텍스트로 두면 요약 단계 자체가 새로운 환각 지점이 된다
 - [ ] 4-5. `rankScore` 계산 — `kakaoMatchScore + popularity × slot.popularityWeight + conceptScore × CONCEPT_WEIGHT − closedSuspicionPenalty`. **모든 보조 신호는 감점이지 하드 드롭이 아니다**(블로그 언급 0건이 곧 폐업은 아니다)
 - [ ] 4-6. 단위 테스트 (순수 함수 전량) + 네이버 클라이언트 스텁 테스트
-- [ ] 4-7. **`NaverLocalClient` (지역검색 시더, 설계 문서 §5-0)** — `"{area} {searchHint}"` + `sort=comment` + `display=5`. `NaverBlogClient`와 같은 API HUB 인증·`WebClient` 인프라를 재사용한다. **착수 전 실호출로 확정할 것**: 이관 여부, `start=1` 고정·페이징 불가, `title`의 `<b>` 태그, `mapx`/`mapy` 형식, **블로그 검색과 쿼터 합산 여부**(§11 상한 계산에 직결), **서술어 매칭 범위**(`"황리단길 카페"` vs `"황리단길 루프탑 카페"` — 상호명·카테고리만 매칭하면 5-8의 스타일 modifier 확장이 무력화된다). 응답에서 쓰는 건 상호명뿐이다(태그 스트립 후 카카오로 공식화) — 좌표계가 달라 좌표는 버린다
+- [ ] 4-7. **`NaverLocalClient` (지역검색 시더, 설계 문서의 후보 공급)** — `"{area} {searchHint}"` + `sort=comment` + `display=5`. `NaverBlogClient`와 같은 API HUB 인증·`WebClient` 인프라를 재사용한다. **착수 전 실호출로 확정할 것**: 이관 여부, `start=1` 고정·페이징 불가, `title`의 `<b>` 태그, `mapx`/`mapy` 형식, **블로그 검색과 쿼터 합산 여부**(비용 분석의 상한 계산에 직결), **서술어 매칭 범위**(`"황리단길 카페"` vs `"황리단길 루프탑 카페"` — 상호명·카테고리만 매칭하면 5-8의 스타일 modifier 확장이 무력화된다). 응답에서 쓰는 건 상호명뿐이다(태그 스트립 후 카카오로 공식화) — 좌표계가 달라 좌표는 버린다
 
 ### 5. `GroundingStage` + `PlaceSignalStage`
 
@@ -196,8 +196,8 @@
 
 - [ ] 5-1. 스레드풀 2개 신설 — `aiAgentExecutor`(LLM)와 `placeGroundingExecutor`(카카오·네이버 공유). **벌크헤드로 나누는 이유**는 외부 장소 API가 느려질 때 그 대기가 LLM 슬롯을 잠식하면 안 되기 때문이다(LLM은 3~10초짜리 소수, 장소 API는 0.15~0.3초짜리 다수). **여기서 `llm.max-concurrent-calls: 2`를 재실측한다** — 2-6 측정은 요청 간 5초 지연·동시 호출 1이라는 느슨한 조건이었고(429 0/120), day별 Curator가 실제로 동시에 몰리는 이 단계에서 재야 초기값의 근거가 된다
 - [ ] 5-2. `GroundingStage` — 후보 병렬 검증, 점수 하한 미달 탈락, `kakaoId` 기준 전 day dedupe. **여기를 통과 못 한 장소는 파이프라인에 존재하지 않는다.** `LISTED` 후보는 5-8의 카카오 응답을 **코드가** 승계해 재검증을 생략하고, `SEEDED`·`SUGGESTED`만 검증한다
-- [ ] 5-8. **`CandidateRetrievalStage` (설계 문서 §5-0)** — Planner 직후, day × 슬롯타입별 병렬로 실존 후보 목록을 만든다. 소스는 `CandidateSource` 인터페이스 목록: `NaverLocalSeedSource`(MEAL/CAFE만, `SEEDED`) + `KakaoKeywordSource`(전 슬롯, `LISTED`, 키워드 검색 `"{area} {searchHint}"` 기본 — **반경 파라미터를 두지 않는다**; 결과 부족 시에만 결과 좌표 bounding box로 카테고리 검색 보충). 병합·`kakaoId` dedupe·`listIndex` 부여. **스타일 modifier 쿼리 확장** — 사용자 키워드를 4-4의 키워드→traits 사전에 넣어 가점 traits 상위 1~2개를 `"{area} {trait} {searchHint}"`로 추가 질의(주로 네이버, MEAL/CAFE), 결과는 기본 쿼리와 **합집합**, 후보에 `matchedModifier` 힌트 부여(검증은 4층 몫임을 Curator 프롬프트에 명시). 풀이 스타일을 모르면 Curator·4층은 천장 아래에서만 움직인다는 것이 근거(설계 문서 §5-0). **양쪽 다 fail-open** — 전부 실패하면 빈 목록으로 Curator를 돌린다(초안 구조로 degrade, hard fail 아님). 캐시 키는 `(area, slotType[, modifier])`. 메트릭 `ai.candidate.retrieval{source, result}`, `ai.candidate.adopted{source, modifier}`. **추후 개선(범위 밖)**: 사전이 day 문맥을 못 잡는 것이 실측되면 Planner `dayPlans[].styleTags`(traits enum, 최대 3)를 사전 태그와 합집합으로 추가
-- [ ] 5-9. **후보 공급 실측** — 카카오 `accuracy` 상위 10 vs 네이버 `comment` 상위 5의 겹침률을 유명/무인지 지역별로 재서 `LISTED` 검색 방식·건수를 데이터로 정한다 (설계 문서 §15)
+- [ ] 5-8. **`CandidateRetrievalStage` (설계 문서의 후보 공급)** — Planner 직후, day × 슬롯타입별 병렬로 실존 후보 목록을 만든다. 소스는 `CandidateSource` 인터페이스 목록: `NaverLocalSeedSource`(MEAL/CAFE만, `SEEDED`) + `KakaoKeywordSource`(전 슬롯, `LISTED`, 키워드 검색 `"{area} {searchHint}"` 기본 — **반경 파라미터를 두지 않는다**; 결과 부족 시에만 결과 좌표 bounding box로 카테고리 검색 보충). 병합·`kakaoId` dedupe·`listIndex` 부여. **스타일 modifier 쿼리 확장** — 사용자 키워드를 4-4의 키워드→traits 사전에 넣어 가점 traits 상위 1~2개를 `"{area} {trait} {searchHint}"`로 추가 질의(주로 네이버, MEAL/CAFE), 결과는 기본 쿼리와 **합집합**, 후보에 `matchedModifier` 힌트 부여(검증은 4층 몫임을 Curator 프롬프트에 명시). 풀이 스타일을 모르면 Curator·4층은 천장 아래에서만 움직인다는 것이 근거(설계 문서의 후보 공급). **양쪽 다 fail-open** — 전부 실패하면 빈 목록으로 Curator를 돌린다(초안 구조로 degrade, hard fail 아님). 캐시 키는 `(area, slotType[, modifier])`. 메트릭 `ai.candidate.retrieval{source, result}`, `ai.candidate.adopted{source, modifier}`. **추후 개선(범위 밖)**: 사전이 day 문맥을 못 잡는 것이 실측되면 Planner `dayPlans[].styleTags`(traits enum, 최대 3)를 사전 태그와 합집합으로 추가
+- [ ] 5-9. **후보 공급 실측** — 카카오 `accuracy` 상위 10 vs 네이버 `comment` 상위 5의 겹침률을 유명/무인지 지역별로 재서 `LISTED` 검색 방식·건수를 데이터로 정한다 (설계 문서의 남는 한계)
 - [ ] 5-3. 슬롯별 카테고리 하드 제약 — 현재 `category_group_code`를 가점 +2로만 쓰는 것을 하드 제약으로 승격(MEAL←FD6, CAFE←CE7, ATTRACTION←AT4/CT1). 비용이 사실상 0인데 "점심에 호프집"이 구조적으로 사라진다
 - [ ] 5-4. `PlaceSignalStage` — 카카오 생존 후보에만 네이버 조회. **fail-open**: 네이버 장애 시 3·4층 전체를 스킵하고 진행
 - [ ] 5-5. 파이프라인 하드 데드라인 — `CompletableFuture.allOf(...).get(remainingMs, MILLISECONDS)`. `CallerRunsPolicy`를 유지하되(거부보다 느린 성공이 낫다) 요청 스레드가 장소 API I/O를 직접 수행해 순차 실행으로 퇴화하는 것을 데드라인으로 막는다
@@ -213,9 +213,9 @@
 - [ ] 6-1. `PromptLoader` — 프롬프트를 `resources/prompts/*.md`로 분리하고 `@PostConstruct`에서 eager 로드. 파일이 없으면 **애플리케이션 기동이 실패**하므로 런타임이 아니라 배포 시점에 발견된다. 플레이스홀더는 위치 기반 `%s`가 아니라 **명명 기반 `{{location}}`**
 - [ ] 6-2. `PlannerAgent` — 컨셉·제목·day별 권역(`area`)·슬롯 구성. **장소명은 한 개도 생성하지 않는다.** Planner를 별도 단계로 두는 이유는 "단계 분할"이 아니라 **Curator를 day별 병렬 실행하려면 day별 권역이 먼저 확정돼야 하기 때문**이다
 - [ ] 6-3. Planner 출력 구조 검증 — day 수 불일치·MEAL 누락·슬롯 개수 초과를 **코드로 보정**한다(LLM 재호출 없음)
-- [ ] 6-4. `CuratorAgent` — day별 병렬, 슬롯당 후보 3개. 다른 day는 모른다. **역할은 "회상"이 아니라 "선별"이다(설계 문서 §5-0)** — 입력에 5-8의 슬롯별 후보 목록이 들어가고, 출력은 `source`(`SEEDED`/`LISTED`/`SUGGESTED`) + `listIndex` + `placeName`. 목록 밖 파라메트릭 제안(`SUGGESTED`)은 허용하되 그라운딩 검증을 거친다. **응답 스키마의 루트는 반드시 객체여야 한다** — 0단계에서 최상위 배열 스키마가 400으로 거부되는 것을 확인했으므로, 슬롯 배열을 루트에 두면 안 된다
+- [ ] 6-4. `CuratorAgent` — day별 병렬, 슬롯당 후보 3개. 다른 day는 모른다. **역할은 "회상"이 아니라 "선별"이다(설계 문서의 후보 공급)** — 입력에 5-8의 슬롯별 후보 목록이 들어가고, 출력은 `source`(`SEEDED`/`LISTED`/`SUGGESTED`) + `listIndex` + `placeName`. 목록 밖 파라메트릭 제안(`SUGGESTED`)은 허용하되 그라운딩 검증을 거친다. **응답 스키마의 루트는 반드시 객체여야 한다** — 0단계에서 최상위 배열 스키마가 400으로 거부되는 것을 확인했으므로, 슬롯 배열을 루트에 두면 안 된다
 - [ ] 6-7. **`LISTED`/`SEEDED` 위조 강등 검증 (코드)** — `listIndex` 범위, 목록 항목 상호명과 `placeName` 일치, 슬롯 타입 일치를 검증하고 하나라도 어긋나면 `SUGGESTED`로 **강등**(버리지 않는다 — 실존할 수 있다). "재검증 생략"의 전제는 좌표·`kakaoId`를 LLM이 옮겨 적는 게 아니라 코드가 목록에서 승계하는 것이므로, 응답 스키마에 좌표·id 필드를 두지 않는다. 메트릭 `ai.candidate.demoted`
-- [ ] 6-5. **`duration` 키워드 처리 방침 결정** — 무시할지, `days`와의 모순 검증에 쓸지. 지금은 "보내지만 아무도 해석하지 않는" 상태이며 label 표기도 어긋나 있다(설계 문서 §7)
+- [ ] 6-5. **`duration` 키워드 처리 방침 결정** — 무시할지, `days`와의 모순 검증에 쓸지. 지금은 "보내지만 아무도 해석하지 않는" 상태이며 label 표기도 어긋나 있다(설계 문서의 프롬프트 전략)
 - [ ] 6-6. 프롬프트에서 사라진 규칙 확인 — 시간 배치·동선·중복·스키마 강제는 이제 코드가 보장하므로 프롬프트에 남기지 않는다. 약 45줄이 사라지고 "취향과 컨셉"만 남는 것이 이 분리의 본질이다
 
 ### 7. `AiCoursePipeline` 오케스트레이터 + 폴백
@@ -327,7 +327,7 @@
 
 ## 범위에서 제외한 것
 
-- **`CriticAgent` / `CandidateRefiner`** — 설계는 §5-3/§5-4에 남긴다. 제외 근거는 설계 문서 §10에 정리돼 있고, 재검토 조건은 두 가지다: ① 골든 데이터셋/LLM-as-judge 평가 인프라가 생겨 "Critic이 실제로 개선하는가"를 측정할 수 있을 때 ② 실제 사용자 피드백에서 컨셉 미스매치 불만이 반복될 때
+- **`CriticAgent` / `CandidateRefiner`** — 설계는 CriticAgent 설계/CandidateRefiner 설계에 남긴다. 제외 근거는 설계 문서의 지연 예산에 정리돼 있고, 재검토 조건은 두 가지다: ① 골든 데이터셋/LLM-as-judge 평가 인프라가 생겨 "Critic이 실제로 개선하는가"를 측정할 수 있을 때 ② 실제 사용자 피드백에서 컨셉 미스매치 불만이 반복될 때
 - **골든 데이터셋 / LLM-as-judge 평가 인프라** — 파이프라인이 안정된 뒤 착수하는 것이 맞다
 - **202 Accepted + 폴링 전환** — 동기 API 계약을 유지한 채 먼저 완성해 실측하고, p95가 목표를 넘는 것을 데이터로 확인한 뒤 전환한다. 그래야 전환이 "숫자에 근거한 결정"이 된다
 - **사용자 피드백 루프** — 생성된 코스에서 사용자가 삭제한 장소가 곧 정답 라벨이고, 이건 외부 API가 아니라 우리가 축적하는 고유 자산이다. **다만 소급할 수 없는 데이터라 삭제 이벤트 기록은 일찍 시작할 가치가 있다** — 별도의 작은 작업으로 분리한다
@@ -352,13 +352,13 @@
 
 ## 참고 문서
 
-- [멀티 에이전트 파이프라인 설계](멀티-에이전트-파이프라인.md) — **이 로드맵의 근거 문서(허브).** 배경·설계 원칙·전체 구조·도입 순서 + 절 번호(§)별 문서 지도. 상세는 아래로 나뉜다
-  - [지식 신호 층과 후보 공급](design/지식-신호와-후보-공급.md) — §3 지식 신호 층, §5-0 `CandidateRetrievalStage`
-  - [결정론적 단계](design/결정론적-단계.md) — §5-1 `SlotType`, §5-2 `RouteOptimizer`
-  - [LLM 연동](design/LLM-연동.md) — §6 벤더 중립 포트, §7 프롬프트 전략
-  - [운영 관심사](design/운영-관심사.md) — §8 트랜잭션, §9 부분 실패, §10 지연 예산, §11 비용, §12 관측
-  - [기각한 대안](decisions/기각한-대안.md) — §14
-  - [보류와 미해결 과제](decisions/보류와-미해결-과제.md) — §5-3 Critic, §5-4 Refiner, §15
+- [멀티 에이전트 파이프라인 설계](멀티-에이전트-파이프라인.md) — **이 로드맵의 근거 문서(허브).** 배경·설계 원칙·전체 구조·도입 순서 + 절별 문서 지도. 상세는 아래로 나뉜다
+  - [지식 신호 층과 후보 공급](design/지식-신호와-후보-공급.md) — 지식 신호 층, 후보 공급(`CandidateRetrievalStage`)
+  - [결정론적 단계](design/결정론적-단계.md) — `SlotType`, `RouteOptimizer`
+  - [LLM 연동](design/LLM-연동.md) — 벤더 중립 LLM 포트, 프롬프트 전략
+  - [운영 관심사](design/운영-관심사.md) — 트랜잭션 경계, 부분 실패 전략, 지연 예산, 비용, 관측
+  - [기각한 대안](decisions/기각한-대안.md) — 기각한 대안
+  - [보류와 미해결 과제](decisions/보류와-미해결-과제.md) — CriticAgent 설계 Critic, CandidateRefiner 설계 Refiner, 남는 한계
 - [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md) — 환각률 baseline 실측 (before 값 25.6%)
 - [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md) — **OpenAI 재측정 (중간 측정점 7.5%)**. luna/nano 비교로 Curator 모델을 확정한 근거
 - [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) — 위 측정의 원본 산출물 재분석. **1-2 설계의 근거**(점수 밴드 분포, 밴드×verdict 교차표, 파싱 실패 원인)

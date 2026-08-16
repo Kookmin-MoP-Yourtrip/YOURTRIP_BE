@@ -92,9 +92,9 @@ boolean isRetriable() {
 
 ---
 
-## 판정 3 — 설계 문서 §6의 재시도 배치는 그대로 구현할 수 없었다
+## 판정 3 — 설계 문서의 LLM 포트 설계의 재시도 배치는 그대로 구현할 수 없었다
 
-§6의 표는 의미 계층 재시도를 `LlmResponseParser`의 책임으로 적었다.
+LLM 포트 설계의 표는 의미 계층 재시도를 `LlmResponseParser`의 책임으로 적었다.
 
 | 계층 | 대상 | 구현 |
 |---|---|---|
@@ -169,7 +169,7 @@ boolean isRetriable() {
 
 ## 포트 격리를 테스트로 강제한다
 
-설계 문서 §6은 "에이전트 코드가 벤더 SDK 타입을 한 개도 import하지 않는다"를 이 작업의 성과로 내세운다. 그런데 **주장만으로는 지켜지지 않는다** — 6~9단계에서 에이전트를 만들다 보면 `OpenAiChatOptions` 하나만 잠깐 쓰고 싶은 순간이 온다.
+설계 문서의 LLM 포트 설계는 "에이전트 코드가 벤더 SDK 타입을 한 개도 import하지 않는다"를 이 작업의 성과로 내세운다. 그런데 **주장만으로는 지켜지지 않는다** — 6~9단계에서 에이전트를 만들다 보면 `OpenAiChatOptions` 하나만 잠깐 쓰고 싶은 순간이 온다.
 
 - `LlmPortIsolationTest` — `global/ai` 아래에서 `openai/`를 뺀 모든 소스에 벤더 import가 없는지 검사한다. **어댑터가 실제로 벤더 SDK를 쓴다는 것도 함께 단언**해, 검사기가 헛돌아서 통과한 것이 아님을 보인다
 - `LlmClientMockingDemoTest` — 6단계 에이전트의 대역을 목으로 검증한다. `com.google.genai.Client`가 `public final`이라 목킹이 불가능했던 것이 포트의 유일한 근거였으므로, **이 테스트가 초록불인 것 자체가 2단계의 성과다**
@@ -236,7 +236,7 @@ Started YourtripApplication in 13.738 seconds
  Only the default (1) value is supported."
 ```
 
-`gpt-5.6-luna`·`gpt-5-nano` 모두 그렇다. **설계 문서 §6의 agent별 온도 차등**(Planner 0.7 / Curator 0.9 / PlaceProfile 0.2)이 근거를 잃는다. 그 근거였던 "장소 선정은 다양해야 하고 판정은 일관돼야 한다"는 상충 요구 중, **Curator 쪽(높은 온도)은 기본값 1이 이미 높아 우연히 충족**되지만 **PlaceProfile 쪽(낮은 온도로 충실성 확보)은 그대로 손해**다. 9단계에서 닫힌 태그 집합과 스키마 강제로 보완해야 한다.
+`gpt-5.6-luna`·`gpt-5-nano` 모두 그렇다. **설계 문서의 LLM 포트 설계의 agent별 온도 차등**(Planner 0.7 / Curator 0.9 / PlaceProfile 0.2)이 근거를 잃는다. 그 근거였던 "장소 선정은 다양해야 하고 판정은 일관돼야 한다"는 상충 요구 중, **Curator 쪽(높은 온도)은 기본값 1이 이미 높아 우연히 충족**되지만 **PlaceProfile 쪽(낮은 온도로 충실성 확보)은 그대로 손해**다. 9단계에서 닫힌 태그 집합과 스키마 강제로 보완해야 한다.
 
 설정 키는 지우지 않고 nullable로 두었다 — 온도를 받는 모델로 바꾸면 값만 채우면 되고, 구조를 지우면 "왜 차등하지 않는가"라는 정보까지 사라진다.
 
@@ -248,7 +248,7 @@ Started YourtripApplication in 13.738 seconds
 finishReason=LENGTH, 0바이트 수신
 ```
 
-`max-output-tokens: 4096`인데 **추론 토큰이 그걸 다 먹었다.** 설계 문서 §11이 경고한 "추론 토큰이 숨은 변수다"가 그대로 나타난 경우다.
+`max-output-tokens: 4096`인데 **추론 토큰이 그걸 다 먹었다.** 설계 문서의 비용 분석이 경고한 "추론 토큰이 숨은 변수다"가 그대로 나타난 경우다.
 
 모델과 출력 강제가 동시에 바뀐 상태였으므로 원인을 갈랐다.
 
@@ -257,7 +257,7 @@ finishReason=LENGTH, 0바이트 수신
 | **luna** | 정상 (1,473B) | 정상 (605~650B) |
 | **nano** | 절단 0B | 절단 0B |
 
-**모델 문제다.** 대응은 `reasoningEffort`를 agent별 설정으로 노출하는 것 — 설계 문서 §6이 Gemini 전용 `thinking-budget`을 제거하며 *"OpenAI에 대응하는 추론 강도 설정이 있다면 어댑터 내부에서 다룬다"*고 열어둔 자리가 정확히 여기다. 낮추면 nano가 살아난다(0바이트 → 883바이트, 장소 17개).
+**모델 문제다.** 대응은 `reasoningEffort`를 agent별 설정으로 노출하는 것 — 설계 문서의 LLM 포트 설계이 Gemini 전용 `thinking-budget`을 제거하며 *"OpenAI에 대응하는 추론 강도 설정이 있다면 어댑터 내부에서 다룬다"*고 열어둔 자리가 정확히 여기다. 낮추면 nano가 살아난다(0바이트 → 883바이트, 장소 17개).
 
 **지원값이 모델마다 다르다는 것도 실측으로 알았다.**
 
@@ -322,7 +322,7 @@ nano 응답의 `NO_RESULT`가 40%를 넘는다는 것은 **AI가 부른 이름�
 
 **그럼에도 구조화 출력을 쓸 이유는 둘 다 실측으로 확인됐다.**
 
-1. **출력 토큰이 약 절반으로 준다** — 1,503B → 786B(−48%). 원인은 pretty-print 제거다. 프롬프트지시 판은 들여쓰기된 JSON을, json_schema 판은 compact JSON을 돌려준다. 장소 수는 오히려 늘었는데(15.1 → 15.8개/요청) 바이트는 절반이다. 설계 문서 §11이 *"금액을 지배하는 것은 Curator의 출력(62%)"*이라 했으므로 이건 비용에 직결된다
+1. **출력 토큰이 약 절반으로 준다** — 1,503B → 786B(−48%). 원인은 pretty-print 제거다. 프롬프트지시 판은 들여쓰기된 JSON을, json_schema 판은 compact JSON을 돌려준다. 장소 수는 오히려 늘었는데(15.1 → 15.8개/요청) 바이트는 절반이다. 설계 문서의 비용 분석이 *"금액을 지배하는 것은 Curator의 출력(62%)"*이라 했으므로 이건 비용에 직결된다
 2. **스키마 밖 필드를 차단한다** — 120요청 중 유일한 파싱 실패가 이것이었다
 
    ```
@@ -594,7 +594,7 @@ BASELINE 문서가 한계로 명시한 *"카카오에 미등록된 실존 업소
 ## 참고 문서
 
 - [ROADMAP.md](../ROADMAP.md) — 2단계 체크리스트
-- [§6 LLM 연동](../design/LLM-연동.md) — 포트 설계의 근거 ([멀티 에이전트 파이프라인 설계](../멀티-에이전트-파이프라인.md) 허브)
+- [LLM 포트 설계 LLM 연동](../design/LLM-연동.md) — 포트 설계의 근거 ([멀티 에이전트 파이프라인 설계](../멀티-에이전트-파이프라인.md) 허브)
 - [BASELINE-ARTIFACT-ANALYSIS.md](../hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 판정 3·4 — 절단 원인과 환각률 정의
 - [STEP-0-prerequisites.md](STEP-0-prerequisites.md) — Spring AI 검증, 모델 배치
 - [STEP-1-existing-defects.md](STEP-1-existing-defects.md) — 1단계 실행 기록
