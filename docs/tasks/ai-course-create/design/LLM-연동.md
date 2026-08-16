@@ -2,7 +2,7 @@
 
 > [멀티 에이전트 파이프라인 설계](../멀티-에이전트-파이프라인.md)에서 분리된 문서다. **벤더 중립 LLM 추상화**와 **프롬프트 전략**을 담는다.
 >
-> 둘을 함께 두는 이유는 **같은 결정의 앞뒤**이기 때문이다 — 포트가 `responseJsonSchema`를 받아 구조화 출력을 디코딩 레벨에서 강제하면(LLM 포트 설계), 프롬프트에서 스키마·형식 지시 약 45줄이 통째로 사라진다(프롬프트 전략). 벤더가 OpenAI로 확정된 뒤 갱신된 절이기도 하다.
+> 둘을 함께 두는 이유는 **같은 결정의 앞뒤**이기 때문이다 — 포트가 `responseJsonSchema`를 받아 구조화 출력을 디코딩 레벨에서 강제하면, 프롬프트에서 스키마·형식 지시 약 45줄이 통째로 사라진다. 벤더가 OpenAI로 확정된 뒤 갱신된 절이기도 하다.
 >
 > 실행 기록은 [STEP-2-llm-port.md](../steps/STEP-2-llm-port.md)에 있다 — 측정이 예상을 두 군데서 뒤집었다(Curator 모델 선택, 구조화 출력의 실제 효과).
 
@@ -48,7 +48,7 @@ public record LlmCall<T>(
 Mockito로 목킹할 수 없다. 지금 코드에서 LLM 호출부의 단위 테스트가 사실상 불가능한 이유가 정확히
 이것이고, [AI-HALLUCINATION-GEMINI.md](../hallucination/AI-HALLUCINATION-GEMINI.md)의 측정 하네스가
 Spring 컨텍스트 없이 `new GeminiService(...)`를 수동 조립해 **실제 API를 때리는 방식**을 택한 것도
-같은 제약 때문이다. 포트를 두면 에이전트(V1: Planner·Curator·PlaceProfile 3개)의 테스트가
+같은 제약 때문이다. 포트를 두면 에이전트(V1: Planner·Curator 2개. PlaceProfile은 9단계 조건부)의 테스트가
 **벤더 SDK 타입을 한 개도 import하지 않는다.** "추상화를 위한 추상화"가 아니라 테스트 가능성이라는
 구체적 대가를 받는다. 이 근거는 벤더가 무엇으로 확정되든 사라지지 않는다.
 
@@ -63,9 +63,16 @@ llm:
   agents:
     planner:       { model: gpt-5.6-luna, temperature: 0.7 }
     curator:       { model: gpt-5.6-luna, temperature: 0.9 }
-    place-profile: { model: gpt-5-nano,   temperature: 0.2 }
-    # critic: V1 범위 밖 (지연 예산 참고). 재검토 시 { temperature: 0.0, seed: 42 }
+    # place-profile: V1 범위 밖 ("PlaceSignal을 V1에서 제외한 이유"). 9단계에서 켤 때 { model: gpt-5-nano, temperature: 0.2 }
+    # critic:        V1 범위 밖 (지연 예산 참고). 재검토 시 { temperature: 0.0, seed: 42 }
 ```
+
+> **[갱신] V1 에이전트는 Planner·Curator 둘이다.** 아래 문단들은 PlaceProfile을 세 번째 에이전트로
+> 두고 쓴 초안 시점의 근거인데, PlaceSignal이 V1에서 빠지면서 PlaceProfile 관련 서술은 9단계
+> 재검토 시의 참고 자료가 됐다. **Planner·Curator에 대한 근거는 그대로 유효하다.** 부수 효과로
+> "Curator 역할이 회상에서 선별로 바뀌었다"(후보 공급)는 점이 temperature 0.9의 근거를 조금 약화시킨다 —
+> 목록에서 고르는 과제는 회상보다 다양성 요구가 낮으므로, 6단계에서 0.7 정도로 내려 재실측하는 것을
+> 권한다(후보 3개의 다양성은 이제 풀 자체가 담보한다).
 
 모델 배정 근거는 [steps/STEP-0-prerequisites.md](../steps/STEP-0-prerequisites.md)에 있다. 요지는
 **"추론 난이도"가 아니라 "틀렸을 때의 파급 ÷ 토큰량"으로 골랐다**는 것이다 — Planner는 파급이
@@ -105,7 +112,7 @@ JSON 스키마를 디코딩 레벨에서 강제하므로 파싱 실패율이 nea
 
 ### `LlmClient` 구현체는 직접 짜되, 전송 계층은 Spring AI로
 
-**오케스트레이션(Planner→Curator→Grounding→PlaceSignal→RouteOptimizer)은 어떤 프레임워크를
+**오케스트레이션(Planner→CandidateRetrieval→Curator→Grounding→RouteOptimizer)은 어떤 프레임워크를
 쓰든 항상 직접 짜야 하는 도메인 로직이다.** Spring AI(`ChatModel`/`ChatClient`)나 LangChain4j(`ChatLanguageModel`)가
 실제로 대신해주는 부분은 "벤더 SDK 차이를 가리는 통일 인터페이스"뿐이고, 이건 이미 `LlmClient`로
 직접 만들어뒀다. 두 프레임워크의 나머지 기능(툴 자율 호출, RAG용 `VectorStore`, 대화 메모리)은
@@ -124,7 +131,7 @@ LlmClient (interface, 우리 도메인 타입만 다룸)          ← 유지
 ```
 
 **왜 절충이 타협이 아니라 정당한 설계인가**
-- `LlmClient` 인터페이스를 유지하는 한, 에이전트 코드(`PlannerAgent`/`CuratorAgent`/`PlaceProfileAgent`)는
+- `LlmClient` 인터페이스를 유지하는 한, 에이전트 코드(`PlannerAgent`/`CuratorAgent`, 나중에 `PlaceProfileAgent`)는
   Spring AI의 존재 자체를 모른다. 앞서 확보한 테스트 가능성 근거(`com.google.genai.Client`가 final이라
   Mockito로 못 묶는 문제를 포트로 우회한 것)가 그대로 유지된다.
 - 헥사고날 아키텍처에서 "포트는 직접 정의, 어댑터 내부 구현은 서드파티 SDK"는 흔히 권장되는
