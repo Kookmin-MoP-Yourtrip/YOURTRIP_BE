@@ -209,6 +209,31 @@ drift가 왜 위험한가 — 실제로 겪은 사례:
 
 > App EC2를 `t3.micro` → `t3.small`로 올릴 때 terraform을 거치지 않아, state는 이미 사라진 옛 인스턴스(`i-085ca3b1...`)를 가리키고 실제로 돌아가는 인스턴스(`i-06bc4138...`)는 state에 없는 상태가 됐다. 이 상태로 `terraform destroy`를 하면 **state에 없는 실제 인스턴스는 삭제되지 않고 남아 계속 과금된다.** 반대로 `terraform apply`를 하면 "app이 없다"고 판단해 인스턴스를 하나 더 만든다. 실제로 `plan`이 `5 to add, 2 to destroy`를 출력했다.
 
+### ⚠️ 현재 남아 있는 drift — `user_data` 변경으로 App 인스턴스 교체가 걸려 있다
+
+`app-user-data.sh.tpl`에 `SPRING_PROFILES_ACTIVE=prod`가 추가되면서(PR #83) 템플릿의 `user_data` 해시가 바뀌었다. `ec2_app.tf`에 `user_data_replace_on_change = true`가 걸려 있어, **지금 `terraform apply`를 하면 App EC2가 교체된다.**
+
+```
+# aws_instance.app must be replaced
+      ~ user_data = (sensitive value) # forces replacement
+```
+
+교체되면 `scp`로 올려둔 **`app.jar`와 CloudFront 개인키가 함께 사라진다**(둘 다 state 밖에서 관리된다). 재배포·재시딩이 필요해진다.
+
+`upload-course-caching` 측정에서는 이 교체를 피하려고 다음과 같이 우회했다:
+
+- **`user_data`를 적용하지 않았다.** 대신 이미 떠 있는 인스턴스의 `/opt/app/.env`에 `SPRING_PROFILES_ACTIVE=prod`를 직접 넣었다 — 형상이 아니라 실행 상태만 바꾸는 조작이라 drift가 생기지 않는다.
+- 필요한 보안그룹 규칙만 **`-target`으로 지정해 apply**했다(`3 to add, 0 to destroy`로 인스턴스를 건드리지 않음을 `plan`으로 먼저 확인).
+
+```bash
+terraform apply \
+  -target=aws_security_group_rule.app_ingress_ssh_from_dev \
+  -target=aws_security_group_rule.app_ingress_api_from_dev \
+  -target=aws_security_group_rule.k6_ingress_ssh_from_dev
+```
+
+**전체 `apply`로 교체를 수용할 생각이라면** 배포물을 먼저 백업하거나, 교체 후 재배포를 절차에 포함시켜야 한다. 새 인스턴스는 `user_data`가 최초 부팅 때 실행되므로 `.env`에 프로필이 자동으로 들어간다.
+
 ### 형상 변경이 필요할 때
 
 `terraform.tfvars`(또는 `.tf`)를 고치고 `plan`으로 영향을 확인한 뒤 `apply`한다.
