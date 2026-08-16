@@ -300,5 +300,5 @@ BASELINE 문서의 수치를 원본에서 재계산했다. **매칭 실패율과
 
 - [AI-HALLUCINATION-GEMINI.md](AI-HALLUCINATION-GEMINI.md) — 이 산출물을 만든 측정의 방법론과 요약
 - [ROADMAP.md](../ROADMAP.md) — 1-2의 설계가 이 분석에 근거한다
-- [MULTI-AGENT-PIPELINE.md](../MULTI-AGENT-PIPELINE.md) — 점수 하한선·카테고리 하드 제약의 원 설계
+- [멀티 에이전트 파이프라인 설계](../멀티-에이전트-파이프라인.md) — 점수 하한선·카테고리 하드 제약의 원 설계
 - `src/test/java/backend/yourtrip/global/benchmark/AiHallucinationBaselineTest.java` — 측정 하네스

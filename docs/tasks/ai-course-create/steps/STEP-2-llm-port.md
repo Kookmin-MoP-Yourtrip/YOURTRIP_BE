@@ -594,7 +594,7 @@ BASELINE 문서가 한계로 명시한 *"카카오에 미등록된 실존 업소
 ## 참고 문서
 
 - [ROADMAP.md](../ROADMAP.md) — 2단계 체크리스트
-- [MULTI-AGENT-PIPELINE.md](../MULTI-AGENT-PIPELINE.md) §6 — 포트 설계의 근거
+- [§6 LLM 연동](../design/LLM-연동.md) — 포트 설계의 근거 ([멀티 에이전트 파이프라인 설계](../멀티-에이전트-파이프라인.md) 허브)
 - [BASELINE-ARTIFACT-ANALYSIS.md](../hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 판정 3·4 — 절단 원인과 환각률 정의
 - [STEP-0-prerequisites.md](STEP-0-prerequisites.md) — Spring AI 검증, 모델 배치
 - [STEP-1-existing-defects.md](STEP-1-existing-defects.md) — 1단계 실행 기록

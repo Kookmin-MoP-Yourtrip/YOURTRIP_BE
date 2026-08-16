@@ -1,6 +1,6 @@
 # AI 코스 생성 멀티 에이전트 파이프라인 로드맵
 
-> [MULTI-AGENT-PIPELINE.md](MULTI-AGENT-PIPELINE.md)에서 AI 코스 생성(`POST /api/my-courses/ai`)을 단일 LLM 호출에서 멀티 에이전트 파이프라인으로 재설계하기로 했다. 이 문서는 그 설계를 **어떤 순서로, 무엇을 만들고, 무엇을 확인해야 다음으로 넘어가는지**로 옮긴 실행 로드맵이다.
+> [멀티 에이전트 파이프라인 설계](멀티-에이전트-파이프라인.md)에서 AI 코스 생성(`POST /api/my-courses/ai`)을 단일 LLM 호출에서 멀티 에이전트 파이프라인으로 재설계하기로 했다. 이 문서는 그 설계를 **어떤 순서로, 무엇을 만들고, 무엇을 확인해야 다음으로 넘어가는지**로 옮긴 실행 로드맵이다.
 >
 > 설계 문서 §13에 11단계 "도입 순서" 표가 있지만 각 단계가 한 줄 요약이라 착수/완료 판정 기준이 없다. 이 로드맵은 그 표를 승계하되 **0단계(사전 준비)를 앞에 추가**하고, 각 단계를 체크 가능한 항목으로 분해한다.
 >
@@ -269,7 +269,7 @@
 
 ### 11. 실측 결과 기록
 
-- [ ] 11-1. 3점 비교 결과를 [MULTI-AGENT-PIPELINE.md](MULTI-AGENT-PIPELINE.md)와 [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)에 추가
+- [ ] 11-1. 3점 비교 결과를 [멀티 에이전트 파이프라인 설계](멀티-에이전트-파이프라인.md)와 [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)에 추가
 - [ ] 11-2. 지연 예산 실측치와 설계 추정치(p50 12~16초 / p95 22~30초) 대조 → **202 Accepted 전환 여부를 데이터로 판단**
 - [ ] 11-3. 커넥션 점유 시간 before/after, 실제 토큰 비용, `mood` 키워드 포함 비율 기록
 
@@ -352,7 +352,13 @@
 
 ## 참고 문서
 
-- [MULTI-AGENT-PIPELINE.md](MULTI-AGENT-PIPELINE.md) — 멀티 에이전트 파이프라인 설계 (이 로드맵의 근거 문서)
+- [멀티 에이전트 파이프라인 설계](멀티-에이전트-파이프라인.md) — **이 로드맵의 근거 문서(허브).** 배경·설계 원칙·전체 구조·도입 순서 + 절 번호(§)별 문서 지도. 상세는 아래로 나뉜다
+  - [지식 신호 층과 후보 공급](design/지식-신호와-후보-공급.md) — §3 지식 신호 층, §5-0 `CandidateRetrievalStage`
+  - [결정론적 단계](design/결정론적-단계.md) — §5-1 `SlotType`, §5-2 `RouteOptimizer`
+  - [LLM 연동](design/LLM-연동.md) — §6 벤더 중립 포트, §7 프롬프트 전략
+  - [운영 관심사](design/운영-관심사.md) — §8 트랜잭션, §9 부분 실패, §10 지연 예산, §11 비용, §12 관측
+  - [기각한 대안](decisions/기각한-대안.md) — §14
+  - [보류와 미해결 과제](decisions/보류와-미해결-과제.md) — §5-3 Critic, §5-4 Refiner, §15
 - [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md) — 환각률 baseline 실측 (before 값 25.6%)
 - [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md) — **OpenAI 재측정 (중간 측정점 7.5%)**. luna/nano 비교로 Curator 모델을 확정한 근거
 - [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) — 위 측정의 원본 산출물 재분석. **1-2 설계의 근거**(점수 밴드 분포, 밴드×verdict 교차표, 파싱 실패 원인)

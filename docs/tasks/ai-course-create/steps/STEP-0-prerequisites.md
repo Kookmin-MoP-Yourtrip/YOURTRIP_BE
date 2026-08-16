@@ -278,5 +278,5 @@ OpenAI RPM/TPM은 `llm.max-concurrent-calls` 초기값의 근거가 되므로 �
 ## 참고 문서
 
 - [ROADMAP.md](../ROADMAP.md) — 전체 단계 체크리스트
-- [MULTI-AGENT-PIPELINE.md](../MULTI-AGENT-PIPELINE.md) — 설계 근거. §6(벤더 중립 추상화)·§11(비용)이 이 문서의 판정으로 갱신됐다
+- [멀티 에이전트 파이프라인 설계](../멀티-에이전트-파이프라인.md) — 설계 근거(허브). 이 문서의 판정으로 갱신된 절은 [§6 벤더 중립 추상화](../design/LLM-연동.md)·[§11 비용](../design/운영-관심사.md)이다
 - [AI-HALLUCINATION-GEMINI.md](../hallucination/AI-HALLUCINATION-GEMINI.md) — 2단계에서 재사용할 측정 하네스
