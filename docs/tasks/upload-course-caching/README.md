@@ -103,8 +103,8 @@
 - ~~**P3 재실행**~~ — 완료(P3-cold). `FLUSHALL` 루프를 넣어 콜드 스탬피드를 측정했다
 - **D3 재측정** — `MAX_RATE=1200`으로는 **A2의 포화점을 찾지 못했다**(제공 1,144 req/s에서 `pending` 0, 워커 11/200)
 - **반복 측정** — D2를 제외한 나머지는 각 arm 1회다
-- **Redis 계측** — D2 A2의 "앱 밖" 포화 주체가 미확정이다. `lettuce_command_*`가 이미 노출 중일 가능성이 높은데(하네스 폴링 화이트리스트에서 빠져 수집되지 않았다) 먼저 그것부터 확인한다
-- **CloudWatch 사후 조회** — 계획 §5의 보조지표(App/k6 `CPUCreditBalance`, ElastiCache `EngineCPUUtilization` 등)를 한 번도 수집하지 않았다. 특히 **포화 주체를 CPU로 판정한 run들의 크레딧 상태 확인은 계획 §8의 검증 항목**이다. run별 `.window`(epoch 시작·종료)가 남아 있어 사후 조회가 가능하다
+- **Redis 계측** — D2 A2의 "앱 밖" 포화 주체가 아직 미확정이다. CloudWatch 사후 조회로 **부하 생성기와 Redis 엔진은 배제**했고(k6 CPU 최대 53.9% / `EngineCPUUtilization` 최대 9.3%), 남은 후보는 네트워크와 **Lettuce 단일 공유 커넥션/netty 이벤트루프**다. `lettuce_command_*`가 이미 노출 중일 가능성이 높은데(하네스 폴링 화이트리스트에서 빠져 수집되지 않았다) 먼저 그것부터 확인한다
+- ~~**CloudWatch 사후 조회**~~ — 완료. 계획 §8의 검증 7(단계 경계 정합성)·8(크레딧 고갈)을 모두 통과했다. 상세는 [ec2-measurement.md](ec2-measurement.md)의 "환경 건전성 검증" 절 참고
 
 ## 도구
 
