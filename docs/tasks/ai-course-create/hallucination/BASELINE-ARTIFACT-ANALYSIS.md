@@ -8,7 +8,7 @@
 
 ## 왜 이 문서가 필요한가
 
-측정 하네스 `AiHallucinationBaselineTest`는 결과를 레포 루트 `results/`에 쓴다. 그런데 [.gitignore:51](../../../.gitignore)이 이 디렉터리를 부하 테스트 산출물과 같은 규칙으로 제외한다.
+측정 하네스 `AiHallucinationBaselineTest`는 결과를 레포 루트 `results/`에 쓴다. 그런데 [.gitignore:51](../../../../.gitignore)이 이 디렉터리를 부하 테스트 산출물과 같은 규칙으로 제외한다.
 
 ```
 # 부하 테스트 원본 산출물(k6 summary JSON, JFR 덤프 등). 과거 TASK-3/4/CLOUDFRONT와
@@ -300,5 +300,5 @@ BASELINE 문서의 수치를 원본에서 재계산했다. **매칭 실패율과
 
 - [AI-HALLUCINATION-GEMINI.md](AI-HALLUCINATION-GEMINI.md) — 이 산출물을 만든 측정의 방법론과 요약
 - [ROADMAP.md](../ROADMAP.md) — 1-2의 설계가 이 분석에 근거한다
-- [MULTI-AGENT-PIPELINE.md](../MULTI-AGENT-PIPELINE.md) — 점수 하한선·카테고리 하드 제약의 원 설계
+- [멀티 에이전트 파이프라인 설계](../멀티-에이전트-파이프라인.md) — 점수 하한선·카테고리 하드 제약의 원 설계
 - `src/test/java/backend/yourtrip/global/benchmark/AiHallucinationBaselineTest.java` — 측정 하네스

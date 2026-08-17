@@ -81,6 +81,12 @@ dependencies {
     // (Jetty 충돌은 이 레포에선 문제가 아니다 — 서블릿 컨테이너로 Tomcat을 쓰고 있어 Jetty가 없다.)
     testImplementation 'org.wiremock:wiremock-standalone:3.13.1'
 
+    // 테스트는 H2 인메모리 DB를 쓴다(src/test/resources/application-test.yml). 그 전까지는
+    // @SpringBootTest가 .env의 개발용 PostgreSQL에 그대로 붙었고, DB_DDL_AUTO=create 탓에
+    // 테스트를 돌릴 때마다 개발 DB의 테이블 13개가 drop/create 됐다(실측으로 확인).
+    // testRuntimeOnly라 컴파일 시점엔 보이지 않고 운영 jar에도 들어가지 않는다.
+    testRuntimeOnly 'com.h2database:h2'
+
     // 2.40.12 이상부터 CannedSignerRequest가 EC(ECDSA P-256) 개인키를 자동 인식한다(aws/aws-sdk-java-v2 PR #6627).
     // CloudFront Signed URL 서명을 RSA-2048에서 ECDSA P-256으로 전환하려면 이 버전 이상이 필수라 업그레이드했다.
     implementation platform('software.amazon.awssdk:bom:2.51.0') // 최신 안정판으로 맞추기

@@ -156,7 +156,8 @@ public class FeedServiceImpl implements FeedService {
                     .map(feedLike -> feedLike.getFeed().getId())
                     .collect(Collectors.toSet());
         } catch (BusinessException e) {
-            log.warn("비로그인 사용자의 피드 목록 조회");
+            // 비로그인 조회는 SecurityConfig에서 permitAll로 허용한 정상 흐름이라 경고 대상이 아니다.
+            log.debug("비로그인 사용자의 피드 목록 조회");
         }
 
         return feedMapper.toListResponse(feeds, likedFeedIds);
@@ -194,7 +195,8 @@ public class FeedServiceImpl implements FeedService {
                     .map(feedLike -> feedLike.getFeed().getId())
                     .collect(Collectors.toSet());
         } catch (BusinessException e) {
-            log.warn("비로그인 사용자의 피드 목록 조회");
+            // 비로그인 조회는 SecurityConfig에서 permitAll로 허용한 정상 흐름이라 경고 대상이 아니다.
+            log.debug("비로그인 사용자의 피드 목록 조회");
         }
         return feedMapper.toListResponse(feeds, likedFeedIds);
     }
@@ -223,7 +225,8 @@ public class FeedServiceImpl implements FeedService {
                     .map(feedLike -> feedLike.getFeed().getId())
                     .collect(Collectors.toSet());
         } catch (BusinessException e) {
-            log.warn("비로그인 사용자의 피드 목록 조회");
+            // 비로그인 조회는 SecurityConfig에서 permitAll로 허용한 정상 흐름이라 경고 대상이 아니다.
+            log.debug("비로그인 사용자의 피드 목록 조회");
         }
 
         return feedMapper.toListResponse(feeds, likedFeedIds);

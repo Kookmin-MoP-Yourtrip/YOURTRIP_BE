@@ -116,7 +116,7 @@ BASELINE 문서 발견 3이 지적한 `WRONG_MATCH` 유형이고, 1-2로는 해�
 | 설정 | 값 | 근거 |
 |---|---|---|
 | connect timeout | 2초 | 국내 리전이라 정상 연결은 수십 ms |
-| response timeout | 3초 | 설계 문서 §의 목표치 |
+| response timeout | 3초 | 설계 문서의 목표치 |
 | maxConnections | 50 | 기본값이 `max(가용 프로세서, 8)`이라 머신마다 달라진다 |
 | pendingAcquireTimeout | 5초 | 기본 45초는 응답 제한(3초)에 비해 과도 |
 | maxIdleTime / maxLifeTime | 30초 / 5분 | 상대가 조용히 끊은 커넥션 재사용 방지 |

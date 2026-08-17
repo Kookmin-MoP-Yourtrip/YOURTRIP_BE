@@ -63,7 +63,7 @@ variable "ssh_public_key_path" {
 }
 
 variable "app_instance_type" {
-  description = "App EC2 인스턴스 타입. 실제 배포 타겟(TASK-PRESIGN-BOTTLENECK.md 확인)과 동일한 t3.micro가 기본값 — '운영 스펙이 이 부하를 버티는가'를 그대로 검증하기 위함."
+  description = "App EC2 인스턴스 타입. 실제 배포 타겟(PRESIGN-BOTTLENECK.md 확인)과 동일한 t3.micro가 기본값 — '운영 스펙이 이 부하를 버티는가'를 그대로 검증하기 위함."
   type        = string
   default     = "t3.micro"
 }

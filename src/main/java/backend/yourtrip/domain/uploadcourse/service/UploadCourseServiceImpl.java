@@ -40,6 +40,7 @@ import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.config.RedisConfig;
 import backend.yourtrip.global.s3.service.S3Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -58,7 +59,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -108,6 +108,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private final UploadCourseRepository uploadCourseRepository;
     private final MyCourseService myCourseService;
     private final UploadCourseDetailReader uploadCourseDetailReader;
+    private final UploadCoursePopularReader uploadCoursePopularReader;
     private final UserService userService;
     private final S3Service s3Service;
     private final CloudFrontService cloudFrontService;
@@ -123,11 +124,26 @@ public class UploadCourseServiceImpl implements UploadCourseService {
      * 심지 않아, 캐시 히트 시 원래 레코드 타입이 아닌 LinkedHashMap으로 역직렬화되는 문제가 있었다
      * (courseDetail 캐시에서 IllegalStateException으로 실측 확인, courseListItem은 instanceof 체크가
      * 조용히 항상 실패하는 방식으로 같은 문제를 겪고 있었다). 캐시 값 타입을 이미 알고 있는 경우
-     * 굳이 타입 힌트에 의존할 필요가 없으므로, 캐시별로 타입을 명시한 Jackson2JsonRedisSerializer를
-     * 즉석에서 만들어 쓴다.
+     * 굳이 타입 힌트에 의존할 필요가 없으므로, 캐시별로 타입을 명시한 Jackson2JsonRedisSerializer를 쓴다.
+     * <p>
+     * 이전에는 필요할 때마다 {@code new Jackson2JsonRedisSerializer<>(objectMapper, type)}으로 즉석
+     * 생성했는데, 캐시 값 타입이 아래 두 개로 고정돼 있어 매번 만들 이유가 없다. 그 생성자는
+     * {@code objectMapper.getTypeFactory().constructType(type)}을 타고, 캐시 히트 경로는 요청당 최소
+     * 1회 이 지점을 지난다(EC2 실측 기준 초당 수천 회). serialize/deserialize는 stateless하고
+     * ObjectMapper도 설정을 바꾸지 않는 한 thread-safe하므로 인스턴스를 공유해도 안전하다.
+     * <p>
+     * objectMapper가 생성자 주입 필드라 static으로는 만들 수 없어 {@code @PostConstruct}에서 초기화한다
+     * (Mockito 단위 테스트는 @PostConstruct를 호출하지 않으므로 테스트에서 직접 불러줘야 한다).
      */
-    private <T> Jackson2JsonRedisSerializer<T> cacheSerializer(Class<T> type) {
-        return new Jackson2JsonRedisSerializer<>(objectMapper, type);
+    private Jackson2JsonRedisSerializer<CourseListItemCacheItem> listItemCacheSerializer;
+    private Jackson2JsonRedisSerializer<UploadCourseDetailCacheItem> detailCacheSerializer;
+
+    @PostConstruct
+    void initCacheSerializers() {
+        this.listItemCacheSerializer =
+            new Jackson2JsonRedisSerializer<>(objectMapper, CourseListItemCacheItem.class);
+        this.detailCacheSerializer =
+            new Jackson2JsonRedisSerializer<>(objectMapper, UploadCourseDetailCacheItem.class);
     }
 
     @Override
@@ -184,8 +200,8 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
         UploadCourseDetailCacheItem cached = readDetailCache(uploadCourseId);
         if (cached != null) {
-            // 캐시 히트 — DB 커넥션을 전혀 획득하지 않는다(TASK-PRESIGN-BOTTLENECK-FIX.md
-            // 0단계, TASK-PRESIGN-BOTTLENECK.md 직접 증거 3이 지목한 "SQL 0건인데 커넥션은
+            // 캐시 히트 — DB 커넥션을 전혀 획득하지 않는다(PRESIGN-BOTTLENECK-FIX.md
+            // 0단계, PRESIGN-BOTTLENECK.md 직접 증거 3이 지목한 "SQL 0건인데 커넥션은
             // 붙잡힌다"는 경로를 여기서 원천 차단한다).
             return UploadCourseMapper.toDetailResponse(cached,
                 getThumbnailUrlFromDetailCache(cached),
@@ -252,8 +268,12 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         );
     }
 
+    // getDetail과 같은 이유로 @Transactional을 두지 않는다. 이 경로는 랭킹 캐시 조회, 분산 락
+    // 획득·해제, 락 대기 재시도(최대 1초 Thread.sleep), 아이템 캐시 MGET/파이프라인 SET,
+    // CloudFront URL 조립까지 대부분이 DB와 무관한 작업이다. 트랜잭션을 걸면 캐시가 전부 히트해도
+    // DB 커넥션을 잡고, 최악의 경우 커넥션을 쥔 채로 1초를 sleep하게 된다.
+    // DB 접근은 UploadCoursePopularReader의 짧은 readOnly 트랜잭션에만 남겼다.
     @Override
-    @Transactional(readOnly = true)
     public UploadCourseListResponse getPopularCourses(KeywordType theme) {
         validateThemeIsMoodOrNull(theme);
 
@@ -294,13 +314,12 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
         if (locked == null) {
             // Redis 자체가 예외를 던진 경우 — 락 재시도 없이 바로 DB 직접 조회로 폴백(fail-open)
-            return uploadCourseRepository.findPopularCourseIds(theme, PageRequest.of(0, 5));
+            return uploadCoursePopularReader.readPopularCourseIds(theme);
         }
 
         if (locked) {
             try {
-                List<Long> ids = uploadCourseRepository.findPopularCourseIds(theme,
-                    PageRequest.of(0, 5));
+                List<Long> ids = uploadCoursePopularReader.readPopularCourseIds(theme);
                 writeRankingCache(cacheKey, ids);
                 return ids;
             } finally {
@@ -318,7 +337,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         }
 
         // 재시도로도 채워지지 않으면 캐싱 없이 DB 직접 조회로 최종 폴백
-        return uploadCourseRepository.findPopularCourseIds(theme, PageRequest.of(0, 5));
+        return uploadCoursePopularReader.readPopularCourseIds(theme);
     }
 
     /**
@@ -396,14 +415,14 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             .toList();
 
         if (!missingIds.isEmpty()) {
-            List<UploadCourse> uploadCourses = uploadCourseRepository.findAllByIdInWithKeywords(
+            // 캐시 미스분만 짧은 readOnly 트랜잭션으로 읽는다. 위의 MGET과 아래의 파이프라인 SET은
+            // 그 트랜잭션 밖에 있어야 하므로, 두 DB 조회를 Reader 메서드 하나로 합치면 안 된다.
+            List<CourseListItemCacheItem> loaded = uploadCoursePopularReader.readCourseListItems(
                 missingIds);
             Map<Long, CourseListItemCacheItem> newItems = new HashMap<>();
-            for (UploadCourse uploadCourse : uploadCourses) {
-                CourseListItemCacheItem item = UploadCourseMapper.toCourseListItemCacheItem(
-                    uploadCourse);
-                itemsById.put(uploadCourse.getId(), item);
-                newItems.put(uploadCourse.getId(), item);
+            for (CourseListItemCacheItem item : loaded) {
+                itemsById.put(item.uploadCourseId(), item);
+                newItems.put(item.uploadCourseId(), item);
             }
             // 개별 SET을 코스 개수만큼 반복하면 Redis 장애 시 타임아웃이 그만큼 곱해지는 문제가
             // 실측(fail-open 확인 중)으로 드러나, 파이프라인으로 한 번의 왕복에 모아 보낸다.
@@ -432,12 +451,18 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             if (rawValues == null) {
                 return result;
             }
-            Jackson2JsonRedisSerializer<CourseListItemCacheItem> serializer =
-                cacheSerializer(CourseListItemCacheItem.class);
+            Jackson2JsonRedisSerializer<CourseListItemCacheItem> serializer = listItemCacheSerializer;
             for (int i = 0; i < ids.size(); i++) {
                 byte[] raw = rawValues.get(i);
-                if (raw != null) {
-                    result.put(ids.get(i), serializer.deserialize(raw));
+                if (raw == null) {
+                    continue;
+                }
+                // 역직렬화가 예외 없이 null을 반환할 수 있다(캐시 값이 리터럴 "null"인 경우 등).
+                // 그대로 담으면 containsKey는 true라 캐시 미스로 잡히지 않고, 최종 응답 조립의
+                // filter(Objects::nonNull)에서 조용히 사라져 그 코스만 목록에서 누락된다.
+                CourseListItemCacheItem item = serializer.deserialize(raw);
+                if (item != null) {
+                    result.put(ids.get(i), item);
                 }
             }
         } catch (Exception e) {
@@ -454,7 +479,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private void writeItemCache(Long uploadCourseId, CourseListItemCacheItem item) {
         try {
             byte[] key = itemCacheKeyBytes(uploadCourseId);
-            byte[] value = cacheSerializer(CourseListItemCacheItem.class).serialize(item);
+            byte[] value = listItemCacheSerializer.serialize(item);
             long ttlSeconds = RedisConfig.COURSE_LIST_ITEM_TTL.getSeconds();
             cacheValueRedisTemplate.execute((RedisCallback<Object>) connection -> {
                 connection.stringCommands()
@@ -478,8 +503,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             return;
         }
         try {
-            Jackson2JsonRedisSerializer<CourseListItemCacheItem> serializer =
-                cacheSerializer(CourseListItemCacheItem.class);
+            Jackson2JsonRedisSerializer<CourseListItemCacheItem> serializer = listItemCacheSerializer;
             long ttlSeconds = RedisConfig.COURSE_LIST_ITEM_TTL.getSeconds();
 
             cacheValueRedisTemplate.executePipelined((RedisCallback<Object>) connection -> {
@@ -514,7 +538,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
     // RedisConfig의 RedisCacheManager("courseDetail" 캐시, GenericJackson2JsonRedisSerializer 경유)를
     // 쓰지 않는 이유: 그 직렬화기는 타입 정보(@class)를 심지 않아 Cache.get(key, Class)가
-    // IllegalStateException을 던진다(실측 확인, cacheSerializer() 주석 참고). courseListItem과
+    // IllegalStateException을 던진다(실측 확인, detailCacheSerializer 선언부 주석 참고). courseListItem과
     // 동일하게 타입을 명시한 Jackson2JsonRedisSerializer로 원시 Redis 커맨드를 직접 다룬다.
     //
     // TTL은 RedisConfig.COURSE_DETAIL_TTL(2시간)을 쓴다. courseListItem과 같은 2시간이지만 별도
@@ -537,7 +561,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
             if (raw == null) {
                 return null;
             }
-            return cacheSerializer(UploadCourseDetailCacheItem.class).deserialize(raw);
+            return detailCacheSerializer.deserialize(raw);
         } catch (Exception e) {
             // fail-open: Redis 장애/지연 시 캐시가 없는 것으로 취급하고 DB 조회로 폴백한다
             log.warn("상세 캐시 조회 실패, DB로 폴백합니다. uploadCourseId={}", uploadCourseId, e);
@@ -548,7 +572,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private void writeDetailCache(Long uploadCourseId, UploadCourseDetailCacheItem item) {
         try {
             byte[] key = detailCacheKeyBytes(uploadCourseId);
-            byte[] value = cacheSerializer(UploadCourseDetailCacheItem.class).serialize(item);
+            byte[] value = detailCacheSerializer.serialize(item);
             cacheValueRedisTemplate.execute((RedisCallback<Object>) connection -> {
                 connection.stringCommands().set(key, value,
                     Expiration.seconds(RedisConfig.COURSE_DETAIL_TTL.getSeconds()),

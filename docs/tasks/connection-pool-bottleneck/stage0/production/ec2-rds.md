@@ -61,8 +61,8 @@
 
 ## 참고 문서
 
-- [TASK-PRESIGN-BOTTLENECK-FIX.md](../../TASK-PRESIGN-BOTTLENECK-FIX.md) — 이 실측이 속한 단계별 계획 문서
+- [PRESIGN-BOTTLENECK-FIX.md](../../PRESIGN-BOTTLENECK-FIX.md) — 이 실측이 속한 단계별 계획 문서
 - [index.md](../local/index.md) — 이 환경 분리 재검증을 제안하게 된 선행 실측(Phase A/B/C)
 - [terraform/loadtest/README.md](../../../../../terraform/loadtest/README.md) — 이 인프라의 구축/철거 절차
-- [docs/guide/EC2-RDS-LOADTEST-GUIDE.md](../../../../guide/EC2-RDS-LOADTEST-GUIDE.md) — 인프라가 이미 구축된 이후의 부하테스트 실행 절차
+- [docs/guide/ec2-rds-loadtest.md](../../../../guide/ec2-rds-loadtest.md) — 인프라가 이미 구축된 이후의 부하테스트 실행 절차
 - [callerruns-verification.md](callerruns-verification.md) — 이 문서가 남긴 "점유시간 47.3ms→53.3ms 악화" 의문을 규명한 후속 실측

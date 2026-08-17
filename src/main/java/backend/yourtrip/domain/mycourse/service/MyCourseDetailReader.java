@@ -12,7 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 // MyCourseServiceImpl.getPlaceListByDay가 존재확인·소유권확인·DB조회만 짧은 트랜잭션으로
 // 묶기 위해 분리한 협력 빈. Spring @Transactional은 프록시 기반이라 같은 클래스 안에서의
 // this.메서드() 호출(self-invocation)에는 적용되지 않아, 이 부분만 별도 빈으로 뺐다
-// (TASK-PRESIGN-BOTTLENECK-FIX.md 0단계). checkExistCourse/checkOwnedCourse는
+// (PRESIGN-BOTTLENECK-FIX.md 0단계). checkExistCourse/checkOwnedCourse는
 // MyCourseServiceImpl의 다른 미변경 메서드도 계속 쓰므로 여기서는 복제해서 둔다.
 @Service
 @RequiredArgsConstructor

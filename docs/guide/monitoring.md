@@ -95,7 +95,7 @@ Grafana 커뮤니티에 공개된 완성도 높은 스프링 부트 대시보드
 
 🎉 **결과**: CPU, JVM 힙 메모리, Garbage Collection 타임, HTTP 요청 처리 속도, HikariCP 커넥션 풀 현황이 일목요연한 대시보드로 시각화됩니다.
 
-> **자동 provisioning 대시보드도 있다**: `test/presigned-url-bottleneck`에서 `docker-compose.yml`의 `grafana` 서비스에 `scripts/grafana/provisioning`을 볼륨 마운트해, `docker compose up -d` 시점에 **Dashboards → Bottleneck Test 폴더 → Presign CPU Bottleneck**이 로그인 직후부터 준비돼 있다(수동 import 불필요). CPU 사용률/HikariCP 커넥션 점유·대기/Tomcat 스레드/GC/로그 발생률/Hibernate 쿼리 실행률 8패널이며, `$arm` 변수로 `presign`/`cloudfront` job을 전환해 본다. 자세한 내용은 [TASK-PRESIGN-BOTTLENECK.md](../tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md) 참고.
+> **자동 provisioning 대시보드도 있다**: `test/presigned-url-bottleneck`에서 `docker-compose.yml`의 `grafana` 서비스에 `scripts/grafana/provisioning`을 볼륨 마운트해, `docker compose up -d` 시점에 **Dashboards → Bottleneck Test 폴더 → Presign CPU Bottleneck**이 로그인 직후부터 준비돼 있다(수동 import 불필요). CPU 사용률/HikariCP 커넥션 점유·대기/Tomcat 스레드/GC/로그 발생률/Hibernate 쿼리 실행률 8패널이며, `$arm` 변수로 `presign`/`cloudfront` job을 전환해 본다. 자세한 내용은 [PRESIGN-BOTTLENECK.md](../tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK.md) 참고.
 
 ---
 
@@ -103,7 +103,7 @@ Grafana 커뮤니티에 공개된 완성도 높은 스프링 부트 대시보드
 
 1. **Spring Boot 실행**: `./gradlew bootRun`
 2. **Grafana 접속**: `http://localhost:3000`(admin/admin)에서 대시보드 오픈
-3. **k6 부하 테스트 실행**: `scripts/k6/popular-courses-test.js`는 실제로 존재한 적 없는 경로였다(문서만 앞서 나갔던 흔적) — 실재하는 스크립트는 [`scripts/k6/detail-fixed.js`](../../scripts/k6/detail-fixed.js)(고정 동시성)와 [`scripts/k6/detail-ramping.js`](../../scripts/k6/detail-ramping.js)(포화점 탐색용 ramping)다. 자세한 사용법은 [TASK-PRESIGN-BOTTLENECK.md](../tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md)의 "재현 방법" 참고. 예:
+3. **k6 부하 테스트 실행**: `scripts/k6/popular-courses-test.js`는 실제로 존재한 적 없는 경로였다(문서만 앞서 나갔던 흔적) — 실재하는 스크립트는 [`scripts/k6/detail-fixed.js`](../../scripts/k6/detail-fixed.js)(고정 동시성)와 [`scripts/k6/detail-ramping.js`](../../scripts/k6/detail-ramping.js)(포화점 탐색용 ramping)다. 자세한 사용법은 [PRESIGN-BOTTLENECK.md](../tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK.md)의 "재현 방법" 참고. 예:
    ```bash
    k6 run -e DOMAIN=uploadcourse -e MODE=pool -e CONCURRENCY=50 scripts/k6/detail-fixed.js
    ```

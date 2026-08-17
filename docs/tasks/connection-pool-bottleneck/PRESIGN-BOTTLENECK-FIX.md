@@ -1,6 +1,6 @@
 # TASK-PRESIGN-BOTTLENECK-FIX. 커넥션 풀 병목 해소 계획
 
-> [TASK-PRESIGN-BOTTLENECK.md](TASK-PRESIGN-BOTTLENECK.md)가 원인을 규명한 문제("서명이 `@Transactional` 안에서 실행돼 HikariCP 커넥션을 초 단위로 점유하고, 동시 유저 20명 근처에서 이미 구조적으로 포화된다")에 대한 해결 계획이다. 단계별 우선순위와 각 단계의 근거·트레이드오프를 정리한 문서다. **0단계(트랜잭션 분리)와 그 과정에서 발견한 FK 인덱스 추가는 로컬 + EC2/RDS 분리 환경 양쪽에서 구현·재검증까지 완료했다** — 실측 기록이 길어져 별도 문서 4개로 분리했다(아래 0단계 절의 "실측 결과 요약" 참고). 핵심 결론만 먼저 밝히면: mycourse는 로컬·EC2+RDS 어느 환경에서도 0단계로 풀 포화가 개선되지 않았고(`pending` 최대값이 적용 전후로 완전히 동일), 오히려 평균 커넥션 점유시간이 악화됐다(47.3ms→53.3ms) — 그 원인은 `cloudFrontSigningExecutor`가 HikariCP 풀이 우연히 제공하던 유량제한을 잃고 `CallerRunsPolicy`로 CPU를 대량 잠식했기 때문임을 이후 검증으로 확정했다. uploadcourse는 두 환경 모두에서 `pending`이 0으로 사라지는 뚜렷한 개선을 보였다. 인덱스는 로컬에서만 검증됐고 EC2+RDS 환경에서는 아직 재검증하지 않았다. **1단계는 원안(Signed Cookie)을 기각하고 Custom Policy 와일드카드("코스당 서명 1회")로 대체해 EC2 실측까지 완료했다** — 브라운아웃은 설계대로 구조적으로 0이 됐지만, CPU 피크가 99%→70~83%로 내려갔음에도 처리량은 거의 그대로였다(151→150.5 req/s) — 병목이 CPU에서 다른 자원으로 옮겨간 것으로 보이며 정체는 미규명. 대신 범위 밖에서 제기했던 "JWT가 CloudFront 서명보다 큰 CPU 소비처일 수 있다"는 가설이 실측으로 확정됐다(JFR: Tomcat 스레드의 crypto 프레임 중 JWT 관련이 22~25%, CloudFront 서명은 0.00%로 완전 격리). 기각 근거·설계는 [stage1/design-and-poc.md](stage1/design-and-poc.md), 실측 기록은 [stage1/run-d-signature-once.md](stage1/run-d-signature-once.md) 참고.
+> [PRESIGN-BOTTLENECK.md](PRESIGN-BOTTLENECK.md)가 원인을 규명한 문제("서명이 `@Transactional` 안에서 실행돼 HikariCP 커넥션을 초 단위로 점유하고, 동시 유저 20명 근처에서 이미 구조적으로 포화된다")에 대한 해결 계획이다. 단계별 우선순위와 각 단계의 근거·트레이드오프를 정리한 문서다. **0단계(트랜잭션 분리)와 그 과정에서 발견한 FK 인덱스 추가는 로컬 + EC2/RDS 분리 환경 양쪽에서 구현·재검증까지 완료했다** — 실측 기록이 길어져 별도 문서 4개로 분리했다(아래 0단계 절의 "실측 결과 요약" 참고). 핵심 결론만 먼저 밝히면: mycourse는 로컬·EC2+RDS 어느 환경에서도 0단계로 풀 포화가 개선되지 않았고(`pending` 최대값이 적용 전후로 완전히 동일), 오히려 평균 커넥션 점유시간이 악화됐다(47.3ms→53.3ms) — 그 원인은 `cloudFrontSigningExecutor`가 HikariCP 풀이 우연히 제공하던 유량제한을 잃고 `CallerRunsPolicy`로 CPU를 대량 잠식했기 때문임을 이후 검증으로 확정했다. uploadcourse는 두 환경 모두에서 `pending`이 0으로 사라지는 뚜렷한 개선을 보였다. 인덱스는 로컬에서만 검증됐고 EC2+RDS 환경에서는 아직 재검증하지 않았다. **1단계는 원안(Signed Cookie)을 기각하고 Custom Policy 와일드카드("코스당 서명 1회")로 대체해 EC2 실측까지 완료했다** — 브라운아웃은 설계대로 구조적으로 0이 됐지만, CPU 피크가 99%→70~83%로 내려갔음에도 처리량은 거의 그대로였다(151→150.5 req/s) — 병목이 CPU에서 다른 자원으로 옮겨간 것으로 보이며 정체는 미규명. 대신 범위 밖에서 제기했던 "JWT가 CloudFront 서명보다 큰 CPU 소비처일 수 있다"는 가설이 실측으로 확정됐다(JFR: Tomcat 스레드의 crypto 프레임 중 JWT 관련이 22~25%, CloudFront 서명은 0.00%로 완전 격리). 기각 근거·설계는 [stage1/design-and-poc.md](stage1/design-and-poc.md), 실측 기록은 [stage1/run-d-signature-once.md](stage1/run-d-signature-once.md) 참고.
 
 ## 배경 요약
 
@@ -89,7 +89,7 @@ Run D~F까지의 비교에는 구멍이 둘 있었다. ①극한 부하(1200 req
 
 **적용 조건**: 1단계(Signed Cookie 전환)가 당장 부담스럽거나(클라이언트 마이그레이션 비용, 접근 제어 재설계 범위) 보류될 경우의 대안, 또는 1단계 전까지의 과도기적 완화책.
 
-**무엇을**: [CACHING-ROADMAP.md 설계 원칙 1](../../CACHING-ROADMAP.md)의 "presigned URL은 캐싱하지 않는다"를 재검토한다. 서명 URL 자체(S3 key가 아니라 완성된 URL)를 Redis에 만료시간보다 충분히 짧은 TTL로 캐싱한다(예: 60분 유효 → 10분 캐시).
+**무엇을**: [redis-caching 설계 원칙 1](../redis-caching/README.md)의 "presigned URL은 캐싱하지 않는다"를 재검토한다. 서명 URL 자체(S3 key가 아니라 완성된 URL)를 Redis에 만료시간보다 충분히 짧은 TTL로 캐싱한다(예: 60분 유효 → 10분 캐시).
 
 **근거**: [Ben Nadel의 케이스 스터디](https://www.bennadel.com/blog/3685-performance-case-study-caching-cryptographically-signed-urls-in-redis-in-lucee-5-2-9-40.htm)가 동일한 패턴으로 p95 URL 생성 시간을 1/3로 줄인 실측 사례를 보고한다.
 
@@ -103,7 +103,7 @@ Run D~F까지의 비교에는 구멍이 둘 있었다. ①극한 부하(1200 req
 
 **무엇을**: 0단계가 "트랜잭션 밖으로 뺀다"는 임기응변이라면, 이를 Michael Nygard(*Release It!*)가 정식화한 **Bulkhead 패턴**(서로 다른 성격의 작업을 별도 리소스 풀로 파티셔닝해 한쪽 지연이 다른 쪽으로 전염되지 않게 하는 것)으로 구조화한다.
 
-**현재 상태와의 연결**: `cloudFrontSigningExecutor`(코어 수만큼의 전용 풀)가 사실 이 패턴의 절반(서명 스레드풀 격리)은 이미 구현돼 있었다. 다만 그 앞단(HikariCP 풀)이 격리 안 돼 있어서 0단계 적용 전에는 실제로 자기 용량을 다 써본 적이 없었다([TASK-PRESIGN-BOTTLENECK.md의 "PR #61 재해석"](TASK-PRESIGN-BOTTLENECK.md) 참고). **다만 [CallerRunsPolicy 가설 검증](stage0/production/callerruns-verification.md)으로 확인된 실제 결과는 이 서술이 예상한 것보다 훨씬 나빴다** — 0단계 적용 후 이 실행자는 "비로소 제 역할을 하게" 된 게 아니라, VU200 근처에서 큐+풀 용량(102)을 압도적으로 초과해 `CallerRunsPolicy`가 초당 약 1,450회 발동하며 격리 자체가 깨졌다(요청 스레드로 서명 작업이 그대로 역류). Bulkhead는 상대방의 지연이 전염되지 않게 막는 게 목적인데, 지금 구조는 정확히 그 반대로 동작하고 있었다는 뜻이라 이 단계의 필요성이 더 강하게 뒷받침된다. 해결책의 설계·구현·기각한 대안·EC2 재검증은 별도 문서([abortpolicy-gate-verification.md](stage0/production/abortpolicy-gate-verification.md))로 뺐다.
+**현재 상태와의 연결**: `cloudFrontSigningExecutor`(코어 수만큼의 전용 풀)가 사실 이 패턴의 절반(서명 스레드풀 격리)은 이미 구현돼 있었다. 다만 그 앞단(HikariCP 풀)이 격리 안 돼 있어서 0단계 적용 전에는 실제로 자기 용량을 다 써본 적이 없었다([PRESIGN-BOTTLENECK.md의 "PR #61 재해석"](PRESIGN-BOTTLENECK.md) 참고). **다만 [CallerRunsPolicy 가설 검증](stage0/production/callerruns-verification.md)으로 확인된 실제 결과는 이 서술이 예상한 것보다 훨씬 나빴다** — 0단계 적용 후 이 실행자는 "비로소 제 역할을 하게" 된 게 아니라, VU200 근처에서 큐+풀 용량(102)을 압도적으로 초과해 `CallerRunsPolicy`가 초당 약 1,450회 발동하며 격리 자체가 깨졌다(요청 스레드로 서명 작업이 그대로 역류). Bulkhead는 상대방의 지연이 전염되지 않게 막는 게 목적인데, 지금 구조는 정확히 그 반대로 동작하고 있었다는 뜻이라 이 단계의 필요성이 더 강하게 뒷받침된다. 해결책의 설계·구현·기각한 대안·EC2 재검증은 별도 문서([abortpolicy-gate-verification.md](stage0/production/abortpolicy-gate-verification.md))로 뺐다.
 
 **구현 방식 정정(Resilience4j → 직접 구현)**: 이 절은 원래 "Resilience4j `@Bulkhead(type = Bulkhead.Type.THREADPOOL)`가 표준 구현체"라고 서술했으나, 실제 설계·구현 단계에서 이 fan-out 구조(요청 1건이 이미지 수만큼 태스크를 만듦)에는 THREADPOOL 타입이 부적합하다는 게 드러나 정정한다. 최종 채택안은 다음 두 가지의 조합이다.
 
@@ -155,7 +155,7 @@ Resilience4j `Bulkhead.Type.THREADPOOL`/`Type.SEMAPHORE`를 검토하고 기각�
 
 ## 공통 검증 방법
 
-각 단계 적용 후 다음을 반복한다 — [TASK-PRESIGN-BOTTLENECK.md의 "재현 방법"](TASK-PRESIGN-BOTTLENECK.md)과 동일한 도구를 재사용한다.
+각 단계 적용 후 다음을 반복한다 — [PRESIGN-BOTTLENECK.md의 "재현 방법"](PRESIGN-BOTTLENECK.md)과 동일한 도구를 재사용한다.
 
 1. `scripts/sql/seed-benchmark.sql`로 동일 규격 시드
 2. **주력 — `scripts/k6/detail-arrival-rate.js`(열린 루프, 도착률 10→50→100→200→`MAX_RATE`)로 부하**
@@ -169,7 +169,7 @@ Resilience4j `Bulkhead.Type.THREADPOOL`/`Type.SEMAPHORE`를 검토하고 기각�
 
 ## 참고 문서
 
-- [TASK-PRESIGN-BOTTLENECK.md](TASK-PRESIGN-BOTTLENECK.md) — 원인 규명(이 계획의 근거)
+- [PRESIGN-BOTTLENECK.md](PRESIGN-BOTTLENECK.md) — 원인 규명(이 계획의 근거)
 - [stage0/local/transaction-separation.md](stage0/local/transaction-separation.md) — 0단계 로컬 실측 기록
 - [stage0/local/index.md](stage0/local/index.md) — 인덱스 추가 로컬 실측 기록
 - [stage0/production/ec2-rds.md](stage0/production/ec2-rds.md) — EC2+RDS 분리 환경 실측 기록
@@ -180,5 +180,5 @@ Resilience4j `Bulkhead.Type.THREADPOOL`/`Type.SEMAPHORE`를 검토하고 기각�
 - [stage1/run-e-infra-removed.md](stage1/run-e-infra-removed.md) — 3단계 게이트·executor 제거 후 재측정(Run E) + knee 재탐색(Run F). 인프라 제거가 처리량·지연을 악화시키지 않음을 확인, Tomcat `maxThreads`(200)가 실제 처리량 상한임을 특정
 - [stage1/run-g-before-code-max-rate.md](stage1/run-g-before-code-max-rate.md) — 도입 전 코드를 Run F와 같은 극한 부하(1200 req/s)로 재측정(Run G). "처리량 천장은 원래도 같았지만 도입 전은 응답의 64.8%에 이미지가 빠져 있었다"를 확인. t3 `unlimited` 모드에서 `CPUCreditBalance=0`이 스로틀링을 뜻하지 않는다는 방법론 정정 포함
 - [stage1/run-h-i-closed-loop.md](stage1/run-h-i-closed-loop.md) — 닫힌 루프로 도입 전/후 포화점 비교(Run H/I). 무손실 최대 처리량 197.9→379.0 req/s, 품질 유지 동시 사용자 50명→400명 이상. 닫힌 루프의 "빠른 거부 역설"을 실측으로 확인
-- [CACHING-ROADMAP.md](../../CACHING-ROADMAP.md) — 2단계와 관련된 기존 캐싱 설계 원칙
+- [redis-caching/README.md](../redis-caching/README.md) — 2단계와 관련된 기존 캐싱 설계 원칙
 - GitHub 이슈 [#67](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/67) — 0단계에 대응. 1/3/5단계는 착수 시점에 별도 이슈로 분리하는 것을 검토한다.

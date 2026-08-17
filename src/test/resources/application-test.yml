@@ -1,19 +1,65 @@
-# 통합 테스트 전용 프로파일(@ActiveProfiles("test"))에서 쓴다.
+# 테스트 전용 프로필. @ActiveProfiles("test")를 붙인 테스트에서만 적용된다.
 #
-# 이 파일이 있기 전까지 src/test/resources 디렉터리 자체가 없었고, @SpringBootTest는 운영
-# application.yml + 레포 루트 .env에 그대로 의존했다. 즉 테스트가 개발자 로컬의 실제 API 키를
-# 읽어 외부 API를 때릴 수 있는 구조였다. 이 프로파일은 두 가지를 한다.
+# 이 프로필은 테스트를 **개발자 로컬 환경(.env)에서 떼어내는** 것이 목적이고, 세 가지를 한다.
 #
-#   1) 외부 API 자격증명을 더미로 덮어써, 테스트가 로컬 .env에 의존하지 않게 한다.
-#   2) 외부 API base-url을 WireMock 스텁 서버로 바꿔 끼울 수 있게 한다.
-#      WireMock 포트는 테스트마다 달라질 수 있으므로, 실제 테스트에서는 @DynamicPropertySource로
-#      주입해 아래 기본값을 덮어쓴다. 여기 적힌 8089는 WireMock 기본 포트다.
+#   1) DB를 H2 인메모리로 바꾼다. 그 전까지 @SpringBootTest는 .env의 개발용 PostgreSQL에
+#      그대로 붙었고, DB_DDL_AUTO=create 탓에 테스트를 돌릴 때마다 개발 DB의 테이블 13개가
+#      drop/create 됐다(실측으로 확인).
+#   2) 외부 API 자격증명을 더미로 덮어쓰고, base-url을 WireMock 스텁 서버로 바꿔 끼울 수 있게
+#      한다. 그 전까지는 테스트가 로컬 .env의 실제 API 키를 읽어 외부 API를 때릴 수 있었다.
+#   3) 로깅 레벨을 조인다. 이 파일이 없으면 @SpringBootTest가 spring.profiles.default에 걸려
+#      local 프로필로 뜨는데, local은 앱 패키지 DEBUG + SQL/바인딩 파라미터 전량 로깅이라
+#      테스트 출력이 SQL로 뒤덮인다(실측: 기동만으로 DEBUG 70줄 + TRACE 24줄이 추가된다).
 #
-# DB/Redis는 아직 실제 인스턴스를 쓴다. 기존 @SpringBootTest 2개(YourtripApplicationTests,
-# UploadCourseControllerE2ETest)를 이 프로파일로 옮기는 작업은 이번 범위 밖이다
-# (docs/tasks/ai-course-create/ROADMAP.md 0단계 "범위 밖" 참고).
+# 로깅 레벨을 application-prod.yml과 동일하게 맞춘 것은 의도적이다. 테스트 출력이 조용해질 뿐
+# 아니라, 배포 환경이 실제로 남길 로그를 테스트에서 미리 보게 된다. 값이 겹친다고 prod 프로필을
+# 테스트에 그대로 쓰지는 않는다 - 이 프로필은 로깅 외에 DB·외부 API 스텁 같은 테스트 전용
+# 설정도 함께 담는 자리이기 때문이다.
+#
+# Redis는 아직 실제 인스턴스를 쓴다.
 
+spring:
+  datasource:
+    # MODE=PostgreSQL: 엔티티의 columnDefinition("TEXT", "int default 0",
+    #   "boolean default false")은 Hibernate가 가공 없이 DDL에 그대로 넣으므로 PG 호환 모드가 필수다.
+    # DATABASE_TO_LOWER=TRUE: PG는 따옴표 없는 식별자를 소문자로, H2는 대문자로 접는다.
+    # DB_CLOSE_DELAY=-1: 마지막 커넥션이 닫히는 순간 인메모리 DB가 통째로 사라진다.
+    #   HikariCP가 유휴 커넥션을 정리할 때 스키마가 날아가는 사고를 막는다.
+    url: jdbc:h2:mem:yourtrip;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    # username/password도 반드시 덮어쓴다. 안 그러면 application.yml의 ${DB_USERNAME}/
+    # ${DB_PASSWORD}가 내려와 테스트가 다시 .env에 묶인다.
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      # 공통 설정의 ${DB_DDL_AUTO}(= .env의 create)를 덮어쓴다. 이걸로 테스트가 .env에서
+      # 분리되고, 개발 DB를 드롭하던 경로가 끊긴다.
+      ddl-auto: create-drop
+
+  sql:
+    init:
+      # spring.sql.init.mode 기본값 embedded는 H2를 대상으로 삼아 src/main/resources/data.sql
+      # (465줄, PostgreSQL용 시드)을 자동 실행한다. 게다가 defer-datasource-initialization이
+      # 꺼져 있어 Hibernate가 테이블을 만들기 전에 INSERT를 때려 확정적으로 실패한다.
+      # 지금까지는 PostgreSQL이 embedded가 아니라 실행되지 않았을 뿐이므로 반드시 끈다.
+      mode: never
+
+# 외부 API — 자격증명은 더미로, base-url은 WireMock 스텁으로.
+# WireMock 포트는 테스트마다 달라질 수 있으므로, 실제 테스트에서는 @DynamicPropertySource로
+# 주입해 아래 기본값을 덮어쓴다. 여기 적힌 8089는 WireMock 기본 포트다.
 kakao:
   api-key: test-kakao-api-key
   local:
     base-url: http://localhost:8089
+
+logging:
+  level:
+    # prod와 마찬가지로 root는 INFO를 유지한다. 컨텍스트 로딩 실패나 빈 등록 오류는
+    # 테스트가 왜 깨졌는지 알려주는 1차 단서라 지우면 안 된다.
+    root: INFO
+    backend.yourtrip: INFO
+    org.hibernate: WARN
+    software.amazon.awssdk: WARN
+    io.lettuce.core: WARN

@@ -1,6 +1,6 @@
 # TASK-3. 인기 코스 상위 5개 목록 캐싱
 
-> [redis-caching-strategy.md](../CACHING-ROADMAP.md) 3번 섹션("인기 상위 5개 목록 — 읽기 경로부터 단계적으로")에 대응하는 작업 기록. 체크리스트 자체는 원문서를 따르되, 이 문서는 **설계 과정에서 오간 논의와 그 근거**를 포트폴리오용으로 남긴다.
+> [README.md](../README.md) 3번 섹션("인기 상위 5개 목록 — 읽기 경로부터 단계적으로")에 대응하는 작업 기록. 체크리스트 자체는 원문서를 따르되, 이 문서는 **설계 과정에서 오간 논의와 그 근거**를 포트폴리오용으로 남긴다.
 
 ## 배경
 
@@ -212,7 +212,7 @@ fail-open 검증(Redis 중단 상태 테스트) 중, 코스가 실제로 존재�
 
 ### 3-9. 아이템 캐시 타입 정보 유실 버그 수정 (4번 섹션 작업 중 소급 발견)
 
-3-5에서 구현한 아이템 캐시(`readItemCache`)가 `GenericJackson2JsonRedisSerializer`의 타입 정보 유실 문제로 오류 없이 항상 캐시 미스로 동작하고 있었을 가능성이 높다는 것을, 4번 섹션(상세 캐시) 작업 중 우연히 발견해 함께 수정했다. 발견 경위와 원인 분석은 [TASK-4.md](TASK-4.md)의 "발견한 버그" 절에 자세히 기록했다 — 같은 원인이 상세 캐시에서는 예외를 던지는 방식으로, 아이템 캐시에서는 조용히 미스 처리되는 방식으로 각각 드러났다.
+3-5에서 구현한 아이템 캐시(`readItemCache`)가 `GenericJackson2JsonRedisSerializer`의 타입 정보 유실 문제로 오류 없이 항상 캐시 미스로 동작하고 있었을 가능성이 높다는 것을, 4번 섹션(상세 캐시) 작업 중 우연히 발견해 함께 수정했다. 발견 경위와 원인 분석은 [detail-cache.md](detail-cache.md)의 "발견한 버그" 절에 자세히 기록했다 — 같은 원인이 상세 캐시에서는 예외를 던지는 방식으로, 아이템 캐시에서는 조용히 미스 처리되는 방식으로 각각 드러났다.
 
 **수정**: `readItemCache`/`writeItemCache`/`writeItemCacheBatch`를 `CacheManager` 경유 대신, 캐시별 타입을 명시한 `Jackson2JsonRedisSerializer<CourseListItemCacheItem>`로 원시 Redis 커맨드(`MGET`/`SET`)를 직접 다루도록 교체했다. 실제 코스를 업로드하고 `/popular` API를 연속 호출해, 2번째 호출부터 `findAllByIdInWithKeywords` 쿼리가 발생하지 않음을 로그로 확인했다.
 

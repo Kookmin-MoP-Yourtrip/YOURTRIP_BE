@@ -34,7 +34,7 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
  * 고치면 업로드 경로와 복사(fork/업로드 사본) 경로가 조용히 어긋난다. 그런데 이 조립 로직을
  * 검증하는 테스트가 없었다 — 이 테스트가 그 안전망이다.
  *
- * <p>TASK-PRESIGN-BOTTLENECK-FIX.md 1단계로 <b>비공개 key만</b> 코스 단위
+ * <p>PRESIGN-BOTTLENECK-FIX.md 1단계로 <b>비공개 key만</b> 코스 단위
  * ({@code private/{courseId}/{uuid}.{ext}})로 바뀌었다. 공개 key는 서명 대상이 아니라
  * 이 변경과 무관하므로 날짜 기반({@code uploads/{yyyy-MM-dd}/{uuid}.{ext}})을 유지한다.
  */

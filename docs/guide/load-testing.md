@@ -196,4 +196,4 @@ jfr print --events jdk.ExecutionSample --stack-depth 64 results/dump.jfr \
   | node scripts/jfr/parse-execution-samples.mjs
 ```
 
-`settings=profile`은 기본(`default`) 대비 샘플링 주기가 촘촘해(10ms) 메서드 단위 CPU 귀속에 적합하다. `parse-execution-samples.mjs`는 (1) 최상위(leaf) 프레임 Top 30과 (2) 지정한 패키지(AWS SDK 서명, crypto, Hibernate, logback, HikariCP)가 스택 어디에라도 등장하는 샘플의 비율을 출력한다 — 실측 사례와 해석은 [TASK-PRESIGN-BOTTLENECK.md](../tasks/connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md) 참고.
+`settings=profile`은 기본(`default`) 대비 샘플링 주기가 촘촘해(10ms) 메서드 단위 CPU 귀속에 적합하다. `parse-execution-samples.mjs`는 (1) 최상위(leaf) 프레임 Top 30과 (2) 지정한 패키지(AWS SDK 서명, crypto, Hibernate, logback, HikariCP)가 스택 어디에라도 등장하는 샘플의 비율을 출력한다 — 실측 사례와 해석은 [PRESIGN-BOTTLENECK.md](../tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK.md) 참고.

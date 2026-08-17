@@ -151,7 +151,7 @@ class MyCourseServiceImplTest {
     @Test
     @DisplayName("이미지가 몇 장이든 서명은 코스당 정확히 1회만 호출된다")
     void getPlaceListByDay_SignsOncePerCourseRegardlessOfImageCount() {
-        // 이 테스트가 1단계(TASK-PRESIGN-BOTTLENECK-FIX.md)의 목적 자체를 단언한다 —
+        // 이 테스트가 1단계(PRESIGN-BOTTLENECK-FIX.md)의 목적 자체를 단언한다 —
         // 예전에는 이미지 수만큼(여기서는 5회) 서명했다.
         DaySchedule daySchedule = daySchedule();
         Place place = place(daySchedule, 1L);
