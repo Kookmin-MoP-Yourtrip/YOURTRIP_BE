@@ -17,7 +17,7 @@
 | 시드 | `seed-benchmark.sql` + `seed-popular.sql` (upload_course 3,000건) |
 | 요청 수 | arm·엔드포인트당 **200회** (순차) |
 | 대상 | `GET /api/upload-courses/popular`, `GET /api/upload-courses/1` |
-| 스크립트 | [scripts/loadtest/phase0-gate.sh](../../../scripts/loadtest/phase0-gate.sh) |
+| 스크립트 | `scripts/loadtest/phase0-gate.sh` — 측정 후 토글과 함께 제거했다([README.md](README.md#측정-장치는-측정이-끝난-뒤-제거했다)) |
 
 **arm 구성** — 같은 JAR, 프로퍼티만 교체:
 

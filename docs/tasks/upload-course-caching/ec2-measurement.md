@@ -34,7 +34,9 @@
 | **A1** | 있음 | 메서드 전체 | `7e74d0d`/`604d3a4` ~ 트랜잭션 분리 직전 |
 | **A2** | 있음 | Reader만 | **현재 운영 (기본값)** |
 
-**전환 절차**는 [switch 스크립트](../../../scripts/loadtest/switch-arm.sh)와 동일한 순서를 자동화했다 — 프로퍼티 교체 → 재기동 → **활성 프로필 검증** → 재시딩(`DB_DDL_AUTO=create`라 재기동마다 스키마가 DROP/CREATE된다) → `FLUSHALL` → 랭킹 8키 워밍(캐시 arm만).
+**전환 절차**는 `scripts/loadtest/switch-arm.sh`와 동일한 순서를 자동화했다 — 프로퍼티 교체 → 재기동 → **활성 프로필 검증** → 재시딩(`DB_DDL_AUTO=create`라 재기동마다 스키마가 DROP/CREATE된다) → `FLUSHALL` → 랭킹 8키 워밍(캐시 arm만).
+
+> 이 스크립트와 `yourtrip.benchmark.*` 토글은 **측정이 끝난 뒤 제거했다.** 재현하려면 `d144126`을 checkout한다 — 자세한 이유는 [README.md](README.md#측정-장치는-측정이-끝난-뒤-제거했다) 참고.
 
 **지표 수집**: App EC2의 `/actuator/prometheus`를 **1초 간격으로 직접 폴링**했다(run당 350~370 샘플). 커넥션 대여 횟수는 `hikaricp_connections_usage_seconds_count`의 증분을 요청 수 증분으로 나눠 구했다 — `active`는 순간값이라 빌렸다 즉시 반납하는 캐시 히트 경로에서는 폴링 간격 사이에 잡히다 만다.
 

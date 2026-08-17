@@ -37,7 +37,6 @@ import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
-import backend.yourtrip.global.config.BenchmarkProperties;
 import backend.yourtrip.global.config.RedisConfig;
 import backend.yourtrip.global.s3.service.S3Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -119,9 +118,6 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private final ObjectMapper objectMapper;
     private final UploadCourseViewCountService uploadCourseViewCountService;
     private final ApplicationEventPublisher eventPublisher;
-    // 캐싱 효과 부하테스트에서만 기본값이 아닌 값을 갖는다. 기본값(ENABLED)이면 아래 게이트는
-    // 전부 통과하므로 이 필드가 없던 때와 동작이 같다.
-    private final BenchmarkProperties benchmarkProperties;
 
     /**
      * GenericJackson2JsonRedisSerializer(RedisConfig.cacheValueSerializer())는 값에 타입 정보(@class)를
@@ -296,14 +292,6 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     // ==========================
 
     private List<Long> getPopularCourseIds(KeywordType theme) {
-        if (benchmarkProperties.isCacheDisabled()) {
-            // 분산 락까지 건너뛰고 DB로 직행한다. 락은 "여러 요청이 같은 캐시 키를 동시에 채우는 것"을
-            // 막는 장치인데 채울 캐시가 없으면 지킬 대상이 없고, 락 대기 Thread.sleep(최대 1초)만
-            // 남아 톰캣 워커 스레드를 잡는다 — "캐시 없음"이 아니라 "캐시 없음 + 불필요한 락 대기"를
-            // 측정하게 되어 포화 VU 판정이 오염된다.
-            return uploadCoursePopularReader.readPopularCourseIds(theme);
-        }
-
         String cacheKey = theme != null ? theme.name() : ALL_THEME_CACHE_KEY;
 
         List<Long> cachedIds = readRankingCache(cacheKey);
@@ -383,9 +371,6 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
     @SuppressWarnings("unchecked")
     private List<Long> readRankingCache(String cacheKey) {
-        if (benchmarkProperties.isCacheDisabled()) {
-            return null;
-        }
         try {
             Cache cache = cacheManager.getCache(POPULAR_COURSES_CACHE);
             if (cache == null) {
@@ -403,9 +388,6 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     }
 
     private void writeRankingCache(String cacheKey, List<Long> ids) {
-        if (benchmarkProperties.isCacheDisabled()) {
-            return;
-        }
         try {
             Cache cache = cacheManager.getCache(POPULAR_COURSES_CACHE);
             if (cache != null) {
@@ -457,10 +439,6 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
     private Map<Long, CourseListItemCacheItem> readItemCache(List<Long> ids) {
         Map<Long, CourseListItemCacheItem> result = new HashMap<>();
-        if (benchmarkProperties.isCacheDisabled()) {
-            // 전부 미스로 취급 — 호출부가 missingIds를 전건으로 잡아 DB 배치 조회로 폴백한다
-            return result;
-        }
         try {
             // 코스 개수(최대 5건)만큼 개별 GET을 반복하면 왕복이 그만큼 누적돼 벤치마크에서
             // 실측으로 확인된 지연 문제였다 — MGET으로 한 번에 배치 조회해 왕복을 1회로 줄인다.
@@ -499,9 +477,6 @@ public class UploadCourseServiceImpl implements UploadCourseService {
      * 콘텐츠 변경 이벤트(fork로 인한 forkCount 증가 등) 발생 시 코스 1건만 즉시 write-through할 때 사용한다.
      */
     private void writeItemCache(Long uploadCourseId, CourseListItemCacheItem item) {
-        if (benchmarkProperties.isCacheDisabled()) {
-            return;
-        }
         try {
             byte[] key = itemCacheKeyBytes(uploadCourseId);
             byte[] value = listItemCacheSerializer.serialize(item);
@@ -524,7 +499,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
      * 곱해져 응답이 수 초 단위로 늘어지는 문제가 실측으로 확인됐다.
      */
     private void writeItemCacheBatch(Map<Long, CourseListItemCacheItem> items) {
-        if (items.isEmpty() || benchmarkProperties.isCacheDisabled()) {
+        if (items.isEmpty()) {
             return;
         }
         try {
@@ -580,9 +555,6 @@ public class UploadCourseServiceImpl implements UploadCourseService {
      * 4번 섹션 "추가 개선점" 참고).
      */
     private UploadCourseDetailCacheItem readDetailCache(Long uploadCourseId) {
-        if (benchmarkProperties.isCacheDisabled()) {
-            return null;
-        }
         try {
             byte[] raw = cacheValueRedisTemplate.execute((RedisCallback<byte[]>) connection ->
                 connection.stringCommands().get(detailCacheKeyBytes(uploadCourseId)));
@@ -598,9 +570,6 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     }
 
     private void writeDetailCache(Long uploadCourseId, UploadCourseDetailCacheItem item) {
-        if (benchmarkProperties.isCacheDisabled()) {
-            return;
-        }
         try {
             byte[] key = detailCacheKeyBytes(uploadCourseId);
             byte[] value = detailCacheSerializer.serialize(item);
@@ -1000,11 +969,6 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
     @Override
     public void refreshAllPopularCoursesCache() {
-        if (benchmarkProperties.isCacheDisabled()) {
-            // 갱신할 캐시가 없다. 그냥 두면 랭킹 쿼리 8회가 측정 구간 한복판(스케줄러 10분 주기)에
-            // 그대로 실행되어, 캐시가 없는 arm에만 없던 DB 부하가 얹힌다.
-            return;
-        }
         // 전체 카테고리(ALL) 및 각 테마(MOOD)별로 랭킹 쿼리를 강제로 재실행하고 캐시를 갱신한다.
         computePopularCourseIdsWithLock(null, ALL_THEME_CACHE_KEY);
         for (KeywordType theme : KeywordType.findByCategory("mood")) {

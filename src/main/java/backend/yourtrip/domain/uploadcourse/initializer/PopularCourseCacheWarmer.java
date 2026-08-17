@@ -2,7 +2,6 @@ package backend.yourtrip.domain.uploadcourse.initializer;
 
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.domain.uploadcourse.service.UploadCourseService;
-import backend.yourtrip.global.config.BenchmarkProperties;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -23,16 +22,9 @@ import org.springframework.stereotype.Component;
 public class PopularCourseCacheWarmer {
 
     private final UploadCourseService uploadCourseService;
-    private final BenchmarkProperties benchmarkProperties;
 
     @EventListener(ApplicationReadyEvent.class)
     public void warmUpPopularCoursesCache() {
-        if (benchmarkProperties.isCacheDisabled()) {
-            // 채울 캐시가 없다. 그냥 두면 기동 직후 랭킹 쿼리 8회가 무의미하게 실행된다.
-            log.info("캐시가 비활성화되어 인기 목록 웜업을 건너뜁니다.");
-            return;
-        }
-
         List<KeywordType> themes = new ArrayList<>();
         themes.add(null);
         themes.addAll(KeywordType.findByCategory("mood"));

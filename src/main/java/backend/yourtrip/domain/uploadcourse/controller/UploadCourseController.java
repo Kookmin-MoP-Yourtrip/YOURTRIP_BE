@@ -8,7 +8,6 @@ import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseDetailRespo
 import backend.yourtrip.domain.uploadcourse.dto.response.UploadCourseListResponse;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.domain.uploadcourse.entity.enums.UploadCourseSortType;
-import backend.yourtrip.domain.uploadcourse.service.UploadCourseReadDispatcher;
 import backend.yourtrip.domain.uploadcourse.service.UploadCourseService;
 import backend.yourtrip.global.common.ClientRequestUtils;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -37,9 +36,6 @@ import org.springframework.web.multipart.MultipartFile;
 public class UploadCourseController implements UploadCourseControllerSpec {
 
     private final UploadCourseService uploadCourseService;
-    // 두 조회 API만 디스패처를 탄다. 기본 설정에서는 uploadCourseService로 그대로 위임하므로
-    // 동작 차이가 없고, 벤치마크에서만 트랜잭션 경계가 다른 경로로 갈린다.
-    private final UploadCourseReadDispatcher uploadCourseReadDispatcher;
 
     // ==========================
     //  코스 키워드 목록 조회
@@ -72,7 +68,7 @@ public class UploadCourseController implements UploadCourseControllerSpec {
         @PathVariable Long uploadCourseId, HttpServletRequest request) {
         String viewerKey = uploadCourseService.resolveViewerKey(
             ClientRequestUtils.resolveClientIp(request), request.getHeader("User-Agent"));
-        return uploadCourseReadDispatcher.getDetail(uploadCourseId, viewerKey);
+        return uploadCourseService.getDetail(uploadCourseId, viewerKey);
     }
 
     // ==========================
@@ -103,7 +99,7 @@ public class UploadCourseController implements UploadCourseControllerSpec {
     public UploadCourseListResponse getPopularCourses(
         @RequestParam(name = "theme", required = false) KeywordType theme
     ) {
-        return uploadCourseReadDispatcher.getPopularCourses(theme);
+        return uploadCourseService.getPopularCourses(theme);
     }
 
     // ==========================

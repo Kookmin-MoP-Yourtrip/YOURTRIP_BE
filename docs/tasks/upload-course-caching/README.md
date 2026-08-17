@@ -96,11 +96,17 @@
 
 | 스크립트 | 용도 |
 |---|---|
-| [phase0-gate.sh](../../../scripts/loadtest/phase0-gate.sh) | 로컬에서 세 arm의 SQL/커넥션 카운터와 응답 동일성을 검증 |
-| [switch-arm.sh](../../../scripts/loadtest/switch-arm.sh) | EC2에서 arm 전환(프로필 확인 → 프로퍼티 교체 → 재기동 → 재시딩 → FLUSHALL → 워밍) |
 | [seed-popular-large.sql](../../../scripts/sql/seed-popular-large.sql) | 규모 곡선용 `upload_course` 증량 — **3,000건 기준에서만 동작한다.** 규모를 바꿀 때마다 앱을 재기동해(`DB_DDL_AUTO=create`) 스키마를 새로 만든 뒤 목표치로 한 번에 시딩해야 한다([scale-curve.md](scale-curve.md) 참고) |
 
 k6 스크립트는 기존 것을 **수정 없이 재사용**한다(`popular-ramping.js`, `popular-cold.js`, `popular-mixed.js`, `detail-ramping.js`, `detail-arrival-rate.js`). 고치면 과거 실측과의 비교 가능성이 깨진다.
+
+## 측정 장치는 측정이 끝난 뒤 제거했다
+
+세 arm을 재현하는 데 쓴 것은 **프로덕션 코드에 심은 스위치**였다 — `BenchmarkProperties`(프로퍼티 2개), `UploadCourseReadDispatcher`·`TxWrappedUploadCourseReader`(트랜잭션 경계 분기), `UploadCourseServiceImpl`의 캐시 게이트 9곳, 그리고 그 값을 EC2에 주입하는 `scripts/loadtest/`의 arm 전환 스크립트 2개. 합쳐서 약 253줄이다.
+
+기본값이 운영 동작과 동일하고 비기본 조합이면 기동 `WARN`이 뜨도록 만들어 뒀지만, **측정이 끝난 뒤에도 서비스 코드에 남길 이유는 없다고 판단해 전부 되돌렸다.** 캐시 읽기 헬퍼를 읽는 사람이 측정용 분기를 함께 읽어야 하고, 운영에 `disabled`가 잘못 주입되면 캐시가 통째로 죽기 때문이다.
+
+**재현이 필요하면 `d144126`을 checkout한다** — 그 시점에는 토글과 전환 스크립트가 세트로 남아 있다. 이 문서들이 서술하는 `yourtrip.benchmark.*` 프로퍼티와 `TxWrappedUploadCourseReader`는 전부 그 커밋 기준이다.
 
 ## 전제 — `prod` 프로필 고정
 
