@@ -25,7 +25,7 @@
 | Phase 0 — 로컬 게이트 (토글 검증) | [phase0-local-gate.md](phase0-local-gate.md) | **완료 — 통과** |
 | Phase 1 — EC2 인기 코스 (P1·P3·P5) | [ec2-measurement.md](ec2-measurement.md) | **완료 (각 arm 1회)** |
 | Phase 2 — EC2 상세 조회 (D2·D3) | [ec2-measurement.md](ec2-measurement.md) | **완료 (D2 각 arm 3회 / D3 1회)** |
-| Phase 3 — 규모 곡선 (L1) / 통계 오버헤드 (O1) | `scale-curve.md` | 미실시 |
+| Phase 3 — 규모 곡선 (L1) | [scale-curve.md](scale-curve.md) | **완료 (쿼리 플랜 분석으로 대체)** |
 
 ### Phase 0 결과 요약
 
@@ -72,9 +72,22 @@
 
 열린 루프(D3)에서 그 잔존 대기의 크기가 보인다. **A0·A1은 Tomcat 워커 200개를 전부 소진했는데 A2는 40개만 썼다** — A0·A1의 워커 대부분이 일하는 게 아니라 커넥션을 기다리며 묶여 있었다는 직접 증거다. p95는 1,258.7ms → 50.5ms → **14.9ms**로 줄었다.
 
+### Phase 3 결과 요약 (L1 — 규모 곡선)
+
+부하 테스트 대신 **`EXPLAIN (ANALYZE, BUFFERS)`로 대체**했다. 보려는 신호가 요청당 8문장 중 1문장이라 부하 테스트로는 희석되기 때문이다.
+
+| `upload_course` | ALL (`theme IS NULL`) | 테마 지정 (`FOOD`) |
+|---|---|---|
+| 3,000 | 0.043ms | 0.402ms |
+| 50,000 | **0.036ms** | **5.781ms** |
+| 16.7배 증가 시 | **변화 없음** | **약 14배** |
+
+**두 경로가 정반대로 거동한다.** 기본 조회는 `view_count` 인덱스를 내림차순으로 훑다 5건에서 멈춰 완전히 평탄하다. 테마 조회는 `EXISTS`가 해시 세미조인으로 바뀌며 **`course_keyword` 전체를 매번 Seq Scan**해 선형으로 증가한다(그 테이블에 인덱스가 PK뿐이다).
+
+**따라서 캐싱의 근거는 규모가 아니다.** 테마 경로의 선형 증가는 사실이나 50,000건에서도 5.8ms로 절대값이 작다. 근거는 [ec2-measurement.md](ec2-measurement.md)가 측정한 쪽 — **현재 규모에서 이미** 요청당 SQL 8건 제거(DB 초당 약 7,000쿼리 → 0), 커넥션 점유시간 반감, TPS +116.3% — 이 훨씬 강하다.
+
 ### 남은 측정
 
-- **L1** 규모 곡선, **O1** 통계 오버헤드
 - **P3 재실행** — 동시 `FLUSHALL` 루프를 빠뜨려 콜드 스탬피드를 측정하지 못했다
 - **D3 재측정** — `MAX_RATE=1200`으로는 **A2의 포화점을 찾지 못했다**(제공 1,144 req/s에서 `pending` 0, 워커 11/200)
 - **반복 측정** — D2를 제외한 나머지는 각 arm 1회다
@@ -85,7 +98,7 @@
 |---|---|
 | [phase0-gate.sh](../../../scripts/loadtest/phase0-gate.sh) | 로컬에서 세 arm의 SQL/커넥션 카운터와 응답 동일성을 검증 |
 | [switch-arm.sh](../../../scripts/loadtest/switch-arm.sh) | EC2에서 arm 전환(프로필 확인 → 프로퍼티 교체 → 재기동 → 재시딩 → FLUSHALL → 워밍) |
-| [seed-popular-large.sql](../../../scripts/sql/seed-popular-large.sql) | 규모 곡선용 `upload_course` 증량 |
+| [seed-popular-large.sql](../../../scripts/sql/seed-popular-large.sql) | 규모 곡선용 `upload_course` 증량 — **3,000건 기준에서만 동작한다.** 규모를 바꿀 때마다 앱을 재기동해(`DB_DDL_AUTO=create`) 스키마를 새로 만든 뒤 목표치로 한 번에 시딩해야 한다([scale-curve.md](scale-curve.md) 참고) |
 
 k6 스크립트는 기존 것을 **수정 없이 재사용**한다(`popular-ramping.js`, `popular-cold.js`, `popular-mixed.js`, `detail-ramping.js`, `detail-arrival-rate.js`). 고치면 과거 실측과의 비교 가능성이 깨진다.
 
