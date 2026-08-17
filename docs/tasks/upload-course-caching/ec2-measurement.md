@@ -373,6 +373,35 @@ A1의 p95가 1,258.7ms → 50.5ms로 96% 줄어든 것도 대기줄 **길이**(`
 
 > **다만 이 설정은 terraform에 고정돼 있지 않다.** `credit_specification`이 `.tf` 어디에도 없어 AWS의 T3 기본값(`unlimited`)에 의존한다. 계정 기본값이 바뀌거나 `standard`로 뜨면 **같은 스크립트가 조용히 다른 결과를 낸다.** 명시적으로 고정하는 것이 안전하다.
 
+#### 게스트 OS 층도 확인했다 — CFS quota와 steal time
+
+크레딧 모드는 **하이퍼바이저 층**의 근거다. 게스트 안에서 cgroup CFS quota 같은 별도 스로틀링이 걸렸을 가능성은 그것만으로 배제되지 않아, 부하가 걸린 상태에서 직접 확인했다.
+
+| 확인 | 결과 |
+|---|---|
+| 컨테이너 여부 | `systemd-detect-virt -c` = **none** — Docker `--cpus`가 낄 자리가 없다 |
+| systemd 유닛 | `CPUQuotaPerSecUSec=infinity`, `CPUWeight`·`CPUShares` 미설정 |
+| 서비스 cgroup (v2) | `cpu.max` = **`max 100000`** (= 무제한) |
+| 상위 `system.slice` | `cpu.max` = **`max 100000`** |
+| **스로틀링 카운터** | **`nr_periods 0` / `nr_throttled 0` / `throttled_usec 0`** |
+
+`nr_periods`가 0인 것이 결정적이다 — quota가 설정돼 있으면 스로틀링이 없어도 period는 계속 도는데, 0이라는 것은 **CFS 대역폭 컨트롤러가 활성화된 적조차 없다**는 뜻이다.
+
+**더 직접적인 근거는 steal time이다.** 하이퍼바이저가 vCPU를 조이면 게스트는 그것을 `%steal`로 본다.
+
+```
+10초 구간(부하 중):  user 75.84  system 12.53  softirq 5.19  idle 6.04  steal 0.35
+부팅 이후 누적(2h24m): steal 0.6753%
+```
+
+`standard` 모드에서 크레딧이 마르면 baseline(vCPU당 20%)으로 조여져 **steal이 50~80%대**로 뜬다. 0.35%는 그 근처도 아니고, user+system+softirq = **93.6%가 실제 작업**이다.
+
+**`process_cpu_usage` 자체도 반증이다.** 이 지표는 `OperatingSystemMXBean.getProcessCpuLoad()`로 **프로세스가 소비한 CPU 시간 ÷ (경과시간 × vCPU 수)** 이므로, 스로틀링되면 분자가 줄어 값이 **내려간다.** 관측된 0.96은 "2 vCPU의 96%를 실제로 썼다"는 뜻이고 40% baseline에서는 산술적으로 나올 수 없다.
+
+> **소급 범위의 한계.** `nr_throttled`는 서비스 재시작마다 리셋되므로 위 값은 **측정 시점에 돌던 run만** 덮는다. 정적 설정(`cpu.max`, systemd 유닛)은 전 run에 적용되지만, steal 누적은 **해당 부팅 세션(2시간 24분)** 까지다. 8/16과 8/17 오전 run은 다른 부팅 세션이라 소급 확인이 안 되고, CloudWatch `CPUUtilization`이 65~93%로 baseline(40%)을 지속 상회했다는 간접 증거로 대신한다.
+>
+> **하네스가 steal을 수집하지 않는다.** `/proc/stat`은 Actuator에 노출되지 않아 별도 경로가 필요하다. 다음 측정에서는 폴링에 넣는 것이 맞다.
+
 ### 검증 7 — 단계 경계가 밀리지 않았다
 
 `agg.py`는 VU 단계를 `t0 + 경계`로 슬라이스하는데, `t0`는 k6를 띄우기 직전에 기록되므로 ssh·k6 기동 지연만큼 모든 경계가 밀릴 수 있다. 폴링 시계열에서 요청 수가 실제로 오르기 시작한 시점을 찾아 확인했다.
@@ -509,6 +538,7 @@ Redis는 단일 스레드라 `EngineCPUUtilization`이 포화의 직접 지표�
 - **A2의 CPU 평균이 P1 0.834 / P3 0.954 / P5 0.953 / D2 0.820으로 이미 높다.** t3.small(vCPU 2개)에서 1,800~2,600 TPS를 처리한 결과이고, 더 큰 인스턴스에서는 포화 VU가 더 밀릴 가능성이 있다.
 - **CloudWatch 지표는 1분 집계라 초 단위 스파이크를 가린다.** 부하 생성기·Redis 엔진 배제(위 "환경 건전성 검증")는 이 해상도 안에서의 판정이고, run 내내 평균이 낮았다는 뜻이지 순간 포화가 없었다는 증명은 아니다.
 - **App EC2가 `unlimited` 모드라는 전제가 terraform에 고정돼 있지 않다.** `credit_specification`이 `.tf`에 없어 AWS 기본값에 의존하므로, 계정 설정이 바뀌면 같은 스크립트가 스로틀링된 환경에서 돌 수 있다.
+- **스로틀링 배제의 게스트 측 실측은 한 부팅 세션에만 해당한다.** CFS quota 부재는 정적 설정이라 전 run에 적용되지만, `nr_throttled`는 서비스 재시작마다 리셋되고 steal 누적은 부팅 이후만 덮는다(위 "게스트 OS 층도 확인했다"). 8/16·8/17 오전 run은 CloudWatch `CPUUtilization`이 baseline을 상회했다는 간접 증거뿐이다. **하네스가 `/proc/stat`의 steal을 수집하지 않는 것이 근본 원인**이라, 다음 측정에서는 폴링에 넣어야 한다.
 - **P5의 배경 도착률 확정 파일럿이 혼합 부하가 아니었다.** `popular-cold.js` 단독으로 A0의 상한(~225 req/s)만 재고 100 req/s를 역산했다(위 P5 절). 혼합 조건에서 그 값이 적절한지는 확인하지 않았다.
 - **요청당 지표를 arm 간에 비교할 때 분모가 다르다.** D2 A1→A2의 "SQL -20.9%"는 총 SQL이 12,011건으로 동일하고 처리 요청 수만 늘어난 결과다(위 D2 주1). 캐시 효과가 아니다.
 
