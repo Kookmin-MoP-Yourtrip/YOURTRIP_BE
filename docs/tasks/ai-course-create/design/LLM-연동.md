@@ -175,6 +175,8 @@ LlmClient (interface, 우리 도메인 타입만 다룸)          ← 유지
 | 키워드 JSON 해석 규칙 | ~15 | Planner + Curator 공통 system instruction |
 | 동행유형·분위기·예산별 톤 조정 | ~15 | Curator system instruction |
 | day 수 / 장소 수 / title 작명 | ~5 | Planner (+ 코드 검증) |
+| *(신규)* day별 권역 `area` + 랜드마크 `anchor` | – | Planner. `anchor`는 권역 안의 구체적 랜드마크 1개 — 카카오 지오코딩용(후보 공급 "area → 좌표") |
+| *(신규)* 후보 목록 선별 규칙 — 테마 적합 → seed 표식 우선 → anchor 거리 → SUGGESTED는 확신할 때만 → 선호 순서 3개 | – | Curator system instruction. 목록 항목은 `listIndex`로 참조(후보 공급 "시더 ↔ TourAPI 병합과 Curator 입력 목록") |
 
 **약 45줄이 사라지고 남는 것은 순수하게 "취향과 컨셉"뿐이다.** 그게 정확히 LLM에게 시켜야 할 일이다.
 이것이 프롬프트 분리 전략의 본질이지 단순 3등분이 아니다.
