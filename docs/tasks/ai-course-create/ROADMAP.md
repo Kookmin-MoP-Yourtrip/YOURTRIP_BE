@@ -10,6 +10,8 @@
 >
 > **[개정] 곧이어 `PlaceSignalStage`(3층 블로그 인기도 + 4층 LLM 속성 추출)를 V1에서 뺐다.** 후보 공급 층이 인기도를 시딩으로 앞에서, 스타일을 modifier 쿼리로 앞에서 반영하면서 같은 3개 후보를 사후에 다시 정렬하는 층의 존재 전제("컨셉을 판별할 유일한 외부 근거")가 사라졌고, 효과는 미측정인데 비용(LLM 1회·2~4초·네이버 35회)은 확정적이었다. 그 결과 **4단계는 `NaverBlogClient` 중심에서 `NaverLocalClient` + 후보 공급 순수 함수로 다시 채워졌고**(착수 전이라 번호를 새로 매김), 옛 3·4층 항목은 **9단계 조건부**로 이동했으며, SEEDED가 네이버 좌표를 승계하면서 GroundingStage는 SUGGESTED만 호출하고 최종 장소의 카카오 URL은 **`PlaceUrlEnricher`(5-10)**가 따로 채운다. 근거는 설계 문서의 "PlaceSignal을 V1에서 제외한 이유".
 >
+> **[개정] 카카오 키워드 검색을 후보 공급 소스에서 뺐다.** 스타일 modifier 쿼리로 네이버 시더가 슬롯당 8~15건을 확보하자 카카오 "커버리지"(`LISTED`)의 역할이 잉여가 됐고, `accuracy`/`distance` 정렬은 처음부터 품질을 담지 않는 임의 슬라이스였다. 풀은 **네이버 시더(`SEEDED`) + 파라메트릭(`SUGGESTED`)** 둘이고, 카카오는 **`SUGGESTED` 실존 검증 · 배치 장소 URL 보강** 전담이다. 5-8·5-9·4-5·6-7이 그에 맞춰 바뀌었다. 근거는 설계 문서의 후보 공급 "카카오 커버리지 검색을 후보 소스에서 뺀 이유".
+>
 > **LLM 벤더는 OpenAI로 확정됐다.** 설계 문서 초안은 Gemini를 현행으로 두고 OpenAI 전환 "가능성"을 전제로 쓰였으나, 확정에 따라 설계 문서 본문(LLM 포트 설계·프롬프트 전략·비용 분석·도입 순서·남는 한계)이 갱신됐다. 이 로드맵은 그 갱신된 설계를 기준으로 한다.
 >
 > 진행 상황: **3단계 완료**(3-1 ~ 3-6, 테스트 234개 통과 + 앱 기동 확인 + 완전탐색 벤치마크 n=6~9 실측). 2단계에서 복합 환각률 25.6% → **7.5%**(luna, 수동 검증 82건)를 확인했고 Curator 모델은 `gpt-5.6-luna`로 확정됐다. 다음은 4단계(`NaverLocalClient` + 후보 공급 순수 함수). 0단계 검증 항목은 전부 통과했고 OpenAI·네이버 키도 발급됐다.
@@ -189,24 +191,24 @@
 - [ ] 4-2. **실호출 확정** (설계 문서의 남는 한계 항목 그대로) — ① API HUB 이관 여부, `sort=comment`·`display≤5`·`start=1` 제약 ② `mapx`/`mapy` 실제 형식과 **정밀도**(카카오 좌표와의 오차 표본 → 5-10 `PlaceUrlEnricher`의 300m 임계값 근거) ③ `category` 문자열 실제 형태·최상위 분류 목록 ④ `title` 태그 형태 ⑤ **서술어 매칭 범위**(`"황리단길 카페"` vs `"황리단길 루프탑 카페"` — 상호명·카테고리만 매칭하면 5-8의 스타일 modifier 확장이 무력화된다) ⑥ 쿼터가 검색 API 전체 합산인지
 - [ ] 4-3. **키워드→스타일 modifier 사전** (순수 함수) — 사용자 키워드를 traits 닫힌 태그 집합(설계 문서의 지식 신호 층의 4층 표의 어휘를 그대로 재사용)의 가점 태그 상위 1~2개로 매핑. **여기에 LLM을 쓰지 않는다.** 4층이 V1에서 빠져도 이 사전은 살아 있다 — modifier 쿼리의 재료이고, 나중에 4층을 켜면 같은 어휘로 검증한다
 - [ ] 4-4. **네이버 `category` → `SlotType` 매핑 사전** (순수 함수, 설계 문서의 지식 신호 층의 2층) — `음식점` → MEAL, `카페,디저트` → CAFE, `관광,명소`·`문화,예술` → ATTRACTION/ACTIVITY. SEEDED에 카테고리 하드 제약을 걸기 위한 것. 매핑에 없는 분류는 통과시키되 표시(감점, 하드 드롭 아님)
-- [ ] 4-5. **후보 dedupe 키** (순수 함수) — SEEDED는 kakaoId가 없으므로 정규화 상호명 + 도로명주소(또는 50m 이내 근접 좌표 + 유사 이름). SEEDED↔LISTED 간 중복을 이 키로 잡는다
+- [ ] 4-5. **후보 dedupe 키** (순수 함수) — 네이버 항목에는 고유 ID가 없으므로 정규화 상호명 + 도로명주소. 후보 소스가 네이버 하나라 provider 간 dedupe는 없고, 기본/스타일 modifier 쿼리 간 중복만 이 키로 잡는다
 - [ ] 4-6. 단위 테스트 (순수 함수 전량) + `NaverLocalClient` 스텁 테스트
 
 ### 5. `CandidateRetrievalStage` + `GroundingStage` + `PlaceUrlEnricher`
 
 동작 변화 없음(파이프라인이 아직 컨트롤러에 연결되지 않는다).
 
-> **[개정]** 원래 제목은 "`GroundingStage` + `PlaceSignalStage`"였다. PlaceSignal이 9단계(조건부)로 빠지고, 후보 공급(5-8)과 URL 보강(5-10)이 들어왔다. GroundingStage의 역할도 "카카오 검색"에서 **"실존 확인 + 좌표 확보"**로 재정의됐다 — SEEDED는 네이버 응답, LISTED는 카카오 응답을 승계하고 **SUGGESTED만 카카오를 호출한다**(설계 문서의 후보 공급).
+> **[개정]** 원래 제목은 "`GroundingStage` + `PlaceSignalStage`"였다. PlaceSignal이 9단계(조건부)로 빠지고, 후보 공급(5-8)과 URL 보강(5-10)이 들어왔다. GroundingStage의 역할도 "카카오 검색"에서 **"실존 확인 + 좌표 확보"**로 재정의됐다 — SEEDED는 네이버 응답을 승계하고 **SUGGESTED만 카카오를 호출한다**(설계 문서의 후보 공급).
 >
 > 상세 실행 계획은 [STEP-5-grounding.md](steps/STEP-5-grounding.md) 참고. (미작성)
 
 - [ ] 5-1. 스레드풀 2개 신설 — `aiAgentExecutor`(LLM)와 `placeGroundingExecutor`(카카오·네이버 공유). **벌크헤드로 나누는 이유**는 외부 장소 API가 느려질 때 그 대기가 LLM 슬롯을 잠식하면 안 되기 때문이다(LLM은 3~10초짜리 소수, 장소 API는 0.15~0.3초짜리 다수). **여기서 `llm.max-concurrent-calls: 2`를 재실측한다** — 2-6 측정은 요청 간 5초 지연·동시 호출 1이라는 느슨한 조건이었고(429 0/120), day별 Curator가 실제로 동시에 몰리는 이 단계에서 재야 초기값의 근거가 된다
-- [ ] 5-2. `GroundingStage` — **`SUGGESTED`만 카카오 병렬 검증**, 점수 하한 미달 탈락. `SEEDED`는 네이버 응답(좌표·주소·카테고리), `LISTED`는 카카오 응답을 **코드가** 승계해 호출 없이 통과. 4-5의 dedupe 키로 전 day 중복 제거. **여기를 통과 못 한 장소는 파이프라인에 존재하지 않는다.** Curator 출력 순서가 선호 순위이며, 슬롯당 통과한 1순위가 배치 대상이다(사후 재정렬 층 없음)
-- [ ] 5-8. **`CandidateRetrievalStage` (설계 문서의 후보 공급)** — Planner 직후, day × 슬롯타입별 병렬로 실존 후보 목록을 만든다. 소스는 `CandidateSource` 인터페이스 목록: `NaverLocalSeedSource`(MEAL/CAFE만, `SEEDED`) + `KakaoKeywordSource`(전 슬롯, `LISTED`, 키워드 검색 `"{area} {searchHint}"` 기본 — **반경 파라미터를 두지 않는다**; 결과 부족 시에만 결과 좌표 bounding box로 카테고리 검색 보충). 병합·4-5 dedupe 키·`listIndex` 부여. **SEEDED는 네이버 좌표·주소·카테고리를 그대로 목록에 싣는다**(카카오 재검색 없음). **스타일 modifier 쿼리 확장** — 사용자 키워드를 4-3의 modifier 사전에 넣어 가점 태그 상위 1~2개를 `"{area} {trait} {searchHint}"`로 추가 질의(주로 네이버, MEAL/CAFE), 결과는 기본 쿼리와 **합집합**, 후보에 `matchedModifier` 힌트 부여(검색이 그렇게 주장했다는 힌트일 뿐 검증된 속성이 아님을 Curator 프롬프트에 명시). 풀이 스타일을 모르면 Curator 선별은 천장 아래에서만 움직인다는 것이 근거(설계 문서의 후보 공급). **양쪽 다 fail-open** — 전부 실패하면 빈 목록으로 Curator를 돌린다(초안 구조로 degrade, hard fail 아님). 캐시 키는 `(area, slotType[, modifier])`. 메트릭 `ai.candidate.retrieval{source, result}`, `ai.candidate.adopted{source, modifier}`. **추후 개선(범위 밖)**: 사전이 day 문맥을 못 잡는 것이 실측되면 Planner `dayPlans[].styleTags`(traits enum, 최대 3)를 사전 태그와 합집합으로 추가
-- [ ] 5-9. **후보 공급 실측** — 카카오 `accuracy` 상위 10 vs 네이버 `comment` 상위 5의 겹침률을 유명/무인지 지역별로 재서 `LISTED` 검색 방식·건수를 데이터로 정한다 (설계 문서의 남는 한계)
+- [ ] 5-2. `GroundingStage` — **`SUGGESTED`만 카카오 병렬 검증**, 점수 하한 미달 탈락. `SEEDED`는 네이버 응답(좌표·주소·카테고리)을 **코드가** 승계해 호출 없이 통과. 4-5의 dedupe 키로 전 day 중복 제거. **여기를 통과 못 한 장소는 파이프라인에 존재하지 않는다.** Curator 출력 순서가 선호 순위이며, 슬롯당 통과한 1순위가 배치 대상이다(사후 재정렬 층 없음)
+- [ ] 5-8. **`CandidateRetrievalStage` (설계 문서의 후보 공급)** — Planner 직후, day × 슬롯타입별 병렬로 실존 후보 목록을 만든다. 소스는 `CandidateSource` 인터페이스 목록이며 V1에는 `NaverLocalSeedSource`(MEAL/CAFE, `SEEDED`, 텍스트 쿼리 `"{area} {searchHint}"` — 반경 파라미터 없음) 하나다. **카카오는 후보 소스로 쓰지 않는다**(설계 문서의 후보 공급 "카카오 커버리지 검색을 후보 소스에서 뺀 이유"). 4-5 dedupe 키·`listIndex` 부여. **SEEDED는 네이버 좌표·주소·카테고리를 그대로 목록에 싣는다**(카카오 재검색 없음). **스타일 modifier 쿼리 확장** — 사용자 키워드를 4-3의 modifier 사전에 넣어 가점 태그 상위 1~2개를 `"{area} {trait} {searchHint}"`로 추가 질의(주로 네이버, MEAL/CAFE), 결과는 기본 쿼리와 **합집합**, 후보에 `matchedModifier` 힌트 부여(검색이 그렇게 주장했다는 힌트일 뿐 검증된 속성이 아님을 Curator 프롬프트에 명시). 풀이 스타일을 모르면 Curator 선별은 천장 아래에서만 움직인다는 것이 근거(설계 문서의 후보 공급). **fail-open** — 실패하면 빈 목록으로 Curator를 돌린다(초안 구조로 degrade, hard fail 아님). 캐시 키는 `(area, slotType[, modifier])`. 메트릭 `ai.candidate.retrieval{source, result}`, `ai.candidate.adopted{source, modifier}`. **추후 개선(범위 밖)**: 사전이 day 문맥을 못 잡는 것이 실측되면 Planner `dayPlans[].styleTags`(traits enum, 최대 3)를 사전 태그와 합집합으로 추가
+- [ ] 5-9. **후보 공급 실측** — 하네스 지역 세트(유명/무인지)로 네이버 시더의 슬롯당 확보 건수와 빈 결과 비율을 잰다. 빈 결과가 잦은 지역·슬롯이 있으면 "0건/실패 시에만 카카오" 폴백을 그때 붙인다 (설계 문서의 남는 한계)
 - [ ] 5-3. 슬롯별 카테고리 하드 제약 — 현재 `category_group_code`를 가점 +2로만 쓰는 것을 하드 제약으로 승격(MEAL←FD6, CAFE←CE7, ATTRACTION←AT4/CT1). SEEDED에는 4-4의 네이버 카테고리 매핑으로 같은 제약을 건다. 비용이 사실상 0인데 "점심에 호프집"이 구조적으로 사라진다
 - [ ] ~~5-4. `PlaceSignalStage`~~ → **9단계로 이동** (V1 제외, 조건부). 이 자리는 비워둔다 — 번호를 당기면 5-5 이하를 참조하는 문서가 흔들린다
-- [ ] 5-10. **`PlaceUrlEnricher` (설계 문서의 후보 공급)** — RouteOptimizer가 배치를 확정한 뒤, `placeUrl`이 빈 장소(SEEDED)만 `"{상호명} {지역}"`으로 카카오 키워드 검색 1회. **수락 조건 두 개**: 점수 하한 통과 **그리고** 카카오 좌표↔네이버 좌표 거리 ≤ 300m(4-2 실측으로 조정). 하나라도 미달이면 `null` — **엉뚱한 장소 URL은 URL 없음보다 나쁘다**(배경 "환각 세탁"을 URL에서 반복하지 않는다). FE가 `placeUrl`로 카카오 플레이스에 진입하므로 필요하지만 코스 성립 조건은 아니다 → fail-open, 전용 ErrorCode 없음. 배치 ~15개에만 호출(후보 45개가 아니라). 메트릭 `ai.place.url{result=hit|below_threshold|too_far|failed}`
+- [ ] 5-10. **`PlaceUrlEnricher` (설계 문서의 후보 공급)** — RouteOptimizer가 배치를 확정한 뒤, 배치된 장소 전부(후보는 카카오를 거치지 않아 URL이 없다)에 `"{상호명} {지역}"`으로 카카오 키워드 검색 1회. **수락 조건 두 개**: 점수 하한 통과 **그리고** 카카오 좌표↔네이버 좌표 거리 ≤ 300m(4-2 실측으로 조정). 하나라도 미달이면 `null` — **엉뚱한 장소 URL은 URL 없음보다 나쁘다**(배경 "환각 세탁"을 URL에서 반복하지 않는다). FE가 `placeUrl`로 카카오 플레이스에 진입하므로 필요하지만 코스 성립 조건은 아니다 → fail-open, 전용 ErrorCode 없음. 배치 ~15개에만 호출(후보 45개가 아니라). 메트릭 `ai.place.url{result=hit|below_threshold|too_far|failed}`
 - [ ] 5-5. 파이프라인 하드 데드라인 — `CompletableFuture.allOf(...).get(remainingMs, MILLISECONDS)`. `CallerRunsPolicy`를 유지하되(거부보다 느린 성공이 낫다) 요청 스레드가 장소 API I/O를 직접 수행해 순차 실행으로 퇴화하는 것을 데드라인으로 막는다
 - [ ] 5-6. `ai.grounding.match{result=hit|below_threshold|no_result}` 메트릭 — **환각률의 운영 프록시이자 이 작업의 핵심 지표.** 이 저장소는 커스텀 Micrometer 메트릭이 아직 0건이므로 `MeterRegistry` 주입 패턴을 여기서 처음 세운다
 - [ ] 5-7. 스텁 기반 통합 테스트 (0-6의 WireMock 인프라 사용)
@@ -220,8 +222,8 @@
 - [ ] 6-1. `PromptLoader` — 프롬프트를 `resources/prompts/*.md`로 분리하고 `@PostConstruct`에서 eager 로드. 파일이 없으면 **애플리케이션 기동이 실패**하므로 런타임이 아니라 배포 시점에 발견된다. 플레이스홀더는 위치 기반 `%s`가 아니라 **명명 기반 `{{location}}`**
 - [ ] 6-2. `PlannerAgent` — 컨셉·제목·day별 권역(`area`)·슬롯 구성. **장소명은 한 개도 생성하지 않는다.** Planner를 별도 단계로 두는 이유는 "단계 분할"이 아니라 **Curator를 day별 병렬 실행하려면 day별 권역이 먼저 확정돼야 하기 때문**이다
 - [ ] 6-3. Planner 출력 구조 검증 — day 수 불일치·MEAL 누락·슬롯 개수 초과를 **코드로 보정**한다(LLM 재호출 없음)
-- [ ] 6-4. `CuratorAgent` — day별 병렬, 슬롯당 후보 3개. 다른 day는 모른다. **역할은 "회상"이 아니라 "선별"이다(설계 문서의 후보 공급)** — 입력에 5-8의 슬롯별 후보 목록이 들어가고, 출력은 `source`(`SEEDED`/`LISTED`/`SUGGESTED`) + `listIndex` + `placeName`. 목록 밖 파라메트릭 제안(`SUGGESTED`)은 허용하되 그라운딩 검증을 거친다. **응답 스키마의 루트는 반드시 객체여야 한다** — 0단계에서 최상위 배열 스키마가 400으로 거부되는 것을 확인했으므로, 슬롯 배열을 루트에 두면 안 된다
-- [ ] 6-7. **`LISTED`/`SEEDED` 위조 강등 검증 (코드)** — `listIndex` 범위, 목록 항목 상호명과 `placeName` 일치, 슬롯 타입 일치를 검증하고 하나라도 어긋나면 `SUGGESTED`로 **강등**(버리지 않는다 — 실존할 수 있다). "재검증 생략"의 전제는 좌표·`kakaoId`를 LLM이 옮겨 적는 게 아니라 코드가 목록에서 승계하는 것이므로, 응답 스키마에 좌표·id 필드를 두지 않는다. 메트릭 `ai.candidate.demoted`
+- [ ] 6-4. `CuratorAgent` — day별 병렬, 슬롯당 후보 3개. 다른 day는 모른다. **역할은 "회상"이 아니라 "선별"이다(설계 문서의 후보 공급)** — 입력에 5-8의 슬롯별 후보 목록이 들어가고, 출력은 `source`(`SEEDED`/`SUGGESTED`) + `listIndex` + `placeName`. 목록 밖 파라메트릭 제안(`SUGGESTED`)은 허용하되 그라운딩 검증을 거친다. **응답 스키마의 루트는 반드시 객체여야 한다** — 0단계에서 최상위 배열 스키마가 400으로 거부되는 것을 확인했으므로, 슬롯 배열을 루트에 두면 안 된다
+- [ ] 6-7. **`SEEDED` 위조 강등 검증 (코드)** — `listIndex` 범위, 목록 항목 상호명과 `placeName` 일치, 슬롯 타입 일치를 검증하고 하나라도 어긋나면 `SUGGESTED`로 **강등**(버리지 않는다 — 실존할 수 있다). "재검증 생략"의 전제는 좌표·`kakaoId`를 LLM이 옮겨 적는 게 아니라 코드가 목록에서 승계하는 것이므로, 응답 스키마에 좌표·id 필드를 두지 않는다. 메트릭 `ai.candidate.demoted`
 - [ ] 6-5. **`duration` 키워드 처리 방침 결정** — 무시할지, `days`와의 모순 검증에 쓸지. 지금은 "보내지만 아무도 해석하지 않는" 상태이며 label 표기도 어긋나 있다(설계 문서의 프롬프트 전략)
 - [ ] 6-6. 프롬프트에서 사라진 규칙 확인 — 시간 배치·동선·중복·스키마 강제는 이제 코드가 보장하므로 프롬프트에 남기지 않는다. 약 45줄이 사라지고 "취향과 컨셉"만 남는 것이 이 분리의 본질이다
 
@@ -233,7 +235,7 @@
 
 - [ ] 7-1. `AiCoursePipeline` — Planner → **CandidateRetrieval** → Curator → Grounding(SUGGESTED만) → RouteOptimizer → **PlaceUrlEnricher** 조립. LLM 호출 `1 + days`회, PlaceSignal 없음
 - [ ] 7-2. `AiCourseErrorCode` 신설 (`ErrorCode` 인터페이스 구현이라 `GlobalExceptionHandler`는 수정하지 않는다) + `JSON_TRANSFORMATION_FAILED` 오용 정리 — 지금은 방향이 정반대인 두 실패(응답 역직렬화 / 키워드 직렬화)가 같은 코드를 공유한다
-- [ ] 7-3. **degrade, don't fail** 폴백 전량 구현 — Planner 실패 시 결정론적 기본 플랜, **후보 공급 실패 시 빈 목록으로 진행(초안 구조로 degrade)**, Curator 실패 시 **후보 목록에서 결정론적 채움**(`SEEDED` 우선 → `LISTED` 상위 → 목록도 없으면 카카오 카테고리 검색 폴백), 후보 개별 탈락, 네이버 fail-open, 슬롯 전멸 시 보충
+- [ ] 7-3. **degrade, don't fail** 폴백 전량 구현 — Planner 실패 시 결정론적 기본 플랜, **후보 공급 실패 시 빈 목록으로 진행(초안 구조로 degrade)**, Curator 실패 시 **후보 목록에서 결정론적 채움**(`SEEDED` 상위 → 목록이 없으면 카카오 카테고리 검색 폴백), 후보 개별 탈락, 네이버 fail-open, 슬롯 전멸 시 보충
 - [ ] 7-4. **hard fail은 카카오 전면 장애 하나뿐**(`AI_GROUNDING_FAILED` 503). 좌표 없는 코스는 이 기능의 핵심 가치를 잃는다 — **지금 코드가 `0.0/0.0`으로 저장해 성공을 위장하는 것이 정확히 그 실수다**
 - [ ] 7-5. `ai.course.pipeline.duration{stage}` 메트릭 (202 전환 판단의 근거가 된다)
 - [ ] 7-6. 폴백 경로별 테스트
@@ -270,7 +272,7 @@
 **3층 — 인기도 (옛 4-1·4-2·4-3·4-5·5-4에서 이동)**
 - [ ] 9-1. `NaverBlogClient` — `display=5`로 조회하면 응답 한 번에 `total`(인기도) + `postdate`(최신성) + 스니펫 5건(4층 재료)이 전부 들어온다. **장소당 호출은 1회다.** 착수 전 실호출로 확정: API HUB 경로·응답 스키마, **지역검색과 쿼터 합산 여부**(비용 분석의 상한 계산 — 켜면 코스당 ~35회가 더해져 상한이 초안 수준으로 내려온다)
 - [ ] 9-2. `PopularityScorer` (순수 함수) — `popularity = log10(max(total, 1))`. **로그 스케일이 필수인 이유**: `total`은 1건에서 수백만 건까지 자릿수로 벌어져, 선형으로 쓰면 유명 관광지 하나가 다른 모든 신호를 압도한다. 폐업 의심 = 최신 `postdate`가 12개월 이내인지
-- [ ] 9-3. `PlaceSignalStage` — 그라운딩 생존 후보에만 네이버 조회. **`SEEDED`는 제외**(시드 순위가 이미 인기도라 중복) → `LISTED`·`SUGGESTED`만. **역할은 재정렬이 아니라 감점** — Curator 선호 순서를 1차로 두고, 언급 0건·최신 글 없음인 후보를 뒤로 미는 것만 한다. **fail-open**: 네이버 장애 시 층 전체 스킵. 메트릭 `ai.popularity.lookup{result}`
+- [ ] 9-3. `PlaceSignalStage` — 그라운딩 생존 후보에만 네이버 조회. **`SEEDED`는 제외**(시드 순위가 이미 인기도라 중복) → `SUGGESTED`만. **역할은 재정렬이 아니라 감점** — Curator 선호 순서를 1차로 두고, 언급 0건·최신 글 없음인 후보를 뒤로 미는 것만 한다. **fail-open**: 네이버 장애 시 층 전체 스킵. 메트릭 `ai.popularity.lookup{result}`
 - [ ] 9-4. 3층 on/off 비교 — 삭제율로
 
 **4층 — 속성 추출 (옛 9-1~9-6)**
