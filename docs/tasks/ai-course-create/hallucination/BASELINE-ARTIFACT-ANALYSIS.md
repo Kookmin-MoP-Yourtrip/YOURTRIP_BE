@@ -8,7 +8,7 @@
 
 ## 왜 이 문서가 필요한가
 
-측정 하네스 `AiHallucinationBaselineTest`는 결과를 레포 루트 `results/`에 쓴다. 그런데 [.gitignore:51](../../../.gitignore)이 이 디렉터리를 부하 테스트 산출물과 같은 규칙으로 제외한다.
+측정 하네스 `AiHallucinationBaselineTest`는 결과를 레포 루트 `results/`에 쓴다. 그런데 [.gitignore:51](../../../../.gitignore)이 이 디렉터리를 부하 테스트 산출물과 같은 규칙으로 제외한다.
 
 ```
 # 부하 테스트 원본 산출물(k6 summary JSON, JFR 덤프 등). 과거 TASK-3/4/CLOUDFRONT와

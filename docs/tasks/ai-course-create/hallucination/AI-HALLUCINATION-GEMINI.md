@@ -123,7 +123,7 @@ AI가 지어낸 이름은 대체로 검색 자체가 안 되고, 검색이 되�
 
 ## 원본 산출물 재분석
 
-이 측정이 남긴 `results/*.csv`는 [.gitignore](../../../.gitignore)로 레포에 커밋되지 않는다. 밴드별 점수 분포, 밴드×verdict 교차표, 파싱 실패 원인 등 **이 문서에 요약되지 않은 집계는 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md)에 정리했다.**
+이 측정이 남긴 `results/*.csv`는 [.gitignore](../../../../.gitignore)로 레포에 커밋되지 않는다. 밴드별 점수 분포, 밴드×verdict 교차표, 파싱 실패 원인 등 **이 문서에 요약되지 않은 집계는 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md)에 정리했다.**
 
 그 재분석에서 위 표의 해석에 영향을 주는 사실이 두 가지 나왔다 — ① "환각 의심 구간"으로 분류한 `S1_4`는 표본 18건 전부가 정답이었고, 그 정체는 이름 비교의 띄어쓰기 거짓 음성이었다 ② 위 **25.6%는 `NO_RESULT`를 이중 계산한 구성으로 재현된다.** 상세와 재계산 값은 그 문서의 판정 2·4 참고.
 

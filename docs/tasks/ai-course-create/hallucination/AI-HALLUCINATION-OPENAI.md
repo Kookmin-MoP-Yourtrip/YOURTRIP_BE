@@ -159,7 +159,7 @@ before의 "세탁된 환각률"과 같은 식이다.
 
 ## 원본 산출물
 
-`results/`는 [.gitignore](../../../.gitignore) 대상이라 CSV가 레포에 남지 않는다. **수동 검증 40·42건의 개별 판정과 근거는 [steps/STEP-2-llm-port.md](../steps/STEP-2-llm-port.md)에 표로 옮겼다.**
+`results/`는 [.gitignore](../../../../.gitignore) 대상이라 CSV가 레포에 남지 않는다. **수동 검증 40·42건의 개별 판정과 근거는 [steps/STEP-2-llm-port.md](../steps/STEP-2-llm-port.md)에 표로 옮겼다.**
 
 | 조합 | 산출물 접두사 | 수동 검증 |
 |---|---|---|
