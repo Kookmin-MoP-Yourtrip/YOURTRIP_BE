@@ -73,6 +73,6 @@ TPS 개선폭(+28.3%)과 정확히 같은 방향·같은 크기로 움직인다 
 
 ## 참고 문서
 
-- [TASK-PRESIGN-BOTTLENECK-FIX.md](../../TASK-PRESIGN-BOTTLENECK-FIX.md) — 이 실측이 속한 단계별 계획 문서
+- [PRESIGN-BOTTLENECK-FIX.md](../../PRESIGN-BOTTLENECK-FIX.md) — 이 실측이 속한 단계별 계획 문서
 - [transaction-separation.md](transaction-separation.md) — 인덱스 누락 문제를 처음 규명한 선행 실측
 - [ec2-rds.md](../production/ec2-rds.md) — 이 문서가 제안한 환경 분리 재검증의 실행 결과(0단계 대상)

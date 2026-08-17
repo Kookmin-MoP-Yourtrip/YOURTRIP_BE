@@ -57,5 +57,5 @@ VU200 구간(약 100초) 기준:
 - [ec2-rds.md](ec2-rds.md) — 이 검증의 출발점이 된 +12.7% 커넥션 점유시간 증가 관찰
 - [../local/index.md](../local/index.md) — 로컬 환경에서 유사 CPU 경합 패턴을 처음 관찰한 JFR 실측(Phase C)
 - [abortpolicy-gate-verification.md](abortpolicy-gate-verification.md) — 이 문서가 확정한 원인(CallerRunsPolicy)에 대한 해결책(AbortPolicy 전환 + `CloudFrontSigningGate`) 설계·구현·EC2 재검증 기록
-- [TASK-PRESIGN-BOTTLENECK-FIX.md](../../TASK-PRESIGN-BOTTLENECK-FIX.md) — 이 실측이 정정한 3단계(Bulkhead) 서술을 포함한 전체 계획 문서
+- [PRESIGN-BOTTLENECK-FIX.md](../../PRESIGN-BOTTLENECK-FIX.md) — 이 실측이 정정한 3단계(Bulkhead) 서술을 포함한 전체 계획 문서
 - `TASK-PRESIGN-CALLERRUNS-HYPOTHESIS.md`(다른 워크트리 `upload-course-cache-invalidation-ff8c4e`) — 이번에 검증한 가설의 원본 문서

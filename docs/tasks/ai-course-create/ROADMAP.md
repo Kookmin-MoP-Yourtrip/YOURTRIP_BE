@@ -28,7 +28,7 @@
 
 3. **동선·시간 배치를 LLM 추측에서 실좌표 계산으로 옮긴다.** 좌표를 확보한 뒤 완전탐색으로 최적 순열을 고르므로, "시간 겹침 없음"·"day당 식사 1회"·"동선 역주행 없음"이 프롬프트 규칙이 아니라 **알고리즘 불변식**이 된다.
 
-4. **AI 코스 생성이 다른 API를 죽이지 않게 한다.** 현재 `createAICourse`는 `@Transactional` 하나로 LLM 호출과 카카오 블로킹 호출 N회를 전부 감싸, 최악의 경우 HikariCP 커넥션 1개를 **360초** 점유한다. 이 저장소는 동시성 200에서 이미 커넥션 풀 병목을 실측한 이력이 있다([TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md)).
+4. **AI 코스 생성이 다른 API를 죽이지 않게 한다.** 현재 `createAICourse`는 `@Transactional` 하나로 LLM 호출과 카카오 블로킹 호출 N회를 전부 감싸, 최악의 경우 HikariCP 커넥션 1개를 **360초** 점유한다. 이 저장소는 동시성 200에서 이미 커넥션 풀 병목을 실측한 이력이 있다([TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/PRESIGN-BOTTLENECK.md)).
 
 5. **LLM 벤더를 코드에서 분리한다.** 에이전트 코드가 벤더 SDK 타입을 한 개도 import하지 않게 해, 벤더 교체가 어댑터 하나의 교체가 되도록 한다. 부수 효과로 에이전트 단위 테스트가 가능해진다(`com.google.genai.Client`가 `public final class`라 현재는 Mockito로 묶을 수 없다).
 
@@ -395,7 +395,7 @@
 - [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md) — 환각률 baseline 실측 (before 값 25.6%)
 - [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md) — **OpenAI 재측정 (중간 측정점 7.5%)**. luna/nano 비교로 Curator 모델을 확정한 근거
 - [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) — 위 측정의 원본 산출물 재분석. **1-2 설계의 근거**(점수 밴드 분포, 밴드×verdict 교차표, 파싱 실패 원인)
-- [TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK.md) — 커넥션 풀 병목 실측. 목표 4의 근거
-- [TASK-PRESIGN-BOTTLENECK-FIX.md](../connection-pool-bottleneck/TASK-PRESIGN-BOTTLENECK-FIX.md) — 트랜잭션 경계 분리 선례
-- [CACHING-ROADMAP.md](../../CACHING-ROADMAP.md) — 이 문서가 따르는 로드맵 포맷의 선례
+- [TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/PRESIGN-BOTTLENECK.md) — 커넥션 풀 병목 실측. 목표 4의 근거
+- [TASK-PRESIGN-BOTTLENECK-FIX.md](../connection-pool-bottleneck/PRESIGN-BOTTLENECK-FIX.md) — 트랜잭션 경계 분리 선례
+- [CACHING-ROADMAP.md](../redis-caching/README.md) — 이 문서가 따르는 로드맵 포맷의 선례
 - `steps/STEP-N-*.md` — 단계별 상세 실행 계획서 (각 단계 착수 시점에 작성)

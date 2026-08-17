@@ -42,7 +42,7 @@ Spring Boot 3.5는 2026-06-30에 오픈소스 EOL에 도달했으므로 언젠�
 | spring-dotenv | `springboot4-dotenv` 모듈로 교체 |
 | Spring Security 7 | `SecurityConfig` 필터 체인 재검토 |
 
-**코드 수정량 자체는 크지 않다. 문제는 검증 비용이다.** 깨지는 곳 대부분이 런타임에만 드러나는 영역(캐시 직렬화, JWT 필터, Security 체인, Swagger)인데 이 레포의 통합 테스트는 E2E 1개뿐이다. 특히 `RedisConfig`의 `GenericJackson2JsonRedisSerializer`는 **이 레포가 이미 타입 정보 유실 버그를 겪은 지점**이고([TASK-4.md](../../TASK-4.md)), 직렬화 포맷이 바뀌면 배포 시 캐시가 전량 무효화돼 [CACHING-ROADMAP.md](../../../CACHING-ROADMAP.md) 설계 원칙 4번이 방어하려던 콜드 스타트 스탬피드가 재현된다.
+**코드 수정량 자체는 크지 않다. 문제는 검증 비용이다.** 깨지는 곳 대부분이 런타임에만 드러나는 영역(캐시 직렬화, JWT 필터, Security 체인, Swagger)인데 이 레포의 통합 테스트는 E2E 1개뿐이다. 특히 `RedisConfig`의 `GenericJackson2JsonRedisSerializer`는 **이 레포가 이미 타입 정보 유실 버그를 겪은 지점**이고([TASK-4.md](../../redis-caching/task/detail-cache.md)), 직렬화 포맷이 바뀌면 배포 시 캐시가 전량 무효화돼 [CACHING-ROADMAP.md](../../redis-caching/README.md) 설계 원칙 4번이 방어하려던 콜드 스타트 스탬피드가 재현된다.
 
 AI 파이프라인과 무관한 이 리스크를 0단계 앞에 쌓을 이유가 없다.
 

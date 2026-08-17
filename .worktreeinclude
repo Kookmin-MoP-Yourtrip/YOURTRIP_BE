@@ -3,12 +3,18 @@
 #  - .idea는 절대경로가 박혀 있어 다른 경로의 worktree에 복사하면 오히려 깨진 설정이 된다.
 #  - .gradle/build/out/bin은 재빌드 시 자동 재생성되는 캐시라 복사 비용만 낭비된다.
 .env
-CLAUDE.md
-.claude/
 GEMINI.md
 .gemini/
 .agents/
 src/main/resources/data.sql
+
+# .claude/ 항목은 이 목록에 없다 — rules/와 settings.json을 .gitignore에서 빼고 git이 직접
+# 추적하도록 바꿨기 때문이다(.terraform.lock.hcl과 동일한 취급). 작업 규칙과 공용 설정은
+# worktree뿐 아니라 팀원에게도 동일하게 적용돼야 하는데, 훅 복사로는 이 저장소를 clone한
+# 사람에게 전달되지 않는다.
+#
+# .claude/ 아래에서 계속 gitignore로 남는 것과 그 이유는 .gitignore의 해당 주석 참고
+# (plans/는 worktree 전용 맥락, worktrees/는 저장소 자기 중첩, settings.local.json은 개인 설정).
 
 # terraform/.terraform/(provider 플러그인 캐시)는 `terraform init`으로 즉시 재생성되므로
 # .gradle/build와 같은 이유로 제외한다. 아래는 재생성이 불가능한 실제 상태/설정/키 파일이다:
@@ -29,6 +35,11 @@ terraform/cloudfront_public_key.pem
 #  - terraform.tfvars: rds_password 등 환경별 실제 값.
 #  - yourtrip-loadtest-ssh(.pub): App/k6 EC2 SSH 접속 전용 키페어. .pub은 key_pair.tf가
 #    plan/apply 때마다 file()로 읽으므로 없으면 plan 자체가 실패한다.
+#
+# .terraform.lock.hcl은 이 목록에 없다 — .gitignore에서 빼고 git이 직접 추적하도록 바꿨기
+# 때문이다(루트 모듈의 terraform/.terraform.lock.hcl과 동일한 취급). provider 버전 고정은
+# worktree뿐 아니라 팀원·CI에도 동일하게 적용돼야 하는데, 훅 복사로는 이 저장소를 clone한
+# 사람에게 전달되지 않는다.
 terraform/loadtest/terraform.tfstate
 terraform/loadtest/terraform.tfstate.backup
 terraform/loadtest/terraform.tfvars

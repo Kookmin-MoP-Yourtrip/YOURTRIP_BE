@@ -91,7 +91,7 @@ terraform output -raw rds_endpoint
 
 ### 2. App JAR 로컬 빌드
 
-App EC2는 빌드를 하지 않는다 — JAR는 로컬에서 미리 빌드해 scp로 전달한다(이유는 `templates/app-user-data.sh.tpl` 상단 주석과 [EC2-RDS-LOADTEST-GUIDE.md](../../docs/guide/EC2-RDS-LOADTEST-GUIDE.md) 참고 — t3.micro에서 직접 빌드하면 CPU 크레딧을 미리 갉아먹어 측정 시작 조건이 매번 달라지는 문제가 있었다).
+App EC2는 빌드를 하지 않는다 — JAR는 로컬에서 미리 빌드해 scp로 전달한다(이유는 `templates/app-user-data.sh.tpl` 상단 주석과 [ec2-rds-loadtest.md](../../docs/guide/ec2-rds-loadtest.md) 참고 — t3.micro에서 직접 빌드하면 CPU 크레딧을 미리 갉아먹어 측정 시작 조건이 매번 달라지는 문제가 있었다).
 
 ```bash
 # 저장소 루트에서, terraform.tfvars의 app_git_ref와 동일한 커밋을 체크아웃한 상태로
@@ -200,6 +200,65 @@ git checkout -- prometheus.yml
 # 이 디렉토리에서
 terraform destroy
 ```
+
+## 인프라 변경은 반드시 terraform을 거친다
+
+**콘솔이나 AWS CLI로 리소스의 형상을 직접 바꾸지 않는다.** 이 환경은 원격 backend 없이 로컬 `terraform.tfstate` 하나가 유일한 진실 공급원이라, terraform을 우회한 변경은 state에 기록되지 않고 그대로 drift(불일치)가 된다.
+
+drift가 왜 위험한가 — 실제로 겪은 사례:
+
+> App EC2를 `t3.micro` → `t3.small`로 올릴 때 terraform을 거치지 않아, state는 이미 사라진 옛 인스턴스(`i-085ca3b1...`)를 가리키고 실제로 돌아가는 인스턴스(`i-06bc4138...`)는 state에 없는 상태가 됐다. 이 상태로 `terraform destroy`를 하면 **state에 없는 실제 인스턴스는 삭제되지 않고 남아 계속 과금된다.** 반대로 `terraform apply`를 하면 "app이 없다"고 판단해 인스턴스를 하나 더 만든다. 실제로 `plan`이 `5 to add, 2 to destroy`를 출력했다.
+
+### 형상 변경이 필요할 때
+
+`terraform.tfvars`(또는 `.tf`)를 고치고 `plan`으로 영향을 확인한 뒤 `apply`한다.
+
+```bash
+# 예: 인스턴스 타입 변경
+#   terraform.tfvars 에서 app_instance_type = "t3.small" 로 수정
+terraform plan    # 재생성(replace)이 일어나는지 반드시 확인
+terraform apply
+```
+
+인스턴스가 **재생성(replace)되면 배포한 JAR과 시드 데이터가 사라진다.** `plan`에 `must be replaced`가 보이면 §"실행 순서"의 배포·시딩을 다시 할 준비를 하고 진행한다.
+
+### 예외적으로 CLI를 써도 되는 것
+
+**리소스의 형상이 아니라 실행 상태만 바꾸는 조작**은 terraform 관리 대상이 아니므로 CLI로 해도 drift가 생기지 않는다.
+
+- 인스턴스 start/stop (`aws ec2 start-instances` / `stop-instances`) — §"측정 종료 후 정리"의 표준 절차다
+- 측정 중 임시로 여는 보안그룹 규칙 — 단 끝나면 회수한다
+
+### 이미 drift가 생겼다면 — import로 정합화
+
+실제 리소스를 살려둔 채 state만 맞추는 방법이다. 삭제·재생성이 없어 배포물과 시드가 보존된다.
+
+```bash
+terraform state list                                  # state가 아는 리소스
+aws ec2 describe-instances --filters \
+  "Name=tag:Project,Values=yourtrip" "Name=tag:Component,Values=loadtest" \
+  --query "Reservations[].Instances[].{Id:InstanceId,Type:InstanceType,State:State.Name}" --output table
+
+cp terraform.tfstate terraform.tfstate.pre-import-bak  # 백업 먼저
+
+# tfvars를 실제 값에 맞춘 뒤(예: app_instance_type = "t3.small") 진행
+terraform state rm aws_instance.app                    # 사라진 리소스를 state에서 제거
+terraform import aws_instance.app <실제-instance-id>   # 실제 리소스를 등록
+terraform plan                                         # destroy가 0인지 확인
+```
+
+**`plan`은 인스턴스가 running일 때 확인한다.** 중지된 인스턴스는 퍼블릭 IP가 해제되어 provider가 `associate_public_ip_address = false`로 읽는데, 설정값은 `true`라 **stopped 상태에서는 없어도 될 `must be replaced`가 뜬다.** 실측으로 확인한 차이다.
+
+| plan 실행 시점 | 결과 |
+|---|---|
+| stopped | `5 to add, 2 to destroy` (인스턴스 재생성으로 오판) |
+| running | `3 to add, 1 to change, 0 to destroy` |
+
+`user_data`처럼 인스턴스를 재생성해야만 맞출 수 있는 diff는, 목적이 "destroy가 실제 리소스를 지우게 하는 것"이라면 굳이 맞추지 않아도 된다. `apply`하지 않는 한 무해하다.
+
+### 상태·설정 파일은 gitignore 대상이다
+
+`terraform.tfstate(.backup)`과 `terraform.tfvars`는 `.gitignore` 대상이라 커밋으로 공유되지 않는다. worktree에서 이 파일들이 바뀌었으면(import·apply 후) **메인 워킹트리 사본도 갱신해야 한다.** 절차는 [docs/guide/worktree.md](../../docs/guide/worktree.md) 참고.
 
 ## 알아둬야 할 것
 
