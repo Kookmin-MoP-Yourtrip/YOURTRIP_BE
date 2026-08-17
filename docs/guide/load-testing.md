@@ -146,7 +146,7 @@ k6 run --out web-dashboard=export=report.html script.js
      ```
      SPRING_APPLICATION_JSON={"spring.jpa.properties.hibernate.generate_statistics":"false"}
      ```
-   - 오버헤드의 크기 자체는 실측 대상입니다. JFR 기반 선행 판정([PRESIGN-BOTTLENECK.md](../tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK.md) 경쟁 가설 ②)에서 로깅 카테고리 전체가 1.3~1.6%로 임계값(15%)에 한참 못 미쳤고, 통계 단독 비용은 `upload-course-caching` 측정의 O1에서 분리해 잽니다.
+   - **통계 단독의 오버헤드는 아직 실측하지 않았습니다.** 상시 ON으로 둔 근거는 JFR 기반 선행 판정([PRESIGN-BOTTLENECK.md](../tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK.md) 경쟁 가설 ②)으로, 로깅 카테고리 **전체**가 1.3~1.6%로 임계값(15%)에 한참 못 미쳤다는 것입니다. 통계만 떼어낸 값은 아니므로, 최대 TPS를 소수점까지 다투는 측정에서는 위 방법으로 꺼서 비교하십시오.
 
 2. **HikariCP Pending 체크**
    - 부하 테스트 중 `/actuator/metrics/hikaricp.connections.pending` 값이 0 초과로 지속된다면, DB 커넥션 풀 크기(`max-lifetime`, `maximum-pool-size`)가 부족하거나 DB 쿼리 실행 시간이 너무 길어 스레드가 대기 중임을 의미합니다.
