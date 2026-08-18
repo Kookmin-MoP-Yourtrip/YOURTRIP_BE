@@ -69,6 +69,43 @@ CPU를 9.3%밖에 안 쓰는데 병목인 이유는, **이 스레드가 CPU를 �
 
 > **측정값은 하한이다.** `lettuce_command_*`는 **채널에 쓴 시점부터** 잰다. 그런데 이벤트루프가 아닌 스레드(Tomcat 워커)에서 온 쓰기는 netty가 **이벤트루프의 작업 큐에 넣어** 처리하므로, 그 큐에서 기다린 시간은 타임스탬프 이전이라 **아예 포함되지 않는다.** 실제 Redis 왕복 비용은 위 값보다 크다.
 
+#### 해소 — 같은 AZ로 옮기고 전후를 실측했다
+
+`elasticache.tf`의 `aws_elasticache_cluster`에 `availability_zone = var.availability_zone_primary`를 지정해 노드를 `ap-northeast-2a`로 고정했다([#87](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/87)).
+
+> **인자명 함정** — AWS API의 `PreferredAvailabilityZone`에 대응하는 Terraform 인자는 `availability_zone`이다. `preferred_availability_zones`(복수)는 **Memcached 전용**이라 Redis 클러스터에는 쓸 수 없고, `az_mode`도 마찬가지다. 이슈 본문에 적었던 `preferred_availability_zone`을 그대로 쓰면 `Unsupported argument`로 실패한다.
+
+**전후를 같은 세션에서 쟀다.** 원래 AZ 이동은 클러스터 재생성을 요구해 before/after가 다른 세션으로 갈리는데, 그러면 "세션 간 변동 15%"([ec2-measurement.md](ec2-measurement.md)의 한계) 위에서 비교하게 된다. 교체가 10분 안에 끝나므로 **같은 JAR·같은 시드·같은 부하로 앞뒤를 연달아 재서** 그 제약을 피했다.
+
+| run | ElastiCache AZ | `remote` 라벨의 실제 IP | `firstresponse` | `completion` | TPS | 응답 평균 |
+|---|---|---|---|---|---|---|
+| before r1 | `2c` | `10.42.2.149` | **1.291ms** | 1.291ms | 1,210 | 4.00ms |
+| before r2 | `2c` | `10.42.2.149` | **1.313ms** | 1.313ms | 1,159 | 4.18ms |
+| after r1 | `2a` | `10.42.1.158` | **0.314ms** | 0.314ms | 2,068 | 2.29ms |
+| after r2 | `2a` | `10.42.1.158` | **0.347ms** | 0.347ms | 2,078 | 2.28ms |
+
+**명령 지연 1.302ms → 0.331ms (-74.6%).** 예측했던 "같은 AZ면 0.2~0.4ms" 구간에 그대로 들어왔다. 명령별로도 GET 1.291 → 0.309ms, MGET 1.314 → 0.352ms로 함께 내려간다.
+
+- **요청당 Redis 비용 2.60ms → 0.66ms**, 응답 시간에서 차지하는 비중 **63.7% → 28.9%**.
+- **TPS +75%(1,185 → 2,073), 응답 평균 -44%(4.09 → 2.29ms).** 왕복 비용만 걷어냈는데 처리량이 이만큼 오른 것은, 이 구간의 병목이 앱 자원이 아니라 **단일 I/O 스레드가 왕복을 기다리는 시간**이었다는 위 결론과 같은 방향이다.
+- `completion ≈ firstresponse` 관계는 정렬 후에도 유지된다 — 남은 0.33ms도 여전히 왕복이 대부분이고, 서버 처리 비용이 아니다(Redis 엔진 CPU는 전후 모두 5~10%).
+
+**`remote` 라벨이 AZ를 직접 증명한다.** Lettuce 메트릭의 `remote`에 해석된 사설 IP가 찍히는데, before는 `10.42.2.149`(secondary 서브넷 `10.42.2.0/24` = 2c), after는 `10.42.1.158`(primary 서브넷 `10.42.1.0/24` = 2a)이다. 엔드포인트 **DNS 이름은 재생성 후에도 그대로였고**(`...ouqrk4.0001.apn2...`) 뒤의 IP만 바뀌었다 — 그래서 `/opt/app/.env`의 `REDIS_HOST`는 고칠 필요가 없었다.
+
+<details>
+<summary>측정 조건</summary>
+
+- **부하**: `scripts/k6/popular-cold.js`를 `-e VUS=5 -e DURATION=120s`로 전용(`constant-vus`). `FLUSHALL`을 병행하지 않아 콜드 스탬피드가 아니라 **워밍 상태의 정상 히트 경로**가 된다. 스크립트는 수정하지 않았다. 각 arm마다 예열 30초를 먼저 돌리고 본 측정 2회를 이어 붙였다.
+- **집계**: 본 측정 직전·직후의 `/actuator/prometheus` 스냅샷 2장을 떠서 `Δsum ÷ Δcount`로 구간 평균을 냈다(1초 폴링 하네스가 없어도 저부하 평균에는 시계열이 필요 없다). `command` 라벨이 `GET`·`MGET`인 것만 집계해 조회수 스케줄러의 `EVALSHA`·`DEL`을 배제했다.
+- **요청당 명령 2회가 재확인됐다** — 145,224 요청에 GET·MGET 각 290,448회로 정확히 2배다.
+- **JAR은 교체하지 않았다.** 배포돼 있던 빌드를 그대로 쓰고 `.env`의 `YOURTRIP_BENCHMARK_*`가 A2 조합(`enabled`/`separated`)인 상태를 유지했다. before/after가 같은 바이너리를 쓰는 것이 여기서는 중요하다.
+- **재시작해도 시드가 살아남게 `.env`의 `DB_DDL_AUTO`를 `create` → `validate`로 내렸다.** `create`면 재시작마다 스키마가 DROP/CREATE되어 시드가 사라지고, 그러면 `PopularCourseCacheWarmer`가 **빈 랭킹을 30분 TTL로 캐시해버린다**(실제로 이번 세션 초반에 발생해 `/popular`이 빈 배열을 반환했다). 이 조치로 before/after 양쪽이 "재시작 직후 + 예열 + 본 측정"으로 대칭이 됐다. **측정이 끝난 뒤 `create`로 되돌려** user_data 템플릿과의 divergence를 남기지 않았다.
+- **스로틀링은 배제된다.** App EC2·k6 EC2 모두 `CpuCredits=unlimited`로 확인됐다(`describe-instance-credit-specifications`) — 측정 중 `CPUCreditBalance`가 0이었지만 unlimited 모드에서는 성능 저하로 이어지지 않는다. App EC2 CPU는 before 26~39%, after 68%로 어느 쪽도 포화가 아니다. 문서 한계 절의 "App EC2가 `unlimited` 모드라는 전제가 terraform에 고정돼 있지 않다"는 지적은 여전히 유효하다(계정 기본값에 의존하는 상태 그대로다).
+
+</details>
+
+**41개 run의 값은 그대로 둔다.** 위 실측은 AZ 횡단 비용이 얼마였는지를 사후에 특정한 것이지, 기존 측정을 무효화하지 않는다. 다만 **A1·A2가 물던 요청당 2.6ms가 이제 0.66ms**이므로, 같은 조건을 다시 재면 캐시 arm의 이득은 기록된 것보다 크게 나온다.
+
 ---
 
 ## 참고 문서
