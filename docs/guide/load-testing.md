@@ -140,8 +140,13 @@ k6 run --out web-dashboard=export=report.html script.js
 ## 5. ⚠️ 주의 사항 (포트폴리오 팁)
 
 1. **Hibernate Statistics 옵션 관리**
-   - DB 쿼리 개수 감소를 입증할 때는 `application.yml`의 `spring.jpa.properties.hibernate.generate_statistics: true`로 설정합니다.
-   - **서버의 극단적인 최대 TPS / 응답 속도 한계**를 측정할 때는 카운터 동기화 오버헤드를 없애기 위해 해당 옵션을 `false`로 끄고 k6를 실행하는 것을 권장합니다.
+   - `spring.jpa.properties.hibernate.generate_statistics`는 `application.yml`에 **상시 켜져 있습니다.** 측정할 때마다 켰다 되돌리면 세션 간에 이 축이 통제되지 않은 변수가 되기 때문입니다. 따라서 `hibernate_statements_total`은 별도 조치 없이 항상 나옵니다.
+   - 이 값이 실제로 메트릭까지 이어지는지는 `HibernateMetricsRegistrationTest`가 검증합니다. 과거에 `hibernate-micrometer` 의존성이 없어 **설정을 켜도 메트릭만 조용히 사라지는** 상태였던 전례가 있습니다([TASK-CLOUDFRONT.md](../tasks/TASK-CLOUDFRONT.md) 참고).
+   - **서버의 극단적인 최대 TPS 한계**를 재느라 이 오버헤드까지 배제하고 싶다면, 코드를 고치지 말고 `/opt/app/.env`에 아래를 넣어 런타임에만 끕니다. 맵 키의 언더스코어 때문에 일반 환경변수 relaxed binding으로는 `generate.statistics`로 잘못 매핑될 수 있어, 키를 그대로 보존하는 `SPRING_APPLICATION_JSON`을 씁니다.
+     ```
+     SPRING_APPLICATION_JSON={"spring.jpa.properties.hibernate.generate_statistics":"false"}
+     ```
+   - **통계 단독의 오버헤드는 아직 실측하지 않았습니다.** 상시 ON으로 둔 근거는 JFR 기반 선행 판정([PRESIGN-BOTTLENECK.md](../tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK.md) 경쟁 가설 ②)으로, 로깅 카테고리 **전체**가 1.3~1.6%로 임계값(15%)에 한참 못 미쳤다는 것입니다. 통계만 떼어낸 값은 아니므로, 최대 TPS를 소수점까지 다투는 측정에서는 위 방법으로 꺼서 비교하십시오.
 
 2. **HikariCP Pending 체크**
    - 부하 테스트 중 `/actuator/metrics/hikaricp.connections.pending` 값이 0 초과로 지속된다면, DB 커넥션 풀 크기(`max-lifetime`, `maximum-pool-size`)가 부족하거나 DB 쿼리 실행 시간이 너무 길어 스레드가 대기 중임을 의미합니다.

@@ -25,7 +25,12 @@ spring:
     # DATABASE_TO_LOWER=TRUE: PG는 따옴표 없는 식별자를 소문자로, H2는 대문자로 접는다.
     # DB_CLOSE_DELAY=-1: 마지막 커넥션이 닫히는 순간 인메모리 DB가 통째로 사라진다.
     #   HikariCP가 유휴 커넥션을 정리할 때 스키마가 날아가는 사고를 막는다.
-    url: jdbc:h2:mem:yourtrip;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    # NON_KEYWORDS=DAY: DaySchedule.day의 컬럼명 day가 H2 2.x에서는 예약어라
+    #   create table day_schedule이 문법 오류로 실패한다. PostgreSQL에서 day는 예약어가 아니므로
+    #   운영에는 없는 문제이고, MODE=PostgreSQL도 키워드 목록까지는 맞춰주지 않는다.
+    #   게다가 Hibernate는 DDL 실패를 WARN으로만 남기고 기동을 계속하므로, 이 설정이 없으면
+    #   테이블이 없는 채로 테스트가 뜨고 해당 테이블을 쓰는 순간에야 "Table not found"로 터진다.
+    url: jdbc:h2:mem:yourtrip;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;NON_KEYWORDS=DAY
     driver-class-name: org.h2.Driver
     # username/password도 반드시 덮어쓴다. 안 그러면 application.yml의 ${DB_USERNAME}/
     # ${DB_PASSWORD}가 내려와 테스트가 다시 .env에 묶인다.
