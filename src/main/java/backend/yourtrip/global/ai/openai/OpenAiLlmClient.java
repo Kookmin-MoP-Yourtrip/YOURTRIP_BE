@@ -51,7 +51,7 @@ import org.springframework.web.client.RestClient;
  * {@code LlmClient}·{@code LlmCall}만 알고, 여기서 벤더가 바뀌어도 그 위쪽 코드는 한 줄도
  * 바뀌지 않는다. {@code LlmPortIsolationTest}가 이 규칙을 테스트로 강제한다.
  *
- * <p>설계 근거: {@code docs/tasks/ai-course-create/TASK-AI-MULTI-AGENT.md} §6
+ * <p>설계 근거: {@code docs/tasks/ai-course-create/design/LLM-연동.md} "벤더 중립 LLM 추상화"
  *
  * <h2>Spring AI를 auto-config로 쓰지 않는 이유</h2>
  * {@code spring.ai.model.chat: openai}로 켜면 세 가지가 걸린다 — ① {@code api-key}가 기동 필수가
@@ -206,7 +206,7 @@ public class OpenAiLlmClient implements LlmClient {
     /**
      * 의미 계층 — 200 OK인데 쓸 수 없는 응답이면 보정 지시를 붙여 다시 부른다.
      *
-     * <p>기본값은 총 2회(초회 + 보정 1회)다. 3회 이상은 지연 예산만 태운다는 것이 설계 문서 §6의
+     * <p>기본값은 총 2회(초회 + 보정 1회)다. 3회 이상은 지연 예산만 태운다는 것이 LLM 포트 설계의
      * 판단이며, {@code llm.retry.semantic-attempts}로 조절한다.
      */
     private <T> T generateWithSemanticRetry(LlmCall<T> call) {
@@ -275,7 +275,7 @@ public class OpenAiLlmClient implements LlmClient {
         if (agent.temperature() != null) {
             options.temperature(correcting ? CORRECTION_TEMPERATURE : agent.temperature());
         }
-        // 추론 강도. 설계 문서 §6이 Gemini 전용 thinking-budget 을 제거하며 "대응 설정이 있다면
+        // 추론 강도. LLM 포트 설계가 Gemini 전용 thinking-budget 을 제거하며 "대응 설정이 있다면
         // 어댑터에서 다룬다"고 열어둔 자리다. 낮추지 않으면 max-output-tokens 를 추론이 다 먹고
         // 본문이 0바이트로 오는 일이 실제로 발생한다.
         if (agent.reasoningEffort() != null && !agent.reasoningEffort().isBlank()) {

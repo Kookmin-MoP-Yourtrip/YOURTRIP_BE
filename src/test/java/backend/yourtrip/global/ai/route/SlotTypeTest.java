@@ -78,7 +78,7 @@ class SlotTypeTest {
     class FixedValues {
 
         @Test
-        @DisplayName("체류시간은 설계 문서 §5-1 그대로다")
+        @DisplayName("체류시간은 SlotType 설계 그대로다")
         void stayMinutesMatchDesignDocument() {
             assertThat(SlotType.ACTIVITY.getDefaultStayMinutes()).isEqualTo(120);
             assertThat(SlotType.ATTRACTION.getDefaultStayMinutes()).isEqualTo(90);

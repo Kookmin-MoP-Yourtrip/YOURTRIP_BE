@@ -15,7 +15,7 @@ import java.util.concurrent.Executor;
  * <p>구현체는 {@code backend.yourtrip.global.ai.openai.OpenAiLlmClient} 하나이며, Spring AI는
  * 그 어댑터 안에만 갇힌다.
  *
- * <p>설계 근거: {@code docs/tasks/ai-course-create/TASK-AI-MULTI-AGENT.md} §6
+ * <p>설계 근거: {@code docs/tasks/ai-course-create/design/LLM-연동.md} "벤더 중립 LLM 추상화"
  *
  * <h2>던지는 예외</h2>
  * 전부 비검사 예외이며, {@code backend.yourtrip.global.ai.exception} 패키지의 계층이

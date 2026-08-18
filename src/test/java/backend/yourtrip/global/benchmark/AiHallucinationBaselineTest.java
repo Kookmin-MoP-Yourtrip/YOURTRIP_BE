@@ -44,7 +44,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * AI 코스 생성(단일 LLM 호출) 구조의 **환각률 baseline 측정** 하네스.
- * 멀티 에이전트 파이프라인(docs/tasks/TASK-AI-MULTI-AGENT.md) 도입 전 값을 남기는 것이 목적이며,
+ * 멀티 에이전트 파이프라인(docs/tasks/ai-course-create/멀티-에이전트-파이프라인.md) 도입 전 값을 남기는 것이 목적이며,
  * 도입 후 동일한 방법론으로 재측정해 before/after를 비교한다.
  *
  * <p><b>2단계에서 측정 대상 LLM이 Gemini에서 OpenAI로 바뀌었다.</b> 최초 측정(환각률 25.6%,

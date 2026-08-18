@@ -5,7 +5,7 @@ import java.util.Objects;
 /**
  * LLM 호출 1건의 요청 명세.
  *
- * <p>설계 근거: {@code docs/tasks/ai-course-create/TASK-AI-MULTI-AGENT.md} §6
+ * <p>설계 근거: {@code docs/tasks/ai-course-create/design/LLM-연동.md} "벤더 중립 LLM 추상화"
  *
  * @param agentName          설정 조회 키이자 메트릭 태그. {@code AiLlmProperties.agents}의 키와
  *                           일치해야 하며(예: {@code planner}, {@code place-profile}), 여기서
