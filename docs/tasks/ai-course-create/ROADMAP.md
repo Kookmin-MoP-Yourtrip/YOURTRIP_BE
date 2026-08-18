@@ -69,99 +69,56 @@
 
 ### 0. 사전 준비
 
-동작 변화 없음. 이후 모든 단계의 선행 조건이며, **여기서 나온 판정이 2·4단계의 설계를 바꾼다.**
+동작 변화 없음. **여기서 나온 판정이 2·4단계의 설계를 바꿨다.**
 
 > 검증 방법·판정 결과·근거는 [STEP-0-prerequisites.md](steps/STEP-0-prerequisites.md) 참고.
 
-- [x] 0-1. OpenAI API 키 발급 + 크레딧 충전 완료. 충전 전에는 401이 아닌 `429 insufficient_quota`가 반환돼 키 자체는 처음부터 유효했음이 확인됐다
-- [x] 0-2. **NCP 콘솔의 NAVER API HUB**에서 블로그(NAVER Search Blog API) 선택 후 키 발급 완료. 검색 API가 developers.naver.com에서 네이버 클라우드 플랫폼으로 옮겨가 발급처·엔드포인트·인증 헤더가 바뀌었다(요금 정책은 무료 그대로). **한도 초과 시 429 반환** — 4단계 fail-open 분기의 기준
-- [x] 0-3. **Spring AI 구조화 출력 검증 — 전제 성립.** 스키마는 `messages[].content`에 섞이지 않고 전부 `response_format.json_schema`에 `strict: true`로 전송된다(WireMock으로 요청 본문 확인). 공식 SDK 폴백 불필요. 실 API 검증(0-3b)도 통과 — **`gpt-5.6-luna`·`gpt-5-nano` 모두 strict json_schema 지원**, 그리고 **최상위 배열 스키마는 400으로 거부**되는 것을 확인했다(6단계 Curator 스키마 설계의 제약)
-- [x] 0-4. 모델 배치 확정 — **Planner·Curator = `gpt-5.6-luna`, PlaceProfile = `gpt-5-nano`**(9단계 조건부라 V1에서는 호출되지 않는다) (약 $0.0030/요청). 부수적으로 비용 분석의 "비용은 전부 4층에서 나온다"는 전제가 금액 기준으로는 틀렸다는 것이 드러나 재계산했다
-- [x] 0-5. 쿼터·과금 확인 — 네이버 검색 **0원 / 일 25,000건**(요청당 35회 → **약 714요청**), 카카오 100,000/일(요청당 45회 → 약 2,222요청). **네이버가 먼저 한계에 닿지만 fail-open이라 서비스가 죽지는 않는다.** 이관 후에도 무료라 설계 문서의 비용 분석의 "3층은 비용 증가가 0" 전제는 유효하다. OpenAI RPM/TPM은 키 발급 후 확인
-  > **[갱신]** 위 계산은 PlaceSignal(블로그 35회) 기준이다. PlaceSignal이 V1에서 빠지고 네이버 용처가 지역검색 ~18~30회(전 슬롯 시더)로 바뀌면서 **상한이 약 830~1,400요청으로 넓어졌다.** 카카오도 45회 → ~20~33회. 0-2의 블로그 API 키는 그대로 유효하며(같은 API HUB 키로 지역검색도 호출) 9단계에서 쓴다. **TourAPI**는 개발계정 일 1,000건이 **그대로 서비스 상한**이다 — 요청당 ≤9회(격자 캐시로 대부분 히트)라 하루 110코스 이상이고, 세 API 중에서는 여전히 네이버가 먼저 한계에 닿는다(4-7)
-- [x] 0-6. **테스트 인프라 신설** — `src/test/resources` + `application-test.yml`, `wiremock-standalone` 추가. 셰이딩판을 고른 이유는 이 레포의 테스트 클래스패스에 Jackson·Guava가 이미 여러 버전으로 경합 중이기 때문이다(추가 후 해석 결과 변화 없음을 확인)
-- [x] 0-7. `build.gradle`에 Java 21 toolchain 고정 — 바이트코드 major version 65 확인
+- [x] 0-1. OpenAI API 키 발급 + 크레딧 충전
+- [x] 0-2. 네이버 검색 API 키 발급 — **NCP 콘솔의 NAVER API HUB**에서. 검색 API가 developers.naver.com에서 이관돼 발급처·엔드포인트·인증 헤더가 바뀌었다(요금은 무료 그대로). **한도 초과 시 429** — 4단계 fail-open 분기의 기준
+- [x] 0-3. **Spring AI 구조화 출력 검증 — 전제 성립.** 스키마가 전부 `response_format.json_schema`에 `strict: true`로 나간다(공식 SDK 폴백 불필요). 실 API에서도 두 모델 다 지원. **단 최상위 배열 스키마는 400으로 거부된다** — 6단계 Curator 스키마의 제약
+- [x] 0-4. 모델 배치 확정 — **Planner·Curator = `gpt-5.6-luna`, PlaceProfile = `gpt-5-nano`**(9단계 조건부). 약 $0.0030/요청
+- [x] 0-5. 쿼터 확인 — 네이버 **일 25,000건**(지역검색 ~18~30회/요청 → 약 830~1,400요청), 카카오 100,000/일(~20~33회), TourAPI **일 1,000건**(≤9회, 격자 캐시). **네이버가 먼저 한계에 닿지만 fail-open이라 서비스는 죽지 않는다**
+- [x] 0-6. **테스트 인프라 신설** — `src/test/resources` + `application-test.yml`, `wiremock-standalone`(셰이딩판 — 클래스패스에 Jackson·Guava가 이미 경합 중이라)
+- [x] 0-7. `build.gradle`에 Java 21 toolchain 고정
 
 ### 1. 기존 결함 수정
 
-동작 변화 **있음(버그 수정)**. 파이프라인과 **완전히 독립적으로 옳은 수정**이라 리뷰가 쉽고, 작업이 중단돼도 가치가 남는다. 그래서 맨 앞에 둔다.
+동작 변화 **있음(버그 수정)**. 파이프라인과 독립적으로 옳은 수정이라 작업이 중단돼도 가치가 남는다.
 
 > 상세 실행 기록은 [STEP-1-existing-defects.md](steps/STEP-1-existing-defects.md) 참고.
 
-- [x] 1-1. `Place`의 `@Builder` 파라미터를 `double` → `Double`로 교체 (좌표 `0.0/0.0` 저장 차단) + `PlaceMapper.toCopyEntity`의 언박싱 NPE 수정. **응답 DTO 3종과 `PlaceCacheItem`도 함께 승격해야 했다** — 게터를 읽는 쪽이 전부 새 언박싱 NPE 후보가 되기 때문이다. 응답의 좌표가 nullable이 되므로 **API 계약 변경이고 FE 공유가 필요하다**
-- [x] 1-2. ~~`KakaoLocalClient.score()`에 점수 하한선 도입~~ → **이름 정규화 + 이름 일치 필수 게이트**
-
-  > **[정정]** 산출물을 집계해보니 **총점 하한선은 역효과**였다. `S1_4`(3점)는 표본 18건이 전부 정답인데 `S5_7`(5·7점)은 31%가 불량이라, `≥5` 하한선은 정답 밴드를 버리고 불량 밴드를 남긴다. 원인은 검색 키워드가 "지역명 + 장소명"이라 주소(+3)·카테고리(+2) 가점이 거의 자동으로 붙어 **이름이 하나도 안 맞아도 5점이 나오는** 구조다. 그래서 하한선이 아니라 이름 일치를 별도 조건으로 두고, `contains`의 거짓 음성(띄어쓰기·중점)은 정규화로 없앴다. **`score()`는 건드리지 않았다** — 하네스가 리플렉션으로 직접 호출하므로 재측정 비교 가능성이 깨진다. 근거는 [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 판정 1·2
-- [x] 1-3. `KakaoConfig`의 `WebClient`에 connect/response 타임아웃 + 커넥션 풀 명시, `.block(Duration.ofSeconds(20))` 제거. 현재는 타임아웃 초과 시 `IllegalStateException`이 던져져 `WebClientResponseException` catch를 빠져나가 원시 500이 된다 → **catch를 `WebClientException`으로 확장하는 것이 한 세트여야 한다.** 호출당 최악 지연 20초 → 5초
-- [x] 1-4. `buildKeywordsJson(null)` NPE 수정 + `AICourseCreateRequest.keywords`에 검증 추가(`@NotEmpty`)
-- [x] 1-5. `createAICourse`의 `@Transactional` 경계 분리 — 외부 I/O를 트랜잭션 밖으로 빼고 저장만 짧은 트랜잭션으로. **`AiCoursePersister`를 반드시 별도 빈으로 둔다**(같은 클래스 내부 호출은 Spring AOP 프록시를 우회해 트랜잭션이 아예 안 걸린다). 이 저장소에 `MyCourseDetailReader`라는 동일한 분리 선례가 있다. **걸림돌은 어노테이션이 아니라 더티체킹 의존이었다** — `ResolvedPlace`/`ResolvedDay` 중간 표현으로 "결과를 다 모은 뒤 저장" 순서로 뒤집었다
-- [x] 1-6. 회귀 테스트 (56 → 73개). ~~커넥션 점유 시간 before/after 확인~~ → **8단계 E2E로 미룬다** — AI 코스 생성은 요청마다 LLM을 호출해 부하 테스트가 부적합하고, 스텁으로 대체하면 측정의 의미가 옅어진다
-- [x] 1-7. **E2E 검증 완료(로컬)** — 순천 3일 코스 생성 201/14.4초, 장소 12개 중 **`0.0/0.0` 0건**, 매칭 실패 2건은 좌표 `null`로 저장·응답. `keywords` 생략·빈 배열 모두 400. 요청 중 ERROR 0건. 정규화가 실제로 구제한 사례 1건 관측(`"순천 문화의 거리"` → `"순천문화의거리"`)
-
+- [x] 1-1. `Place`의 `@Builder` 파라미터를 `double` → `Double`로 (좌표 `0.0/0.0` 저장 차단) + `PlaceMapper.toCopyEntity`의 언박싱 NPE. **응답 DTO 3종과 `PlaceCacheItem`도 함께 승격해야 했고, 좌표가 nullable이 되므로 API 계약 변경이라 FE 공유가 필요하다**
+- [x] 1-2. `KakaoLocalClient`에 **이름 정규화 + 이름 일치 필수 게이트**. 계획했던 총점 하한선은 **역효과라 폐기했다** — 검색어가 "지역명 + 장소명"이라 주소·카테고리 가점만으로 5점이 나와, 하한선이 정답 밴드를 버리고 불량 밴드를 남긴다. `score()` 자체는 건드리지 않았다(하네스 비교 가능성). 근거는 [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 판정 1·2
+- [x] 1-3. `KakaoConfig`의 `WebClient`에 connect/response 타임아웃 + 커넥션 풀 명시, `.block(20초)` 제거. **catch를 `WebClientException`으로 확장하는 것이 한 세트다**(타임아웃은 `IllegalStateException`이라 기존 catch를 빠져나갔다). 호출당 최악 지연 20초 → 5초
+- [x] 1-4. `buildKeywordsJson(null)` NPE 수정 + `AICourseCreateRequest.keywords`에 `@NotEmpty`
+- [x] 1-5. `createAICourse`의 `@Transactional` 경계 분리 — 외부 I/O를 밖으로, 저장만 짧은 트랜잭션으로. **`AiCoursePersister`를 별도 빈으로 둔다**(자기호출은 프록시를 우회한다). 걸림돌은 어노테이션이 아니라 더티체킹 의존이라 `ResolvedPlace`/`ResolvedDay` 중간 표현으로 "다 모은 뒤 저장" 순서로 뒤집었다
+- [x] 1-6. 회귀 테스트 (56 → 73개). 커넥션 점유 before/after는 **8단계 E2E로 미룬다** — 요청마다 LLM을 호출해 부하 테스트가 부적합하다
+- [x] 1-7. **E2E 검증 완료(로컬)** — 순천 3일 201/14.4초, 장소 12개 중 `0.0/0.0` **0건**, 매칭 실패 2건은 좌표 `null`로 저장. `keywords` 생략·빈 배열 모두 400
 ### 2. `LlmClient` 벤더 중립 추상화 + 설정 외부화 + baseline 재측정
 
 동작 변화 없음(기존 `GeminiService` 경로는 그대로 둔다).
 
-> 상세 실행 기록은 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 참고.
+> 상세 실행 기록은 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 참고 — 측정이 전제 두 개를 뒤집었다.
 
-- [x] 2-1. `LlmClient` 포트 + `LlmCall` record 정의. `responseJsonSchema`는 벤더 타입이 아니라 **JSON 문자열**로 받는다 — 이게 벤더 중립의 핵심이다. ~~스키마는 `resources/schemas/*.json`~~ → **프로덕션 스키마 디렉터리는 6단계에 만든다**(실제 에이전트 스키마가 그때 생긴다). 2-6 측정용 스키마만 `src/test/resources/schemas/`에 뒀다. 부수적으로 `responseJsonSchema`를 **nullable로 확장**했다 — 2-6이 "구조화 출력을 끈" 측정점을 필요로 하고, 스키마 강제를 포트의 요구사항으로 못박으면 오히려 중립성이 좁아진다
-- [x] 2-2. `OpenAiLlmClient` 어댑터 구현 — 전송 계층은 Spring AI(0-3 판정대로 공식 SDK 폴백 불필요). **auto-config를 쓰지 않고 어댑터가 `OpenAiChatModel`을 직접 조립한다** — 켜면 API 키가 기동 필수가 되어 이 단계가 동작 변화를 만들고, `baseUrl`을 못 바꿔 WireMock 검증이 불가능해진다
-- [x] 2-3. `AiLlmProperties` 등 `@ConfigurationProperties` 도입 — agent별 model/temperature, `timeout-ms`, `max-concurrent-calls`, retry 설정. **이 저장소 최초의 `@ConfigurationProperties`다**(현재 전 설정이 `@Value` 필드 주입). 설계 초안에 없던 **`max-output-tokens`를 agent별로 추가**했다(지금은 설계 문서에도 반영돼 있다) — 절단이 파싱 실패의 실제 원인이므로 출력 여유가 설정 대상이어야 한다
-- [x] 2-4. `LlmResponseParser` + 재시도 2계층 — 전송 계층(429/5xx 지수 백오프 + 지터)과 의미 계층(200 OK인데 깨진 JSON → 1회만 재시도). 2회 이상은 지연 예산만 태운다
-
-  > **[정정]** 설계 초안의 재시도 표는 의미 재시도를 `LlmResponseParser`의 책임으로 적었지만 **재호출은 파서가 할 수 없다.** 파서는 순수 변환만 맡고, 전송 재시도는 `LlmRetryExecutor`로 떼어냈으며(백오프 계산을 순수 함수로 테스트하기 위해), 의미 재시도는 어댑터가 오케스트레이션한다.
-  >
-  > **재시도 계층이 셋으로 흩어져 있던 것을 발견해 제거했다** — 설정한 3회가 실제 HTTP 요청 6회로 관측됐다. ① Spring AI `OpenAiChatModel`의 자체 `RetryTemplate` ② **선언조차 되지 않은 전이 의존성** Apache HttpClient 5가 `detect()`에 선택돼 429를 자체적으로 1회 더 시도 ③ 우리 executor. 또 **Spring AI는 429를 `NonTransientAiException`(재시도 무의미)으로 분류**하는데 실제로는 정반대라, 상태 코드를 보존하는 `responseErrorHandler`를 주입해 분류를 직접 소유한다. 근거는 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 판정 1·2
-- [x] 2-5. 포트 기반 단위 테스트 — 에이전트 코드가 벤더 SDK 타입을 import하지 않는다는 것을 테스트로 확인. 에이전트는 6단계에 생기므로 **소스 import 스캔 + 포트 목킹 데모** 두 가지로 갈음했다. 어댑터가 실제로 벤더 SDK를 쓴다는 것도 함께 단언해 검사기가 헛돌지 않음을 보인다
-- [x] 2-6. **OpenAI 단일 호출 baseline 재측정** — 기존 `AiHallucinationBaselineTest` 하네스의 LLM만 교체하고 입력 세트·`score()` 로직은 그대로. **환각률과 JSON 파싱 실패율을 함께 집계하고, 이번에는 결과 산출물을 파일로 남긴다**(Gemini 측정 때 파싱 실패율 28.6%가 수치만 남고 산출물이 남지 않아 재확인이 불가능했다)
-
-  측정 축이 둘로 늘었다 — `BASELINE_MODEL`(luna/nano) × `BASELINE_SCHEMA_MODE`(prompt/json_schema)의 **4조합 120요청, 전량 완료**(약 32분). 요청 결말을 `OK`/`CALL_FAILED`/`TRUNCATED`/`PARSE_FAILED` 넷으로 갈라 **두 분모를 모두 출력**한다.
-
-  | 조합 | 자동 프록시 환각률 | JSON 실패(전체 요청) | 응답 크기 평균 |
-  |---|---|---|---|
-  | **luna / 프롬프트지시** | **6.4%** | 0.0% | 1,503B |
-  | luna / json_schema | 7.8% | 0.0% | 786B |
-  | nano / 프롬프트지시 | 47.8% | 3.3% (1/30) | 1,553B |
-  | nano / json_schema | 50.7% | 0.0% | 798B |
-
-  > **[중요] 측정이 이 로드맵의 전제 두 개를 뒤집었다.** 상세는 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 판정 7·8·9.
-  >
-  > ① **Curator 모델은 `gpt-5.6-luna`로 확정한다**(0-4가 2-6에 넘긴 숙제). `gpt-5-nano`는 환각률이 **7배 이상**이고 `NO_RESULT` 밴드가 40%를 넘는다 — AI가 부른 이름의 40%가 카카오에서 검색조차 안 된다(`"경주 전통찜닭골목"`, `"부산항대교 남항스카이워크"` 같은 그럴듯한 조어). 비용을 아끼려고 Curator를 nano로 내리면 1차 목표를 정면으로 훼손한다.
-  >
-  > ② **위 "목표 1"의 인과가 틀렸다.** 구조화 출력은 환각률을 낮추지 않았고(오히려 +1.4~2.9%p, 표본 오차 범위) 낮출 수도 없다 — **스키마는 형식을 강제하지 내용을 강제하지 않는다.** JSON 실패를 해결한 것은 구조화 출력이 아니라 **모델 교체**다(120요청 중 절단 0건). 구조화 출력의 실익은 다른 데 있었다: **출력 바이트 −48%**(pretty-print 제거, 비용 분석이 지목한 Curator 출력 비용에 직결)와 **스키마 밖 필드 차단**(유일한 파싱 실패 1건이 프롬프트 내부 불일치인 `placeLocation`이었고 `additionalProperties: false`가 이를 없앴다).
+- [x] 2-1. `LlmClient` 포트 + `LlmCall` record. `responseJsonSchema`는 벤더 타입이 아니라 **JSON 문자열**로 받는다(벤더 중립의 핵심). 2-6이 "구조화 출력을 끈" 측정점을 필요로 해서 **nullable로 뒀다**
+- [x] 2-2. `OpenAiLlmClient` 어댑터 — 전송 계층은 Spring AI. **auto-config를 쓰지 않고 어댑터가 `OpenAiChatModel`을 직접 조립한다** — 켜면 API 키가 기동 필수가 되어 이 단계가 동작 변화를 만들고, `baseUrl`을 못 바꿔 WireMock 검증이 불가능해진다
+- [x] 2-3. `AiLlmProperties` 등 `@ConfigurationProperties` 도입 — agent별 model·`reasoning-effort`·`max-output-tokens`, `timeout-ms`, `max-concurrent-calls`, retry. **이 저장소 최초의 `@ConfigurationProperties`다**(기존은 전부 `@Value`)
+- [x] 2-4. `LlmResponseParser` + 재시도 2계층 — 전송(`LlmRetryExecutor`, 429/5xx 지수 백오프)과 의미(200인데 깨진 JSON → 어댑터가 1회 재호출). **재시도 계층이 셋으로 흩어져 있던 것을 발견해 제거했다** — 설정 3회가 실제 HTTP 6회로 관측됐고, 원인은 Spring AI의 `RetryTemplate` · 선언조차 안 된 전이 의존성 Apache HttpClient 5 · 우리 executor였다. **Spring AI가 429를 재시도 불가로 분류하는 것도 뒤집었다**([STEP-2](steps/STEP-2-llm-port.md) 판정 1·2)
+- [x] 2-5. 포트 기반 단위 테스트 — 에이전트가 벤더 SDK 타입을 import하지 않음을 소스 스캔으로 단언. 어댑터는 실제로 쓴다는 것도 함께 단언해 검사기가 헛돌지 않음을 보인다
+- [x] 2-6. **OpenAI 단일 호출 baseline 재측정** — `BASELINE_MODEL`(luna/nano) × `BASELINE_SCHEMA_MODE`(prompt/json_schema) **4조합 120요청 전량 완료**. 결과와 그것이 뒤집은 전제 둘은 성공 기준 참고. **Curator 모델이 `gpt-5.6-luna`로 확정된 근거다**
 
 ### 3. `RouteOptimizer` + `SlotType` + `GeoUtils`
 
-동작 변화 없음. 순수 함수라 외부 의존이 없고 단위 테스트가 완전히 결정론적이다.
+동작 변화 없음. 순수 함수라 단위 테스트가 완전히 결정론적이다.
 
-> 상세 실행 기록은 [STEP-3-route-optimizer.md](steps/STEP-3-route-optimizer.md) 참고.
+> 상세 실행 기록은 [STEP-3-route-optimizer.md](steps/STEP-3-route-optimizer.md) 참고 — 설계가 비워둔 계수 셋을 정하는 과정과, 식사 윈도우 배정의 첫 구현이 벌점의 목적과 정반대였던 사건.
 
-- [x] 3-1. `SlotType` enum — 체류시간·인기도 가중치·허용 카테고리 코드를 enum이 소유. LLM이 내보내는 필드가 하나 줄면 스키마 위반 가능성도 하나 줄고, 튜닝이 코드 리뷰 대상이 된다
-- [x] 3-2. `GeoUtils` — haversine 거리(반경 6371.0088km). 유클리드 근사와의 차이는 한국 도시 규모에서 0.1% 미만이지만, 20줄이고 CPU 비용이 무의미하므로 근사 오차라는 변수를 아예 없앤다. **내부 항을 `[0,1]`로 클램프해야 했다** — 대척점에서 `NaN`이 나오면 예외 없이 최적 순열 선택만 망가진다
-- [x] 3-3. `RouteOptimizer` 완전탐색 — `n ≤ 7`이면 `7! = 5,040` 순열이 1ms 미만(**실측 589µs**). 비용 함수는 순수 TSP가 아니라 **거리 + 식사 시간창 위반 + 하루 초과 페널티**
-
-  > **설계 초안이 비워둔 계수 세 개를 정해야 했고, 그 전에 단위부터 맞춰야 했다.** `km × 계수`와 `분 × 계수`는 같은 저울에 올릴 수 없다. `DISTANCE_WEIGHT`를 "km당 분"(4.0 = 60÷15km/h)으로 정의해 세 항을 전부 분으로 환산했다. 식사 2.0 = "30분 늦은 점심 ≈ 15km 우회", 초과 3.0.
-  >
-  > **식사 윈도우 배정의 첫 구현이 벌점의 목적과 정반대로 동작했다** — 잘 벌어진 아침·점심·저녁(480)이 몰아넣은 배열(285)보다 비쌌다. 두 윈도우를 총합 최소 조합으로 배정하도록 고쳤다. 상세는 [STEP-3](steps/STEP-3-route-optimizer.md) 판정 1·3
-- [x] 3-4. 시간 모델 — `t[i] = t[i-1] + 체류 + 이동`, travelMode별 유효속도·고정 오버헤드. `startTime` 5분 단위 올림
-
-  > **5분 올림은 출력 직전 한 번만 한다.** 계산 중에 적용하면 장소마다 최대 4분씩 밀려 7개면 종료가 28분 뒤로 가고, **넘치지 않는 코스가 넘친 것으로 판정돼 축소·드롭이 발동한다** — 표시용 반올림이 장소를 지운다. 같은 이유로 내부 시각은 `LocalTime`이 아니라 `int`(분)다(`plusMinutes`의 자정 랩어라운드가 초과 판정을 뒤집는다)
-- [x] 3-5. 하루 초과 처리 — 체류시간 0.8배 축소 → 후순위 슬롯 드롭 → day당 최소 3개에서 중단
-
-  > **[정정] 하루 종료 기본값을 21:00 → 23:59로 넓혔다.** 하루 예산이 690분 → 869분이 되어 장소 7개를 넣어도 224분이 남으므로, **축소·드롭은 기본값에서 사실상 발동하지 않는다.** 그럼에도 구현한 것은 `dayEndTime`이 요청 필드라 6단계에서 Planner가 이른 종료 시각을 넘기면 살아나기 때문이다 — 죽은 코드가 아니라 호출자가 켜는 안전장치다.
-  >
-  > 드롭 서열은 `SHOPPING → WALK → VIEWPOINT → CAFE → ACTIVITY → ATTRACTION`이고 MEAL은 제외다. **`popularityWeight`를 기준으로 쓰면 안 된다** — 그건 블로그 신호의 신뢰도이지 중요도가 아니라, 오독하면 관광명소(0.2)가 카페(1.0)보다 먼저 버려진다
-- [x] 3-6. 단위 테스트 129개 + `@Tag("benchmark")`로 `n=6,7,8,9` 소요시간 실측 (`n ≥ 8` 폴백 임계값의 근거)
-
-  | n | 순열 수 | 1일 | 3일 코스 |
-  |---|---|---|---|
-  | 6 | 720 | 174µs | 0.52ms |
-  | **7** | **5,040** | **589µs** | **1.77ms** |
-  | 8 | 40,320 | 4,995µs | **14.99ms** |
-  | 9 | 362,880 | 74,055µs | **222.16ms** |
-
-  **임계값 7이 데이터로 뒷받침된다** — 설계 문서의 지연 예산이 잡은 `<10ms`인데 `n=8`은 3일 기준 15ms로 이미 넘고 `n=9`는 20배 초과다. **NN + 2-opt 폴백은 구현하지 않았다**(Planner가 슬롯을 3~6개로 clamp해 현재 도달 경로가 없다 — 도달하지 않는 코드는 검증되지 않은 채 썩는다). 임계값 가드만 두고 초과 시 입력 순서를 유지한다
-
+- [x] 3-1. `SlotType` enum — 체류시간·인기도 가중치·허용 카테고리 코드를 enum이 소유. LLM이 내보낼 필드가 하나 줄고 튜닝이 코드 리뷰 대상이 된다
+- [x] 3-2. `GeoUtils` — haversine(반경 6371.0088km). **내부 항을 `[0,1]`로 클램프해야 했다** — 대척점에서 `NaN`이 나오면 예외 없이 최적 순열 선택만 망가진다
+- [x] 3-3. `RouteOptimizer` 완전탐색 — 비용은 순수 TSP가 아니라 **거리 + 식사 시간창 위반 + 하루 초과**. 계수보다 **단위를 먼저 맞춰야 했다**(`DISTANCE_WEIGHT`를 "km당 분"으로 정의해 세 항을 분으로 환산 — [STEP-3](steps/STEP-3-route-optimizer.md) 판정 1)
+- [x] 3-4. 시간 모델 — `t[i] = t[i-1] + 체류 + 이동`, travelMode별 유효속도·고정 오버헤드. **`startTime` 5분 올림은 출력 직전 한 번만** 한다(계산 중에 하면 표시용 반올림이 장소를 지운다). 내부 시각은 `LocalTime`이 아니라 `int`(자정 랩어라운드가 초과 판정을 뒤집는다)
+- [x] 3-5. 하루 초과 처리 — 체류 0.8배 축소 → 후순위 드롭 → day당 최소 3개에서 중단. **하루 종료 기본값을 23:59로 넓혀 기본값에서는 발동하지 않지만**, `dayEndTime`이 요청 필드라 Planner가 이른 종료를 넘기면 살아난다. 드롭 서열에 **`popularityWeight`를 쓰면 안 된다**(신호의 신뢰도이지 중요도가 아니라, 관광명소가 카페보다 먼저 버려진다)
+- [x] 3-6. 단위 테스트 129개 + `@Tag("benchmark")` 벤치마크. **임계값 7이 데이터로 뒷받침된다** — `n=7`은 3일 1.77ms인데 `n=8`은 15ms로 지연 예산 `<10ms`를 이미 넘는다. **NN + 2-opt 폴백은 구현하지 않았다**(Planner가 슬롯을 3~6개로 clamp해 도달 경로가 없다)
 ### 4. `NaverLocalClient` + `TourApiClient` + 후보 공급 순수 함수
 
 동작 변화 없음. **0-2(네이버 키 발급)와 TourAPI 키 발급이 선행돼야 착수 가능하다.** 5단계보다 앞에 두는 이유는 클라이언트와 순수 함수(사전·매핑·dedupe 키)가 외부 의존이 적고 단위 테스트가 가능하기 때문 — 먼저 검증해두면 5단계가 조립에만 집중할 수 있다.
