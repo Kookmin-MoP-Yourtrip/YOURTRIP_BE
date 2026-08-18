@@ -18,7 +18,20 @@
 
 **핵심 가설(H2)**: A0→A1에서 SQL은 100% 사라지지만 커넥션 대여와 `pending`은 거의 그대로이고, A1→A2에서 비로소 풀린다. 커넥션을 잡는 조건이 "쿼리를 실행하는가"가 아니라 "트랜잭션을 여는가"이기 때문이다.
 
-## 진행 상황
+## 문서와 진행 상황
+
+### 문서 구성
+
+| 문서 | 내용 |
+|---|---|
+| [ec2-measurement.md](ec2-measurement.md) | **결론 · 종합 표 · 판정 7개 · 한계** — 여기부터 읽는다 |
+| [scenarios.md](scenarios.md) | 시나리오별 원본 표와 구간 분석 (P1·P3·P5·D2·D3) |
+| [redis-io-bottleneck.md](redis-io-bottleneck.md) | A2의 "앱 밖" 포화 주체 규명 (단일 Lettuce I/O 스레드) |
+| [environment.md](environment.md) | 측정 환경 · 신뢰성 검증 · 운영 사고 · 인프라 정리 |
+| [phase0-local-gate.md](phase0-local-gate.md) | 토글 검증과 미스 경로 N+1 발견 |
+| [scale-curve.md](scale-curve.md) | 규모 곡선 (쿼리 플랜 분석) |
+
+### 진행 상황
 
 | 단계 | 문서 | 상태 |
 |---|---|---|
@@ -53,7 +66,7 @@
 
 **A0→A1에서 SQL을 100% 없앴는데 커넥션 대여와 `pending`은 미동도 하지 않았다.** 풀이 풀린 것은 A1→A2였고, 그 지점에서 **포화 주체가 커넥션 풀에서 CPU로 옮겨갔다.** 캐싱은 병목을 없앤 게 아니라 옮겼으며, 그 이동에는 트랜잭션 분리가 함께 필요했다.
 
-같은 패턴이 P3(고정 VU 100)와 P5(혼합 부하)에서도 재현됐다. 상세 표와 판정은 [ec2-measurement.md](ec2-measurement.md) 참고.
+같은 패턴이 P3(고정 VU 100)와 P5(혼합 부하)에서도 재현됐다. 판정은 [ec2-measurement.md](ec2-measurement.md), 시나리오별 상세 표는 [scenarios.md](scenarios.md) 참고.
 
 **열린 루프(D3)에서 포화 도착률이 2.5배 밀렸다** — A0 922 → A1 2,033 → **A2 2,278 req/s**. A2가 무너지는 지점에서는 `pending`이 0이라 커넥션 풀이 아예 관여하지 않는다.
 
@@ -108,7 +121,7 @@
 - ~~**D3 재측정**~~ — 완료. `MAX_RATE=2,400`으로 세 arm의 포화점을 확정했다(922 / 2,033 / **2,278** req/s)
 - ~~**반복 측정**~~ — 완료. P1·D2·P5가 각 arm 3회다(P3·D3는 조건별 1회)
 - ~~**Redis 계측**~~ — 완료. "앱 밖"의 정체는 **앱 안의 단일 Lettuce I/O 스레드**였다(런큐 대기 90.8%)
-- ~~**CloudWatch 사후 조회**~~ — 완료. 계획 §8의 검증 7(단계 경계 정합성)·8(크레딧 고갈)을 모두 통과했다. 상세는 [ec2-measurement.md](ec2-measurement.md)의 "환경 건전성 검증" 절 참고
+- ~~**CloudWatch 사후 조회**~~ — 완료. 계획 §8의 검증 7(단계 경계 정합성)·8(크레딧 고갈)을 모두 통과했다. 상세는 [environment.md](environment.md) 참고
 
 ## 도구
 
