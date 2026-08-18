@@ -1,5 +1,12 @@
 # TASK-PRESIGN-BOTTLENECK. presigned URL CPU 병목 가설 실측 검증
 
+> **이 작업의 위치** — 인기 코스·상세 조회 성능 개선은 네 단계로 이어졌다. **이 문서는 1단계다.**
+>
+> 1. **커넥션 풀 병목 발견** — presign이 트랜잭션 안에서 커넥션을 초 단위로 점유
+> 2. [Redis 캐싱 도입](../redis-caching/README.md) — DB 접근 자체를 줄인다
+> 3. [트랜잭션 분리 측정](../popular-tx-separation/README.md) — 캐시 히트인데도 커넥션을 잡던 구조를 걷어낸다
+> 4. [캐싱 효과 측정](../cache-effect-measurement/README.md) — 세 상태(A0·A1·A2)를 한 표에 놓고 각 단계의 몫을 분해한다
+
 > PR #57("이미지 URL 발급 방식을 CloudFront 기반으로 전환")은 "presigned URL 발급의 CPU 비용이 상세 조회 API의 병목"이라는 가설 위에서 진행됐다. 이 문서는 그 가설을 이미지 URL 발급 방식을 PR #57 이전(S3 presign)으로 되돌린 뒤, CPU 프로파일링(JFR)과 인프라 지표(Prometheus/HikariCP)로 직접 검증한 기록이다.
 
 ## 배경 — 지금까지 한 번도 직접 측정하지 않은 가설

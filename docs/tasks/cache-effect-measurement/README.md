@@ -1,5 +1,12 @@
 # 업로드 코스 캐싱 효과 측정
 
+> **이 작업의 위치** — 인기 코스·상세 조회 성능 개선은 네 단계로 이어졌다. **이 문서는 4단계다.**
+>
+> 1. [커넥션 풀 병목 발견](../connection-pool-bottleneck/PRESIGN-BOTTLENECK.md) — presign이 트랜잭션 안에서 커넥션을 초 단위로 점유
+> 2. [Redis 캐싱 도입](../redis-caching/README.md) — DB 접근 자체를 줄인다
+> 3. [트랜잭션 분리 측정](../popular-tx-separation/README.md) — 캐시 히트인데도 커넥션을 잡던 구조를 걷어낸다
+> 4. **캐싱 효과 측정** — 세 상태(A0·A1·A2)를 한 표에 놓고 각 단계의 몫을 분해한다
+
 > 인기 코스(`GET /api/upload-courses/popular`)와 상세 조회(`GET /api/upload-courses/{id}`)의 Redis 캐싱이 **실제로 무엇을 얼마나 해결했는지**를 하나의 표에 놓는 측정이다.
 >
 > 기존 실측은 전부 "캐싱이 이미 있다"는 전제 위에서 그 뒤에 붙은 개선(트랜잭션 분리, 인덱스, CloudFront)만 다뤘다. **"캐싱이 없던 상태"는 한 번도 측정된 적이 없다.**
