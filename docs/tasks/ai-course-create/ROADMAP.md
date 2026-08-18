@@ -132,7 +132,7 @@
 - [ ] 4-5. **후보 dedupe·매칭 키** (순수 함수) — MEAL/CAFE/SHOPPING은 provider가 하나라 쿼리 간 중복만. **관광 슬롯은 시더↔TourAPI 매칭이 필요하고 좌표와 이름을 둘 다 봐야 한다** — 좌표만 쓰면 대릉원 안의 천마총이 합쳐지고 이름만 쓰면 전국의 "향교"가 합쳐진다. 임계값은 4-7 실호출 표본으로
 - [ ] 4-6. 단위 테스트 (순수 함수 전량) + `NaverLocalClient` 스텁 테스트
 - [ ] 4-7. **`TourApiClient`** (관광지 커버리지) — `locationBasedList2(좌표, radius=20000, contentTypeId=12|14|28, 거리순)`. 반경은 튜닝값이 아니라 최대 고정 울타리이고 실질 필터는 거리순 + cap이다. 캐시 키 `(~1km 격자, contentTypeId)` TTL 7일. **착수 전 실호출 확정 항목은 설계 문서의 "착수 전 확인 필요" 그대로** — 그중 **분류체계(`cat1~3` vs 신 체계)가 최우선**이다(4-9가 통째로 이걸 전제한다). 키는 개발계정 자동승인이라 대기가 없다
-- [ ] 4-8. **area 지오코딩** (카카오) — Planner의 `anchor`를 `"{location} {anchor}"`로 검색해 권역 중심 좌표를 얻는다. **캐스케이드** `anchor` → `area` → `location`, 전부 실패하면 그 day의 TourAPI만 건너뛴다. 캐시 TTL 30일. 메트릭 `ai.geocode{result=hit|fallback_area|fallback_location|failed}`
+- [ ] 4-8. **area 지오코딩** (카카오) — Planner의 `anchor`를 `"{location} {anchor}"`로 검색해 권역 중심 좌표를 얻는다. **캐스케이드** `anchor` → `area` → `location`: 무결과면 다음 단계로, **호출 실패면 중단**(같은 API를 두 번 더 두드릴 이유가 없다). 전부 실패하면 그 day의 TourAPI만 건너뛴다. 캐시 TTL 30일. 메트릭 `ai.geocode{result=hit|fallback_area|fallback_location|failed}`. **여기가 파이프라인의 첫 카카오 호출이라 `KakaoLocalClient`를 먼저 손봐야 한다** — 호출 실패를 예외가 아니라 **결과 값으로** 돌려주고 무결과와 구분하도록(설계 문서의 부분 실패 전략). 기존 단일 호출 경로는 호출부가 예외를 던져 동작 변화가 없다
 - [ ] 4-9. **`cat3` → 스타일 태그 결정론 매핑** (순수 함수) — TourAPI 소분류를 4-3과 **같은 traits 어휘**로. **필터가 아니라 표시**다 — 후보에 `styleTags`를 달아 Curator 입력과 목록 정렬에 쓴다. 코드표는 4-7 실호출로 확정
 - [ ] 4-10. **지역 티어별 환각률 소급 집계** — 기존 [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md) 아티팩트를 유명/무인지 그룹으로 다시 집계한다. **이 개정의 출발 가설을 코드 한 줄 짜기 전에 확인하는 가장 싼 검증이다** — 새 호출도 비용도 없다
 
@@ -145,12 +145,12 @@
 - [ ] 5-1. 스레드풀 2개 신설 — `aiAgentExecutor`(LLM)와 `placeGroundingExecutor`(장소 API 공유). **벌크헤드로 나누는 이유**는 장소 API가 느려질 때 그 대기가 LLM 슬롯을 잠식하면 안 되기 때문이다. **여기서 `llm.max-concurrent-calls: 2`를 재실측한다**(2-6은 동시 호출 1이라 조건이 느슨했다)
 - [ ] 5-8. **`CandidateRetrievalStage`** — day × 슬롯타입 병렬로 후보 목록을 만든다. 소스는 `CandidateSource` 둘 — `NaverLocalSeedSource`(전 슬롯, `SEEDED`) + `TourApiSource`(관광 슬롯, `LISTED`). 병합 후 사전식 정렬 + cap 20~25, `listIndex` 부여. **카카오는 후보 소스가 아니다.** 스타일 modifier 확장·병합 규칙·캐시 키는 설계 문서 그대로. **fail-open** — 전부 실패하면 빈 목록으로 Curator 실행(초안 구조로 degrade). 메트릭 `ai.candidate.retrieval`·`ai.candidate.adopted`
 - [ ] 5-9. **후보 공급 실측** — 하네스 지역 세트로 시더의 슬롯당 확보 건수·빈 결과 비율, 관광 슬롯의 시더↔TourAPI 겹침·오매칭 표본(4-5 임계값 근거). 빈 결과가 잦은 지역이 있으면 그때 "0건일 때만 카카오" 폴백을 붙인다
-- [ ] 5-2. `GroundingStage` — **`SUGGESTED`만 카카오 병렬 검증**, 이름 일치 게이트를 통과 못 하면 탈락(1-2에서 점수 하한선을 대체했다). **검증 성공 시 `place_url`을 함께 승계**해 5-10이 같은 장소를 다시 부르지 않게 한다. `SEEDED`·`LISTED`는 **코드가** 응답을 승계해 호출 없이 통과. 4-5의 키로 전 day dedupe. **여기를 통과 못 한 장소는 파이프라인에 존재하지 않는다**
+- [ ] 5-2. `GroundingStage` — **`SUGGESTED`만 카카오 병렬 검증**, 이름 일치 게이트를 통과 못 하면 탈락(1-2에서 점수 하한선을 대체했다). **호출 실패·무결과·이름 불일치 모두 그 후보만 탈락**시키고 사유별로 메트릭을 남긴다 — 예외를 올리면 15건 중 하나가 429일 때 코스 전체가 죽는다. **검증 성공 시 `place_url`을 함께 승계**해 5-10이 같은 장소를 다시 부르지 않게 한다. `SEEDED`·`LISTED`는 **코드가** 응답을 승계해 호출 없이 통과. 4-5의 키로 전 day dedupe
 - [ ] 5-3. 슬롯별 카테고리 하드 제약 — `category_group_code`를 가점 +2에서 하드 제약으로 승격(MEAL←FD6, CAFE←CE7, ATTRACTION←AT4/CT1). SEEDED에는 4-4 매핑으로 같은 제약. 비용이 사실상 0인데 "점심에 호프집"이 구조적으로 사라진다
 - [ ] ~~5-4. `PlaceSignalStage`~~ → **9단계로 이동** (V1 제외, 조건부). 번호를 당기면 참조가 흔들리므로 이 자리는 비워둔다
 - [ ] 5-10. **`PlaceUrlEnricher`** — 배치 확정 뒤 **URL이 빈 장소(`SEEDED`·`LISTED`)에만** 카카오 1회. **수락 조건 둘**: 이름 일치 게이트 통과 **그리고** 좌표 거리 ≤ 300m. 하나라도 미달이면 `null` — **엉뚱한 URL은 URL 없음보다 나쁘다.** fail-open, 전용 ErrorCode 없음. 메트릭 `ai.place.url{result=hit|name_mismatch|too_far|failed}`
 - [ ] 5-5. 파이프라인 하드 데드라인 — `CompletableFuture.allOf(...).get(remainingMs)`. `CallerRunsPolicy`를 유지하되(거부보다 느린 성공이 낫다) 요청 스레드가 I/O를 직접 수행해 순차 실행으로 퇴화하는 것을 데드라인으로 막는다
-- [ ] 5-6. `ai.grounding.match{result=hit|name_mismatch|no_result, source=seeded|listed|suggested}` — **환각률의 운영 프록시이자 이 작업의 핵심 지표.** `source` 태그가 "무인지 지역일수록 파라메트릭이 약하다"는 가설을 운영 데이터로 검증한다. 이 저장소 최초의 커스텀 Micrometer 메트릭이라 `MeterRegistry` 주입 패턴을 여기서 세운다
+- [ ] 5-6. `ai.grounding.match{result=hit|name_mismatch|no_result|failed, source=seeded|listed|suggested}` — **환각률의 운영 프록시이자 이 작업의 핵심 지표.** `no_result`(순수 환각)와 `failed`(인프라)를 반드시 갈라야 한다 — 뭉치면 카카오 장애 때 환각률이 부풀어 3점 비교가 오염된다. `source` 태그는 "무인지 지역일수록 파라메트릭이 약하다"는 가설을 운영 데이터로 검증한다. 이 저장소 최초의 커스텀 Micrometer 메트릭이라 `MeterRegistry` 주입 패턴을 여기서 세운다
 - [ ] 5-11. `ai.llm.call{agent, provider, outcome}` — 에이전트별 지연·실패율. 2단계에서 만든 `OpenAiLlmClient`에 붙이는 것이라 새 코드가 아니다
 - [ ] 5-7. 스텁 기반 통합 테스트 (0-6의 WireMock 인프라 사용)
 ### 6. `PlannerAgent` / `CuratorAgent`
@@ -306,7 +306,7 @@
 - **`max_completion_tokens` 대 `max_tokens`** — 추론 계열 모델은 추론 토큰이 출력에 포함되므로 전자를 쓴다. 실제로 gpt-5 계열이 `max_tokens`를 거부하는지는 2-6 실호출에서 확인된다(WireMock은 필드가 실려 나가는 것까지만 검증한다)
 - **NAVER API HUB의 지역검색 경로와 응답 스키마** — 새 Base URL(`naverapihub.apigw.ntruss.com`) 아래에서 `/v1/search/local.json`이 유지되는지, `sort=comment`·`start=1` 제약, `mapx`/`mapy` 형식·정밀도, `category` 형태, 서술어 매칭 범위. **4단계(4-2) 착수 시 실호출로 확정.** 블로그 검색(`/v1/search/blog.json`, `total`·`postdate`·`title`·`description`)은 9단계 착수 시 확인
 - **TourAPI 실호출 확정** — 오퍼레이션명·`arrange` 거리순·좌표 형식·분류체계·상권형 명소 등록 여부. 4-7 착수 시. **키 발급은 자동승인이라 대기 항목이 아니다**(신청 즉시 + 동기화 10~30분)
-- **`placeUrl == null`에 대한 FE 동작** — `PlaceUrlEnricher`가 점수 미달·좌표 불일치 시 URL을 비운다. Swagger 명세는 nullable이지만 FE가 실제로 "링크 없음"으로 처리하는지 8단계 전 확인
+- **`placeUrl == null`에 대한 FE 동작** — `PlaceUrlEnricher`가 이름 불일치·좌표 불일치 시 URL을 비운다. Swagger 명세는 nullable이지만 FE가 실제로 "링크 없음"으로 처리하는지 8단계 전 확인
 - **`duration` 키워드 처리 방침** — 6-5에서 결정
 - **`mood` 키워드 포함 비율** — 9-3 조건부 확장이 실제로 얼마나 자주 켜지는지(= 토큰 비용 증가폭)는 추정이 아니라 배포 후 실측이 필요하다
 
