@@ -72,19 +72,19 @@ A0의 SQL이 계획 예측보다 많아, 요청 1건의 SQL을 그대로 뽑아 
 |---|---|---|
 | 1 | `select uc1_0.upload_course_id from upload_course ... exists(select 1 from course_keyword ...)` | `findPopularCourseIds` |
 | 2 | `select distinct uc1_0.*, k1_0.* from upload_course ... left join course_keyword` | `findAllByIdInWithKeywords` |
-| 3~7 | `select tc1_0.* from my_course where course_id = ?` **× 5** | **N+1** — `UploadCourse.travelCourse` LAZY |
-| 8 | `select u1_0.* from users where user_id = ?` | `UploadCourse.user` LAZY |
+| 3~7 | `select tc1_0.* from my_course where course_id = ?` **× 5** | **N+1** — `UploadCourse.travelCourse`가 fetch 미지정이라 기본값 EAGER |
+| 8 | `select u1_0.* from users where user_id = ?` | `UploadCourse.user`도 같은 이유로 EAGER |
 
 **`GET /{id}` 1건 = 4 문장**
 
 | # | 문장 | 출처 |
 |---|---|---|
 | 1 | `select uc1_0.*, k1_0.* from upload_course ... left join course_keyword` | `findWithTravelCourseAndKeywords` |
-| 2 | `select u1_0.* from users where user_id = ?` | `UploadCourse.user` LAZY |
+| 2 | `select u1_0.* from users where user_id = ?` | `UploadCourse.user`가 fetch 미지정이라 기본값 EAGER |
 | 3 | `select ds1_0.*, p1_0.* from day_schedule ... left join place` | `findDaySchedulesWithPlaces` |
 | 4 | `select pi1_0.* from place_image where place_id in (...)` | `@Fetch(SUBSELECT)` |
 
-`findAllByIdInWithKeywords`는 `keywords`만 `LEFT JOIN FETCH`하고 `travelCourse`는 LAZY로 남겨둔다. 그런데 `UploadCourseMapper.toCourseListItemCacheItem`이 코스별로 `getTravelCourse()`를 건드려, **top5 = 코스 5건마다 `my_course` 조회가 1회씩 추가로 나간다.**
+`UploadCourse.travelCourse`(`@OneToOne`)와 `user`(`@ManyToOne`)에 `fetch` 속성이 없어 **JPA 기본값인 EAGER**로 동작한다. `findAllByIdInWithKeywords`는 `keywords`만 `LEFT JOIN FETCH`하므로, Hibernate가 fetch join되지 않은 이 두 연관을 **엔티티마다 세컨더리 select로 채운다** — top5 = 코스 5건이면 `my_course` 조회가 5회 추가된다. 매퍼가 이 연관들을 읽어서 나가는 것이 아니라, **아무도 읽지 않아도 EAGER라서 나간다**(`UploadCourseMapper.toCourseListItemCacheItem`은 둘 중 아무것도 쓰지 않는다).
 
 **이건 이번 작업이 만든 것이 아니라 기존 코드에 원래 있던 것이다.** 지금까지 드러나지 않은 이유는 `generate_statistics`가 꺼져 있어 요청당 SQL 수를 아무도 세지 않았기 때문이다(이번에 상시 활성화하면서 보이게 됐다).
 
@@ -98,6 +98,8 @@ A0의 SQL이 계획 예측보다 많아, 요청 1건의 SQL을 그대로 뽑아 
 수정하지 않고 남겨둔다. 이번 측정의 통제 변수는 "DB 쿼리는 현재 형태 그대로"이고, 지금 고치면 A0가 재현하는 대상이 달라진다. 개선안은 측정 종료 후 별건으로 다룬다.
 
 > **후속** — 측정이 끝난 뒤 [#85](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/85)로 등록했다. 원인은 `UploadCourse`의 `travelCourse`(`@OneToOne`)·`user`(`@ManyToOne`)에 fetch 전략이 지정되지 않아 기본값 EAGER로 동작하는 것인데, 정작 `toCourseListItemCacheItem`은 **둘 중 아무것도 쓰지 않는다.** 게다가 위 8문장은 바닥값이다 — 벤치마크 시드가 전 코스를 단일 사용자가 소유해 `users` 조회가 1회로 접혔고, 소유자가 흩어지면 12문장이 된다.
+>
+> **해결됨** — 두 연관을 `fetch = LAZY`로 전환했다. 같은 시드·같은 절차로 재측정한 결과 **popular 8 → 2, detail 4 → 3**이고, LIMIT이 없는 검색 목록은 **3,002 → 1**이다. 실측 기록은 [popular-n-plus-one/README.md](../popular-n-plus-one/README.md)에 있다.
 
 ---
 
