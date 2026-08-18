@@ -121,43 +121,38 @@
 - [x] 3-6. 단위 테스트 129개 + `@Tag("benchmark")` 벤치마크. **임계값 7이 데이터로 뒷받침된다** — `n=7`은 3일 1.77ms인데 `n=8`은 15ms로 지연 예산 `<10ms`를 이미 넘는다. **NN + 2-opt 폴백은 구현하지 않았다**(Planner가 슬롯을 3~6개로 clamp해 도달 경로가 없다)
 ### 4. `NaverLocalClient` + `TourApiClient` + 후보 공급 순수 함수
 
-동작 변화 없음. **0-2(네이버 키 발급)와 TourAPI 키 발급이 선행돼야 착수 가능하다.** 5단계보다 앞에 두는 이유는 클라이언트와 순수 함수(사전·매핑·dedupe 키)가 외부 의존이 적고 단위 테스트가 가능하기 때문 — 먼저 검증해두면 5단계가 조립에만 집중할 수 있다.
+동작 변화 없음. 5단계보다 앞에 두는 이유는 클라이언트와 순수 함수가 외부 의존이 적고 단위 테스트가 가능해, 먼저 검증해두면 5단계가 조립에만 집중할 수 있기 때문이다.
 
-> **[개정] 이 단계는 원래 `NaverBlogClient` + `PopularityScorer` + 컨셉 사전(3·4층 재료)이었다.** PlaceSignalStage가 V1에서 빠지면서(설계 문서의 "PlaceSignal을 V1에서 제외한 이유") 그 셋은 9단계(조건부)로 이동했고, 4단계는 **후보 공급 층의 재료**로 다시 채워졌다. 착수 전이라 번호를 새로 매긴다. 옛 4-1~4-6은 9단계 항목으로 옮겨 적었다.
->
-> 상세 실행 계획은 [STEP-4-candidate-sources.md](steps/STEP-4-candidate-sources.md) 참고. (미작성)
+> 설계 근거는 [지식 신호 층과 후보 공급](design/지식-신호와-후보-공급.md). 상세 실행 계획은 [STEP-4-candidate-sources.md](steps/STEP-4-candidate-sources.md) (착수 시 작성).
 
-- [ ] 4-1. **`NaverLocalClient` (지역검색 시더, 전 슬롯 — 설계 문서의 후보 공급)** — `"{area} {searchHint}"` + `sort=comment` + `display=5`. 관광 슬롯도 같은 클라이언트·같은 규칙(`searchHint` = 관광명소/전망대/산책로/체험). API HUB 인증·`WebClient` 인프라. **V1의 네이버 의존은 이 클라이언트 하나다.** 응답에서 상호명(`<b>` 태그 스트립)·`roadAddress`·`category`·**`mapx`/`mapy`(WGS84×10⁷ → 나눠서 실좌표로 쓴다)**를 모두 취한다 — 초안의 "상호명만 쓰고 카카오로 공식화"는 철회됐다
-- [ ] 4-2. **실호출 확정** (설계 문서의 남는 한계 항목 그대로) — ① API HUB 이관 여부, `sort=comment`·`display≤5`·`start=1` 제약 ② `mapx`/`mapy` 실제 형식과 **정밀도**(카카오 좌표와의 오차 표본 → 5-10 `PlaceUrlEnricher`의 300m 임계값 근거) ③ `category` 문자열 실제 형태·최상위 분류 목록 ④ `title` 태그 형태 ⑤ **서술어 매칭 범위**(`"황리단길 카페"` vs `"황리단길 루프탑 카페"` — 상호명·카테고리만 매칭하면 5-8의 스타일 modifier 확장이 무력화된다) ⑥ 쿼터가 검색 API 전체 합산인지 ⑦ **관광 슬롯 쿼리 품질** — `"{area} 관광명소"` sort=comment가 유의미한 5건을 주는지, `searchHint` 표현(관광명소/명소/가볼만한곳) 선택
-- [ ] 4-3. **키워드→스타일 modifier 사전** (순수 함수) — 사용자 키워드를 traits 닫힌 태그 집합(설계 문서의 지식 신호 층의 4층 표의 어휘를 그대로 재사용)의 가점 태그 상위 1~2개로 매핑. **여기에 LLM을 쓰지 않는다.** 4층이 V1에서 빠져도 이 사전은 살아 있다 — modifier 쿼리의 재료이고, 나중에 4층을 켜면 같은 어휘로 검증한다
-- [ ] 4-4. **네이버 `category` → `SlotType` 매핑 사전** (순수 함수, 설계 문서의 지식 신호 층의 2층) — `음식점` → MEAL, `카페,디저트` → CAFE, `관광,명소`·`문화,예술` → ATTRACTION/ACTIVITY. SEEDED에 카테고리 하드 제약을 걸기 위한 것. TourAPI 후보는 `contentTypeId`(12·14 → ATTRACTION/VIEWPOINT/WALK, 28 → ACTIVITY)로 같은 제약을 건다. 매핑에 없는 분류는 통과시키되 표시(감점, 하드 드롭 아님)
-- [ ] 4-5. **후보 dedupe·매칭 키** (순수 함수) — MEAL/CAFE/SHOPPING은 provider가 네이버 하나라 기본/스타일 modifier 쿼리 간 중복만 정규화 상호명 + 도로명주소로 잡는다. **관광 슬롯은 시더↔TourAPI 매칭**이 필요하다: 거리 ≤ 300m **그리고** 정규화 이름 유사(괄호·지역 접두사·공백 제거 후 포함 관계 또는 토큰 겹침). 좌표만 쓰면 대릉원 안의 천마총이 합쳐지고 이름만 쓰면 전국의 "향교"가 합쳐진다. 임계값은 4-8 실호출 표본으로 확정. 매칭되면 **병합**(TourAPI 좌표·`cat3` + 네이버 `seedRank`를 한 레코드에), 안 되면 양쪽 다 풀에
+- [ ] 4-1. **`NaverLocalClient`** (지역검색 시더, 전 슬롯) — `"{area} {searchHint}"` + `sort=comment` + `display=5`. **V1의 네이버 의존은 이 클라이언트 하나다.** 상호명(`<b>` 태그 스트립)·`roadAddress`·`category`·`mapx`/`mapy`를 **모두** 취한다 — 좌표를 SEEDED의 실좌표로 쓰므로 "상호명만 쓰고 카카오로 공식화"는 철회됐다
+- [ ] 4-2. **네이버 실호출 확정** — 확인 항목은 설계 문서의 "착수 전 확인 필요" 그대로. **결과가 설계를 가르는 것 둘**: `mapx`/`mapy` 정밀도(5-10의 300m 임계값 근거)와 **서술어 매칭 범위**(`"황리단길 루프탑 카페"`가 유의미한 결과를 주는가 — 아니면 스타일 축을 retrieval에서 포기하고 9단계 조건이 하나 켜진다)
+- [ ] 4-3. **키워드→스타일 modifier 사전** (순수 함수) — 사용자 키워드를 traits 닫힌 태그 집합의 가점 태그 상위 1~2개로. **여기에 LLM을 쓰지 않는다.** 4층이 V1에서 빠져도 이 사전은 살아 있다
+- [ ] 4-4. **네이버 `category` → `SlotType` 매핑 사전** (순수 함수) — SEEDED에 카테고리 하드 제약을 걸기 위한 것. TourAPI 후보는 `contentTypeId`로 같은 제약. 매핑에 없는 분류는 통과시키되 표시(감점, 하드 드롭 아님)
+- [ ] 4-5. **후보 dedupe·매칭 키** (순수 함수) — MEAL/CAFE/SHOPPING은 provider가 하나라 쿼리 간 중복만. **관광 슬롯은 시더↔TourAPI 매칭이 필요하고 좌표와 이름을 둘 다 봐야 한다** — 좌표만 쓰면 대릉원 안의 천마총이 합쳐지고 이름만 쓰면 전국의 "향교"가 합쳐진다. 임계값은 4-7 실호출 표본으로
 - [ ] 4-6. 단위 테스트 (순수 함수 전량) + `NaverLocalClient` 스텁 테스트
-- [ ] 4-7. **`TourApiClient` (관광지 커버리지, 설계 문서의 후보 공급 "ATTRACTION 계열 슬롯")** — `locationBasedList2(mapX, mapY, radius=20000, contentTypeId=12|14|28, arrange=거리순, numOfRows=50)`. 응답에서 `title`·`addr1`·`mapx`/`mapy`(WGS84)·`cat1~3`·`contentid`·`modifiedtime`·`firstimage`를 취한다. 반경은 튜닝값이 아니라 최대 고정 울타리이고 실질 필터는 거리순 + cap이다. 캐시 키 `(~1km 격자 좌표, contentTypeId)`, TTL 7일(관광지 목록은 거의 정적이라 더 길어도 된다). **착수 전 실호출로 확정할 것**: 이관 후 오퍼레이션명, `arrange` 거리순 존재 여부, 좌표 형식, 분류체계(`cat1~3` vs 새 체계), 응답 필드, 상권형 명소 등록 여부, 무인지 시군구 항목 수 표본. **키는 개발계정으로 끝난다** — 자동승인이라 대기가 없고, 일 1,000건이 그대로 상한이다. **운영계정 전환은 이 로드맵의 범위가 아니다**(범위에서 제외한 것)
-- [ ] 4-8. **area 지오코딩** (카카오, 설계 문서의 후보 공급 "area → 좌표") — Planner의 `anchor`를 `"{location} {anchor}"`로 카카오 키워드 검색해 대표 장소 좌표를 얻는다. **캐스케이드**: `anchor` → `area` 텍스트 → `location`, 전부 실패하면 그 day의 TourAPI만 건너뛴다(시더는 텍스트 기반이라 영향 없음). 캐시 키 = 쿼리 텍스트, TTL 30일. 메트릭 `ai.geocode{result=hit|fallback_area|fallback_location|failed}` — `fallback_*`가 잦으면 Planner `anchor` 지시를 손본다
-- [ ] 4-9. **`cat3` → 스타일 태그 결정론 매핑** (순수 함수, 설계 문서의 후보 공급 "`cat3` → 스타일 태그") — TourAPI 소분류를 4-3과 **같은 traits 어휘**로 옮긴다(폭포·계곡·수목원 → 자연·조용함 / 해수욕장·전망대 → 뷰맛집 / 고택·사찰·민속마을 → 한옥·역사 / 테마공원·체험 → 아이동반·액티비티 / 박물관·미술관 → 문화·실내). 필터가 아니라 **표시** — 후보에 `styleTags`를 달아 Curator 입력과 목록 정렬에 쓴다. 코드표는 4-7 실호출(`categoryCode2`)로 받아 확정
-- [ ] 4-10. **지역 티어별 환각률 소급 집계** — 기존 [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md) 아티팩트를 유명 지역 / 안 알려진 지역(순천·영주·공주·통영·삼척) 그룹으로 나눠 다시 집계한다. **이 개정 전체의 출발 가설("무인지 지역일수록 파라메트릭이 약하다")을 코드 한 줄 짜기 전에 기존 데이터로 확인하는, 가장 싼 검증이다**(설계 문서의 남는 한계). 새 API 호출도 비용도 들지 않는다
+- [ ] 4-7. **`TourApiClient`** (관광지 커버리지) — `locationBasedList2(좌표, radius=20000, contentTypeId=12|14|28, 거리순)`. 반경은 튜닝값이 아니라 최대 고정 울타리이고 실질 필터는 거리순 + cap이다. 캐시 키 `(~1km 격자, contentTypeId)` TTL 7일. **착수 전 실호출 확정 항목은 설계 문서의 "착수 전 확인 필요" 그대로** — 그중 **분류체계(`cat1~3` vs 신 체계)가 최우선**이다(4-9가 통째로 이걸 전제한다). 키는 개발계정 자동승인이라 대기가 없다
+- [ ] 4-8. **area 지오코딩** (카카오) — Planner의 `anchor`를 `"{location} {anchor}"`로 검색해 권역 중심 좌표를 얻는다. **캐스케이드** `anchor` → `area` → `location`, 전부 실패하면 그 day의 TourAPI만 건너뛴다. 캐시 TTL 30일. 메트릭 `ai.geocode{result=hit|fallback_area|fallback_location|failed}`
+- [ ] 4-9. **`cat3` → 스타일 태그 결정론 매핑** (순수 함수) — TourAPI 소분류를 4-3과 **같은 traits 어휘**로. **필터가 아니라 표시**다 — 후보에 `styleTags`를 달아 Curator 입력과 목록 정렬에 쓴다. 코드표는 4-7 실호출로 확정
+- [ ] 4-10. **지역 티어별 환각률 소급 집계** — 기존 [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md) 아티팩트를 유명/무인지 그룹으로 다시 집계한다. **이 개정의 출발 가설을 코드 한 줄 짜기 전에 확인하는 가장 싼 검증이다** — 새 호출도 비용도 없다
 
 ### 5. `CandidateRetrievalStage` + `GroundingStage` + `PlaceUrlEnricher`
 
-동작 변화 없음(파이프라인이 아직 컨트롤러에 연결되지 않는다).
+동작 변화 없음(파이프라인이 아직 컨트롤러에 연결되지 않는다). GroundingStage의 역할은 "카카오 검색"이 아니라 **"실존 확인 + 좌표 확보"** 다 — SEEDED는 네이버, LISTED는 TourAPI 응답을 승계하고 **SUGGESTED만 카카오를 호출한다.**
 
-> **[개정]** 원래 제목은 "`GroundingStage` + `PlaceSignalStage`"였다. PlaceSignal이 9단계(조건부)로 빠지고, 후보 공급(5-8)과 URL 보강(5-10)이 들어왔다. GroundingStage의 역할도 "카카오 검색"에서 **"실존 확인 + 좌표 확보"**로 재정의됐다 — SEEDED는 네이버 응답, LISTED는 TourAPI 응답을 승계하고 **SUGGESTED만 카카오를 호출한다**(설계 문서의 후보 공급).
->
-> 상세 실행 계획은 [STEP-5-grounding.md](steps/STEP-5-grounding.md) 참고. (미작성)
+> 설계 근거는 [지식 신호 층과 후보 공급](design/지식-신호와-후보-공급.md). 상세 실행 계획은 [STEP-5-grounding.md](steps/STEP-5-grounding.md) (착수 시 작성).
 
-- [ ] 5-1. 스레드풀 2개 신설 — `aiAgentExecutor`(LLM)와 `placeGroundingExecutor`(카카오·네이버·TourAPI 공유). **벌크헤드로 나누는 이유**는 외부 장소 API가 느려질 때 그 대기가 LLM 슬롯을 잠식하면 안 되기 때문이다(LLM은 3~10초짜리 소수, 장소 API는 0.15~0.3초짜리 다수). **여기서 `llm.max-concurrent-calls: 2`를 재실측한다** — 2-6 측정은 요청 간 5초 지연·동시 호출 1이라는 느슨한 조건이었고(429 0/120), day별 Curator가 실제로 동시에 몰리는 이 단계에서 재야 초기값의 근거가 된다
-- [ ] 5-8. **`CandidateRetrievalStage` (설계 문서의 후보 공급)** — Planner 직후, day × 슬롯타입별 병렬로 실존 후보 목록을 만든다. 소스는 `CandidateSource` 인터페이스 목록: `NaverLocalSeedSource`(**전 슬롯**, `SEEDED`, 텍스트 쿼리 `"{area} {searchHint}"` — 반경 파라미터 없음) + `TourApiSource`(**ATTRACTION·VIEWPOINT·WALK·ACTIVITY**, `LISTED`, 4-8 좌표 기준 거리순). **카카오는 후보 소스로 쓰지 않는다**(설계 문서의 후보 공급 "카카오 커버리지 검색을 후보 소스에서 뺀 이유"). 관광 슬롯은 4-5 규칙으로 시더↔TourAPI를 **병합**(제거가 아님 — `seedRank`·`official`·`styleTags`·`distanceKm`를 한 레코드에)하고, **목록을 사전식으로 정렬**한다: ① seed 후보(seedRank 순) → ② 스타일 태그가 키워드와 맞는 TourAPI 후보(거리순) → ③ 나머지(거리순), **20~25건 cap**. LLM의 위치 편향을 억누르지 않고 쓰는 것이며 가중치 튜닝값이 없다(설계 문서의 후보 공급 "시더 ↔ TourAPI 병합과 Curator 입력 목록"). `listIndex` 부여. **SEEDED/LISTED는 응답 좌표·주소·분류를 그대로 목록에 싣는다**(카카오 재검색 없음). **스타일 modifier 쿼리 확장** — 사용자 키워드를 4-3의 modifier 사전에 넣어 가점 태그 상위 1~2개를 `"{area} {trait} {searchHint}"`로 추가 질의(전 슬롯), 결과는 기본 쿼리와 **합집합**, 후보에 `matchedModifier` 힌트 부여(검색이 그렇게 주장했다는 힌트일 뿐 검증된 속성이 아님을 Curator 프롬프트에 명시). 풀이 스타일을 모르면 Curator 선별은 천장 아래에서만 움직인다는 것이 근거(설계 문서의 후보 공급). **fail-open** — 소스별 실패는 그 소스만 빠지고, 전부 실패하면 빈 목록으로 Curator를 돌린다(초안 구조로 degrade, hard fail 아님). 캐시 키는 네이버 `(area, slotType[, modifier])`, TourAPI `(격자, contentTypeId)`. 메트릭 `ai.candidate.retrieval{source=naver_local|tour_api, result}`, `ai.candidate.adopted{source, modifier, seeded, official}`. **추후 개선(범위 밖)**: 사전이 day 문맥을 못 잡는 것이 실측되면 Planner `dayPlans[].styleTags`(traits enum, 최대 3)를 사전 태그와 합집합으로 추가
-- [ ] 5-9. **후보 공급 실측** — 하네스 지역 세트(유명/무인지)로 네이버 시더의 슬롯당 확보 건수와 빈 결과 비율, 관광 슬롯의 시더↔TourAPI 겹침·오매칭 표본(4-5 임계값 근거)을 잰다. 빈 결과가 잦은 지역·슬롯이 있으면 "0건/실패 시에만 카카오" 폴백을 그때 붙인다 (설계 문서의 남는 한계)
-- [ ] 5-2. `GroundingStage` — **`SUGGESTED`만 카카오 병렬 검증**, 점수 하한 미달 탈락. **검증 성공 시 응답의 `place_url`을 좌표·주소와 함께 승계**해 5-10이 같은 장소를 다시 부르지 않게 한다. `SEEDED`는 네이버 응답(좌표·주소·카테고리), `LISTED`는 TourAPI 응답(좌표·주소·`cat3`)을 **코드가** 승계해 호출 없이 통과. 4-5의 dedupe 키로 전 day 중복 제거. **여기를 통과 못 한 장소는 파이프라인에 존재하지 않는다.** Curator 출력 순서가 선호 순위이며, 슬롯당 통과한 1순위가 배치 대상이다(사후 재정렬 층 없음)
-- [ ] 5-3. 슬롯별 카테고리 하드 제약 — 현재 `category_group_code`를 가점 +2로만 쓰는 것을 하드 제약으로 승격(MEAL←FD6, CAFE←CE7, ATTRACTION←AT4/CT1). SEEDED에는 4-4의 네이버 카테고리 매핑으로 같은 제약을 건다. 비용이 사실상 0인데 "점심에 호프집"이 구조적으로 사라진다
-- [ ] ~~5-4. `PlaceSignalStage`~~ → **9단계로 이동** (V1 제외, 조건부). 이 자리는 비워둔다 — 번호를 당기면 5-5 이하를 참조하는 문서가 흔들린다
-- [ ] 5-10. **`PlaceUrlEnricher` (설계 문서의 후보 공급)** — RouteOptimizer가 배치를 확정한 뒤, **URL이 빈 장소(`SEEDED`·`LISTED`)에만** `"{상호명} {지역}"`으로 카카오 키워드 검색 1회. `SUGGESTED`는 5-2에서 승계한 `place_url`을 그대로 쓴다. **수락 조건 두 개**: 점수 하한 통과 **그리고** 카카오 좌표↔후보 좌표(네이버/TourAPI) 거리 ≤ 300m(4-2 실측으로 조정). 하나라도 미달이면 `null` — **엉뚱한 장소 URL은 URL 없음보다 나쁘다**(배경 "환각 세탁"을 URL에서 반복하지 않는다). FE가 `placeUrl`로 카카오 플레이스에 진입하므로 필요하지만 코스 성립 조건은 아니다 → fail-open, 전용 ErrorCode 없음. URL이 빈 배치 장소 ~10~15개에만 호출(후보 45개가 아니라). 메트릭 `ai.place.url{result=hit|below_threshold|too_far|failed}`
-- [ ] 5-5. 파이프라인 하드 데드라인 — `CompletableFuture.allOf(...).get(remainingMs, MILLISECONDS)`. `CallerRunsPolicy`를 유지하되(거부보다 느린 성공이 낫다) 요청 스레드가 장소 API I/O를 직접 수행해 순차 실행으로 퇴화하는 것을 데드라인으로 막는다
-- [ ] 5-6. `ai.grounding.match{result=hit|below_threshold|no_result, source=seeded|listed|suggested}` 메트릭 — **환각률의 운영 프록시이자 이 작업의 핵심 지표.** 이 저장소는 커스텀 Micrometer 메트릭이 아직 0건이므로 `MeterRegistry` 주입 패턴을 여기서 처음 세운다
-- [ ] 5-11. `ai.llm.call{agent, provider, outcome}` 메트릭 — 에이전트별 지연·실패율. 5-6에서 세운 `MeterRegistry` 주입 패턴을 어댑터에도 적용한다. **2단계에서 만든 `OpenAiLlmClient`에 붙이는 것이지 새 코드가 아니다** — 이 자리에 두는 이유는 메트릭 인프라가 여기서 처음 서기 때문이다(설계 문서의 관측)
+- [ ] 5-1. 스레드풀 2개 신설 — `aiAgentExecutor`(LLM)와 `placeGroundingExecutor`(장소 API 공유). **벌크헤드로 나누는 이유**는 장소 API가 느려질 때 그 대기가 LLM 슬롯을 잠식하면 안 되기 때문이다. **여기서 `llm.max-concurrent-calls: 2`를 재실측한다**(2-6은 동시 호출 1이라 조건이 느슨했다)
+- [ ] 5-8. **`CandidateRetrievalStage`** — day × 슬롯타입 병렬로 후보 목록을 만든다. 소스는 `CandidateSource` 둘 — `NaverLocalSeedSource`(전 슬롯, `SEEDED`) + `TourApiSource`(관광 슬롯, `LISTED`). 병합 후 사전식 정렬 + cap 20~25, `listIndex` 부여. **카카오는 후보 소스가 아니다.** 스타일 modifier 확장·병합 규칙·캐시 키는 설계 문서 그대로. **fail-open** — 전부 실패하면 빈 목록으로 Curator 실행(초안 구조로 degrade). 메트릭 `ai.candidate.retrieval`·`ai.candidate.adopted`
+- [ ] 5-9. **후보 공급 실측** — 하네스 지역 세트로 시더의 슬롯당 확보 건수·빈 결과 비율, 관광 슬롯의 시더↔TourAPI 겹침·오매칭 표본(4-5 임계값 근거). 빈 결과가 잦은 지역이 있으면 그때 "0건일 때만 카카오" 폴백을 붙인다
+- [ ] 5-2. `GroundingStage` — **`SUGGESTED`만 카카오 병렬 검증**, 점수 하한 미달 탈락. **검증 성공 시 `place_url`을 함께 승계**해 5-10이 같은 장소를 다시 부르지 않게 한다. `SEEDED`·`LISTED`는 **코드가** 응답을 승계해 호출 없이 통과. 4-5의 키로 전 day dedupe. **여기를 통과 못 한 장소는 파이프라인에 존재하지 않는다**
+- [ ] 5-3. 슬롯별 카테고리 하드 제약 — `category_group_code`를 가점 +2에서 하드 제약으로 승격(MEAL←FD6, CAFE←CE7, ATTRACTION←AT4/CT1). SEEDED에는 4-4 매핑으로 같은 제약. 비용이 사실상 0인데 "점심에 호프집"이 구조적으로 사라진다
+- [ ] ~~5-4. `PlaceSignalStage`~~ → **9단계로 이동** (V1 제외, 조건부). 번호를 당기면 참조가 흔들리므로 이 자리는 비워둔다
+- [ ] 5-10. **`PlaceUrlEnricher`** — 배치 확정 뒤 **URL이 빈 장소(`SEEDED`·`LISTED`)에만** 카카오 1회. **수락 조건 둘**: 점수 하한 통과 **그리고** 좌표 거리 ≤ 300m. 하나라도 미달이면 `null` — **엉뚱한 URL은 URL 없음보다 나쁘다.** fail-open, 전용 ErrorCode 없음. 메트릭 `ai.place.url{result=hit|below_threshold|too_far|failed}`
+- [ ] 5-5. 파이프라인 하드 데드라인 — `CompletableFuture.allOf(...).get(remainingMs)`. `CallerRunsPolicy`를 유지하되(거부보다 느린 성공이 낫다) 요청 스레드가 I/O를 직접 수행해 순차 실행으로 퇴화하는 것을 데드라인으로 막는다
+- [ ] 5-6. `ai.grounding.match{result=hit|below_threshold|no_result, source=seeded|listed|suggested}` — **환각률의 운영 프록시이자 이 작업의 핵심 지표.** `source` 태그가 "무인지 지역일수록 파라메트릭이 약하다"는 가설을 운영 데이터로 검증한다. 이 저장소 최초의 커스텀 Micrometer 메트릭이라 `MeterRegistry` 주입 패턴을 여기서 세운다
+- [ ] 5-11. `ai.llm.call{agent, provider, outcome}` — 에이전트별 지연·실패율. 2단계에서 만든 `OpenAiLlmClient`에 붙이는 것이라 새 코드가 아니다
 - [ ] 5-7. 스텁 기반 통합 테스트 (0-6의 WireMock 인프라 사용)
-
 ### 6. `PlannerAgent` / `CuratorAgent`
 
 동작 변화 없음.
@@ -167,7 +162,7 @@
 - [ ] 6-1. `PromptLoader` — 프롬프트를 `resources/prompts/*.md`로 분리하고 `@PostConstruct`에서 eager 로드. 파일이 없으면 **애플리케이션 기동이 실패**하므로 런타임이 아니라 배포 시점에 발견된다. 플레이스홀더는 위치 기반 `%s`가 아니라 **명명 기반 `{{location}}`**
 - [ ] 6-2. `PlannerAgent` — 컨셉·제목·day별 권역(`area`)·**권역 안 랜드마크(`anchor`, 필수 문자열 1개)**·슬롯 구성. **장소명은 한 개도 생성하지 않는다**(`anchor`는 검색 기준점일 뿐 코스에 들어가는 장소가 아니다). `area`는 자연어 그대로 둔다 — 시군구로 바꾸면 day 단위 locality를 잃는다(설계 문서의 후보 공급 "area → 좌표"). 결정론적 기본 플랜은 `anchor = location`. Planner를 별도 단계로 두는 이유는 "단계 분할"이 아니라 **Curator를 day별 병렬 실행하려면 day별 권역이 먼저 확정돼야 하기 때문**이다
 - [ ] 6-3. Planner 출력 구조 검증 — day 수 불일치·MEAL 누락·슬롯 개수 초과를 **코드로 보정**한다(LLM 재호출 없음). `anchor`가 비면 `area` 텍스트로 대체(지오코딩 캐스케이드 4-8이 이어받는다)
-- [ ] 6-4. `CuratorAgent` — day별 병렬, 슬롯당 후보 3개. 다른 day는 모른다. **역할은 "회상"이 아니라 "선별"이다(설계 문서의 후보 공급)** — 입력에 5-8의 슬롯별 후보 목록이 들어가고, 입력 항목은 `[seed n위] 이름 · styleTags · distanceKm` 한 줄 형태이고 출력은 `source`(`SEEDED`/`LISTED`/`SUGGESTED`) + `listIndex` + `placeName`. **선별 규칙을 프롬프트에 우선순위 순으로 적는다**: 테마·키워드 적합 → seed 표식 우선(근거이지 명령 아님) → `distanceKm` 작은 쪽 → `SUGGESTED`는 확신할 때·목록에 없을 때만 → 3개를 선호 순서로. 목록 밖 파라메트릭 제안(`SUGGESTED`)은 허용하되 그라운딩 검증을 거친다. **응답 스키마의 루트는 반드시 객체여야 한다** — 0단계에서 최상위 배열 스키마가 400으로 거부되는 것을 확인했으므로, 슬롯 배열을 루트에 두면 안 된다
+- [ ] 6-4. `CuratorAgent` — day별 병렬, 슬롯당 후보 3개를 **선호 순서로**. 다른 day는 모른다. **역할은 "회상"이 아니라 "선별"이다** — 입력에 5-8의 후보 목록(`[seed n위] 이름 · styleTags · distanceKm`)이 들어가고 출력은 `source` + `listIndex` + `placeName`. 선별 규칙은 설계 문서의 우선순위대로 프롬프트에. **응답 스키마의 루트는 반드시 객체여야 한다**(0-3에서 최상위 배열이 400으로 거부되는 것을 확인했다)
 - [ ] 6-7. **`SEEDED`/`LISTED` 위조 강등 검증 (코드)** — `listIndex` 범위, 목록 항목 상호명과 `placeName` 일치, 슬롯 타입 일치를 검증하고 하나라도 어긋나면 `SUGGESTED`로 **강등**(버리지 않는다 — 실존할 수 있다). "재검증 생략"의 전제는 좌표·`kakaoId`를 LLM이 옮겨 적는 게 아니라 코드가 목록에서 승계하는 것이므로, 응답 스키마에 좌표·id 필드를 두지 않는다. 메트릭 `ai.candidate.demoted`
 - [ ] 6-5. **`duration` 키워드 처리 방침 결정** — 무시할지, `days`와의 모순 검증에 쓸지. 지금은 "보내지만 아무도 해석하지 않는" 상태이며 label 표기도 어긋나 있다(설계 문서의 프롬프트 전략)
 - [ ] 6-6. 프롬프트에서 사라진 규칙 확인 — 시간 배치·동선·중복·스키마 강제는 이제 코드가 보장하므로 프롬프트에 남기지 않는다. 약 45줄이 사라지고 "취향과 컨셉"만 남는 것이 이 분리의 본질이다
@@ -201,24 +196,20 @@
 
 ### 9. `PlaceSignalStage` (3층 인기도 + 4층 속성 추출) — **조건부**
 
-동작 변화 있음(품질). 8단계까지만으로도 이미 확실히 낫기 때문에(환각 차단 + 실좌표 동선 + 인기 시드) **순수 부가가치다.**
+동작 변화 있음(품질). 8단계까지로 이미 확실히 낫기 때문에(환각 차단 + 실좌표 동선 + 인기 시드) **순수 부가가치이고, 그 부가가치가 실재하는지는 측정된 바 없다.** 그래서 "일단 만들어 플래그로 붙이는" 게 아니라 **아래 조건 중 하나가 실측되면 그때 만든다.** 조건은 전부 8-7의 삭제 로그에서 나온다.
 
-> **[개정] "플래그"에서 "조건부"로.** 초안은 4층(PlaceProfile)만 여기 두고 3층(인기도)은 V1 본선(옛 4·5단계)에 넣었다. 후보 공급 층이 인기도를 시딩으로 앞에서 반영하면서 **3층·4층 모두 사후 정렬층으로서의 고유 가치를 잃었고**(설계 문서의 "PlaceSignal을 V1에서 제외한 이유"), 그 부가가치가 실재하는지 **측정된 바 없다.** 그래서 "일단 만들어 플래그로 붙이는" 게 아니라, **아래 착수 조건 중 하나가 실측되면 그때 만든다.** 조건은 전부 8단계와 함께 켜는 사용자 삭제 로그(`source`·`modifier` 태그 포함, 설계 문서의 관측 설계)에서 나온다.
->
-> **착수 조건** (하나면 충분):
+> **착수 조건** (하나면 충분)
 > - `SUGGESTED` 유래 장소의 삭제율이 `SEEDED` 대비 유의미하게 높다 → **3층**(인기도·폐업 감점)의 근거
-> - 스타일 modifier 쿼리 유래 장소의 삭제율이 기본 쿼리 유래 대비 유의미하게 높다 → **4층**(속성 검증)의 근거 — SEO 편승 후보가 실제 문제라는 뜻
-> - 4-2 실측에서 네이버 지역검색이 서술어를 매칭하지 못해 스타일 축을 retrieval에서 포기했다 → 4층이 스타일 축을 되찾는 유일한 길
+> - 스타일 modifier 쿼리 유래 장소의 삭제율이 기본 쿼리 유래 대비 유의미하게 높다 → **4층**(속성 검증)의 근거 — SEO 편승이 실제 문제라는 뜻
+> - 4-2 실측에서 네이버가 서술어를 매칭하지 못해 스타일 축을 retrieval에서 포기했다 → 4층이 스타일 축을 되찾는 유일한 길
 > - 골든 데이터셋 평가에서 Curator 자체 순위 대비 3·4층 재정렬이 개선을 보인다
 >
-> **착수 순서**: 3층 → 4층. Critic(CriticAgent 설계)은 4층 뒤에만 성립한다(traits를 전제하므로).
->
-> 상세 실행 계획은 [STEP-9-place-signal.md](steps/STEP-9-place-signal.md) 참고. (미작성 — 착수 조건 충족 시)
+> **착수 순서**: 3층 → 4층. Critic은 4층 뒤에만 성립한다(traits를 전제하므로). 설계는 [지식 신호 층](design/지식-신호와-후보-공급.md)의 3·4층 절에 그대로 있다.
 
-**3층 — 인기도 (옛 4-1·4-2·4-3·4-5·5-4에서 이동)**
-- [ ] 9-1. `NaverBlogClient` — `display=5`로 조회하면 응답 한 번에 `total`(인기도) + `postdate`(최신성) + 스니펫 5건(4층 재료)이 전부 들어온다. **장소당 호출은 1회다.** 착수 전 실호출로 확정: API HUB 경로·응답 스키마, **지역검색과 쿼터 합산 여부**(비용 분석의 상한 계산 — 켜면 코스당 ~35회가 더해져 상한이 초안 수준으로 내려온다)
-- [ ] 9-2. `PopularityScorer` (순수 함수) — `popularity = log10(max(total, 1))`. **로그 스케일이 필수인 이유**: `total`은 1건에서 수백만 건까지 자릿수로 벌어져, 선형으로 쓰면 유명 관광지 하나가 다른 모든 신호를 압도한다. 폐업 의심 = 최신 `postdate`가 12개월 이내인지
-- [ ] 9-3. `PlaceSignalStage` — 그라운딩 생존 후보에만 네이버 조회. **`SEEDED`·`LISTED`는 제외**(시드 순위가 이미 인기도이고, TourAPI 관광지의 인기 축도 시더가 맡는다) → `SUGGESTED`만. **역할은 재정렬이 아니라 감점** — Curator 선호 순서를 1차로 두고, 언급 0건·최신 글 없음인 후보를 뒤로 미는 것만 한다. **fail-open**: 네이버 장애 시 층 전체 스킵. 메트릭 `ai.popularity.lookup{result}`
+**3층 — 인기도**
+- [ ] 9-1. `NaverBlogClient` — `display=5` 한 번에 `total`(인기도) + `postdate`(최신성) + 스니펫 5건(4층 재료)이 전부 온다. **장소당 호출 1회.** 착수 전 확정: API HUB 경로·응답 스키마, **지역검색과 쿼터 합산 여부**
+- [ ] 9-2. `PopularityScorer` (순수 함수) — `popularity = log10(max(total, 1))`. **로그 스케일이 필수인 이유**: `total`이 자릿수로 벌어져 선형으로 쓰면 유명 관광지 하나가 다른 신호를 압도한다. 폐업 의심 = 최신 `postdate`가 12개월 이내인지
+- [ ] 9-3. `PlaceSignalStage` — 그라운딩 생존 후보에만 조회. **`SEEDED`·`LISTED`는 제외**(시드 순위가 이미 인기도이고 TourAPI 관광지의 인기 축도 시더가 맡는다) → `SUGGESTED`만. **역할은 재정렬이 아니라 감점.** fail-open. 메트릭 `ai.popularity.lookup{result}`
 - [ ] 9-4. 3층 on/off 비교 — 삭제율로
 
 **4층 — 속성 추출 (옛 9-1~9-6)**
@@ -235,7 +226,7 @@
 
 > 상세 실행 계획은 [STEP-10-caching.md](steps/STEP-10-caching.md) 참고. (미작성)
 
-- [ ] 10-1. V1이 실제로 쓰는 캐시 넷을 건다 — `kakao:place:{sha1}`(검증·URL 보강) TTL 7일 · `kakao:geo:{anchor}`(지오코딩) **TTL 30일** · `naver:local:{area}:{slot}[:{modifier}]` TTL 7일 · `tour:{~1km 격자}:{contentTypeId}` TTL 7일. **뒤의 둘이 히트율을 지배한다** — 장소 단위가 아니라 `(area, slot)`·격자 단위 키라 인기 권역은 사용자 간에 공유된다. 기존 [RedisConfig.java](../../../src/main/java/backend/yourtrip/global/config/RedisConfig.java)와 [RedisCacheErrorHandler.java](../../../src/main/java/backend/yourtrip/global/config/RedisCacheErrorHandler.java)(Redis 장애 시 fail-open)를 그대로 재사용. `naver:blog:{sha1}`은 9단계를 켤 때 함께 붙인다
+- [ ] 10-1. V1이 쓰는 캐시 넷 — `kakao:place:{sha1}` 7일 · `kakao:geo:{anchor}` **30일** · `naver:local:{area}:{slot}[:{modifier}]` 7일 · `tour:{~1km 격자}:{contentTypeId}` 7일. **뒤의 둘이 히트율을 지배한다** — 장소 단위가 아니라 권역·격자 단위 키라 사용자 간에 공유된다. 기존 [RedisConfig.java](../../../src/main/java/backend/yourtrip/global/config/RedisConfig.java)와 [RedisCacheErrorHandler.java](../../../src/main/java/backend/yourtrip/global/config/RedisCacheErrorHandler.java)(장애 시 fail-open) 재사용. `naver:blog`는 9단계와 함께
 - [ ] 10-2. `ai.place.cache{source=kakao|naver|tour_api, result}` 메트릭 → 캐시 히트율로 쿼터 여유 실측
 - [ ] 10-3. **최종 코스는 캐싱하지 않는다** — 같은 조건으로 재생성했는데 똑같은 코스가 나오면 사용자가 버그로 인식한다. 캐싱 대상은 장소 조회 결과(정적)와 Planner 출력(도시+일수+키워드 → 권역 배분은 결정적)뿐이다
 
