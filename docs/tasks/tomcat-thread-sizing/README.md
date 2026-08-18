@@ -16,13 +16,35 @@ Tomcat 기본값 200은 CPU와 무관한 범용 상수다(블로킹 I/O·JSP 시
 | **다운스트림 용량** | 후단이 소화 못 하는 워커는 어차피 후단 큐(`hikaricp_connections_pending`)에서 잔다. 대기줄은 Tomcat 커넥션 큐(`maxConnections`/`acceptCount`)에 두는 편이 싸다 | HikariCP 10개 → DB 경로에 10~20개 넘는 워커는 의미가 없다. 이 레포가 실측한 `pending 187 = busy 200 − 풀 10`이 그 증거 |
 | **메모리** | 스레드당 스택(`-Xss`) × N | 1GB 박스에 `-Xss512k` × 200 = 최대 100MB. 32면 16MB |
 
-다른 서버 구현의 기본값과 공개된 사례가 참고가 된다.
+### 선행 사례 — "코어 수에 맞춰 200보다 낮게"는 반복해서 나오는 결론이다
 
-- **Undertow**는 기본값 자체가 코어 비례다 — `io-threads = max(cores, 2)`, **worker = io-threads × 8**(2 vCPU면 **16**). Netty/WebFlux 이벤트루프 = `cores`. Jetty·Tomcat만 200 고정이다([Undertow 문서](https://undertow.io/undertow-docs/undertow-docs-2.1.0/index.html)).
-- **Netflix**는 트래픽 급증 시 기본값(200 + 큰 `acceptCount`)이 OS 큐와 워커를 전부 채워 CPU 기아로 이어지는 문제를 겪고, 스레드 수를 **응답 시간 × 코어 수로 역산**했다 — "요청당 5ms면 스레드 하나가 200 rps, 쿼드코어면 800 rps → 피크에 바쁜 스레드 약 8개 → 3배 여유를 둬 maxThreads 24~30"([Tuning Tomcat For A High Throughput, Fail Fast System](https://netflixtechblog.com/tuning-tomcat-for-a-high-throughput-fail-fast-system-e4d7b2fc163f), 2015). 이번 작업과 같은 구조다.
-- 튜닝 가이드들은 출발점으로 **`cores × 2~4`** 를, CPU-bound면 1~2×를 제시하고, 과다 스레드가 컨텍스트 스위칭·메모리로 지연 스파이크를 만든다는 점과 `maxConnections`/`acceptCount`가 그 뒤의 대기줄이라는 점을 반복해서 짚는다([Baeldung](https://www.baeldung.com/java-web-thread-pool-config), [Datadog](https://www.datadoghq.com/blog/tomcat-architecture-and-performance/), [eG Innovations](https://www.eginnovations.com/blog/tomcat-performance-tuning/)).
+값을 정하기 전에 공개된 사례와 다른 서버 구현의 기본값을 조사했다. 네 갈래가 전부 같은 방향을 가리킨다.
 
-이슈가 제시한 16~32는 `cores × 8`(16)과 그 두 배(32)로 읽으면 근거가 선다 — Netflix 역산법과 Undertow 기본값 사이, 가이드의 `cores × 4`(8)보다는 느린 요청 쪽으로 보수적인 값이다.
+**① Netflix — 기본값이 CPU 기아를 만든 실제 사고 사례.** 가장 가까운 선례다. 트래픽이 급증하면 **`maxThreads`와 `acceptCount`가 둘 다 크기 때문에** OS 커넥션 큐와 워커가 전부 차고, 바쁜 스레드가 계속 늘어 **CPU 기아(starvation)** 로 이어졌다. 대응은 두 가지였다 — (a) 스레드 수를 **응답 시간과 코어 수로 역산**하고, (b) 여러 지점(OS 큐 + Tomcat 스레드)에 요청이 쌓이지 않게 해서 용량을 넘기면 **빨리 503으로 실패**시킨다.
+
+> "요청당 평균 5ms면 스레드 하나가 최대 200 rps를 처리한다. 쿼드코어면 최대 800 rps" → 피크에 바쁜 스레드 약 8개 → **3배 여유를 둬 `maxThreads` 24~30**. `acceptCount`는 **10부터 시작해** 커넥션 오류가 사라질 때까지만 올린다.
+
+우리 계산도 같은 구조다 — 코어 2개, 히트 경로 실측(요청당 서버 2.2ms), 여기에 느린 요청 여유분을 얹어 32. 다만 **우리는 fail-fast(503)를 도입하지 않는다.** Netflix는 대규모 fleet에서 상류가 즉시 다른 인스턴스로 재시도할 수 있는 전제였고, 이 서비스는 단일 인스턴스라 거부보다 Tomcat 커넥션 큐에서 기다리게 하는 편이 낫다. `acceptCount`·`maxConnections`를 명시적으로 잡는 것은 후속 과제로 남긴다.
+
+**② Undertow — 기본값 자체가 코어 비례다.** `io-threads = max(availableProcessors, 2)`, **worker(= 요청 처리 스레드) = io-threads × 8**. 2 vCPU면 **16**, 4 vCPU면 32이다. Netty/WebFlux의 이벤트루프도 `cores` 기준이다. **200 고정은 Tomcat·Jetty 쪽 관성**이고, 비동기 I/O 시대에 설계된 서버들은 하드웨어에서 값을 유도한다.
+
+**③ 튜닝 가이드들의 공식** — 출발점으로 **`cores × 2~4`**(CPU-bound면 1~2×, I/O 대기가 길면 배수를 올림)를 제시하고, 공통적으로 세 가지를 짚는다: 과다 스레드는 **컨텍스트 스위칭·메모리로 지연 스파이크**를 만든다, `maxConnections`/`acceptCount`가 워커 뒤의 대기줄이다, **Spring Boot 기본값 200은 개발 편의용 범용 값이라 운영에서 그대로 쓰지 말라.**
+
+**④ 이 저장소가 이미 인용하던 것** — HikariCP 위키의 풀 사이징과 Goetz의 `N = cores × (1 + wait/compute)`. 스레드 풀 일반론이라 Tomcat 워커에도 그대로 적용된다(위 표의 첫 축).
+
+**2 vCPU에 대입하면**:
+
+| 출처 | 공식 | 2 vCPU 환산 |
+|---|---|---|
+| Goetz / HikariCP 위키 | `cores × (1 + wait/compute)` | **3~10** (경로별) |
+| 튜닝 가이드 | `cores × 2~4` | **4~8** |
+| Undertow 기본값 | `max(cores,2) × 8` | **16** |
+| Netflix 역산 | (피크 바쁜 스레드) × 3 | **24~30** 상당 |
+| **이번 결정** | 실측 plateau의 최댓값 | **32** |
+
+32는 이 범위의 **가장 보수적인 끝**이다. 더 낮은 값(8·16)도 실측에서 TPS·p95가 같았지만(→ [ec2-measurement.md](ec2-measurement.md)), 아래 "워크로드가 섞여 있다"는 이유로 여유분 쪽을 택했다.
+
+> **한계**: 위 사례들은 전부 **권고와 계산식**이지 이 앱의 워크로드를 잰 것이 아니다. 그래서 값을 문헌에서 고르지 않고 **후보 5개를 실측해 곡선을 보고** 정했다. 문헌은 "200이 근거 없는 값"이라는 판단과 후보 범위(8~64)를 정하는 데만 썼다.
 
 **이 앱의 함정은 워크로드가 섞여 있다는 것이다.** 공식대로면 히트 경로는 3개면 되지만, AI 코스 생성은 Gemini를 요청 스레드에서 **동기로** 기다린다(`GeminiService.generateContent`, 수 초). 10MB 미디어 업로드도 워커를 오래 붙든다. maxThreads를 16으로 줄이면 동시 AI 요청 16건이 다른 모든 API를 막는다. 이 경로들은 부하테스트로 재지 않는다(Gemini 과금·쿼터). 그래서 **후보 선택 규칙에 "느린 요청 여유분"을 명시적으로 넣고**(아래 판정 기준 4), 근본 해결(느린 엔드포인트의 bulkhead/비동기화)은 후속 이슈로 뺀다.
 
@@ -66,3 +88,15 @@ Tomcat 기본값 200은 CPU와 무관한 범용 상수다(블로킹 I/O·JSP 시
 - [ec2-measurement.md](ec2-measurement.md) — 실측 결과·판정
 - [../cache-effect-measurement/redis-io-bottleneck.md](../cache-effect-measurement/redis-io-bottleneck.md) — 이 작업의 근거가 된 병목 규명
 - [../../guide/ec2-rds-loadtest.md](../../guide/ec2-rds-loadtest.md) — 분리 환경 실행 절차·하네스 사용법
+
+### 외부 출처 (위 "선행 사례" 절의 근거)
+
+| 출처 | 이 문서에서 쓴 내용 |
+|---|---|
+| [Tuning Tomcat For A High Throughput, Fail Fast System — Netflix TechBlog (2015)](https://netflixtechblog.com/tuning-tomcat-for-a-high-throughput-fail-fast-system-e4d7b2fc163f) ([미러](https://murphyswork.wordpress.com/2015/08/06/tuning-tomcat-for-a-high-throughput-fail-fast-system/)) | 기본값이 만든 CPU 기아, 응답시간×코어 역산(24~30), `acceptCount` 10부터 증량, fail-fast 503 |
+| [Undertow 공식 문서](https://undertow.io/undertow-docs/undertow-docs-2.1.0/index.html) | `io-threads = max(cores,2)`, `task-core/max-threads = io-threads × 8` |
+| [Configuring Thread Pools for Java Web Servers — Baeldung](https://www.baeldung.com/java-web-thread-pool-config) | 코어·워크로드 기반 산정, 과다 스레드의 컨텍스트 스위칭 비용 |
+| [Understanding the Tomcat architecture and key performance metrics — Datadog](https://www.datadoghq.com/blog/tomcat-architecture-and-performance/) | `maxThreads` / `maxConnections` / `acceptCount`의 계층 구조와 관측 지표 |
+| [10 Apache Tomcat Performance Tuning Tips — eG Innovations](https://www.eginnovations.com/blog/tomcat-performance-tuning/) | 과다 스레드가 성능을 떨어뜨리는 메커니즘 |
+| [Springboot load management: Restrict Maximum Threads](https://medium.com/@DilipCoder/springboot-load-management-mitigating-java-thread-overhead-restrict-maximum-threads-fbc5597be141) · [Tomcat, Why just 200 default threads?](https://alpitanand20.medium.com/tomcat-why-just-200-default-threads-febd2411b904) | `cores × 2~4` 출발점, "기본값 200은 개발 편의용" |
+| HikariCP 위키 풀 사이징 · Goetz, *Java Concurrency in Practice* | `N = cores × (1 + wait/compute)` — 이 저장소가 커넥션 풀 논의에서 이미 인용해온 것 |
