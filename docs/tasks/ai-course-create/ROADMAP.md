@@ -199,6 +199,7 @@
 - [ ] 4-7. **`TourApiClient` (관광지 커버리지, 설계 문서의 후보 공급 "ATTRACTION 계열 슬롯")** — `locationBasedList2(mapX, mapY, radius=20000, contentTypeId=12|14|28, arrange=거리순, numOfRows=50)`. 응답에서 `title`·`addr1`·`mapx`/`mapy`(WGS84)·`cat1~3`·`contentid`·`modifiedtime`·`firstimage`를 취한다. 반경은 튜닝값이 아니라 최대 고정 울타리이고 실질 필터는 거리순 + cap이다. 캐시 키 `(~1km 격자 좌표, contentTypeId)`, TTL 7일(관광지 목록은 거의 정적이라 더 길어도 된다). **착수 전 실호출로 확정할 것**: 이관 후 오퍼레이션명, `arrange` 거리순 존재 여부, 좌표 형식, 분류체계(`cat1~3` vs 새 체계), 응답 필드, 상권형 명소 등록 여부, 무인지 시군구 항목 수 표본. **운영계정 승인 신청**(개발계정 일 1,000건)을 이 항목 착수와 함께 낸다
 - [ ] 4-8. **area 지오코딩** (카카오, 설계 문서의 후보 공급 "area → 좌표") — Planner의 `anchor`를 `"{location} {anchor}"`로 카카오 키워드 검색해 대표 장소 좌표를 얻는다. **캐스케이드**: `anchor` → `area` 텍스트 → `location`, 전부 실패하면 그 day의 TourAPI만 건너뛴다(시더는 텍스트 기반이라 영향 없음). 캐시 키 = 쿼리 텍스트, TTL 30일. 메트릭 `ai.geocode{result=hit|fallback_area|fallback_location|failed}` — `fallback_*`가 잦으면 Planner `anchor` 지시를 손본다
 - [ ] 4-9. **`cat3` → 스타일 태그 결정론 매핑** (순수 함수, 설계 문서의 후보 공급 "`cat3` → 스타일 태그") — TourAPI 소분류를 4-3과 **같은 traits 어휘**로 옮긴다(폭포·계곡·수목원 → 자연·조용함 / 해수욕장·전망대 → 뷰맛집 / 고택·사찰·민속마을 → 한옥·역사 / 테마공원·체험 → 아이동반·액티비티 / 박물관·미술관 → 문화·실내). 필터가 아니라 **표시** — 후보에 `styleTags`를 달아 Curator 입력과 목록 정렬에 쓴다. 코드표는 4-7 실호출(`categoryCode2`)로 받아 확정
+- [ ] 4-10. **지역 티어별 환각률 소급 집계** — 기존 [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md) 아티팩트를 유명 지역 / 안 알려진 지역(순천·영주·공주·통영·삼척) 그룹으로 나눠 다시 집계한다. **이 개정 전체의 출발 가설("무인지 지역일수록 파라메트릭이 약하다")을 코드 한 줄 짜기 전에 기존 데이터로 확인하는, 가장 싼 검증이다**(설계 문서의 남는 한계). 새 API 호출도 비용도 들지 않는다
 
 ### 5. `CandidateRetrievalStage` + `GroundingStage` + `PlaceUrlEnricher`
 
@@ -209,14 +210,15 @@
 > 상세 실행 계획은 [STEP-5-grounding.md](steps/STEP-5-grounding.md) 참고. (미작성)
 
 - [ ] 5-1. 스레드풀 2개 신설 — `aiAgentExecutor`(LLM)와 `placeGroundingExecutor`(카카오·네이버·TourAPI 공유). **벌크헤드로 나누는 이유**는 외부 장소 API가 느려질 때 그 대기가 LLM 슬롯을 잠식하면 안 되기 때문이다(LLM은 3~10초짜리 소수, 장소 API는 0.15~0.3초짜리 다수). **여기서 `llm.max-concurrent-calls: 2`를 재실측한다** — 2-6 측정은 요청 간 5초 지연·동시 호출 1이라는 느슨한 조건이었고(429 0/120), day별 Curator가 실제로 동시에 몰리는 이 단계에서 재야 초기값의 근거가 된다
-- [ ] 5-2. `GroundingStage` — **`SUGGESTED`만 카카오 병렬 검증**, 점수 하한 미달 탈락. **검증 성공 시 응답의 `place_url`을 좌표·주소와 함께 승계**해 5-10이 같은 장소를 다시 부르지 않게 한다. `SEEDED`는 네이버 응답(좌표·주소·카테고리), `LISTED`는 TourAPI 응답(좌표·주소·`cat3`)을 **코드가** 승계해 호출 없이 통과. 4-5의 dedupe 키로 전 day 중복 제거. **여기를 통과 못 한 장소는 파이프라인에 존재하지 않는다.** Curator 출력 순서가 선호 순위이며, 슬롯당 통과한 1순위가 배치 대상이다(사후 재정렬 층 없음)
 - [ ] 5-8. **`CandidateRetrievalStage` (설계 문서의 후보 공급)** — Planner 직후, day × 슬롯타입별 병렬로 실존 후보 목록을 만든다. 소스는 `CandidateSource` 인터페이스 목록: `NaverLocalSeedSource`(**전 슬롯**, `SEEDED`, 텍스트 쿼리 `"{area} {searchHint}"` — 반경 파라미터 없음) + `TourApiSource`(**ATTRACTION·VIEWPOINT·WALK·ACTIVITY**, `LISTED`, 4-8 좌표 기준 거리순). **카카오는 후보 소스로 쓰지 않는다**(설계 문서의 후보 공급 "카카오 커버리지 검색을 후보 소스에서 뺀 이유"). 관광 슬롯은 4-5 규칙으로 시더↔TourAPI를 **병합**(제거가 아님 — `seedRank`·`official`·`styleTags`·`distanceKm`를 한 레코드에)하고, **목록을 사전식으로 정렬**한다: ① seed 후보(seedRank 순) → ② 스타일 태그가 키워드와 맞는 TourAPI 후보(거리순) → ③ 나머지(거리순), **20~25건 cap**. LLM의 위치 편향을 억누르지 않고 쓰는 것이며 가중치 튜닝값이 없다(설계 문서의 후보 공급 "시더 ↔ TourAPI 병합과 Curator 입력 목록"). `listIndex` 부여. **SEEDED/LISTED는 응답 좌표·주소·분류를 그대로 목록에 싣는다**(카카오 재검색 없음). **스타일 modifier 쿼리 확장** — 사용자 키워드를 4-3의 modifier 사전에 넣어 가점 태그 상위 1~2개를 `"{area} {trait} {searchHint}"`로 추가 질의(전 슬롯), 결과는 기본 쿼리와 **합집합**, 후보에 `matchedModifier` 힌트 부여(검색이 그렇게 주장했다는 힌트일 뿐 검증된 속성이 아님을 Curator 프롬프트에 명시). 풀이 스타일을 모르면 Curator 선별은 천장 아래에서만 움직인다는 것이 근거(설계 문서의 후보 공급). **fail-open** — 소스별 실패는 그 소스만 빠지고, 전부 실패하면 빈 목록으로 Curator를 돌린다(초안 구조로 degrade, hard fail 아님). 캐시 키는 네이버 `(area, slotType[, modifier])`, TourAPI `(격자, contentTypeId)`. 메트릭 `ai.candidate.retrieval{source=naver_local|tour_api, result}`, `ai.candidate.adopted{source, modifier, seeded, official}`. **추후 개선(범위 밖)**: 사전이 day 문맥을 못 잡는 것이 실측되면 Planner `dayPlans[].styleTags`(traits enum, 최대 3)를 사전 태그와 합집합으로 추가
 - [ ] 5-9. **후보 공급 실측** — 하네스 지역 세트(유명/무인지)로 네이버 시더의 슬롯당 확보 건수와 빈 결과 비율, 관광 슬롯의 시더↔TourAPI 겹침·오매칭 표본(4-5 임계값 근거)을 잰다. 빈 결과가 잦은 지역·슬롯이 있으면 "0건/실패 시에만 카카오" 폴백을 그때 붙인다 (설계 문서의 남는 한계)
+- [ ] 5-2. `GroundingStage` — **`SUGGESTED`만 카카오 병렬 검증**, 점수 하한 미달 탈락. **검증 성공 시 응답의 `place_url`을 좌표·주소와 함께 승계**해 5-10이 같은 장소를 다시 부르지 않게 한다. `SEEDED`는 네이버 응답(좌표·주소·카테고리), `LISTED`는 TourAPI 응답(좌표·주소·`cat3`)을 **코드가** 승계해 호출 없이 통과. 4-5의 dedupe 키로 전 day 중복 제거. **여기를 통과 못 한 장소는 파이프라인에 존재하지 않는다.** Curator 출력 순서가 선호 순위이며, 슬롯당 통과한 1순위가 배치 대상이다(사후 재정렬 층 없음)
 - [ ] 5-3. 슬롯별 카테고리 하드 제약 — 현재 `category_group_code`를 가점 +2로만 쓰는 것을 하드 제약으로 승격(MEAL←FD6, CAFE←CE7, ATTRACTION←AT4/CT1). SEEDED에는 4-4의 네이버 카테고리 매핑으로 같은 제약을 건다. 비용이 사실상 0인데 "점심에 호프집"이 구조적으로 사라진다
 - [ ] ~~5-4. `PlaceSignalStage`~~ → **9단계로 이동** (V1 제외, 조건부). 이 자리는 비워둔다 — 번호를 당기면 5-5 이하를 참조하는 문서가 흔들린다
 - [ ] 5-10. **`PlaceUrlEnricher` (설계 문서의 후보 공급)** — RouteOptimizer가 배치를 확정한 뒤, **URL이 빈 장소(`SEEDED`·`LISTED`)에만** `"{상호명} {지역}"`으로 카카오 키워드 검색 1회. `SUGGESTED`는 5-2에서 승계한 `place_url`을 그대로 쓴다. **수락 조건 두 개**: 점수 하한 통과 **그리고** 카카오 좌표↔후보 좌표(네이버/TourAPI) 거리 ≤ 300m(4-2 실측으로 조정). 하나라도 미달이면 `null` — **엉뚱한 장소 URL은 URL 없음보다 나쁘다**(배경 "환각 세탁"을 URL에서 반복하지 않는다). FE가 `placeUrl`로 카카오 플레이스에 진입하므로 필요하지만 코스 성립 조건은 아니다 → fail-open, 전용 ErrorCode 없음. URL이 빈 배치 장소 ~10~15개에만 호출(후보 45개가 아니라). 메트릭 `ai.place.url{result=hit|below_threshold|too_far|failed}`
 - [ ] 5-5. 파이프라인 하드 데드라인 — `CompletableFuture.allOf(...).get(remainingMs, MILLISECONDS)`. `CallerRunsPolicy`를 유지하되(거부보다 느린 성공이 낫다) 요청 스레드가 장소 API I/O를 직접 수행해 순차 실행으로 퇴화하는 것을 데드라인으로 막는다
 - [ ] 5-6. `ai.grounding.match{result=hit|below_threshold|no_result, source=seeded|listed|suggested}` 메트릭 — **환각률의 운영 프록시이자 이 작업의 핵심 지표.** 이 저장소는 커스텀 Micrometer 메트릭이 아직 0건이므로 `MeterRegistry` 주입 패턴을 여기서 처음 세운다
+- [ ] 5-11. `ai.llm.call{agent, provider, outcome}` 메트릭 — 에이전트별 지연·실패율. 5-6에서 세운 `MeterRegistry` 주입 패턴을 어댑터에도 적용한다. **2단계에서 만든 `OpenAiLlmClient`에 붙이는 것이지 새 코드가 아니다** — 이 자리에 두는 이유는 메트릭 인프라가 여기서 처음 서기 때문이다(설계 문서의 관측)
 - [ ] 5-7. 스텁 기반 통합 테스트 (0-6의 WireMock 인프라 사용)
 
 ### 6. `PlannerAgent` / `CuratorAgent`
@@ -240,7 +242,7 @@
 > 상세 실행 계획은 [STEP-7-pipeline.md](steps/STEP-7-pipeline.md) 참고. (미작성)
 
 - [ ] 7-1. `AiCoursePipeline` — Planner → **CandidateRetrieval** → Curator → Grounding(SUGGESTED만) → RouteOptimizer → **PlaceUrlEnricher** 조립. LLM 호출 `1 + days`회, PlaceSignal 없음
-- [ ] 7-2. `AiCourseErrorCode` 신설 (`ErrorCode` 인터페이스 구현이라 `GlobalExceptionHandler`는 수정하지 않는다) + `JSON_TRANSFORMATION_FAILED` 오용 정리 — 지금은 방향이 정반대인 두 실패(응답 역직렬화 / 키워드 직렬화)가 같은 코드를 공유한다
+- [ ] 7-2. `AiCourseErrorCode` 신설 — `AI_PLAN_FAILED`·`AI_RESPONSE_INVALID`·`AI_GROUNDING_FAILED`(503) / `AI_COURSE_TIMEOUT`(504, 5-5 데드라인) / `AI_COURSE_BUSY`(429, 세마포어 포화). `ErrorCode` 인터페이스 구현이라 `GlobalExceptionHandler`는 수정하지 않는다 + `JSON_TRANSFORMATION_FAILED` 오용 정리 — 지금은 방향이 정반대인 두 실패(응답 역직렬화 / 키워드 직렬화)가 같은 코드를 공유한다
 - [ ] 7-3. **degrade, don't fail** 폴백 전량 구현 — Planner 실패 시 결정론적 기본 플랜, **후보 공급 실패 시 빈 목록으로 진행(초안 구조로 degrade)**, Curator 실패 시 **후보 목록에서 결정론적 채움**(정렬된 목록 상위 3 → 목록이 없으면 카카오 카테고리 검색 폴백), 후보 개별 탈락, 네이버 fail-open, 슬롯 전멸 시 보충
 - [ ] 7-4. **hard fail은 카카오 전면 장애 하나뿐**(`AI_GROUNDING_FAILED` 503). 좌표 없는 코스는 이 기능의 핵심 가치를 잃는다 — **지금 코드가 `0.0/0.0`으로 저장해 성공을 위장하는 것이 정확히 그 실수다**
 - [ ] 7-5. `ai.course.pipeline.duration{stage}` 메트릭 (202 전환 판단의 근거가 된다)
@@ -258,6 +260,7 @@
 - [ ] 8-4. `global/gemini` 패키지 삭제 + `GEMINI_API_KEY` 제거 (`.env.example`, `application.yml`)
 - [ ] 8-5. E2E 검증 — 실제 요청으로 코스 생성, 좌표·시간·순서 확인
 - [ ] 8-6. **파이프라인 환각률 측정** (3점 비교의 마지막 점)
+- [ ] 8-7. **사용자 삭제 로그 기록을 스위치와 함께 켠다** — `DELETE .../places/{placeId}` 이벤트를 장소의 `source`(`SEEDED`/`LISTED`/`SUGGESTED`)·`modifier`(스타일 쿼리 유래 여부) 태그와 함께 남긴다. **9단계 착수 조건 네 개 중 둘이 이 데이터에서만 나오고**, TourAPI 축제·Planner `styleTags` 재검토도 같은 근거를 쓴다. **소급할 수 없으므로 스위치와 동시에 켜야 한다** — 늦게 켜면 그만큼 판단이 밀린다(설계 문서의 관측)
 
 ### 9. `PlaceSignalStage` (3층 인기도 + 4층 속성 추출) — **조건부**
 
@@ -363,6 +366,7 @@
 - **골든 데이터셋 / LLM-as-judge 평가 인프라** — 파이프라인이 안정된 뒤 착수하는 것이 맞다
 - **202 Accepted + 폴링 전환** — 동기 API 계약을 유지한 채 먼저 완성해 실측하고, p95가 목표를 넘는 것을 데이터로 확인한 뒤 전환한다. 그래야 전환이 "숫자에 근거한 결정"이 된다
 - **사용자 피드백 루프** — 생성된 코스에서 사용자가 삭제한 장소가 곧 정답 라벨이고, 이건 외부 API가 아니라 우리가 축적하는 고유 자산이다. **다만 소급할 수 없는 데이터라 삭제 이벤트 기록은 일찍 시작할 가치가 있다** — 별도의 작은 작업으로 분리한다
+- **TourAPI 축제·행사(`contentTypeId=15`)** — `searchFestival2(eventStartDate, eventEndDate)`에 여행 기간을 넣으면 **그 날짜에 실제로 열리는 축제**가 나온다. 다른 어느 소스도 못 하는 일이고 코스당 1회·순수 추가·fail-open이라 비용도 작지만 V1에서 뺀다: ① 제대로 살리려면 Planner가 축제 유무를 알고 슬롯 구성을 바꿔야 해서 **Planner 계약 변경**이다 ② 관광지 후보(12·14·28)가 채택되는지부터 삭제 로그로 보고 나서 붙이는 것이 순서다. **재검토 조건**: 8단계 이후 삭제 로그에서 TourAPI 유래 후보의 채택률이 확인되고, 여행 날짜에 축제가 겹치는 요청 비율이 유의미할 때
 - **Gemini 어댑터 유지** — OpenAI 확정으로 불필요. 2단계 baseline 재측정이 끝나면 8단계에서 삭제한다
 - **Spring Boot 4 마이그레이션** — Spring Boot 3.5가 2026-06-30 오픈소스 EOL에 도달했으므로 언젠가는 해야 하지만 별도 작업으로 분리한다. 코드 수정량 자체는 크지 않으나(Jackson 3 전환 11개 파일, `@MockBean`→`@MockitoBean` 3곳, springdoc 3.1.0, `springboot4-dotenv`, Security 7), **깨지는 곳 대부분이 런타임에만 드러나는 영역**(캐시 직렬화, JWT 필터, Security 체인, Swagger)인데 이 레포의 통합 테스트는 E2E 1개뿐이라 검증 비용이 크다. 상세 근거는 [STEP-0-prerequisites.md](steps/STEP-0-prerequisites.md) 참고
 - **`SEQUENCE` 전환** — `Place`/`DaySchedule`이 `GenerationType.IDENTITY`라 JDBC 배치 INSERT가 원천 불가능하지만, ~20건 규모라 지금은 무시해도 된다
