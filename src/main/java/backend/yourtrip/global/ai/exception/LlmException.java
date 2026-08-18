@@ -5,7 +5,7 @@ import lombok.Getter;
 /**
  * LLM 호출 실패의 최상위 타입.
  *
- * <p><b>이 계층은 재시도 2계층 구조를 타입으로 표현한다</b>(설계 문서 §6).
+ * <p><b>이 계층은 재시도 2계층 구조를 타입으로 표현한다</b>(LLM 포트 설계).
  * <pre>
  * LlmException
  * ├── LlmTransportException      전송 계층 — 429/5xx/타임아웃. 지수 백오프 대상
@@ -21,7 +21,7 @@ import lombok.Getter;
  * {@code BusinessException(ErrorCode)}로 변환하는 것이지만(예: {@code KakaoLocalClient}가
  * {@code KAKAO_API_FAILED}로 변환), LLM 실패는 <b>어떤 HTTP 응답이 될지가 어댑터가 아니라
  * 파이프라인의 폴백 전략에 달려 있다</b> — 에이전트 하나가 실패해도 degrade해서 코스를 만들 수
- * 있으면 200이고, 카카오까지 죽었을 때만 503이다(설계 문서 §9). 그래서 어댑터는 실패 <b>사실</b>만
+ * 있으면 200이고, 카카오까지 죽었을 때만 503이다(부분 실패 전략). 그래서 어댑터는 실패 <b>사실</b>만
  * 전달하고, {@code ErrorCode} 매핑은 7단계 {@code AiCourseErrorCode}에서 파이프라인이 결정한다.
  */
 @Getter

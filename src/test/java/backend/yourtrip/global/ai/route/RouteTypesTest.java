@@ -90,7 +90,7 @@ class RouteTypesTest {
 
             assertThat(request.dayStartTime()).isEqualTo(LocalTime.of(9, 30));
             assertThat(request.dayEndTime())
-                .as("설계 문서의 21:00 대신 자정 직전으로 넓혔다")
+                .as("설계 초안의 21:00 대신 자정 직전으로 넓혔다")
                 .isEqualTo(LocalTime.of(23, 59));
             assertThat(request.travelMode()).isEqualTo(TravelMode.UNSPECIFIED);
         }
@@ -168,7 +168,7 @@ class RouteTypesTest {
     class TravelModeValues {
 
         @Test
-        @DisplayName("속도와 오버헤드는 설계 문서 §5-2 그대로다")
+        @DisplayName("속도와 오버헤드는 RouteOptimizer 설계 그대로다")
         void matchesDesignDocument() {
             assertThat(TravelMode.WALK.getEffectiveSpeedKmh()).isEqualTo(12.0);
             assertThat(TravelMode.WALK.getFixedOverheadMinutes()).isEqualTo(10);

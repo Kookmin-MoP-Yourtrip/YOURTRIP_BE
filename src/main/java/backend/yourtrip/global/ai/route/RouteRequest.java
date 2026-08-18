@@ -29,13 +29,13 @@ public record RouteRequest(
     TravelMode travelMode
 ) {
 
-    /** 설계 문서 §5-2의 기본 시작 시각. 6단계에서 Planner 가 day 별로 덮어쓴다. */
+    /** RouteOptimizer 설계의 기본 시작 시각. 6단계에서 Planner 가 day 별로 덮어쓴다. */
     public static final LocalTime DEFAULT_DAY_START = LocalTime.of(9, 30);
 
     /**
      * 하루 종료 시각의 기본값.
      *
-     * <p>설계 문서 §5-2는 21:00을 제안했으나 <b>자정 직전으로 넓혔다.</b> 그 결과 기본값 상태에서는
+     * <p>설계 초안의 21:00 대신 <b>자정 직전으로 넓혔다</b>(RouteOptimizer 설계에 반영됨). 그 결과 기본값 상태에서는
      * 하루 예산이 869분이 되어, 장소 7개(체류 약 525분 + 이동 약 120분)를 넣어도 200분 넘게 남는다
      * — 즉 <b>축소·드롭 절차는 기본값에서 사실상 발동하지 않는다.</b>
      *

@@ -32,7 +32,7 @@ public class GeminiService {
      * 만들어진 선례다.
      *
      * <p>이 프롬프트는 8단계에서 통째로 사라진다 — 스키마·형식 강제는 구조화 출력이, 시간 배치와
-     * 동선은 {@code RouteOptimizer}가 맡게 되므로 "취향과 컨셉"만 남는다(설계 문서 §7).
+     * 동선은 {@code RouteOptimizer}가 맡게 되므로 "취향과 컨셉"만 남는다(프롬프트 전략).
      */
     public static String buildPrompt(String location, int days, List<KeywordType> keywords) {
         return """

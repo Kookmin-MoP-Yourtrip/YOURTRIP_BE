@@ -20,7 +20,7 @@ import org.springframework.validation.annotation.Validated;
  * {@code @Validated}가 <b>기동 시점에</b> 잡는다 — 모델 ID 오타 하나로 요청 30건을 날리고 나서
  * 알게 되는 것과 부팅이 실패하는 것의 차이다.
  *
- * <p>설계 근거: {@code docs/tasks/ai-course-create/TASK-AI-MULTI-AGENT.md} §6 "설정 외부화"
+ * <p>설계 근거: {@code docs/tasks/ai-course-create/design/LLM-연동.md} "설정 외부화"
  *
  * @param provider           어댑터 선택 키. OpenAI로 확정됐지만 {@code @ConditionalOnProperty}
  *                           구조는 유지한다 — 값을 비우면 어댑터 빈이 아예 뜨지 않으므로,
@@ -63,7 +63,7 @@ public record AiLlmProperties(
     /**
      * 전송 계층 재시도 설정.
      *
-     * <p>{@code resilience4j}를 추가하지 않는 이유는 설계 문서 §6에 있다 — 지수 백오프는 이
+     * <p>{@code resilience4j}를 추가하지 않는 이유는 LLM 포트 설계에 있다 — 지수 백오프는 이
      * 정도로 충분하고, 서킷브레이커를 얹으면 LLM 장애 시 "코스를 아예 못 만드는" 상태가 되는데
      * 파이프라인의 폴백 전략이 어차피 에이전트 실패를 개별 흡수한다.
      *
@@ -94,7 +94,7 @@ public record AiLlmProperties(
      * Planner(컨셉·권역 설계)만 상위로 두고, Curator·PlaceProfile은 이득이 적으면서 토큰 비중은
      * 가장 크므로 낮춘다.
      *
-     * @param temperature     <b>null이면 아예 보내지 않는다.</b> 설계 문서 §6은 agent별로 온도를
+     * @param temperature     <b>null이면 아예 보내지 않는다.</b> LLM 포트 설계는 agent별로 온도를
      *                        차등하려 했지만(Planner 0.7 / Curator 0.9 / PlaceProfile 0.2),
      *                        2단계 실호출에서 <b>{@code gpt-5.6-luna}·{@code gpt-5-nano} 모두
      *                        커스텀 온도를 거부</b>하는 것이 확인됐다
@@ -103,7 +103,7 @@ public record AiLlmProperties(
      *                        <p>그래서 nullable로 둔다 — 값을 강제로 넣으면 요청 자체가 실패하고,
      *                        0을 넣는 것도 "기본값 1"과 다른 값이라 거부된다. 온도를 받는 모델로
      *                        바꾸면 그때 값을 채우면 되므로 <b>설정 구조는 유지</b>한다
-     * @param maxOutputTokens 출력 상한. <b>설계 문서 §6에는 없던 항목을 추가했다</b> —
+     * @param maxOutputTokens 출력 상한. <b>LLM 포트 설계에는 없던 항목을 추가했다</b> —
      *                        Gemini baseline의 파싱 실패 5건이 전부 응답 절단이었고
      *                        ({@code BASELINE-ARTIFACT-ANALYSIS.md} 판정 3), 절단은 구조화
      *                        출력으로 막히지 않으므로 출력 여유를 설정으로 다룰 수 있어야 한다.
@@ -111,10 +111,10 @@ public record AiLlmProperties(
      *                        실제로 {@code gpt-5-nano}는 4096을 추론에만 다 쓰고 본문을 한 글자도
      *                        내지 못했다({@code finish_reason=length}, 수신 0바이트)
      * @param reasoningEffort 추론 강도({@code minimal}/{@code low}/{@code medium}/{@code high}).
-     *                        null이면 보내지 않는다. 설계 문서 §6은 Gemini 전용
+     *                        null이면 보내지 않는다. LLM 포트 설계는 Gemini 전용
      *                        {@code thinking-budget}을 제거하면서 <b>"OpenAI에 대응하는 추론 강도
      *                        설정이 있다면 어댑터 내부에서 model과 함께 다룬다"</b>고 열어뒀는데,
-     *                        그 자리가 이것이다. §11의 "Curator·PlaceProfile은 추론을 쓰지 않는다"
+     *                        그 자리가 이것이다. 비용 분석의 "Curator·PlaceProfile은 추론을 쓰지 않는다"
      *                        —— 추론 이득이 적은데 토큰 비중은 가장 크다 —— 를 실행하는 수단이기도 하다
      */
     public record Agent(

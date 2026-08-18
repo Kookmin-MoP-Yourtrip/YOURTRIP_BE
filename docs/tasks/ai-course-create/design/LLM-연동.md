@@ -59,53 +59,82 @@ llm:
   provider: openai            # 확정. @ConditionalOnProperty 로 어댑터 선택 (구조는 유지)
   timeout-ms: 20000
   max-concurrent-calls: 2     # ★ RPM/TPM 티어 방어. 상위 티어 전환 시 이 값만 올린다
-  retry: { attempts: 3, initial-delay-seconds: 0.5, max-delay-seconds: 4.0, jitter: 0.3 }
+  retry:
+    attempts: 3               # 전송 계층(429/5xx)
+    semantic-attempts: 2      # 의미 계층 — 초회 + 보정 1회
+    initial-delay-seconds: 0.5
+    max-delay-seconds: 4.0
+    jitter: 0.3
   agents:
-    planner:       { model: gpt-5.6-luna, temperature: 0.7 }
-    curator:       { model: gpt-5.6-luna, temperature: 0.9 }
-    # place-profile: V1 범위 밖 ("PlaceSignal을 V1에서 제외한 이유"). 9단계에서 켤 때 { model: gpt-5-nano, temperature: 0.2 }
-    # critic:        V1 범위 밖 (지연 예산 참고). 재검토 시 { temperature: 0.0, seed: 42 }
+    planner: { model: gpt-5.6-luna, max-output-tokens: 2048 }
+    curator: { model: gpt-5.6-luna, max-output-tokens: 4096, reasoning-effort: low }
+    # 아래는 설정만 미리 있고 V1에서 호출되지 않는다 ("PlaceSignal을 V1에서 제외한 이유").
+    place-profile: { model: gpt-5-nano, max-output-tokens: 2048, reasoning-effort: minimal }
+    # critic: V1 범위 밖 (지연 예산 참고)
 ```
+
+> **`temperature`가 여기 없는 이유 — 모델이 거부한다.** `gpt-5.6-luna`·`gpt-5-nano` 모두 커스텀
+> 온도를 **400으로 거부**한다(`"Only the default (1) value is supported"`). 설정 키 자체는 nullable로
+> 남겨뒀다 — 온도를 받는 모델로 바꾸면 값만 채우면 되고, 구조를 지우면 "왜 차등하지 않는가"라는
+> 정보까지 사라진다 (STEP-2 판정 6①).
 
 > **[갱신] V1 에이전트는 Planner·Curator 둘이다.** 아래 문단들은 PlaceProfile을 세 번째 에이전트로
 > 두고 쓴 초안 시점의 근거인데, PlaceSignal이 V1에서 빠지면서 PlaceProfile 관련 서술은 9단계
-> 재검토 시의 참고 자료가 됐다. **Planner·Curator에 대한 근거는 그대로 유효하다.** 부수 효과로
-> "Curator 역할이 회상에서 선별로 바뀌었다"(후보 공급)는 점이 temperature 0.9의 근거를 조금 약화시킨다 —
-> 목록에서 고르는 과제는 회상보다 다양성 요구가 낮으므로, 6단계에서 0.7 정도로 내려 재실측하는 것을
-> 권한다(후보 3개의 다양성은 이제 풀 자체가 담보한다).
+> 재검토 시의 참고 자료가 됐다. **Planner·Curator에 대한 근거는 그대로 유효하다.**
 
 모델 배정 근거는 [steps/STEP-0-prerequisites.md](../steps/STEP-0-prerequisites.md)에 있다. 요지는
 **"추론 난이도"가 아니라 "틀렸을 때의 파급 ÷ 토큰량"으로 골랐다**는 것이다 — Planner는 파급이
 가장 큰데(권역이 틀리면 그 아래 Curator와 카카오 검색이 전부 오염된다) 호출 1회에 출력 350토큰이라
 가장 싸게 투자할 수 있고, Curator는 환각률에 직결되므로 지식 폭이 넓은 최신 세대를 쓰며,
 PlaceProfile은 닫힌 태그 분류라 세대 이점이 작은데 입력 토큰의 76%를 차지해 최저가로 내렸다.
+**Curator를 `gpt-5.6-luna`로 확정한 것은 2단계 실측이다** — `gpt-5-nano`는 같은 조건에서 환각률이
+7배 이상이라 비용을 아끼려고 내리면 1차 목표를 정면으로 훼손한다.
 
-**agent별 temperature를 다르게 두는 근거** — 현재 코드의 단일 `0.3`은 "장소 선정은 다양해야 하고
-판정은 일관돼야 한다"는 상충 요구를 하나로 뭉갠 값이다. 특히 **Curator를 0.9로 올리는 건 후보
-3개가 서로 비슷하면 대체재로서 의미가 없기 때문**이고, **PlaceProfile을 0.2로 낮추는 건 속성 추출은
-창의성이 아니라 충실성이 필요하기 때문**이다.
+**agent별 temperature를 다르게 두려던 근거, 그리고 그걸 실행할 수 없는 이유.** 현재 코드의 단일
+`0.3`은 "장소 선정은 다양해야 하고 판정은 일관돼야 한다"는 상충 요구를 하나로 뭉갠 값이다. 의도는
+**Curator를 올리고**(후보 3개가 서로 비슷하면 대체재로서 의미가 없다) **PlaceProfile을 낮추는
+것**(속성 추출은 창의성이 아니라 충실성이 필요하다)이었는데, 위 제약 때문에 **둘 다 지정할 수 없다.**
+결과는 반쪽이다 — Curator 쪽은 기본값 1이 이미 높아 우연히 충족되지만, **PlaceProfile 쪽은 그대로
+손해로 남아** 9단계에서 닫힌 태그 집합과 스키마 강제로 보완해야 한다.
 
 **agent별 `model`을 다르게 두는 근거도 같은 논리다.** 셋 중 추론 이득이 실제로 있는 건
 Planner(컨셉·권역 설계)뿐이고, Curator(지역 상식 회상)와 PlaceProfile(속성 추출)은 추론 이득이
 적으면서 **토큰 비중은 가장 크다**(비용 분석). 그래서 Planner만 상위 모델, 나머지는 mini급으로 둔다.
-구체 모델 ID와 단가는 착수 시점에 공식 가격표를 확인해 확정한다.
 
 **`max-concurrent-calls` 세마포어가 rate limit 대응의 전부다.** 2로 두면 day별 Curator 3개가
 2라운드로 나뉘어 실행된다(+3~6초). 429가 나는 대신 느려질 뿐이고, 티어 상향은 설정값 한 줄이다.
 **"Curator를 day별 병렬로 만들지, 1회 통합으로 만들지"를 코드 구조로 결정하지 않는 것**이 요점이다.
 
-초안에 있던 `thinking-budget`은 **Gemini 전용 옵션이라 제거했다.** OpenAI에 대응하는 추론 강도
-설정이 있다면 어댑터 내부에서 `model`과 함께 다루고, 없다면 포트에서 사라진 채로 둔다 — 어댑터가
-모르는 옵션을 조용히 버리는 건 정상 동작이며, 이것이 포트를 최소 공통분모로 유지하는 대가다.
+초안에 있던 `thinking-budget`은 **Gemini 전용 옵션이라 제거하고**, "OpenAI에 대응하는 추론 강도
+설정이 있다면 그때 다루고 없으면 사라진 채로 둔다"고 열어뒀다. **있었다 — `reasoning-effort`다.**
+다만 어댑터 내부에 가두지 않고 **agent별 설정으로 노출했다.** 비용 절의 "Curator·PlaceProfile은
+추론을 쓰지 않는다"를 실행하는 수단이면서, 안 낮추면 비용이 아니라 **응답 자체가 안 나오기**
+때문이다 — `gpt-5-nano`는 기본 설정에서 `max-output-tokens: 4096`을 추론에만 쓰고 본문을 0바이트로
+돌려줬다. 지원값이 모델마다 달라(luna는 `none`/`low`…, nano는 `minimal`/`low`) **두 모델을 같은
+조건으로 비교할 수 있는 공통 최저값은 `low` 하나뿐이다** (STEP-2 판정 6②).
+
+**`max-output-tokens`도 초안에 없던 항목인데 agent별로 추가했다** — 절단이 파싱 실패의 실제
+원인이므로(아래) 출력 여유가 설정 대상이어야 한다.
 
 ### 재시도 2계층
 
 | 계층 | 대상 | 구현 |
 |---|---|---|
-| 전송 | 429 / 5xx | 어댑터가 `llm.retry` 설정으로 지수 백오프 + 지터 |
-| 의미 | **200 OK인데 깨진 JSON** | `LlmResponseParser` 실패 시 **1회만** 재시도. temperature를 낮추고 "스키마 위반, 수정하라"를 덧붙임 |
+| 전송 | 429 / 5xx | `LlmRetryExecutor`가 `llm.retry` 설정으로 지수 백오프 + 지터 |
+| 의미 | **200 OK인데 쓸 수 없는 응답** (절단 · 스키마 위반) | 어댑터가 프롬프트에 보정 지시를 붙여 **1회만** 다시 호출 |
 
-JSON 스키마를 디코딩 레벨에서 강제하므로 파싱 실패율이 near-zero다. 2회 이상 시도는 지연 예산만 태운다.
+**재시도는 `LlmResponseParser`의 책임이 아니다.** 초안의 이 표는 의미 계층을 파서에 맡겼지만,
+재시도하려면 LLM을 다시 불러야 하고 그건 파서가 할 수 있는 일이 아니다. 파서는 **순수 변환**만 맡아
+외부 의존 없이 결정론적으로 테스트되고, 재호출은 어댑터가 오케스트레이션하며, 전송 재시도는
+백오프 계산을 순수 함수로 떼어내기 위해 `LlmRetryExecutor`로 분리했다. 보정 수단도 temperature
+조정이 아니라 **프롬프트에 덧붙이는 보정 지시**다 — 온도를 바꿀 수 없기 때문이다.
+
+**파싱 실패를 없앤 것은 구조화 출력이 아니라 모델 교체다.** 초안은 "스키마를 디코딩 레벨에서
+강제하므로 파싱 실패율이 near-zero"라고 적었는데 실측이 그 인과를 뒤집었다 — Gemini의 파싱 실패는
+전부 응답 **절단**이었고 **절단은 스키마로 막히지 않는다.** OpenAI 재측정 120요청에서 절단이 0건인
+것은 모델이 달라졌기 때문이다. 구조화 출력의 실익은 다른 데 있었다: **출력 바이트 −48%**(pretty-print
+제거)와 **스키마 밖 필드 차단**(`additionalProperties: false`). 어느 쪽이든 2회 이상 시도는 지연
+예산만 태운다 (STEP-2 판정 6·9 · BASELINE-ARTIFACT-ANALYSIS 판정 3).
 
 **resilience4j를 추가하지 않는다.** 전송 재시도는 위로 충분하고, 서킷브레이커를 얹으면 LLM 장애 시
 "코스를 아예 못 만드는" 상태가 되는데 아래 폴백 전략이 어차피 에이전트 실패를 개별 흡수한다.
@@ -139,21 +168,22 @@ LlmClient (interface, 우리 도메인 타입만 다룸)          ← 유지
 - 어댑터 내부 구현이 raw SDK 호출에서 Spring AI 호출로 바뀌어도 `LlmCall`/`LlmResponseParser` 등
   포트 바깥의 코드는 전혀 바뀌지 않는다.
 
-**착수 전 반드시 검증해야 하는 것** — 실패하면 이 절충 자체가 성립하지 않는다.
+**착수 전 검증했던 것 — 결과는 "전제 성립"이다.** 실패했다면 이 절충 자체가 성립하지 않았다.
 
 > 초안에는 검증 항목이 둘이었다. 첫 번째(~~Spring AI의 Gemini 통합이 API 키 방식을 지원하는가,
 > Vertex AI 전용인가~~)는 **벤더가 OpenAI로 확정되면서 물음 자체가 사라졌다.**
 
-**Spring AI의 구조화 출력이 스키마를 디코딩 레벨에서 강제하는가**(OpenAI의
+남은 질문은 **Spring AI의 구조화 출력이 스키마를 디코딩 레벨에서 강제하는가**(OpenAI의
 `response_format: json_schema`를 그대로 노출하는가), 아니면 프롬프트 지시 기반 JSON 모드로
-떨어지는가. 후자면 LLM 포트 설계 위쪽에서 확보한 "파싱 실패율 near-zero" 전제가 깨져 의미 재시도 비율이
-올라간다 — 그리고 이건 추상적 우려가 아니라 **이미 실측된 문제**다(단일 호출 구조의 JSON 파싱
-실패율 28.6%, 지연 예산 참고).
+떨어지는가였다. **0단계에서 성립을 확인했다** — 스키마가 `messages[].content`에 섞이지 않고 전부
+`response_format.json_schema`에 `strict: true`로 실려 나가는 것을 WireMock으로 봤고, 실 API 호출로
+`gpt-5.6-luna`·`gpt-5-nano` 모두 strict json_schema를 지원하는 것까지 확인했다. 그래서 아래 폴백은
+발동하지 않았고 2단계 어댑터는 Spring AI 전송 계층으로 구현됐다.
 
-**막히면**: Spring AI를 포기하고 **OpenAI 공식 Java SDK(`com.openai:openai-java`)로 어댑터를
-구현한다.** 포트는 그대로이므로 어댑터 내부 구현이 무엇이든 `LlmCall`·`LlmResponseParser` 등
-포트 바깥 코드는 전혀 바뀌지 않는다 — "프레임워크를 검증 없이 전면 채택하지 않고, 실제 기능
-지원 여부를 확인한 뒤 도입했다"는 것 자체가 이 결정의 근거로 남는다.
+> **막혔다면**: Spring AI를 포기하고 **OpenAI 공식 Java SDK(`com.openai:openai-java`)로 어댑터를
+> 구현**할 계획이었다. 포트는 그대로이므로 어댑터 내부 구현이 무엇이든 `LlmCall`·`LlmResponseParser`
+> 등 포트 바깥 코드는 전혀 바뀌지 않는다 — "프레임워크를 검증 없이 전면 채택하지 않고, 실제 기능
+> 지원 여부를 확인한 뒤 도입했다"는 것 자체가 이 결정의 근거로 남는다.
 
 **LangChain4j가 아니라 Spring AI를 고르는 이유**: 이 레포는 이미 전역에 `@Bean`·
 `@ConfigurationProperties`·`application.yml` 기반 Spring 관용구가 깔려 있다(`SecurityConfig`,
@@ -184,8 +214,11 @@ LlmClient (interface, 우리 도메인 타입만 다룸)          ← 유지
 덤으로 현재 프롬프트의 결함도 해소된다:
 - 규칙 5는 `placeLocation`을 채우라 하는데 `PlaceDto`에 그 필드가 없고 규칙 12는 스키마 외 필드를
   금지한다 — **실행되지 않는 죽은 지시문**이다.
-- 프롬프트 JSON 예시에 **trailing comma**가 있다(54·102·106줄). 유효하지 않은 JSON을 예시로 보여주고
-  있어 파싱 실패의 유력한 원인이다. **파싱 실패율 28.6%(지연 예산)의 유력한 원인이 바로 이것이다.**
+- 프롬프트 JSON 예시에 **trailing comma**가 있다(54·102·106줄). 유효하지 않은 JSON을 예시로
+  보여주는 것이라 그 자체로 고칠 값어치가 있다. 다만 **초안이 이것을 파싱 실패의 유력한 원인으로
+  지목한 것은 실측으로 반증됐다** — Gemini 실패 5건은 전부 응답 절단(`Unexpected end-of-input`)이고
+  trailing comma 유형은 하나도 없었다. 실패율도 28.6%가 아니라 **16.7%(5/30)** 다 — 28.6%는 호출이
+  14건만 성공한 초기 배치의 값이었다 (BASELINE-ARTIFACT-ANALYSIS 판정 3).
 - **`duration` 키워드 카테고리가 사실상 죽은 신호다.** `KeywordType`에 `ONE_DAY`/`TWO_DAYS`/
   `WEEKEND`/`LONG` 4개가 있고 `buildKeywordsJson`이 이를 JSON에 실어 보내지만, ① 여행 일수는 이미
   `days`로 별도 전달되고 ② 현재 프롬프트는 `duration`의 사용 규칙을 설명하지 않으며(travelMode·

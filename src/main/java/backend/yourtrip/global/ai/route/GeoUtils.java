@@ -3,7 +3,7 @@ package backend.yourtrip.global.ai.route;
 /**
  * 두 좌표 사이의 대권거리(great-circle distance)를 구하는 순수 수학.
  *
- * <p><b>유클리드 근사 대신 haversine을 쓰는 이유</b>(설계 문서 §5-2). 한국 도시 규모(50km 미만)에서
+ * <p><b>유클리드 근사 대신 haversine을 쓰는 이유</b>(RouteOptimizer 설계). 한국 도시 규모(50km 미만)에서
  * 둘의 차이는 0.1% 미만이라 실용적으로는 근사로도 충분하다. 그럼에도 haversine을 쓰는 것은
  * 20줄이고 CPU 비용이 무의미하기 때문이다 — <b>최적화가 필요 없는 곳을 최적화하지 않고, 대신
  * "근사 오차"라는 변수를 아예 없앤다.</b> 동선 비교가 어긋났을 때 의심할 후보가 하나 줄어든다.

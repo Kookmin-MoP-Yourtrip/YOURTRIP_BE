@@ -157,7 +157,7 @@ llm:
   provider: openai
 
   # 호출 1건의 상한. 설계 지연 예산에서 LLM 단일 호출은 3~10초를 잡았고, p95를 크게 넘는
-  # 호출은 기다려봐야 파이프라인 전체 데드라인(설계 §10)을 잠식할 뿐이다.
+  # 호출은 기다려봐야 파이프라인 전체 데드라인(지연 예산)을 잠식할 뿐이다.
   timeout-ms: 20000
 
   # OpenAI RPM/TPM 티어를 아직 모르는 상태의 보수적 초기값이다. 2로 두면 day별 Curator 3개가
@@ -181,13 +181,13 @@ llm:
   # 근거와 단가 계산은 docs/tasks/ai-course-create/steps/STEP-0-prerequisites.md 참고.
   # 실제 에이전트 구현은 6·9단계에 생긴다.
   #
-  # [temperature 를 비워둔 이유] 설계 문서 §6은 agent별 온도 차등을 계획했지만
+  # [temperature 를 비워둔 이유] 설계 초안은 agent별 온도 차등을 계획했지만
   # (Planner 0.7 / Curator 0.9 / PlaceProfile 0.2), 2단계 실호출에서 gpt-5.6-luna 와
   # gpt-5-nano 가 모두 커스텀 온도를 400으로 거부하는 것이 확인됐다
   # ("Only the default (1) value is supported"). 값을 넣으면 요청 자체가 실패한다.
   # 설정 키는 남겨둔다 — 온도를 받는 모델로 바꾸면 값만 채우면 되고, 구조를 지우면
-  # "왜 차등하지 않는가"라는 정보도 함께 사라진다.
-  # [reasoning-effort] 설계 문서 §11의 "Curator와 PlaceProfile은 추론을 쓰지 않는다"를 실행하는
+  # "왜 차등하지 않는가"라는 정보도 함께 사라진다. 경위는 LLM 포트 설계에 정리돼 있다.
+  # [reasoning-effort] 비용 분석의 "Curator와 PlaceProfile은 추론을 쓰지 않는다"를 실행하는
   # 수단이다 — 두 에이전트는 추론 이득이 적은데 토큰 비중은 가장 크고, 추론 토큰은 출력 요금으로
   # 과금된다. 안 낮추면 비용만 문제가 아니라 응답 자체가 안 나온다: gpt-5-nano는 기본 설정에서
   # max-output-tokens 4096을 추론에만 쓰고 본문을 0바이트로 돌려줬다(2-6 스모크 실측).

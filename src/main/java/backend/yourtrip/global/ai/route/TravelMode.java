@@ -3,7 +3,7 @@ package backend.yourtrip.global.ai.route;
 import lombok.Getter;
 
 /**
- * 이동수단 — 두 장소 사이 이동에 몇 분이 걸리는지를 결정한다(설계 문서 §5-2).
+ * 이동수단 — 두 장소 사이 이동에 몇 분이 걸리는지를 결정한다(RouteOptimizer 설계).
  *
  * <p><b>haversine은 직선거리라 실제 도로 거리보다 짧다</b>(도심 우회계수 통상 1.2~1.4). 우회계수를
  * 별도 파라미터로 두는 대신 <b>유효속도를 낮춰 흡수했다</b> — 파라미터 하나를 아끼고, 두 값이 서로

@@ -19,7 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 /**
  * 포트가 실제로 목킹 가능한지 확인한다 (ROADMAP 2-5).
  *
- * <p><b>이 테스트가 초록불이라는 사실 자체가 2단계의 성과다.</b> 설계 문서 §6은 포트를 두는
+ * <p><b>이 테스트가 초록불이라는 사실 자체가 2단계의 성과다.</b> LLM 포트 설계는 포트를 두는
  * 근거를 "테스트 가능성" 하나로 압축했다 — {@code com.google.genai.Client}는
  * {@code public final class}에 {@code models}도 {@code public final} 필드라 Mockito로 묶을 수
  * 없고, 그래서 지금까지 LLM 호출부의 단위 테스트가 원천적으로 불가능했다. 환각률 측정 하네스가

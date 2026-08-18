@@ -1,3 +1,9 @@
+# 줄바꿈은 저장소에 LF로 저장하고, 체크아웃할 때 OS 관례를 따른다.
+# 이 줄이 없으면 정규화 여부가 개발자별 core.autocrlf 설정에 좌우돼
+# 같은 파일이 사람마다 다른 줄바꿈으로 커밋될 수 있다. 그 판단을 저장소가 소유한다.
+# (아래 개별 규칙이 뒤에 와야 한다 — git 은 마지막에 일치한 패턴을 적용한다.)
+* text=auto
+
 /gradlew text eol=lf
 *.bat text eol=crlf
 *.jar binary

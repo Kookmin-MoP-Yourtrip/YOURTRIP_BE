@@ -37,7 +37,7 @@ import org.springframework.ai.openai.api.ResponseFormat.Type;
 /**
  * ROADMAP.md 0단계(0-3)의 검증 테스트.
  *
- * <p>멀티 에이전트 파이프라인 설계(docs/tasks/ai-course-create/TASK-AI-MULTI-AGENT.md §6·§7)는
+ * <p>멀티 에이전트 파이프라인 설계(docs/tasks/ai-course-create/design/LLM-연동.md)는
  * <b>"JSON 스키마를 프롬프트 텍스트가 아니라 디코딩 레벨에서 강제한다"</b>는 전제 위에 서 있다.
  * 그 전제가 성립해야 ① 프롬프트에서 스키마·출력예시 ~36줄이 사라지고 ② 파싱 실패율이 near-zero가 되며
  * ③ "의미 재시도"를 1회로 제한할 수 있다. 전제가 깨지면(= Spring AI가 스키마를 프롬프트에 끼워 넣는
@@ -183,7 +183,7 @@ class SpringAiStructuredOutputVerificationTest {
     /**
      * <b>최상위가 배열인 스키마를 OpenAI가 받아주는지 확인한다.</b>
      *
-     * <p>이걸 재는 이유는 CuratorAgent의 응답이 정확히 그 모양이기 때문이다 — 설계 문서 §4의
+     * <p>이걸 재는 이유는 CuratorAgent의 응답이 정확히 그 모양이기 때문이다 — 파이프라인 전체 구조의
      * 예시는 {@code { "day": 1, "slots": [...] }}지만, 슬롯 배열을 루트로 두고 싶은 유혹이 있고
      * 그렇게 설계했다가 6단계에서 400을 맞으면 스키마와 파싱 코드를 되돌려야 한다.
      *
