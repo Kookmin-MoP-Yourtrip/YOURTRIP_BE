@@ -125,6 +125,7 @@
 
 > 설계 근거는 [지식 신호 층과 후보 공급](design/지식-신호와-후보-공급.md). 상세 실행 계획은 [STEP-4-candidate-sources.md](steps/STEP-4-candidate-sources.md) (착수 시 작성).
 
+- [ ] 4-10. **지역 티어별 환각률 소급 집계** — 기존 [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md) 아티팩트를 유명/무인지 그룹으로 다시 집계한다. **이 개정의 출발 가설("무인지 지역일수록 파라메트릭이 약하다")을 코드 한 줄 짜기 전에 확인하는 가장 싼 검증이라 이 단계의 맨 앞에 둔다** — 새 호출도 비용도 키도 필요 없다. 산출물 `results/*.csv`는 `.gitignore` 대상이라 현재 워크트리에만 있으니, 집계 결과를 `docs/`로 옮기는 것이 유실 방지를 겸한다
 - [ ] 4-1. **`NaverLocalClient`** (지역검색 시더, 전 슬롯) — `"{area} {searchHint}"` + `sort=comment` + `display=5`. **V1의 네이버 의존은 이 클라이언트 하나다.** 상호명(`<b>` 태그 스트립)·`roadAddress`·`category`·`mapx`/`mapy`를 **모두** 취한다 — 좌표를 SEEDED의 실좌표로 쓰므로 "상호명만 쓰고 카카오로 공식화"는 철회됐다
 - [ ] 4-2. **네이버 실호출 확정** — 확인 항목은 설계 문서의 "착수 전 확인 필요" 그대로. **결과가 설계를 가르는 것 둘**: `mapx`/`mapy` 정밀도(5-10의 300m 임계값 근거)와 **서술어 매칭 범위**(`"황리단길 루프탑 카페"`가 유의미한 결과를 주는가 — 아니면 스타일 축을 retrieval에서 포기하고 9단계 조건이 하나 켜진다)
 - [ ] 4-3. **키워드→스타일 modifier 사전** (순수 함수) — 사용자 키워드를 traits 닫힌 태그 집합의 가점 태그 상위 1~2개로. **여기에 LLM을 쓰지 않는다.** 4층이 V1에서 빠져도 이 사전은 살아 있다
@@ -134,7 +135,6 @@
 - [ ] 4-7. **`TourApiClient`** (관광지 커버리지) — `locationBasedList2(좌표, radius=20000, contentTypeId=12|14|28, 거리순)`. 반경은 튜닝값이 아니라 최대 고정 울타리이고 실질 필터는 거리순 + cap이다. 캐시 키 `(~1km 격자, contentTypeId)` TTL 7일. **착수 전 실호출 확정 항목은 설계 문서의 "착수 전 확인 필요" 그대로** — 그중 **분류체계(`cat1~3` vs 신 체계)가 최우선**이다(4-9가 통째로 이걸 전제한다). 키는 개발계정 자동승인이라 대기가 없다
 - [ ] 4-8. **area 지오코딩** (카카오) — Planner의 `anchor`를 `"{location} {anchor}"`로 검색해 권역 중심 좌표를 얻는다. **캐스케이드** `anchor` → `area` → `location`: 무결과면 다음 단계로, **호출 실패면 중단**(같은 API를 두 번 더 두드릴 이유가 없다). 전부 실패하면 그 day의 TourAPI만 건너뛴다. 캐시 TTL 30일. 메트릭 `ai.geocode{result=hit|fallback_area|fallback_location|failed}`. **여기가 파이프라인의 첫 카카오 호출이라 `KakaoLocalClient`를 먼저 손봐야 한다** — 호출 실패를 예외가 아니라 **결과 값으로** 돌려주고 무결과와 구분하도록(설계 문서의 부분 실패 전략). 기존 단일 호출 경로는 호출부가 예외를 던져 동작 변화가 없다
 - [ ] 4-9. **`cat3` → 스타일 태그 결정론 매핑** (순수 함수) — TourAPI 소분류를 4-3과 **같은 traits 어휘**로. **필터가 아니라 표시**다 — 후보에 `styleTags`를 달아 Curator 입력과 목록 정렬에 쓴다. 코드표는 4-7 실호출로 확정
-- [ ] 4-10. **지역 티어별 환각률 소급 집계** — 기존 [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md) 아티팩트를 유명/무인지 그룹으로 다시 집계한다. **이 개정의 출발 가설을 코드 한 줄 짜기 전에 확인하는 가장 싼 검증이다** — 새 호출도 비용도 없다
 
 ### 5. `CandidateRetrievalStage` + `GroundingStage` + `PlaceUrlEnricher`
 
