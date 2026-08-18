@@ -1,24 +1,12 @@
 # AI 코스 생성 멀티 에이전트 파이프라인 로드맵
 
-> [멀티 에이전트 파이프라인 설계](멀티-에이전트-파이프라인.md)에서 AI 코스 생성(`POST /api/my-courses/ai`)을 단일 LLM 호출에서 멀티 에이전트 파이프라인으로 재설계하기로 했다. 이 문서는 그 설계를 **어떤 순서로, 무엇을 만들고, 무엇을 확인해야 다음으로 넘어가는지**로 옮긴 실행 로드맵이다.
+> [멀티 에이전트 파이프라인 설계](멀티-에이전트-파이프라인.md)에서 AI 코스 생성(`POST /api/my-courses/ai`)을 단일 LLM 호출에서 멀티 에이전트 파이프라인으로 재설계하기로 했다. 설계 문서가 "왜"라면 **이 문서는 "무엇을 어떤 순서로, 무엇을 확인해야 다음으로 넘어가는지"** 다. 설계 문서의 도입 순서 표를 승계하되 **0단계(사전 준비)를 앞에 추가**하고 각 단계를 체크 가능한 항목으로 분해한다.
 >
-> 설계 문서의 도입 순서에 11단계 "도입 순서" 표가 있지만 각 단계가 한 줄 요약이라 착수/완료 판정 기준이 없다. 이 로드맵은 그 표를 승계하되 **0단계(사전 준비)를 앞에 추가**하고, 각 단계를 체크 가능한 항목으로 분해한다.
+> **V1 범위**: Planner · CandidateRetrieval(네이버 시더 + TourAPI) · Curator · Grounding · RouteOptimizer(+PlaceUrlEnricher). `CriticAgent`·`CandidateRefiner`·`PlaceSignalStage`(3·4층)는 제외했고, LLM 벤더는 **OpenAI로 확정**됐다.
 >
-> V1 범위는 **Planner · CandidateRetrieval(네이버 시더 + TourAPI) · Curator · Grounding · RouteOptimizer(+PlaceUrlEnricher)** 다. `CriticAgent`·`CandidateRefiner`는 설계 문서의 CriticAgent 설계/CandidateRefiner 설계에 설계만 남기고 제외했고(근거는 설계 문서의 지연 예산), **`PlaceSignalStage`(3층 인기도 + 4층 속성 추출)도 같은 논리로 V1에서 빠져 9단계 조건부가 됐다**(근거는 설계 문서의 "PlaceSignal을 V1에서 제외한 이유"). 초안의 "다섯 단계"에서 PlaceSignal이 빠지고 CandidateRetrieval이 들어온 셈이다.
+> **설계는 착수 후 네 번 개정됐다**(후보 공급 층 추가 → PlaceSignal 제외 → 카카오를 후보 소스에서 제외 → ATTRACTION 소스로 TourAPI 채택). 각 개정의 근거와 파급은 **설계 문서의 "설계 변경 이력" 표**가 소유한다. 이 로드맵은 그 결과만 반영한다.
 >
-> **[개정] 3단계 완료 후 Curator 앞에 `CandidateRetrievalStage`(후보 공급 층)가 추가됐다.** Curator가 파라메트릭 지식만으로 상호명을 회상하면 모델이 모르는 지방 도시에서 재현율이 무너지므로, 네이버 지역검색 인기순 시드 + 카카오 키워드 검색으로 실존 후보 목록을 먼저 만들고 Curator는 그 목록에서 **선별**한다. 새 단계 번호를 매기지 않고 4단계·5단계(`CandidateRetrievalStage`, 5-8·5-9)·6단계(Curator 계약 변경, 6-4·6-7)에 항목으로 붙였다. 근거는 설계 문서의 후보 공급·기각한 대안.
->
-> **[개정] 곧이어 `PlaceSignalStage`(3층 블로그 인기도 + 4층 LLM 속성 추출)를 V1에서 뺐다.** 후보 공급 층이 인기도를 시딩으로 앞에서, 스타일을 modifier 쿼리로 앞에서 반영하면서 같은 3개 후보를 사후에 다시 정렬하는 층의 존재 전제("컨셉을 판별할 유일한 외부 근거")가 사라졌고, 효과는 미측정인데 비용(LLM 1회·2~4초·네이버 35회)은 확정적이었다. 그 결과 **4단계는 `NaverBlogClient` 중심에서 `NaverLocalClient` + 후보 공급 순수 함수로 다시 채워졌고**(착수 전이라 번호를 새로 매김), 옛 3·4층 항목은 **9단계 조건부**로 이동했으며, SEEDED가 네이버 좌표를 승계하면서 GroundingStage는 SUGGESTED만 호출하고 최종 장소의 카카오 URL은 **`PlaceUrlEnricher`(5-10)**가 따로 채운다. 근거는 설계 문서의 "PlaceSignal을 V1에서 제외한 이유".
->
-> **[개정] 카카오 키워드 검색을 후보 공급 소스에서 뺐다.** 스타일 modifier 쿼리로 네이버 시더가 슬롯당 8~15건을 확보하자 카카오 "커버리지"(`LISTED`)의 역할이 잉여가 됐고, `accuracy`/`distance` 정렬은 처음부터 품질을 담지 않는 임의 슬라이스였다. 풀은 **네이버 시더(`SEEDED`) + 파라메트릭(`SUGGESTED`)** 둘이고, 카카오는 **`SUGGESTED` 실존 검증 · 배치 장소 URL 보강** 전담이다. 5-8·5-9·4-5·6-7이 그에 맞춰 바뀌었다. 근거는 설계 문서의 후보 공급 "카카오 커버리지 검색을 후보 소스에서 뺀 이유".
->
-> **[개정] ATTRACTION 계열 슬롯(ATTRACTION·VIEWPOINT·WALK·ACTIVITY)의 커버리지·분류 소스로 한국관광공사 TourAPI를 채택하고(`LISTED` 재도입), 네이버 시더를 전 슬롯으로 넓혔다.** 관광지는 상업 POI와 문제의 모양이 다르다 — 밀집·임의 슬라이스가 아니라 커버리지·분류가 공백이고, 그 둘이 TourAPI의 강점이다. TourAPI에 없는 인기도는 시더가 맡는다. TourAPI는 텍스트 지역명을 못 받으므로 **Planner 응답에 `anchor`(권역 안 랜드마크 1개)를 추가**해 카카오 지오코딩 1회로 좌표를 얻고, 그 좌표 기준 거리순으로 조회한다(시군구 코드표·이름 매칭 없음). 4-7~4-9, 5-8, 6-2·6-4가 그에 맞춰 바뀌었다. 근거는 설계 문서의 후보 공급 "ATTRACTION 계열 슬롯 — TourAPI 커버리지".
->
-> **LLM 벤더는 OpenAI로 확정됐다.** 설계 문서 초안은 Gemini를 현행으로 두고 OpenAI 전환 "가능성"을 전제로 쓰였으나, 확정에 따라 설계 문서 본문(LLM 포트 설계·프롬프트 전략·비용 분석·도입 순서·남는 한계)이 갱신됐다. 이 로드맵은 그 갱신된 설계를 기준으로 한다.
->
-> 진행 상황: **3단계 완료**(3-1 ~ 3-6, 테스트 234개 통과 + 앱 기동 확인 + 완전탐색 벤치마크 n=6~9 실측). 2단계에서 복합 환각률 25.6% → **7.5%**(luna, 수동 검증 82건)를 확인했고 Curator 모델은 `gpt-5.6-luna`로 확정됐다. 다음은 4단계(`NaverLocalClient` + 후보 공급 순수 함수). 0단계 검증 항목은 전부 통과했고 OpenAI·네이버 키도 발급됐다.
->
-> 1단계에서 **로드맵 1-2의 처방이 데이터와 반대라는 것이 드러나 방향을 바꿨다.** 아래 1-2 항목의 정정과 [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 참고.
+> **진행 상황: 3단계 완료.** 2단계에서 복합 환각률 25.6% → **7.5%**(모델 교체 효과)를 확인했고 Curator 모델은 `gpt-5.6-luna`로 확정됐다. 0단계 검증은 전부 통과, OpenAI·네이버 키도 발급됐다. **다음은 4단계.**
 
 ## 목표
 
@@ -57,15 +45,7 @@
 | before/after 비교 | 환각률 25.6%(Gemini 단일 호출) | **OpenAI 단일 호출 baseline을 2단계에서 재측정**해 3점 비교 |
 | V1 범위 | Critic·Refiner 제외(지연 예산) | **Critic·Refiner에 더해 `PlaceSignalStage`(3·4층)도 제외**했다. 도입 순서의 11단계 전부가 이 로드맵의 범위이며, 9단계는 조건부다 |
 
-**OpenAI 확정의 근거와 파급.** 설계 문서가 벤더 중립 포트를 정당화한 두 축(향후 전환 대비 / 테스트 가능성) 중 첫 번째는 이제 "이미 일어난 전환"이 됐고, 두 번째는 그대로 남는다. 즉 `LlmClient` 포트는 여전히 필요하지만 **어댑터는 OpenAI 하나만 만든다.** Gemini 어댑터를 만들어 A/B를 유지하는 선택지는 유지 비용 대비 얻는 게 없어 채택하지 않는다 — 2단계 baseline 재측정이 끝나면 Gemini 경로는 8단계에서 삭제된다.
-
-**Spring AI를 고르는 근거.** OpenAI의 `response_format: json_schema`는 업계 표준에 가깝게 정착돼 있어 프레임워크 지원이 안정적일 가능성이 높고, 이 저장소는 이미 `@Bean`·`application.yml` 기반 Spring 관용구가 전역에 깔려 있다. 다만 **포트를 없애고 Spring AI의 `ChatClient`를 에이전트가 직접 쓰지는 않는다** — 오케스트레이션은 어떤 프레임워크를 쓰든 직접 짜야 하는 도메인 로직이고, 툴 자율 호출·`VectorStore`·대화 메모리는 이 파이프라인에 대응물이 없다. Spring AI는 `OpenAiLlmClient` 내부의 전송 계층으로만 가둔다.
-
-**에이전트별 모델 차등의 근거.** ~~현재 코드의 단일 `temperature 0.3`은~~
-
-> **[정정]** 아래 온도 차등 계획은 **실행할 수 없다.** 2-6 실호출에서 `gpt-5.6-luna`·`gpt-5-nano` 모두 커스텀 `temperature`를 400으로 거부하는 것이 확인됐다(`"Only the default (1) value is supported"`). Curator 쪽 의도(높은 온도)는 기본값 1이 이미 높아 우연히 충족되지만, **PlaceProfile 쪽(낮은 온도로 충실성 확보)은 그대로 손해**라 9단계에서 닫힌 태그 집합과 스키마 강제로 보완해야 한다. 대신 **`reasoning-effort`가 실질적인 차등 수단**이 됐다 — 안 낮추면 nano는 출력 예산을 추론에 다 쓰고 본문을 0바이트로 돌려준다. 상세는 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 판정 6
-
-원래 근거는 다음과 같았다. 현재 코드의 단일 `temperature 0.3`은 "장소 선정은 다양해야 하고 판정은 일관돼야 한다"는 상충 요구를 하나로 뭉갠 값이다. Curator는 후보 3개가 서로 비슷하면 대체재로서 의미가 없으므로 온도를 올리고, PlaceProfile은 속성 추출이라 창의성이 아니라 충실성이 필요하므로 낮춘다. 모델도 같은 논리로 나눈다 — Planner(컨셉·권역 설계)만 추론 이득이 있고, Curator(지역 상식 회상)·PlaceProfile(속성 추출)은 이득이 적으면서 토큰 비중은 가장 크다. 구체 모델 ID와 단가는 0단계에서 확정한다.
+**세 결정의 근거는 설계 문서가 소유한다** — 포트는 유지하되 어댑터는 OpenAI 하나만 만드는 것, Spring AI를 `OpenAiLlmClient` 내부 전송 계층에만 가두는 것, agent별로 모델과 `reasoning-effort`를 나누는 것. 상세는 [LLM 연동](design/LLM-연동.md)에 있다. 한 가지만 여기 적어둔다: **agent별 온도 차등은 계획했으나 실행할 수 없다** — 두 모델 모두 커스텀 `temperature`를 거부해 기본값 1로 고정된다([STEP-2](steps/STEP-2-llm-port.md) 판정 6).
 
 ## 문서 작성 원칙
 
