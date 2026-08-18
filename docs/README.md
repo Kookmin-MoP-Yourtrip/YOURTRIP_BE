@@ -20,12 +20,17 @@
 
 ## `tasks/` — 작업별 설계와 실측 기록
 
-### Redis 캐싱
+### 인기 코스 조회 성능 개선
+
+한 갈래로 이어지는 작업들이라 **착수 순서대로** 나열한다. 사슬의 시작점은 아래 "커넥션 풀 / presigned URL 병목"의 병목 발견이고, 각 문서 머리말의 "이 작업의 위치" 블록이 같은 사슬을 가리킨다.
 
 | 문서 | 내용 |
 |---|---|
 | [tasks/redis-caching/](tasks/redis-caching/README.md) | **진입점** — 캐싱 전략(설계 원칙·계획)과 개별 작업 기록 5건 |
-| [tasks/popular-tx-separation/](tasks/popular-tx-separation/README.md) | 후속 작업 — 캐시 경로를 트랜잭션 밖으로 분리하고 EC2에서 실측 |
+| [tasks/popular-tx-separation/](tasks/popular-tx-separation/README.md) | 캐시 경로를 트랜잭션 밖으로 분리하고 EC2에서 실측 |
+| [tasks/cache-effect-measurement/](tasks/cache-effect-measurement/README.md) | 캐싱 효과를 A0·A1·A2 세 arm으로 분리 측정(41 run) — 요청당 SQL 8 → 0문장, TPS +172%. 규모 곡선·Redis I/O 병목 규명 포함 |
+| [tasks/popular-n-plus-one/](tasks/popular-n-plus-one/README.md) | 인기 코스 아이템 조회의 N+1 제거 — to-one 연관 LAZY 전환으로 요청당 SQL 8 → 2문장 |
+| [tasks/popular-theme-index/](tasks/popular-theme-index/README.md) | 테마 지정 조회의 선형 증가 제거 — 랭킹 쿼리 분리 + `course_keyword` 복합 인덱스로 50,000건 5.4ms → 0.05ms |
 
 ### 커넥션 풀 / presigned URL 병목
 
