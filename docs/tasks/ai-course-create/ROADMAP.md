@@ -12,7 +12,7 @@
 
 1. **JSON 파싱 실패로 요청이 통째로 실패하는 것을 없앤다.** Gemini 단일 호출의 실측 파싱 실패율은 **16.7%**(5/30) — 사용자가 AI 코스 생성을 여섯 번 시도하면 한 번은 503을 받는다는 뜻이다. **2-6에서 0.0%로 달성됐다.** 다만 **무엇이 이걸 해결했는지는 착수 시점의 추정과 다르다** — 실패 5건이 전부 응답 **절단**이었고 절단은 스키마로 막히지 않으므로, 해결한 것은 구조화 출력이 아니라 **모델 교체**다. 구조화 출력이 실제로 준 것은 출력 바이트 −48%와 스키마 밖 필드 차단이다(2-6).
 
-2. **환각 장소가 사용자 코스에 실리는 비율을 낮춘다.** 현재 실측 환각률은 **25.6%**([AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)) — 코스 하나를 받으면 평균 4곳 중 1곳이 존재하지 않는 장소다. 후보를 3배로 늘리고 카카오 매칭 점수에 하한선을 두어, 검증을 통과하지 못한 장소는 파이프라인에 아예 존재하지 않게 만든다.
+2. **환각 장소가 사용자 코스에 실리는 비율을 낮춘다.** 현재 실측 환각률은 **25.6%**([AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)) — 코스 하나를 받으면 평균 4곳 중 1곳이 존재하지 않는 장소다. 후보를 3배로 늘리고 카카오 매칭에 **이름 일치를 필수 조건**으로 걸어, 검증을 통과하지 못한 장소는 파이프라인에 아예 존재하지 않게 만든다. **처방은 1-2에서 바뀌었다** — 원래 계획한 점수 하한선은 실측에서 역효과였다.
 
 3. **동선·시간 배치를 LLM 추측에서 실좌표 계산으로 옮긴다.** 좌표를 확보한 뒤 완전탐색으로 최적 순열을 고르므로, "시간 겹침 없음"·"day당 식사 1회"·"동선 역주행 없음"이 프롬프트 규칙이 아니라 **알고리즘 불변식**이 된다.
 
@@ -23,7 +23,7 @@
 ## 배경 — 현재 구조의 문제
 
 **① 환각을 걸러내는 게 아니라 세탁하고 있다.**
-[KakaoLocalClient.java](../../../src/main/java/backend/yourtrip/global/kakao/KakaoLocalClient.java)의 `score()`는 이름 일치 +5 / 주소 일치 +3 / 카테고리 +2로 최대 10점을 매기지만 **하한선이 없다.** `max()`로 최고점을 뽑으므로 0점 후보도 그대로 반환된다. LLM이 지어낸 상호명으로 검색하면 카카오가 그 지역의 무관한 POI를 돌려주고, 그게 사용자 코스에 저장된다. BASELINE 측정이 이 경로를 `LAUNDERED`(진짜 환각)로 분류했다.
+[KakaoLocalClient.java](../../../src/main/java/backend/yourtrip/global/kakao/KakaoLocalClient.java)의 `score()`는 이름 일치 +5 / 주소 일치 +3 / 카테고리 +2로 최대 10점을 매기지만 **하한선이 없다.** `max()`로 최고점을 뽑으므로 0점 후보도 그대로 반환된다. LLM이 지어낸 상호명으로 검색하면 카카오가 그 지역의 무관한 POI를 돌려주고, 그게 사용자 코스에 저장된다. BASELINE 측정이 이 경로를 `LAUNDERED`(진짜 환각)로 분류했다. **1-2에서 해소했다** — 다만 처방은 하한선이 아니라 이름 일치 게이트였다(하한선은 실측에서 역효과).
 
 **② LLM이 지리를 모르는 채로 동선을 짠다.**
 [GeminiService.java](../../../src/main/java/backend/yourtrip/global/gemini/service/GeminiService.java)의 95줄 프롬프트 하나가 컨셉 설계 + 장소 선정 + 시간 배치 + 동선 최적화 + 제목 작명을 동시에 요구한다. 좌표 없이 텍스트로만 최적화하니 지그재그 동선이 나오고, 다섯 가지 일을 한 번에 시켜 각각이 다 얕다.
@@ -145,12 +145,12 @@
 - [ ] 5-1. 스레드풀 2개 신설 — `aiAgentExecutor`(LLM)와 `placeGroundingExecutor`(장소 API 공유). **벌크헤드로 나누는 이유**는 장소 API가 느려질 때 그 대기가 LLM 슬롯을 잠식하면 안 되기 때문이다. **여기서 `llm.max-concurrent-calls: 2`를 재실측한다**(2-6은 동시 호출 1이라 조건이 느슨했다)
 - [ ] 5-8. **`CandidateRetrievalStage`** — day × 슬롯타입 병렬로 후보 목록을 만든다. 소스는 `CandidateSource` 둘 — `NaverLocalSeedSource`(전 슬롯, `SEEDED`) + `TourApiSource`(관광 슬롯, `LISTED`). 병합 후 사전식 정렬 + cap 20~25, `listIndex` 부여. **카카오는 후보 소스가 아니다.** 스타일 modifier 확장·병합 규칙·캐시 키는 설계 문서 그대로. **fail-open** — 전부 실패하면 빈 목록으로 Curator 실행(초안 구조로 degrade). 메트릭 `ai.candidate.retrieval`·`ai.candidate.adopted`
 - [ ] 5-9. **후보 공급 실측** — 하네스 지역 세트로 시더의 슬롯당 확보 건수·빈 결과 비율, 관광 슬롯의 시더↔TourAPI 겹침·오매칭 표본(4-5 임계값 근거). 빈 결과가 잦은 지역이 있으면 그때 "0건일 때만 카카오" 폴백을 붙인다
-- [ ] 5-2. `GroundingStage` — **`SUGGESTED`만 카카오 병렬 검증**, 점수 하한 미달 탈락. **검증 성공 시 `place_url`을 함께 승계**해 5-10이 같은 장소를 다시 부르지 않게 한다. `SEEDED`·`LISTED`는 **코드가** 응답을 승계해 호출 없이 통과. 4-5의 키로 전 day dedupe. **여기를 통과 못 한 장소는 파이프라인에 존재하지 않는다**
+- [ ] 5-2. `GroundingStage` — **`SUGGESTED`만 카카오 병렬 검증**, 이름 일치 게이트를 통과 못 하면 탈락(1-2에서 점수 하한선을 대체했다). **검증 성공 시 `place_url`을 함께 승계**해 5-10이 같은 장소를 다시 부르지 않게 한다. `SEEDED`·`LISTED`는 **코드가** 응답을 승계해 호출 없이 통과. 4-5의 키로 전 day dedupe. **여기를 통과 못 한 장소는 파이프라인에 존재하지 않는다**
 - [ ] 5-3. 슬롯별 카테고리 하드 제약 — `category_group_code`를 가점 +2에서 하드 제약으로 승격(MEAL←FD6, CAFE←CE7, ATTRACTION←AT4/CT1). SEEDED에는 4-4 매핑으로 같은 제약. 비용이 사실상 0인데 "점심에 호프집"이 구조적으로 사라진다
 - [ ] ~~5-4. `PlaceSignalStage`~~ → **9단계로 이동** (V1 제외, 조건부). 번호를 당기면 참조가 흔들리므로 이 자리는 비워둔다
-- [ ] 5-10. **`PlaceUrlEnricher`** — 배치 확정 뒤 **URL이 빈 장소(`SEEDED`·`LISTED`)에만** 카카오 1회. **수락 조건 둘**: 점수 하한 통과 **그리고** 좌표 거리 ≤ 300m. 하나라도 미달이면 `null` — **엉뚱한 URL은 URL 없음보다 나쁘다.** fail-open, 전용 ErrorCode 없음. 메트릭 `ai.place.url{result=hit|below_threshold|too_far|failed}`
+- [ ] 5-10. **`PlaceUrlEnricher`** — 배치 확정 뒤 **URL이 빈 장소(`SEEDED`·`LISTED`)에만** 카카오 1회. **수락 조건 둘**: 이름 일치 게이트 통과 **그리고** 좌표 거리 ≤ 300m. 하나라도 미달이면 `null` — **엉뚱한 URL은 URL 없음보다 나쁘다.** fail-open, 전용 ErrorCode 없음. 메트릭 `ai.place.url{result=hit|name_mismatch|too_far|failed}`
 - [ ] 5-5. 파이프라인 하드 데드라인 — `CompletableFuture.allOf(...).get(remainingMs)`. `CallerRunsPolicy`를 유지하되(거부보다 느린 성공이 낫다) 요청 스레드가 I/O를 직접 수행해 순차 실행으로 퇴화하는 것을 데드라인으로 막는다
-- [ ] 5-6. `ai.grounding.match{result=hit|below_threshold|no_result, source=seeded|listed|suggested}` — **환각률의 운영 프록시이자 이 작업의 핵심 지표.** `source` 태그가 "무인지 지역일수록 파라메트릭이 약하다"는 가설을 운영 데이터로 검증한다. 이 저장소 최초의 커스텀 Micrometer 메트릭이라 `MeterRegistry` 주입 패턴을 여기서 세운다
+- [ ] 5-6. `ai.grounding.match{result=hit|name_mismatch|no_result, source=seeded|listed|suggested}` — **환각률의 운영 프록시이자 이 작업의 핵심 지표.** `source` 태그가 "무인지 지역일수록 파라메트릭이 약하다"는 가설을 운영 데이터로 검증한다. 이 저장소 최초의 커스텀 Micrometer 메트릭이라 `MeterRegistry` 주입 패턴을 여기서 세운다
 - [ ] 5-11. `ai.llm.call{agent, provider, outcome}` — 에이전트별 지연·실패율. 2단계에서 만든 `OpenAiLlmClient`에 붙이는 것이라 새 코드가 아니다
 - [ ] 5-7. 스텁 기반 통합 테스트 (0-6의 WireMock 인프라 사용)
 ### 6. `PlannerAgent` / `CuratorAgent`
@@ -283,7 +283,7 @@
 | 지표 | before | 목표 |
 |---|---|---|
 | HikariCP 커넥션 점유(최악) | ~360초 | ~50ms |
-| `ai.grounding.match{below_threshold\|no_result}` | 미계측 | 5단계부터 상시 관측 |
+| `ai.grounding.match{name_mismatch\|no_result}` | 미계측 | 5단계부터 상시 관측 |
 | JSON 파싱 실패율 | ~~28.6%~~ → **16.7%** | 구조화 출력 + 절단 방지 → **2-6에서 0.0% 관측**(luna/프롬프트지시) |
 
 > **[정정]** 28.6%는 호출이 14건만 성공한 초기 배치의 값(4/14)이었다. 전체 30요청 기준은 **16.7%(5/30)** 다. 또 실패 5건 전부가 `Unexpected end-of-input`(응답 절단)이라 **구조화 출력만으로는 near-zero가 되지 않는다** — 2단계에서 출력 토큰 여유와 종료 사유 확인이 함께 필요하다. 근거는 [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 판정 3. 재측정 시 **분모(전체 요청 vs 호출 성공분)를 반드시 명시한다.**
