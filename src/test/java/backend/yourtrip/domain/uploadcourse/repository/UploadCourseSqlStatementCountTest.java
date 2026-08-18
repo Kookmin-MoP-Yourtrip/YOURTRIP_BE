@@ -33,7 +33,7 @@ class UploadCourseSqlStatementCountTest extends UploadCourseJpaSliceSupport {
     @DisplayName("인기 코스 캐시 미스 경로는 SQL 2문장으로 끝난다 — 랭킹 1 + IN 조회 1")
     void popularMissPath_IssuesExactlyTwoStatements() {
         // given & when — UploadCoursePopularReader가 하는 일을 그대로 재현한다
-        List<Long> ids = uploadCourseRepository.findPopularCourseIds(null,
+        List<Long> ids = uploadCourseRepository.findPopularCourseIds(
             PageRequest.of(0, COURSE_COUNT));
         List<CourseListItemCacheItem> items = uploadCourseRepository.findAllByIdInWithKeywords(ids)
             .stream()

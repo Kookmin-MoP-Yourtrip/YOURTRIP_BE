@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import backend.yourtrip.domain.uploadcourse.dto.cache.CourseListItemCacheItem;
@@ -31,22 +33,48 @@ class UploadCoursePopularReaderTest {
     private UploadCoursePopularReader uploadCoursePopularReader;
 
     @Test
-    @DisplayName("readPopularCourseIds는 상위 5건만 요청한다")
-    void readPopularCourseIds_RequestsTopFive() {
+    @DisplayName("테마를 지정하면 테마 전용 쿼리로 상위 5건만 요청한다")
+    void readPopularCourseIds_ThemeGiven_UsesThemeQuery() {
         // given
-        given(uploadCourseRepository.findPopularCourseIds(eq(KeywordType.FOOD), any(Pageable.class)))
-            .willReturn(List.of(1L, 2L, 3L));
+        given(uploadCourseRepository.findPopularCourseIdsByTheme(eq(KeywordType.FOOD),
+            any(Pageable.class))).willReturn(List.of(1L, 2L, 3L));
 
         // when
         List<Long> ids = uploadCoursePopularReader.readPopularCourseIds(KeywordType.FOOD);
 
         // then
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-        org.mockito.Mockito.verify(uploadCourseRepository)
-            .findPopularCourseIds(eq(KeywordType.FOOD), pageableCaptor.capture());
+        verify(uploadCourseRepository)
+            .findPopularCourseIdsByTheme(eq(KeywordType.FOOD), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue().getPageNumber()).isZero();
         assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(5);
         assertThat(ids).containsExactly(1L, 2L, 3L);
+
+        // 두 쿼리가 섞이면 안 된다 — 랭킹 쿼리를 (:theme IS NULL OR EXISTS ...) 하나로 다시
+        // 합치면 PostgreSQL이 EXISTS를 세미조인으로 못 바꿔 규모에 선형으로 눕는다.
+        // 이 분기가 그 분리를 지키는 유일한 런타임 계약이다.
+        verify(uploadCourseRepository, never()).findPopularCourseIds(any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("테마가 없으면 필터 없는 쿼리로 상위 5건만 요청한다")
+    void readPopularCourseIds_ThemeNull_UsesNoFilterQuery() {
+        // given
+        given(uploadCourseRepository.findPopularCourseIds(any(Pageable.class)))
+            .willReturn(List.of(1L, 2L, 3L));
+
+        // when
+        List<Long> ids = uploadCoursePopularReader.readPopularCourseIds(null);
+
+        // then
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(uploadCourseRepository).findPopularCourseIds(pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getPageNumber()).isZero();
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(5);
+        assertThat(ids).containsExactly(1L, 2L, 3L);
+
+        verify(uploadCourseRepository, never())
+            .findPopularCourseIdsByTheme(any(), any(Pageable.class));
     }
 
     @Test

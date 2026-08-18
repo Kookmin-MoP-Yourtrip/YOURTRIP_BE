@@ -37,8 +37,14 @@ public class UploadCoursePopularReader {
      */
     @Transactional(readOnly = true)
     public List<Long> readPopularCourseIds(KeywordType theme) {
-        return uploadCourseRepository.findPopularCourseIds(theme,
-            PageRequest.of(0, POPULAR_COURSE_LIMIT));
+        PageRequest topN = PageRequest.of(0, POPULAR_COURSE_LIMIT);
+
+        // 테마 유무 분기는 여기 한 곳에만 둔다. JPQL에서 (:theme IS NULL OR EXISTS ...)로 합치면
+        // PostgreSQL이 EXISTS를 세미조인으로 못 바꿔 랭킹 쿼리가 규모에 선형으로 눕는다
+        // (UploadCourseRepository.findPopularCourseIds의 주석 참고).
+        return theme == null
+            ? uploadCourseRepository.findPopularCourseIds(topN)
+            : uploadCourseRepository.findPopularCourseIdsByTheme(theme, topN);
     }
 
     /**
