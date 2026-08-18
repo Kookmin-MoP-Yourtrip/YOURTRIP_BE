@@ -97,7 +97,7 @@
 - [x] 0-3. **Spring AI 구조화 출력 검증 — 전제 성립.** 스키마는 `messages[].content`에 섞이지 않고 전부 `response_format.json_schema`에 `strict: true`로 전송된다(WireMock으로 요청 본문 확인). 공식 SDK 폴백 불필요. 실 API 검증(0-3b)도 통과 — **`gpt-5.6-luna`·`gpt-5-nano` 모두 strict json_schema 지원**, 그리고 **최상위 배열 스키마는 400으로 거부**되는 것을 확인했다(6단계 Curator 스키마 설계의 제약)
 - [x] 0-4. 모델 배치 확정 — **Planner·Curator = `gpt-5.6-luna`, PlaceProfile = `gpt-5-nano`** (약 $0.0030/요청). 부수적으로 비용 분석의 "비용은 전부 4층에서 나온다"는 전제가 금액 기준으로는 틀렸다는 것이 드러나 재계산했다
 - [x] 0-5. 쿼터·과금 확인 — 네이버 검색 **0원 / 일 25,000건**(요청당 35회 → **약 714요청**), 카카오 100,000/일(요청당 45회 → 약 2,222요청). **네이버가 먼저 한계에 닿지만 fail-open이라 서비스가 죽지는 않는다.** 이관 후에도 무료라 설계 문서의 비용 분석의 "3층은 비용 증가가 0" 전제는 유효하다. OpenAI RPM/TPM은 키 발급 후 확인
-  > **[갱신]** 위 계산은 PlaceSignal(블로그 35회) 기준이다. PlaceSignal이 V1에서 빠지고 네이버 용처가 지역검색 ~18~30회(전 슬롯 시더)로 바뀌면서 **상한이 약 830~1,400요청으로 넓어졌다.** 카카오도 45회 → ~25~33회. 0-2의 블로그 API 키는 그대로 유효하며(같은 API HUB 키로 지역검색도 호출) 9단계에서 쓴다. **TourAPI**는 개발계정 일 1,000건이라 요청당 ≤9회(격자 캐시)로 초기엔 버티지만 운영 전 증량 승인이 필요하다(4-7)
+  > **[갱신]** 위 계산은 PlaceSignal(블로그 35회) 기준이다. PlaceSignal이 V1에서 빠지고 네이버 용처가 지역검색 ~18~30회(전 슬롯 시더)로 바뀌면서 **상한이 약 830~1,400요청으로 넓어졌다.** 카카오도 45회 → ~20~33회. 0-2의 블로그 API 키는 그대로 유효하며(같은 API HUB 키로 지역검색도 호출) 9단계에서 쓴다. **TourAPI**는 개발계정 일 1,000건이라 요청당 ≤9회(격자 캐시)로 초기엔 버티지만 운영 전 증량 승인이 필요하다(4-7)
 - [x] 0-6. **테스트 인프라 신설** — `src/test/resources` + `application-test.yml`, `wiremock-standalone` 추가. 셰이딩판을 고른 이유는 이 레포의 테스트 클래스패스에 Jackson·Guava가 이미 여러 버전으로 경합 중이기 때문이다(추가 후 해석 결과 변화 없음을 확인)
 - [x] 0-7. `build.gradle`에 Java 21 toolchain 고정 — 바이트코드 major version 65 확인
 
@@ -125,10 +125,10 @@
 
 - [x] 2-1. `LlmClient` 포트 + `LlmCall` record 정의. `responseJsonSchema`는 벤더 타입이 아니라 **JSON 문자열**로 받는다 — 이게 벤더 중립의 핵심이다. ~~스키마는 `resources/schemas/*.json`~~ → **프로덕션 스키마 디렉터리는 6단계에 만든다**(실제 에이전트 스키마가 그때 생긴다). 2-6 측정용 스키마만 `src/test/resources/schemas/`에 뒀다. 부수적으로 `responseJsonSchema`를 **nullable로 확장**했다 — 2-6이 "구조화 출력을 끈" 측정점을 필요로 하고, 스키마 강제를 포트의 요구사항으로 못박으면 오히려 중립성이 좁아진다
 - [x] 2-2. `OpenAiLlmClient` 어댑터 구현 — 전송 계층은 Spring AI(0-3 판정대로 공식 SDK 폴백 불필요). **auto-config를 쓰지 않고 어댑터가 `OpenAiChatModel`을 직접 조립한다** — 켜면 API 키가 기동 필수가 되어 이 단계가 동작 변화를 만들고, `baseUrl`을 못 바꿔 WireMock 검증이 불가능해진다
-- [x] 2-3. `AiLlmProperties` 등 `@ConfigurationProperties` 도입 — agent별 model/temperature, `timeout-ms`, `max-concurrent-calls`, retry 설정. **이 저장소 최초의 `@ConfigurationProperties`다**(현재 전 설정이 `@Value` 필드 주입). 설계 문서의 LLM 포트 설계에 없던 **`max-output-tokens`를 agent별로 추가**했다 — 절단이 파싱 실패의 실제 원인이므로 출력 여유가 설정 대상이어야 한다
+- [x] 2-3. `AiLlmProperties` 등 `@ConfigurationProperties` 도입 — agent별 model/temperature, `timeout-ms`, `max-concurrent-calls`, retry 설정. **이 저장소 최초의 `@ConfigurationProperties`다**(현재 전 설정이 `@Value` 필드 주입). 설계 초안에 없던 **`max-output-tokens`를 agent별로 추가**했다(지금은 설계 문서에도 반영돼 있다) — 절단이 파싱 실패의 실제 원인이므로 출력 여유가 설정 대상이어야 한다
 - [x] 2-4. `LlmResponseParser` + 재시도 2계층 — 전송 계층(429/5xx 지수 백오프 + 지터)과 의미 계층(200 OK인데 깨진 JSON → 1회만 재시도). 2회 이상은 지연 예산만 태운다
 
-  > **[정정]** 설계 문서의 LLM 포트 설계 표는 의미 재시도를 `LlmResponseParser`의 책임으로 적었지만 **재호출은 파서가 할 수 없다.** 파서는 순수 변환만 맡고, 전송 재시도는 `LlmRetryExecutor`로 떼어냈으며(백오프 계산을 순수 함수로 테스트하기 위해), 의미 재시도는 어댑터가 오케스트레이션한다.
+  > **[정정]** 설계 초안의 재시도 표는 의미 재시도를 `LlmResponseParser`의 책임으로 적었지만 **재호출은 파서가 할 수 없다.** 파서는 순수 변환만 맡고, 전송 재시도는 `LlmRetryExecutor`로 떼어냈으며(백오프 계산을 순수 함수로 테스트하기 위해), 의미 재시도는 어댑터가 오케스트레이션한다.
   >
   > **재시도 계층이 셋으로 흩어져 있던 것을 발견해 제거했다** — 설정한 3회가 실제 HTTP 요청 6회로 관측됐다. ① Spring AI `OpenAiChatModel`의 자체 `RetryTemplate` ② **선언조차 되지 않은 전이 의존성** Apache HttpClient 5가 `detect()`에 선택돼 429를 자체적으로 1회 더 시도 ③ 우리 executor. 또 **Spring AI는 429를 `NonTransientAiException`(재시도 무의미)으로 분류**하는데 실제로는 정반대라, 상태 코드를 보존하는 `responseErrorHandler`를 주입해 분류를 직접 소유한다. 근거는 [STEP-2-llm-port.md](steps/STEP-2-llm-port.md) 판정 1·2
 - [x] 2-5. 포트 기반 단위 테스트 — 에이전트 코드가 벤더 SDK 타입을 import하지 않는다는 것을 테스트로 확인. 에이전트는 6단계에 생기므로 **소스 import 스캔 + 포트 목킹 데모** 두 가지로 갈음했다. 어댑터가 실제로 벤더 SDK를 쓴다는 것도 함께 단언해 검사기가 헛돌지 않음을 보인다
@@ -159,7 +159,7 @@
 - [x] 3-2. `GeoUtils` — haversine 거리(반경 6371.0088km). 유클리드 근사와의 차이는 한국 도시 규모에서 0.1% 미만이지만, 20줄이고 CPU 비용이 무의미하므로 근사 오차라는 변수를 아예 없앤다. **내부 항을 `[0,1]`로 클램프해야 했다** — 대척점에서 `NaN`이 나오면 예외 없이 최적 순열 선택만 망가진다
 - [x] 3-3. `RouteOptimizer` 완전탐색 — `n ≤ 7`이면 `7! = 5,040` 순열이 1ms 미만(**실측 589µs**). 비용 함수는 순수 TSP가 아니라 **거리 + 식사 시간창 위반 + 하루 초과 페널티**
 
-  > **설계 문서가 비워둔 계수 세 개를 정해야 했고, 그 전에 단위부터 맞춰야 했다.** `km × 계수`와 `분 × 계수`는 같은 저울에 올릴 수 없다. `DISTANCE_WEIGHT`를 "km당 분"(4.0 = 60÷15km/h)으로 정의해 세 항을 전부 분으로 환산했다. 식사 2.0 = "30분 늦은 점심 ≈ 15km 우회", 초과 3.0.
+  > **설계 초안이 비워둔 계수 세 개를 정해야 했고, 그 전에 단위부터 맞춰야 했다.** `km × 계수`와 `분 × 계수`는 같은 저울에 올릴 수 없다. `DISTANCE_WEIGHT`를 "km당 분"(4.0 = 60÷15km/h)으로 정의해 세 항을 전부 분으로 환산했다. 식사 2.0 = "30분 늦은 점심 ≈ 15km 우회", 초과 3.0.
   >
   > **식사 윈도우 배정의 첫 구현이 벌점의 목적과 정반대로 동작했다** — 잘 벌어진 아침·점심·저녁(480)이 몰아넣은 배열(285)보다 비쌌다. 두 윈도우를 총합 최소 조합으로 배정하도록 고쳤다. 상세는 [STEP-3](steps/STEP-3-route-optimizer.md) 판정 1·3
 - [x] 3-4. 시간 모델 — `t[i] = t[i-1] + 체류 + 이동`, travelMode별 유효속도·고정 오버헤드. `startTime` 5분 단위 올림
@@ -179,7 +179,7 @@
   | 8 | 40,320 | 4,995µs | **14.99ms** |
   | 9 | 362,880 | 74,055µs | **222.16ms** |
 
-  **임계값 7이 데이터로 뒷받침된다** — 설계 문서의 부분 실패 전략의 예산은 `<10ms`인데 `n=8`은 3일 기준 15ms로 이미 넘고 `n=9`는 20배 초과다. **NN + 2-opt 폴백은 구현하지 않았다**(Planner가 슬롯을 3~6개로 clamp해 현재 도달 경로가 없다 — 도달하지 않는 코드는 검증되지 않은 채 썩는다). 임계값 가드만 두고 초과 시 입력 순서를 유지한다
+  **임계값 7이 데이터로 뒷받침된다** — 설계 문서의 지연 예산이 잡은 `<10ms`인데 `n=8`은 3일 기준 15ms로 이미 넘고 `n=9`는 20배 초과다. **NN + 2-opt 폴백은 구현하지 않았다**(Planner가 슬롯을 3~6개로 clamp해 현재 도달 경로가 없다 — 도달하지 않는 코드는 검증되지 않은 채 썩는다). 임계값 가드만 두고 초과 시 입력 순서를 유지한다
 
 ### 4. `NaverLocalClient` + `TourApiClient` + 후보 공급 순수 함수
 
@@ -215,7 +215,7 @@
 - [ ] ~~5-4. `PlaceSignalStage`~~ → **9단계로 이동** (V1 제외, 조건부). 이 자리는 비워둔다 — 번호를 당기면 5-5 이하를 참조하는 문서가 흔들린다
 - [ ] 5-10. **`PlaceUrlEnricher` (설계 문서의 후보 공급)** — RouteOptimizer가 배치를 확정한 뒤, **URL이 빈 장소(`SEEDED`·`LISTED`)에만** `"{상호명} {지역}"`으로 카카오 키워드 검색 1회. `SUGGESTED`는 5-2에서 승계한 `place_url`을 그대로 쓴다. **수락 조건 두 개**: 점수 하한 통과 **그리고** 카카오 좌표↔후보 좌표(네이버/TourAPI) 거리 ≤ 300m(4-2 실측으로 조정). 하나라도 미달이면 `null` — **엉뚱한 장소 URL은 URL 없음보다 나쁘다**(배경 "환각 세탁"을 URL에서 반복하지 않는다). FE가 `placeUrl`로 카카오 플레이스에 진입하므로 필요하지만 코스 성립 조건은 아니다 → fail-open, 전용 ErrorCode 없음. URL이 빈 배치 장소 ~10~15개에만 호출(후보 45개가 아니라). 메트릭 `ai.place.url{result=hit|below_threshold|too_far|failed}`
 - [ ] 5-5. 파이프라인 하드 데드라인 — `CompletableFuture.allOf(...).get(remainingMs, MILLISECONDS)`. `CallerRunsPolicy`를 유지하되(거부보다 느린 성공이 낫다) 요청 스레드가 장소 API I/O를 직접 수행해 순차 실행으로 퇴화하는 것을 데드라인으로 막는다
-- [ ] 5-6. `ai.grounding.match{result=hit|below_threshold|no_result}` 메트릭 — **환각률의 운영 프록시이자 이 작업의 핵심 지표.** 이 저장소는 커스텀 Micrometer 메트릭이 아직 0건이므로 `MeterRegistry` 주입 패턴을 여기서 처음 세운다
+- [ ] 5-6. `ai.grounding.match{result=hit|below_threshold|no_result, source=seeded|listed|suggested}` 메트릭 — **환각률의 운영 프록시이자 이 작업의 핵심 지표.** 이 저장소는 커스텀 Micrometer 메트릭이 아직 0건이므로 `MeterRegistry` 주입 패턴을 여기서 처음 세운다
 - [ ] 5-7. 스텁 기반 통합 테스트 (0-6의 WireMock 인프라 사용)
 
 ### 6. `PlannerAgent` / `CuratorAgent`
@@ -277,31 +277,31 @@
 **3층 — 인기도 (옛 4-1·4-2·4-3·4-5·5-4에서 이동)**
 - [ ] 9-1. `NaverBlogClient` — `display=5`로 조회하면 응답 한 번에 `total`(인기도) + `postdate`(최신성) + 스니펫 5건(4층 재료)이 전부 들어온다. **장소당 호출은 1회다.** 착수 전 실호출로 확정: API HUB 경로·응답 스키마, **지역검색과 쿼터 합산 여부**(비용 분석의 상한 계산 — 켜면 코스당 ~35회가 더해져 상한이 초안 수준으로 내려온다)
 - [ ] 9-2. `PopularityScorer` (순수 함수) — `popularity = log10(max(total, 1))`. **로그 스케일이 필수인 이유**: `total`은 1건에서 수백만 건까지 자릿수로 벌어져, 선형으로 쓰면 유명 관광지 하나가 다른 모든 신호를 압도한다. 폐업 의심 = 최신 `postdate`가 12개월 이내인지
-- [ ] 9-3. `PlaceSignalStage` — 그라운딩 생존 후보에만 네이버 조회. **`SEEDED`는 제외**(시드 순위가 이미 인기도라 중복) → `SUGGESTED`만. **역할은 재정렬이 아니라 감점** — Curator 선호 순서를 1차로 두고, 언급 0건·최신 글 없음인 후보를 뒤로 미는 것만 한다. **fail-open**: 네이버 장애 시 층 전체 스킵. 메트릭 `ai.popularity.lookup{result}`
+- [ ] 9-3. `PlaceSignalStage` — 그라운딩 생존 후보에만 네이버 조회. **`SEEDED`·`LISTED`는 제외**(시드 순위가 이미 인기도이고, TourAPI 관광지의 인기 축도 시더가 맡는다) → `SUGGESTED`만. **역할은 재정렬이 아니라 감점** — Curator 선호 순서를 1차로 두고, 언급 0건·최신 글 없음인 후보를 뒤로 미는 것만 한다. **fail-open**: 네이버 장애 시 층 전체 스킵. 메트릭 `ai.popularity.lookup{result}`
 - [ ] 9-4. 3층 on/off 비교 — 삭제율로
 
 **4층 — 속성 추출 (옛 9-1~9-6)**
-- [ ] 9-5. `PlaceProfileAgent` — 블로그 `title`·`description`에서 **평가가 아니라 속성**을 추출. 요약 프롬프트가 "이 장소가 좋은가"를 물으면 협찬 문구를 그대로 받아 적는다. **광고비가 "루프탑이 있다"를 바꾸지는 못한다.** 모델은 `gpt-5-nano`, temperature 0.2(설계 문서의 LLM 포트 설계 주석)
+- [ ] 9-5. `PlaceProfileAgent` — 블로그 `title`·`description`에서 **평가가 아니라 속성**을 추출. 요약 프롬프트가 "이 장소가 좋은가"를 물으면 협찬 문구를 그대로 받아 적는다. **광고비가 "루프탑이 있다"를 바꾸지는 못한다.** 모델은 `gpt-5-nano`. **temperature는 지정할 수 없다**(모델이 커스텀 온도를 거부한다 — 2-6) — 속성 추출에 필요한 충실성은 닫힌 태그 집합과 스키마 강제로 대신 확보한다(9-6)
 - [ ] 9-6. 닫힌 태그 집합 강제 + "원문에 없으면 비워라" 스키마 강제. **어휘는 4-3의 modifier 사전과 같은 traits 집합** — 스타일 쿼리가 "주장"으로 끌어온 후보를 같은 어휘로 "사실" 검증하는 대칭이 여기서 완성된다
 - [ ] 9-7. `rankScore` — `conceptScore × CONCEPT_WEIGHT`를 3층 감점 위에 얹는다. **모든 보조 신호는 감점이지 하드 드롭이 아니다**
 - [ ] 9-8. **조건부 확장** — `mood` 키워드가 있으면 ATTRACTION 슬롯도 대상에 포함, 없으면 MEAL/CAFE만
 - [ ] 9-9. 데드라인 임박 시 스킵 (traits 없이 진행) + LLM 실패 시 traits 비우고 진행
 - [ ] 9-10. `ai.profile.traits{count}` 메트릭 + 4층 on/off 비교
 
-### 10. 카카오·네이버 Redis 캐싱
+### 10. 카카오·네이버·TourAPI Redis 캐싱
 
 동작 변화 있음(지연 감소).
 
 > 상세 실행 계획은 [STEP-10-caching.md](steps/STEP-10-caching.md) 참고. (미작성)
 
-- [ ] 10-1. `kakao:place:{sha1}` / `naver:blog:{sha1}` TTL 7일. 기존 [RedisConfig.java](../../../src/main/java/backend/yourtrip/global/config/RedisConfig.java)와 [RedisCacheErrorHandler.java](../../../src/main/java/backend/yourtrip/global/config/RedisCacheErrorHandler.java)(Redis 장애 시 fail-open)를 그대로 재사용
-- [ ] 10-2. `ai.place.cache{source, result}` 메트릭 → 캐시 히트율로 쿼터 여유 실측
+- [ ] 10-1. V1이 실제로 쓰는 캐시 넷을 건다 — `kakao:place:{sha1}`(검증·URL 보강) TTL 7일 · `kakao:geo:{anchor}`(지오코딩) **TTL 30일** · `naver:local:{area}:{slot}[:{modifier}]` TTL 7일 · `tour:{~1km 격자}:{contentTypeId}` TTL 7일. **뒤의 둘이 히트율을 지배한다** — 장소 단위가 아니라 `(area, slot)`·격자 단위 키라 인기 권역은 사용자 간에 공유된다. 기존 [RedisConfig.java](../../../src/main/java/backend/yourtrip/global/config/RedisConfig.java)와 [RedisCacheErrorHandler.java](../../../src/main/java/backend/yourtrip/global/config/RedisCacheErrorHandler.java)(Redis 장애 시 fail-open)를 그대로 재사용. `naver:blog:{sha1}`은 9단계를 켤 때 함께 붙인다
+- [ ] 10-2. `ai.place.cache{source=kakao|naver|tour_api, result}` 메트릭 → 캐시 히트율로 쿼터 여유 실측
 - [ ] 10-3. **최종 코스는 캐싱하지 않는다** — 같은 조건으로 재생성했는데 똑같은 코스가 나오면 사용자가 버그로 인식한다. 캐싱 대상은 장소 조회 결과(정적)와 Planner 출력(도시+일수+키워드 → 권역 배분은 결정적)뿐이다
 
 ### 11. 실측 결과 기록
 
 - [ ] 11-1. 3점 비교 결과를 [멀티 에이전트 파이프라인 설계](멀티-에이전트-파이프라인.md)와 [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)에 추가
-- [ ] 11-2. 지연 예산 실측치와 설계 추정치(p50 12~16초 / p95 22~30초) 대조 → **202 Accepted 전환 여부를 데이터로 판단**
+- [ ] 11-2. 지연 예산 실측치와 설계 추정치(p50 9~12초 — 세마포어 2면 12~18초 / p95 17~24초) 대조 → **202 Accepted 전환 여부를 데이터로 판단**
 - [ ] 11-3. 커넥션 점유 시간 before/after, 실제 토큰 비용, `mood` 키워드 포함 비율 기록
 
 ## 성공 기준
