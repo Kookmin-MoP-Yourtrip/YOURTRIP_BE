@@ -121,6 +121,14 @@ course_keyword_pkey | UNIQUE INDEX ... (course_keyword_id)
 
 `(keyword_type, upload_course_id)` 인덱스를 넣으면 Seq Scan이 Index Scan으로 바뀔 가능성이 크다. **캐싱 없이도 테마 경로를 평탄화할 수 있다**는 뜻이라, 그 자체로 전후 실측이 가능한 독립 항목이다.
 
+> **정정 (2026-08-18, [popular-theme-index](../popular-theme-index/README.md))**: 착수해 실측한 결과 **이 예측은 절반만 맞았다.** 인덱스는 실제로 Seq Scan을 Index Only Scan으로 바꿔 버퍼를 345 → 35로 줄이지만, **선형 증가는 사라지지 않는다**(50,000건 1.600ms, 3,000건 대비 12.6배). 해시 빌드가 여전히 `keyword_type`이 일치하는 N/7행 전부를 읽기 때문이다 — 읽는 페이지 수만 줄 뿐 읽는 행 수는 그대로다.
+>
+> 진짜 원인은 인덱스 부재가 아니라 **`(:theme IS NULL OR EXISTS ...)`의 `OR` 구조**였다. PostgreSQL의 서브쿼리 pull-up이 `AND` 트리만 재귀하고 `OR` 아래는 열어보지 않아, `EXISTS`가 세미조인으로 승격될 기회 자체를 못 얻는다. 쿼리를 ALL용·테마용으로 **쪼개고** 인덱스를 함께 넣어야 `Nested Loop Semi Join`이 성립해 평탄해진다(50,000건 **0.053ms / 버퍼 65**, 3,000건과 버퍼 동일).
+>
+> 컬럼 순서도 `(upload_course_id, keyword_type)`으로 뒤집었다 — probe 조건이 둘 다 등치라 이 쿼리에는 순서가 무관하지만, 이 순서라야 누락된 FK 인덱스 역할까지 겸한다. `(keyword_type, upload_course_id)`는 추가해도 이득이 없어 넣지 않았다.
+>
+> **주의**: 쿼리 분리만 배포하고 인덱스가 없으면 기준선보다 **20배 나빠진다**(50,000건 108ms). 두 변경은 한 쌍이다.
+
 ### 2. 일반 목록 조회의 레거시 쿼리
 
 `findAllByKeywordsOrderByViewCountDesc`는 **지금도 [UploadCourseServiceImpl.java:246](../../../src/main/java/backend/yourtrip/domain/uploadcourse/service/UploadCourseServiceImpl.java:246)에서 쓰인다.** 페이징이 없어 전건을 반환하고 상관 서브쿼리가 행마다 돌며, 캐싱도 인덱스 최적화도 적용되지 않았다. 규모가 커지면 `/popular`보다 이쪽이 먼저 무너진다.
