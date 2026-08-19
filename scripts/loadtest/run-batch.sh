@@ -52,7 +52,9 @@ switch_arm() { # T32 | T200+snc
   local arm="$1" max snc=true
   max="${arm#T}"; max="${max%%+*}"
   [[ "$arm" == *+snc ]] && snc=false
-  [ "$max" = "200" ] && max=default
+  # 예전에는 T200을 default(키 제거)로 넘겼다 — Tomcat 기본값이 200이라 같은 뜻이었기 때문이다.
+  # #88이 application-prod.yml에 server.tomcat.threads.max: 32를 넣으면서 그 전제가 깨졌다.
+  # 이제 키를 지우면 200이 아니라 32가 되므로, 모든 arm에서 값을 명시적으로 넘긴다.
   log "switch arm=$arm (max=$max snc=$snc)"
   app "sudo bash $REMOTE_DIR/switch-thread-arm.sh $max $snc" | tee -a "$OUT/batch.log"
   if [ "$FLUSH_REDIS" = "1" ]; then
