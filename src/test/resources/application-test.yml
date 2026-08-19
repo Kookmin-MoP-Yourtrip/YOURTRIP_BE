@@ -59,6 +59,15 @@ kakao:
   local:
     base-url: http://localhost:8089
 
+# 카카오 블록과 대칭. 실제 WireMock 포트는 테스트마다 달라지므로 클라이언트를 손으로 조립하는
+# 테스트가 baseUrl 을 직접 넘긴다(NaverConfig.buildNaverWebClient) — 이 값은 컨텍스트를 띄우는
+# 테스트가 프로퍼티 누락으로 기동 실패하지 않게 하는 자리표시자다.
+naver:
+  client-id: test-naver-client-id
+  client-secret: test-naver-client-secret
+  local:
+    base-url: http://localhost:8090
+
 logging:
   level:
     # prod와 마찬가지로 root는 INFO를 유지한다. 컨텍스트 로딩 실패나 빈 등록 오류는

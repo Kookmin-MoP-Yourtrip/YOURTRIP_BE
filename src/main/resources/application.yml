@@ -113,6 +113,17 @@ kakao:
   local:
     base-url: "https://dapi.kakao.com"
 
+# 네이버 지역검색 — AI 코스 생성의 후보 공급(인기 축). NAVER API HUB 경유.
+# 키는 비어도 기동에 성공해야 한다: 후보 공급은 fail-open이라 키가 없으면 시드 후보만 빠지고
+# 코스 생성은 계속된다(llm.openai.api-key 가 세운 관례와 같다).
+naver:
+  client-id: ${NAVER_CLIENT_ID:}
+  client-secret: ${NAVER_CLIENT_SECRET:}
+  local:
+    # 검색 API가 developers.naver.com 에서 NAVER API HUB 로 이관되며 호스트와 경로가 둘 다 바뀌었다.
+    # 경로는 클라이언트가 갖는다(/search/v1/local) — 레거시 /v1/search/local.json 은 404다(ROADMAP 4-2).
+    base-url: "https://naverapihub.apigw.ntruss.com"
+
 server:
   forward-headers-strategy: framework
   port: 8080
