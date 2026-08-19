@@ -83,9 +83,20 @@ Tomcat 기본값 200은 CPU와 무관한 범용 상수다(블로킹 I/O·JSP 시
 - [x] **32**로 결정 → `application-prod.yml` 반영, 토글 제거, 최종 JAR로 `config_max = 32`·VU 200 재현 확인
 - [x] 인프라 정리 — `.env` `DB_DDL_AUTO=create` 복원, EC2 2대·RDS 정지
 
+### 후속 — 26%의 분해 ([#97](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/97))
+
+- [x] 하네스 확장 — `ctxt`·JVM user/sys 시간·전환 횟수(pcount)·자발/비자발 수집, 샘플러 fork 편향 제거(740ms → 37ms) — [measurement-harness.md](measurement-harness.md)
+- [x] Phase 0 로컬 게이트 — 지표 노출 회귀 테스트로 자동화, EC2 켜기 전 버그 2건 검출
+- [x] 본 측정 4 arm(T200·T64·T32·T8) × VU 2레벨 × 2회 — [cpu-cost-decomposition.md](cpu-cost-decomposition.md)
+- [x] 전환 1회 비용 캘리브레이션(N × 워킹셋 스윕, ExpCS 2007 방식)
+- [x] `perf`의 하드웨어 이벤트가 t3에서 `<not supported>`임을 실측 확인
+- [ ] **GC 몫 미해결** — T200에서 `gc` 그룹 CPU가 10배 흔들려 귀속 실패
+
 ## 참고 문서
 
 - [ec2-measurement.md](ec2-measurement.md) — 실측 결과·판정
+- [cpu-cost-decomposition.md](cpu-cost-decomposition.md) — 요청당 CPU 26% 감소를 전환 횟수와 캐시 지역성으로 분해(#97). 측정 전 예산 계산·사전 등록 예측·실측·한계
+- [measurement-harness.md](measurement-harness.md) — 그 결론을 낸 계측의 설계·구현·검증(#97). 하네스 변경, perf 실측, 캘리브레이션 벤치마크, Phase 0 게이트
 - [../cache-effect-measurement/redis-io-bottleneck.md](../cache-effect-measurement/redis-io-bottleneck.md) — 이 작업의 근거가 된 병목 규명
 - [../../guide/ec2-rds-loadtest.md](../../guide/ec2-rds-loadtest.md) — 분리 환경 실행 절차·하네스 사용법
 
