@@ -90,6 +90,25 @@ tasks.named('test') {
     }
 }
 
+// tasks/tomcat-thread-sizing(#97): 컨텍스트 스위칭 1회 비용을 측정 대상과 같은 EC2에서 재기
+// 위한 독립 실행 jar. App EC2에는 headless JRE만 깔려 있어(javac 없음) 거기서 컴파일할 수 없고,
+// 스레드 수마다 JVM을 새로 띄워야 해서(JIT 프로파일 오염 방지) JUnit 태스크로는 돌릴 수 없다.
+// 그래서 benchmarkTest와 달리 클래스 하나만 담은 jar를 로컬에서 만들어 scp한다.
+// 의존성이 전혀 없는 순수 java.base 코드라 fat jar가 필요 없다.
+tasks.register('contextSwitchBenchmarkJar', Jar) {
+    description = '컨텍스트 스위칭 비용 벤치마크를 독립 실행 jar로 묶는다 (tasks/tomcat-thread-sizing)'
+    group = 'verification'
+    dependsOn 'testClasses'
+    archiveFileName = 'context-switch-benchmark.jar'
+    destinationDirectory = layout.buildDirectory.dir('benchmark')
+    from(sourceSets.test.output) {
+        include 'backend/yourtrip/global/benchmark/ContextSwitchCostBenchmark*.class'
+    }
+    manifest {
+        attributes 'Main-Class': 'backend.yourtrip.global.benchmark.ContextSwitchCostBenchmark'
+    }
+}
+
 tasks.register('benchmarkTest', Test) {
     description = 'presign/CloudFront 서명 1회 비용 마이크로벤치마크만 실행한다 (test/presigned-url-bottleneck)'
     group = 'verification'
