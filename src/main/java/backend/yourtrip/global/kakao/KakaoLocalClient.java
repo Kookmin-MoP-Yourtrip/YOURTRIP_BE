@@ -1,5 +1,6 @@
 package backend.yourtrip.global.kakao;
 
+import backend.yourtrip.global.ai.candidate.PlaceNameNormalizer;
 import backend.yourtrip.global.common.ApiFailureCause;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
@@ -7,10 +8,8 @@ import backend.yourtrip.global.kakao.dto.KakaoSearchResponse;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Function;
-import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -177,20 +176,6 @@ public class KakaoLocalClient {
     }
 
     /**
-     * 이름 비교에서 무시할 문자들. 공백·중점·문장부호가 실측 거짓 음성의 원인이었다
-     * ("동궁과 월지" vs "동궁과월지", "허균·허난설헌 기념공원" vs "허균허난설헌기념공원").
-     */
-    private static final Pattern NAME_NOISE = Pattern.compile("[\\s·・.,\\-_()\\[\\]/&|]+");
-
-    private static String normalize(String value) {
-        if (value == null) {
-            return "";
-        }
-        // Locale.ROOT — 기본 로케일에 따라 결과가 달라지지 않게 한다(터키어의 I 처리 등).
-        return NAME_NOISE.matcher(value).replaceAll("").toLowerCase(Locale.ROOT);
-    }
-
-    /**
      * AI가 준 장소명과 카카오 후보의 상호명이 같은 곳을 가리키는지 판정한다.
      *
      * <p>이 게이트가 필요한 이유는 {@code score()}의 가점 구조 때문이다. 검색 키워드가
@@ -201,13 +186,9 @@ public class KakaoLocalClient {
      * 근거: docs/tasks/ai-course-create/BASELINE-ARTIFACT-ANALYSIS.md 판정 1·2
      */
     private boolean nameMatches(Document doc, String placeName) {
-        String aiName = normalize(placeName);
-        String kakaoName = normalize(doc.place_name());
-
-        if (aiName.isEmpty() || kakaoName.isEmpty()) {
-            return false; //비교할 이름이 없으면 검증되지 않은 것으로 본다
-        }
-        return kakaoName.contains(aiName) || aiName.contains(kakaoName);
+        // 정규화·포함 판정은 PlaceNameNormalizer 가 갖는다 — 4-5의 후보 dedupe 가 같은 판단을
+        // 해야 하는데, 두 벌이면 한쪽만 고쳐져 "검증은 같은 장소, dedupe 는 다른 장소"가 된다.
+        return PlaceNameNormalizer.similar(doc.place_name(), placeName);
     }
 
     private int score(Document doc, String placeName, String placeLocation) {

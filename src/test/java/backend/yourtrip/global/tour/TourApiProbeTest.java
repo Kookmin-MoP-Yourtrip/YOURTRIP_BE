@@ -3,6 +3,8 @@ package backend.yourtrip.global.tour;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import backend.yourtrip.global.ai.candidate.CandidateMatcher;
+import backend.yourtrip.global.ai.candidate.PlaceNameNormalizer;
 import backend.yourtrip.global.tour.config.TourApiConfig;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -358,6 +360,57 @@ class TourApiProbeTest {
             + "  (Failed 라면 items:\"\" 흡수가 동작하지 않는 것이다)");
 
         assertThat(result).isNotInstanceOf(TourApiResult.Failed.class);
+    }
+
+    // ── 8. 4-5 임계값 근거 ────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("좌표만으로 dedupe 하면 안 되는 것을 표본으로 보인다 — 4-5 임계값의 근거다")
+    void 근접_쌍의_이름_일치율을_잰다() {
+        int totalPairs = 0;
+        int closePairs = 0;
+        int closeAndSimilarName = 0;
+        List<String> examples = new ArrayList<>();
+
+        for (Region region : REGIONS.subList(0, 3)) {
+            List<JsonNode> items = items(locationBased(region, 12, "E", 50));
+            for (int i = 0; i < items.size(); i++) {
+                for (int j = i + 1; j < items.size(); j++) {
+                    JsonNode a = items.get(i);
+                    JsonNode b = items.get(j);
+                    totalPairs++;
+                    double km = CandidateMatcher.distanceKm(
+                        a.path("mapy").asDouble(), a.path("mapx").asDouble(),
+                        b.path("mapy").asDouble(), b.path("mapx").asDouble());
+                    if (km > CandidateMatcher.PROXIMITY_THRESHOLD_KM) {
+                        continue;
+                    }
+                    closePairs++;
+                    String nameA = a.path("title").asText();
+                    String nameB = b.path("title").asText();
+                    if (PlaceNameNormalizer.similar(nameA, nameB)) {
+                        closeAndSimilarName++;
+                    } else if (examples.size() < 10) {
+                        examples.add("%4.0fm  %s  <->  %s".formatted(km * 1000, nameA, nameB));
+                    }
+                }
+            }
+        }
+
+        System.out.println("\n=== [4-7j] 근접 쌍의 이름 일치율 (4-5 임계값 근거) ===");
+        System.out.printf("  전체 쌍 %d / 임계값(%.0fm) 이내 %d / 그중 이름까지 유사 %d%n",
+            totalPairs, CandidateMatcher.PROXIMITY_THRESHOLD_KM * 1000,
+            closePairs, closeAndSimilarName);
+        System.out.printf("  => 가까운데 이름이 다른 쌍 %d건 — 좌표 단독 규칙이면 전부 오합침이다%n",
+            closePairs - closeAndSimilarName);
+        examples.forEach(line -> System.out.println("     " + line));
+
+        assertThat(closePairs)
+            .as("근접 쌍이 없으면 이 표본으로는 판정할 수 없다")
+            .isPositive();
+        assertThat(closePairs - closeAndSimilarName)
+            .as("가까운데 다른 장소가 실제로 존재해야 '좌표 AND 이름' 규칙이 정당화된다")
+            .isPositive();
     }
 
     // ── 호출 헬퍼 ─────────────────────────────────────────────────────────────
