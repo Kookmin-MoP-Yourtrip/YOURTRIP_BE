@@ -158,7 +158,7 @@ class RouteTypesTest {
             mutable.add(place("첨성대", SlotType.ATTRACTION));
 
             assertThat(request.places()).hasSize(1);
-            assertThatThrownBy(() -> request.places().add(place("월정교", SlotType.WALK)))
+            assertThatThrownBy(() -> request.places().add(place("월정교", SlotType.STROLL)))
                 .isInstanceOf(UnsupportedOperationException.class);
         }
     }

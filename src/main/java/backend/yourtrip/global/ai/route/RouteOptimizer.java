@@ -201,10 +201,10 @@ public class RouteOptimizer {
      */
     private static final List<SlotType> DROP_ORDER = List.of(
         SlotType.SHOPPING,
-        SlotType.WALK,
+        SlotType.STROLL,
         SlotType.VIEWPOINT,
         SlotType.CAFE,
-        SlotType.ACTIVITY,
+        SlotType.EXPERIENCE,
         SlotType.ATTRACTION);
 
     /**

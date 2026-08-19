@@ -123,7 +123,7 @@ class RouteOptimizerBenchmarkTest {
         Random random = new Random(FIXED_SEED);
         SlotType[] rotation = {
             SlotType.ATTRACTION, SlotType.MEAL, SlotType.CAFE,
-            SlotType.VIEWPOINT, SlotType.ACTIVITY, SlotType.MEAL, SlotType.WALK};
+            SlotType.VIEWPOINT, SlotType.EXPERIENCE, SlotType.MEAL, SlotType.STROLL};
 
         // 위도 1도는 약 111km, 경도 1도는 이 위도에서 약 90km 다.
         double latSpread = SPREAD_KM / 111.0;
