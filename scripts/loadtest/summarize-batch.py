@@ -21,7 +21,15 @@ COLS = [('label', 'run'), ('tps', 'TPS'), ('server_avg_ms', '서버 평균(ms)')
         ('cmds_per_req', '명령/요청'), ('redis_ms_per_req', 'Redis/요청(ms)'), ('redis_share_pct', 'Redis 비중%'),
         ('busy_max', 'busy 최대'), ('conn_wait_max', '대기 커넥션 최대'), ('proc_cpu_avg', 'CPU proc'),
         ('host_load1_avg', 'load1'), ('host_procs_running_avg', 'runnable 평균'), ('host_steal_pct', 'steal%'),
-        ('pending_max', 'pending 최대'), ('k6_avg_ms', 'k6 avg'), ('k6_p95_ms', 'p95'), ('k6_p99_ms', 'p99'),
+        ('pending_max', 'pending 최대'),
+        # #97 — 26%의 분해에 쓰는 열. 요청당 CPU를 user/sys로 가르고, 전환 횟수와 GC를 따로 세운다.
+        ('req_cpu_ms', '요청당 CPU(vCPU-ms)'), ('user_ms_per_req', '요청당 user(ms)'),
+        ('sys_ms_per_req', '요청당 sys(ms)'), ('cpu_xcheck_pct', 'CPU 교차검증%'),
+        ('ctxt_per_req', '요청당 전환'), ('gc_ms_per_req', '요청당 GC(ms)'),
+        ('alloc_kb_per_req', '요청당 할당(KB)'), ('minflt_per_req', '요청당 minflt'),
+        ('gc_names', 'GC'), ('jvm_threads_max', 'JVM 스레드 최대'), ('host_ncpu', 'vCPU'),
+        ('pid_changed', 'PID 변경'),
+        ('k6_avg_ms', 'k6 avg'), ('k6_p95_ms', 'p95'), ('k6_p99_ms', 'p99'),
         ('k6_fail_rate', '실패율'), ('errors_5xx', '5xx'), ('scheduler_cmds', '스케줄러 명령'), ('sql', 'SQL')]
 
 
