@@ -149,6 +149,19 @@ class NaverLocalClientTest {
         }
 
         @Test
+        @DisplayName("application/json 으로 와도 똑같이 읽는다 — 네이버가 헤더를 고칠 수 있다")
+        void 표준_컨텐트타입도_읽는다() {
+            wireMock.stubFor(get(urlPathEqualTo("/search/v1/local"))
+                .willReturn(aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json;charset=UTF-8")
+                    .withBody(twoItems())));
+
+            assertThat(client.search("경주 황리단길 카페", 5))
+                .isInstanceOf(NaverLocalResult.Found.class);
+        }
+
+        @Test
         @DisplayName("도로명주소가 비면 지번주소로 떨어진다 — dedupe 키가 비지 않게")
         void 주소를_고른다() {
             stubBody("""
@@ -244,11 +257,17 @@ class NaverLocalClientTest {
 
     // ── 스텁 ────────────────────────────────────────────────────────────────
 
+    /**
+     * <b>Content-Type 은 반드시 실제와 같은 {@code text/plain} 이어야 한다.</b> 네이버는 JSON을
+     * {@code text/plain} 으로 내려주는데, 이 스텁이 {@code application/json} 을 쓰는 동안
+     * 테스트는 전부 통과하면서 <b>실 API에서는 모든 호출이 실패</b>했다(4-3 보강 측정에서 발각).
+     * 스텁이 실제와 다르면 그 차이만큼 테스트가 거짓말을 한다.
+     */
     private void stubBody(String body) {
         wireMock.stubFor(get(urlPathEqualTo("/search/v1/local"))
             .willReturn(aResponse()
                 .withStatus(200)
-                .withHeader("Content-Type", "application/json;charset=UTF-8")
+                .withHeader("Content-Type", "text/plain;charset=UTF-8")
                 .withBody(body)));
     }
 

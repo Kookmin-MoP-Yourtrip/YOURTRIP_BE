@@ -106,8 +106,8 @@ class StyleModifierDictionaryTest {
         @DisplayName("동점이면 설계 표 순위로 깬다 — enum 선언 순서를 쓰면 표를 배신한다")
         void 동점은_설계_표_순위로_깬다() {
             assertThat(StyleModifierDictionary.modifiersFor(List.of(KeywordType.SENSIBILITY)))
-                .as("통창·한옥·레트로·루프탑이 전부 1회씩이라 설계 표 순서가 갈라야 한다")
-                .containsExactly(StyleTag.PANORAMIC_WINDOW, StyleTag.HANOK);
+                .as("통창은 검색어가 없어 걸러지고, 남은 한옥·레트로가 설계 표 순서로 뽑혀야 한다")
+                .containsExactly(StyleTag.HANOK, StyleTag.RETRO);
 
             assertThat(StyleModifierDictionary.modifiersFor(List.of(KeywordType.COUPLE)))
                 .as("enum 선언 순서였다면 야경 다음이 뷰맛집이 되어 설계 표(야경→루프탑)와 어긋난다")
@@ -144,13 +144,18 @@ class StyleModifierDictionaryTest {
         @Test
         @DisplayName("한쪽이 원하고 다른 쪽이 피하는 태그는 버린다")
         void 감점_태그는_가점을_이긴다() {
-            // FRIENDS 는 시끌벅적을 원하고 COUPLE 은 피한다.
+            // SOLO 는 한적함을 원하고 아무도 피하지 않지만, 단체가능은 FAMILY 가 원하고 SOLO 가 피한다.
+            // (시끌벅적은 4-3 보강 실측에서 검색어가 죽어 비웠으므로 이 규칙의 증거로 쓸 수 없다 —
+            //  검색 불가 필터에서 이미 걸려 나가 "피함"이 작동했는지 구분되지 않는다.)
             List<StyleTag> modifiers = StyleModifierDictionary.modifiersFor(
-                List.of(KeywordType.FRIENDS, KeywordType.COUPLE));
+                List.of(KeywordType.FAMILY, KeywordType.SOLO));
 
             assertThat(modifiers)
                 .as("원하지 않는 곳으로 데려가는 실수가 그저 그런 곳으로 데려가는 실수보다 나쁘다")
-                .doesNotContain(StyleTag.LIVELY);
+                .doesNotContain(StyleTag.GROUP_FRIENDLY);
+            assertThat(modifiers)
+                .as("피하지 않은 가점 태그는 그대로 남아야 한다")
+                .isNotEmpty();
         }
 
         @Test

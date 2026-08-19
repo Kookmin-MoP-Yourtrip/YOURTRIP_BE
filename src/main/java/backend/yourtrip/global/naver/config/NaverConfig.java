@@ -1,12 +1,15 @@
 package backend.yourtrip.global.naver.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.ChannelOption;
 import java.time.Duration;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+import org.springframework.http.codec.json.Jackson2JsonDecoder;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.http.client.HttpClient;
 import reactor.netty.resources.ConnectionProvider;
@@ -84,6 +87,14 @@ public class NaverConfig {
             .defaultHeader("X-NCP-APIGW-API-KEY-ID", clientId)
             .defaultHeader("X-NCP-APIGW-API-KEY", clientSecret)
             .clientConnector(new ReactorClientHttpConnector(httpClient))
+            // 네이버는 JSON을 text/plain 으로 돌려준다(4-3 보강 측정에서 확인). 기본 Jackson
+            // 디코더는 application/json 만 받으므로, 그대로 두면 200 응답인데도 역직렬화가
+            // 거부되어 모든 호출이 실패로 떨어진다. ObjectMapper 를 직접 만드는 이유는 이
+            // 팩토리가 Spring 컨텍스트 없이도 호출되기 때문이고(WireMock 테스트·실호출 프로브),
+            // 지역검색 응답은 전부 문자열·정수라 별도 모듈이 필요 없다.
+            .codecs(configurer -> configurer.defaultCodecs()
+                .jackson2JsonDecoder(new Jackson2JsonDecoder(
+                    new ObjectMapper(), MediaType.APPLICATION_JSON, MediaType.TEXT_PLAIN)))
             .build();
     }
 }
