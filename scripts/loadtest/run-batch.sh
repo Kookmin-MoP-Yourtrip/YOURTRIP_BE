@@ -36,6 +36,12 @@ LEVEL_SEC="${LEVEL_SEC:-90}"
 SCENARIO="${SCENARIO:-levels}"
 REMOTE_DIR="${REMOTE_DIR:-/tmp/lt}"
 SCHEDSTAT="${SCHEDSTAT:-1}"
+# schedstat 창 길이. 요청당 전환 횟수로 정규화하려면 창이 길수록 표본이 안정된다(#97에서
+# 10초 -> 60초로 올렸다). 창은 레벨 구간의 한가운데에 놓는다.
+SCHEDSTAT_SEC="${SCHEDSTAT_SEC:-10}"
+# arm 전환 직후 예열. 재기동 직후 첫 고부하 run은 JIT이 덜 데워져 TPS가 20% 이상 낮게 나온다
+# (실측: 2,253 -> 2,976). 낮은 VU 레벨을 먼저 도는 것이 추가 예열을 겸한다.
+WARMUP_SEC="${WARMUP_SEC:-30}"
 FLUSH_REDIS="${FLUSH_REDIS:-0}"
 TAG="${TAG:-$(date +%m%d-%H%M)}"
 OUT="${OUT:-./results/$TAG}"
@@ -70,7 +76,7 @@ run_level() {
   local hostdur=$((sec + 15))
   app "nohup bash $REMOTE_DIR/sample-host.sh $REMOTE_DIR/$run.host.tsv $hostdur >/dev/null 2>&1 &"
   if [ "$SCHEDSTAT" = "1" ] && [ "$vus" = "${LEVELS##* }" ]; then
-    ( sleep $((sec / 2)); app "bash $REMOTE_DIR/sample-schedstat.sh 10" > "$OUT/$run.schedstat.txt" 2>&1 ) &
+    ( sleep $(( (sec - SCHEDSTAT_SEC) / 2 )); app "bash $REMOTE_DIR/sample-schedstat.sh $SCHEDSTAT_SEC" > "$OUT/$run.schedstat.txt" 2>&1 ) &
     local sched_pid=$!
   fi
   k6h "cd /opt/app; bash $REMOTE_DIR/poll-metrics.sh http://$APP_PRIVATE:8080 $REMOTE_DIR/$run.prom >/dev/null 2>&1 & PP=\$!;
@@ -98,8 +104,8 @@ for rep in $(seq 1 "$REPS"); do
   if [ $((rep % 2)) -eq 0 ]; then order=$(echo "$ARMS" | tr ' ' '\n' | tac | tr '\n' ' '); fi
   for arm in $order; do
     switch_arm "$arm"
-    log "warm-up 30s"
-    k6h "cd /opt/app && k6 run -q -e BASE_URL=http://$APP_PRIVATE:8080 -e VUS=5 -e DURATION=30s scripts/k6/popular-cold.js >/dev/null 2>&1"
+    log "warm-up ${WARMUP_SEC}s"
+    k6h "cd /opt/app && k6 run -q -e BASE_URL=http://$APP_PRIVATE:8080 -e VUS=5 -e DURATION=${WARMUP_SEC}s scripts/k6/popular-cold.js >/dev/null 2>&1"
     if [ "$SCENARIO" = "mixed" ]; then
       run="${TAG}_${arm}_mixed_r${rep}"; log "run $run"; run_mixed "$run"
     else
