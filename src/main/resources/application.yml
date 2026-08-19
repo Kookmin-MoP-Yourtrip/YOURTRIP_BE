@@ -124,6 +124,14 @@ naver:
     # 경로는 클라이언트가 갖는다(/search/v1/local) — 레거시 /v1/search/local.json 은 404다(ROADMAP 4-2).
     base-url: "https://naverapihub.apigw.ntruss.com"
 
+# 한국관광공사 TourAPI (관광 슬롯의 커버리지·분류 축, ROADMAP 4-7)
+tour:
+  # KorService1 은 2025-08-10 부로 중지됐다. 오퍼레이션 경로는 클라이언트가 갖는다.
+  base-url: "https://apis.data.go.kr/B551011/KorService2"
+  # Encoding / Decoding 어느 형태로 발급받아도 된다 — TourApiConfig 가 하나로 정규화한다.
+  # 후보 공급은 fail-open 이라 비어 있어도 기동은 성공한다(호출만 403 으로 실패한다).
+  service-key: ${TOUR_API_KEY:}
+
 server:
   forward-headers-strategy: framework
   port: 8080

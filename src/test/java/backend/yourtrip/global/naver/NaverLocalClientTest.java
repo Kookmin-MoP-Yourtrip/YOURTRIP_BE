@@ -6,6 +6,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import backend.yourtrip.global.common.ApiFailureCause;
 import backend.yourtrip.global.naver.config.NaverConfig;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
@@ -200,7 +201,7 @@ class NaverLocalClientTest {
 
             assertThat(result).isInstanceOf(NaverLocalResult.Failed.class);
             assertThat(((NaverLocalResult.Failed) result).cause())
-                .isEqualTo(NaverLocalResult.Cause.QUOTA_EXCEEDED);
+                .isEqualTo(ApiFailureCause.QUOTA_EXCEEDED);
         }
 
         @Test
@@ -209,7 +210,7 @@ class NaverLocalClientTest {
             stubStatus(401);
 
             assertThat(((NaverLocalResult.Failed) client.search("경주 카페", 5)).cause())
-                .isEqualTo(NaverLocalResult.Cause.UNAUTHORIZED);
+                .isEqualTo(ApiFailureCause.UNAUTHORIZED);
         }
 
         @Test
@@ -218,7 +219,7 @@ class NaverLocalClientTest {
             stubStatus(503);
 
             assertThat(((NaverLocalResult.Failed) client.search("경주 카페", 5)).cause())
-                .isEqualTo(NaverLocalResult.Cause.HTTP_ERROR);
+                .isEqualTo(ApiFailureCause.HTTP_ERROR);
         }
 
         @Test
@@ -227,7 +228,7 @@ class NaverLocalClientTest {
             stubBody("{\"items\": \"배열이 아니라 문자열\"}");
 
             assertThat(((NaverLocalResult.Failed) client.search("경주 카페", 5)).cause())
-                .isEqualTo(NaverLocalResult.Cause.MALFORMED);
+                .isEqualTo(ApiFailureCause.MALFORMED);
         }
 
         @Test
@@ -243,7 +244,7 @@ class NaverLocalClientTest {
                 .as("키 부재가 기동 실패나 예외가 되면 후보 공급이 코스 생성을 죽인다")
                 .isInstanceOf(NaverLocalResult.Failed.class);
             assertThat(((NaverLocalResult.Failed) result).cause())
-                .isEqualTo(NaverLocalResult.Cause.UNAUTHORIZED);
+                .isEqualTo(ApiFailureCause.UNAUTHORIZED);
         }
 
         @Test

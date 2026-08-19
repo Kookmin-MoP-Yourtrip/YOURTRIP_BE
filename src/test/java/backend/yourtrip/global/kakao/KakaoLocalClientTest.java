@@ -2,10 +2,12 @@ package backend.yourtrip.global.kakao;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import backend.yourtrip.global.common.ApiFailureCause;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.kakao.config.KakaoConfig;
@@ -145,6 +147,81 @@ class KakaoLocalClientTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(MyCourseErrorCode.KAKAO_API_FAILED);
+        }
+    }
+
+    @Nested
+    @DisplayName("결과를 값으로 돌려주는 경로 (ROADMAP 4-8)")
+    class ValueReturningLookup {
+
+        @Test
+        @DisplayName("무결과는 NoResult다 — 실패와 뭉치면 캐스케이드가 헛돈다")
+        void returnsNoResultWhenNothingMatches() {
+            stubDocuments(document("전혀다른가게", "경북 경주시 첨성로 1", "FD6"));
+
+            assertThat(kakaoLocalClient.lookupBestPlace("있을리없는가게이름", "경주"))
+                .isInstanceOf(PlaceLookup.NoResult.class);
+        }
+
+        @Test
+        @DisplayName("429는 QUOTA_EXCEEDED로 갈라 둔다 — 시간이 지나야 풀리는 유일한 실패다")
+        void classifiesQuotaExceeded() {
+            wireMock.stubFor(get(urlPathEqualTo(SEARCH_PATH))
+                .willReturn(aResponse().withStatus(429)));
+
+            assertThat(kakaoLocalClient.lookupBestPlace("불국사", "경주"))
+                .isInstanceOfSatisfying(PlaceLookup.Failed.class, failed ->
+                    assertThat(failed.cause()).isEqualTo(ApiFailureCause.QUOTA_EXCEEDED));
+        }
+
+        @Test
+        @DisplayName("401은 UNAUTHORIZED다")
+        void classifiesUnauthorized() {
+            wireMock.stubFor(get(urlPathEqualTo(SEARCH_PATH))
+                .willReturn(aResponse().withStatus(401)));
+
+            assertThat(kakaoLocalClient.lookupBestPlace("불국사", "경주"))
+                .isInstanceOfSatisfying(PlaceLookup.Failed.class, failed ->
+                    assertThat(failed.cause()).isEqualTo(ApiFailureCause.UNAUTHORIZED));
+        }
+
+        @Test
+        @DisplayName("본문이 스키마와 다르면 MALFORMED다 — 예전에는 이것만 원시 500으로 샜다")
+        void classifiesMalformedBody() {
+            wireMock.stubFor(get(urlPathEqualTo(SEARCH_PATH))
+                .willReturn(aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"documents\": \"배열이 아니다\"}")));
+
+            assertThat(kakaoLocalClient.lookupBestPlace("불국사", "경주"))
+                .isInstanceOfSatisfying(PlaceLookup.Failed.class, failed ->
+                    assertThat(failed.cause()).isEqualTo(ApiFailureCause.MALFORMED));
+            assertThatThrownBy(() -> kakaoLocalClient.findBestPlace("불국사", "경주"))
+                .as("기존 경로는 세 실패를 모두 같은 계약으로 다룬다")
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(MyCourseErrorCode.KAKAO_API_FAILED);
+        }
+
+        @Test
+        @DisplayName("lookupFirstPlace는 이름을 보지 않고 1등을 준다 — 지오코딩 마지막 단계용이다")
+        void firstPlaceIgnoresNameGate() {
+            stubDocuments(
+                document("순천만국가정원", "전남 순천시 국가정원1호길 47", "AT4"),
+                document("순천시청", "전남 순천시 장명로 30", null));
+
+            assertThat(kakaoLocalClient.lookupFirstPlace("순천시"))
+                .isInstanceOfSatisfying(PlaceLookup.Found.class, found ->
+                    assertThat(found.document().place_name()).isEqualTo("순천만국가정원"));
+        }
+
+        @Test
+        @DisplayName("검색어가 비면 호출 없이 NoResult다")
+        void doesNotCallForBlankKeyword() {
+            assertThat(kakaoLocalClient.lookupFirstPlace("   "))
+                .isInstanceOf(PlaceLookup.NoResult.class);
+            wireMock.verify(0, getRequestedFor(urlPathEqualTo(SEARCH_PATH)));
         }
     }
 
