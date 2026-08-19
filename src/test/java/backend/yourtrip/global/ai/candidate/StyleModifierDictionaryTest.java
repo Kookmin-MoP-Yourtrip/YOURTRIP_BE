@@ -37,6 +37,13 @@ class StyleModifierDictionaryTest {
         }
 
         @Test
+        @DisplayName("혼자 여행은 조용한 곳과 소품샵을 부른다 — 아늑함은 검색어가 죽어 건너뛴다")
+        void 혼자() {
+            assertThat(StyleModifierDictionary.modifiersFor(List.of(KeywordType.SOLO)))
+                .containsExactly(StyleTag.QUIET, StyleTag.LIFESTYLE_SHOP);
+        }
+
+        @Test
         @DisplayName("가성비는 태그가 하나뿐이라 하나만 나온다 — 억지로 두 개를 채우지 않는다")
         void 가성비() {
             assertThat(StyleModifierDictionary.modifiersFor(List.of(KeywordType.COST_EFFECTIVE)))
