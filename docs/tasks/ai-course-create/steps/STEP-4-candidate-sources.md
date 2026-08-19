@@ -280,8 +280,8 @@ enum 선언 순서 : 야경  뷰맛집  루프탑  통창   …      ← 범주�
 ### 판정을 동등 비교로 하지 않는다
 
 `isCompatibleWith`가 `SlotType` 동등 비교였다면 **전망대·산책로 슬롯의 후보가 전부 탈락한다.**
-네이버 분류는 `ATTRACTION`·`VIEWPOINT`·`WALK`를 구분하지 않고 셋 다 `관광,명소` 아래로 넣기
-때문이다. 그래서 네이버 분류가 **실제로 가를 수 있는 단위**(MEAL / CAFE / SIGHT / ACTIVITY /
+네이버 분류는 `ATTRACTION`·`VIEWPOINT`·`STROLL`을 구분하지 않고 셋 다 `관광,명소` 아래로 넣기
+때문이다. 그래서 네이버 분류가 **실제로 가를 수 있는 단위**(MEAL / CAFE / SIGHT / EXPERIENCE /
 SHOPPING)로 묶어 비교한다 — `SlotType.allowedCategoryCodes`가 셋에 `AT4`를 공유시켜 둔 것과 같은 구조다.
 
 ### 술집 계열은 매핑이 아니라 표시로 다룬다

@@ -80,12 +80,12 @@ class SlotTypeTest {
         @Test
         @DisplayName("체류시간은 SlotType 설계 그대로다")
         void stayMinutesMatchDesignDocument() {
-            assertThat(SlotType.ACTIVITY.getDefaultStayMinutes()).isEqualTo(120);
+            assertThat(SlotType.EXPERIENCE.getDefaultStayMinutes()).isEqualTo(120);
             assertThat(SlotType.ATTRACTION.getDefaultStayMinutes()).isEqualTo(90);
             assertThat(SlotType.MEAL.getDefaultStayMinutes()).isEqualTo(75);
             assertThat(SlotType.CAFE.getDefaultStayMinutes()).isEqualTo(60);
             assertThat(SlotType.SHOPPING.getDefaultStayMinutes()).isEqualTo(60);
-            assertThat(SlotType.WALK.getDefaultStayMinutes()).isEqualTo(60);
+            assertThat(SlotType.STROLL.getDefaultStayMinutes()).isEqualTo(60);
             assertThat(SlotType.VIEWPOINT.getDefaultStayMinutes()).isEqualTo(45);
         }
 
@@ -102,7 +102,7 @@ class SlotTypeTest {
         void attractionAndActivityAllowTourismCodes() {
             assertThat(SlotType.ATTRACTION.getAllowedCategoryCodes())
                 .containsExactlyInAnyOrder("AT4", "CT1");
-            assertThat(SlotType.ACTIVITY.getAllowedCategoryCodes())
+            assertThat(SlotType.EXPERIENCE.getAllowedCategoryCodes())
                 .containsExactlyInAnyOrder("AT4", "CT1");
         }
 
@@ -122,9 +122,9 @@ class SlotTypeTest {
             // 관광지는 "경복궁의 블로그 수가 많다"가 아무 정보도 주지 않아 낮다.
             assertThat(SlotType.ATTRACTION.getPopularityWeight()).isEqualTo(0.2);
             assertThat(SlotType.VIEWPOINT.getPopularityWeight()).isEqualTo(0.2);
-            assertThat(SlotType.WALK.getPopularityWeight()).isEqualTo(0.2);
+            assertThat(SlotType.STROLL.getPopularityWeight()).isEqualTo(0.2);
 
-            assertThat(SlotType.ACTIVITY.getPopularityWeight()).isEqualTo(0.6);
+            assertThat(SlotType.EXPERIENCE.getPopularityWeight()).isEqualTo(0.6);
             assertThat(SlotType.SHOPPING.getPopularityWeight()).isEqualTo(0.6);
         }
 

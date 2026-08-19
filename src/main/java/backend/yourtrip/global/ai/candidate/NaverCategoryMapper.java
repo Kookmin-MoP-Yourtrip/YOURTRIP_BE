@@ -52,7 +52,7 @@ public final class NaverCategoryMapper {
         // (그 구분은 아래 isCompatibleWith 가 담당한다).
         new Rule(SlotType.ATTRACTION, Set.of("관광", "명소", "명승", "유적", "문화", "예술",
             "박물관", "미술관", "공원", "전망", "자연")),
-        new Rule(SlotType.ACTIVITY, Set.of("레저", "스포츠", "체험", "테마파크", "놀이")),
+        new Rule(SlotType.EXPERIENCE, Set.of("레저", "스포츠", "체험", "테마파크", "놀이")),
         new Rule(SlotType.SHOPPING, Set.of("쇼핑", "유통", "백화점", "시장", "아울렛", "면세점")),
         // 음식점은 가장 마지막이다. 카페 계열을 먼저 걸러낸 뒤에 남는 것만 MEAL 이 된다.
         new Rule(SlotType.MEAL, Set.of("음식점", "한식", "중식", "일식", "양식", "분식", "뷔페",
@@ -101,7 +101,7 @@ public final class NaverCategoryMapper {
     /**
      * 이 분류가 해당 슬롯에 놓여도 되는가. <b>5-3의 하드 제약이 쓸 판정이다.</b>
      *
-     * <p><b>동등 비교가 아닌 이유</b>: 네이버 분류는 {@code ATTRACTION}·{@code VIEWPOINT}·{@code WALK}를
+     * <p><b>동등 비교가 아닌 이유</b>: 네이버 분류는 {@code ATTRACTION}·{@code VIEWPOINT}·{@code STROLL}을
      * 구분하지 않는다. 셋 다 {@code 관광,명소} 아래로 들어오므로 동등 비교를 하면 전망대 슬롯의
      * 정당한 후보가 전부 탈락한다. 카카오 쪽도 같은 사정이라 {@code SlotType}의
      * {@code allowedCategoryCodes}가 셋에 {@code AT4}를 공유시켜 둔 것과 같은 구조다.
@@ -141,12 +141,12 @@ public final class NaverCategoryMapper {
             case MEAL -> Group.MEAL;
             case CAFE -> Group.CAFE;
             case SHOPPING -> Group.SHOPPING;
-            case ACTIVITY -> Group.ACTIVITY;
-            case ATTRACTION, VIEWPOINT, WALK -> Group.SIGHT;
+            case EXPERIENCE -> Group.EXPERIENCE;
+            case ATTRACTION, VIEWPOINT, STROLL -> Group.SIGHT;
         };
     }
 
     private enum Group {
-        MEAL, CAFE, SIGHT, ACTIVITY, SHOPPING
+        MEAL, CAFE, SIGHT, EXPERIENCE, SHOPPING
     }
 }

@@ -22,15 +22,37 @@ import lombok.Getter;
  * 개념이다. 앞의 타입명이 의미를 복원해주므로 이름을 비틀지 않았다.
  */
 @Getter
+/**
+ * <h2>상수 이름은 자기 라벨과 일치시킨다</h2>
+ * 처음에는 {@code ACTIVITY}(체험)·{@code WALK}(산책로)였는데, <b>이름과 라벨이 어긋난 그 둘이
+ * 정확히 다른 enum과 충돌하던 둘</b>이었다.
+ *
+ * <ul>
+ *   <li>{@code WALK} — 여기서는 "산책로"인데 {@code KeywordType.WALK}·{@code TravelMode.WALK}는
+ *       "뚜벅이"(이동수단)다. 셋 중 <b>이 enum만 뜻이 달랐다</b></li>
+ *   <li>{@code ACTIVITY} — 여기서는 "체험"인데 {@code KeywordType.ACTIVITY}·{@code StyleTag.ACTIVITY}는
+ *       "액티비티"다</li>
+ * </ul>
+ *
+ * <p>자바 타입 시스템이 enum 간 대입을 막아 주므로 컴파일 오류로는 이어지지 않지만,
+ * <b>이름으로 매핑하는 코드</b>({@code SlotType.valueOf(keyword.name())} 같은)와 코드를 읽는 사람에게는
+ * 함정이다. 라벨과 이름을 맞추는 규칙 하나로 두 충돌이 함께 사라진다.
+ *
+ * <p>남은 동명 상수({@code SHOPPING}·{@code CULTURE}·{@code NATURE}·{@code ACTIVITY})는
+ * <b>같은 개념을 다른 층에서 부르는 것</b>이라 그대로 둔다 — 사용자의 취향({@code KeywordType})과
+ * 장소의 속성({@code StyleTag})은 뜻이 어긋나지 않는다.
+ */
 public enum SlotType {
 
     ATTRACTION(90, "관광명소", 0.2, Set.of("AT4", "CT1")),
     MEAL(75, "맛집", 1.0, Set.of("FD6")),
     CAFE(60, "카페", 1.0, Set.of("CE7")),
-    ACTIVITY(120, "체험", 0.6, Set.of("AT4", "CT1")),
+    /** 이름이 {@code ACTIVITY}였으나 {@code KeywordType}·{@code StyleTag}의 "액티비티"와 충돌해 바꿨다. */
+    EXPERIENCE(120, "체험", 0.6, Set.of("AT4", "CT1")),
     VIEWPOINT(45, "전망대", 0.2, Set.of("AT4")),
     SHOPPING(60, "쇼핑", 0.6, Set.of("MT1", "CS2")),
-    WALK(60, "산책로", 0.2, Set.of("AT4"));
+    /** 이름이 {@code WALK}였으나 {@code KeywordType}·{@code TravelMode}의 "뚜벅이"와 충돌해 바꿨다. */
+    STROLL(60, "산책로", 0.2, Set.of("AT4"));
 
     /** 이 종류의 장소에 보통 머무는 시간(분). 시간 모델 {@code t[i] = t[i-1] + 체류 + 이동}의 체류 항. */
     private final int defaultStayMinutes;

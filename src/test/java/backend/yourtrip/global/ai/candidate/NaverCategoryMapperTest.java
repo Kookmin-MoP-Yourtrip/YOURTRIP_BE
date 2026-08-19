@@ -80,7 +80,7 @@ class NaverCategoryMapperTest {
         @ValueSource(strings = {"레저,스포츠>체험", "레저,스포츠>놀이시설"})
         @DisplayName("레저 계열은 ACTIVITY다")
         void 레저(String category) {
-            assertThat(NaverCategoryMapper.toSlotType(category)).contains(SlotType.ACTIVITY);
+            assertThat(NaverCategoryMapper.toSlotType(category)).contains(SlotType.EXPERIENCE);
         }
     }
 
@@ -140,7 +140,7 @@ class NaverCategoryMapperTest {
         @DisplayName("관광·전망대·산책로는 서로 통한다 — 네이버 분류가 셋을 구분하지 못한다")
         void 관광_계열은_서로_통한다() {
             for (SlotType slotType : new SlotType[] {
-                SlotType.ATTRACTION, SlotType.VIEWPOINT, SlotType.WALK}) {
+                SlotType.ATTRACTION, SlotType.VIEWPOINT, SlotType.STROLL}) {
                 assertThat(NaverCategoryMapper.isCompatibleWith("관광,명소>유적지", slotType))
                     .as("%s 슬롯에 관광 분류가 막히면 정당한 후보가 전부 탈락한다", slotType)
                     .isTrue();
@@ -159,7 +159,7 @@ class NaverCategoryMapperTest {
         @Test
         @DisplayName("체험은 관광과 별개다 — 액티비티 슬롯의 성격이 다르다")
         void 체험은_관광과_다르다() {
-            assertThat(NaverCategoryMapper.isCompatibleWith("레저,스포츠>체험", SlotType.ACTIVITY))
+            assertThat(NaverCategoryMapper.isCompatibleWith("레저,스포츠>체험", SlotType.EXPERIENCE))
                 .isTrue();
             assertThat(NaverCategoryMapper.isCompatibleWith("레저,스포츠>체험", SlotType.ATTRACTION))
                 .isFalse();

@@ -143,7 +143,7 @@ Heap's algorithm 은 O(n!) swap 으로 사전순 백트래킹보다 빠르다. �
 **대응.** 별도의 `DROP_ORDER`를 두고, `dropsByValueNotByPopularityWeight` 테스트로 오독을 회귀 고정했다.
 
 ```
-SHOPPING → WALK → VIEWPOINT → CAFE → ACTIVITY → ATTRACTION
+SHOPPING → STROLL → VIEWPOINT → CAFE → EXPERIENCE → ATTRACTION
 (MEAL은 목록에 없다 = 드롭 대상이 아니다)
 ```
 

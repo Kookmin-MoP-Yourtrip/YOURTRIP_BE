@@ -63,7 +63,7 @@ class RouteOptimizerOverrunTest {
                 eastOf("d", SlotType.VIEWPOINT, 3),
                 eastOf("e", SlotType.ATTRACTION, 4),
                 eastOf("f", SlotType.MEAL, 5),
-                eastOf("g", SlotType.WALK, 6))));
+                eastOf("g", SlotType.STROLL, 6))));
 
             assertThat(day.places()).hasSize(7);
             assertThat(day.droppedPlaces())
@@ -123,10 +123,10 @@ class RouteOptimizerOverrunTest {
         void recordsDroppedPlaces() {
             RoutedDay day = optimizer.optimize(until(LocalTime.of(14, 0), List.of(
                 place("관광", SlotType.ATTRACTION),
-                place("체험", SlotType.ACTIVITY),
+                place("체험", SlotType.EXPERIENCE),
                 place("식당", SlotType.MEAL),
                 place("쇼핑", SlotType.SHOPPING),
-                place("산책", SlotType.WALK))));
+                place("산책", SlotType.STROLL))));
 
             assertThat(day.droppedPlaces()).isNotEmpty();
             assertThat(day.places().size() + day.droppedPlaces().size())
@@ -140,7 +140,7 @@ class RouteOptimizerOverrunTest {
             RoutedDay day = optimizer.optimize(until(LocalTime.of(13, 30), List.of(
                 place("관광", SlotType.ATTRACTION),
                 place("쇼핑", SlotType.SHOPPING),
-                place("산책", SlotType.WALK),
+                place("산책", SlotType.STROLL),
                 place("식당", SlotType.MEAL))));
 
             assertThat(droppedNamesOf(day)).contains("쇼핑");
@@ -172,7 +172,7 @@ class RouteOptimizerOverrunTest {
             RoutedDay day = optimizer.optimize(until(LocalTime.of(12, 30), List.of(
                 place("식당", SlotType.MEAL),
                 place("쇼핑", SlotType.SHOPPING),
-                place("산책", SlotType.WALK),
+                place("산책", SlotType.STROLL),
                 place("전망", SlotType.VIEWPOINT),
                 place("카페", SlotType.CAFE))));
 
@@ -204,7 +204,7 @@ class RouteOptimizerOverrunTest {
                 place("관광A", SlotType.ATTRACTION),
                 place("관광B", SlotType.ATTRACTION),
                 place("쇼핑", SlotType.SHOPPING),
-                place("산책", SlotType.WALK),
+                place("산책", SlotType.STROLL),
                 place("전망", SlotType.VIEWPOINT))));
 
             assertThat(day.places())
