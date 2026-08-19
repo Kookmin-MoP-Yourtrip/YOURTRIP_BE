@@ -130,6 +130,35 @@ k6 run -e BASE_URL=http://<App EC2 공인 IP>:8080 -e DOMAIN=mycourse   -e MODE=
 - 두 도메인을 동시에 돌리지 않는다 — 로컬 벤치마크와 동일하게 순차 실행해야 지표가 섞이지 않는다
 - 실행 중에는 §4에서 열어둔 Grafana 대시보드를 "Last 15 minutes" + 5초 auto-refresh로 관찰한다
 
+### 5-1. 측정 하네스 — `scripts/loadtest/`
+
+Grafana로 눈으로 보는 것과 별개로, **run 단위 수치(구간 평균 Redis 지연·TPS·p95·런큐 대기 비율)를 남기려면** [scripts/loadtest/](../../scripts/loadtest/)를 쓴다. Tomcat `maxThreads` 축소 측정([tasks/tomcat-thread-sizing](../tasks/tomcat-thread-sizing/README.md))에서 만들었고, 그 이전 측정들이 scratchpad에만 두던 폴러·집계기를 정착시킨 것이다.
+
+| 스크립트 | 실행 위치 | 역할 |
+|---|---|---|
+| `poll-metrics.sh <base-url> <out>` | k6 EC2 | 1초 간격으로 `/actuator/prometheus`를 **전량** 저장(`# ts=` 구분자). 화이트리스트를 두지 않는다 — 15개 지표만 걸러 담다가 처음부터 노출되던 `lettuce_command_*`를 놓친 전례 때문 |
+| `sample-host.sh <out> [sec]` | App EC2 | `/proc/loadavg`·`procs_running`·`/proc/stat` cpu 행(steal 포함)을 1초 간격으로 기록 |
+| `sample-schedstat.sh [sec]` | App EC2 | JVM 스레드 그룹(lettuce 이벤트루프 / http-nio 워커 / 기타)별 CPU 실행 vs **런큐 대기** 시간(`/proc/<pid>/task/*/schedstat`) — CPU 사용률에 안 잡히는 스케줄링 지연을 본다 |
+| `switch-thread-arm.sh <max\|default> [snc]` | App EC2 (`sudo`) | `/opt/app/.env`의 측정용 키를 치환(append 금지 — spring-dotenv 중복 키 사고) → 재기동 → health·`tomcat_threads_config_max_threads`·활성 프로필 검증 |
+| `run-batch.sh` | 로컬 | 위를 ssh로 엮는 드라이버. IP·키는 환경변수(`APP_IP`/`K6_IP`/`APP_PRIVATE`/`SSH_KEY`)로만 받는다. `SCENARIO=mixed`·`FLUSH_REDIS=1`로 혼합 부하(arm마다 `FLUSHALL`)도 돌린다 |
+| `aggregate.py`, `summarize-batch.py` | 로컬 | run 창(`.window`의 t0/t1)의 첫/끝 스냅샷 Δ로 카운터를 집계(Δsum ÷ Δcount), 게이지는 창 평균/최대. k6 summary JSON의 p95/p99를 합쳐 마크다운 표로 |
+
+```bash
+# 사전 배포 (한 번)
+scp -i $KEY scripts/loadtest/{switch-thread-arm,sample-host,sample-schedstat}.sh ec2-user@<App>:/tmp/lt/
+scp -i $KEY scripts/loadtest/poll-metrics.sh ec2-user@<k6>:/tmp/lt/
+# k6 EC2의 /opt/app/scripts/k6/에 쓰려는 스크립트가 있는지 확인(checkout이 오래됐으면 scp)
+
+# 배치 실행
+APP_IP=<App 공인> K6_IP=<k6 공인> APP_PRIVATE=<App 사설> SSH_KEY=terraform/loadtest/yourtrip-loadtest-ssh \
+ARMS="T200 T32" REPS=2 LEVELS="5 20 50 200" LEVEL_SEC=90 OUT=./results/b1 bash scripts/loadtest/run-batch.sh
+
+# 집계
+python scripts/loadtest/summarize-batch.py ./results/b1 --md ./results/b1/summary.md
+```
+
+주의할 점 네 가지. **① 재기동마다 `DB_DDL_AUTO=create`면 시드가 날아가고 워머가 빈 랭킹을 30분 TTL로 캐시한다** — 측정 세션 동안은 `.env`를 `validate`로 내리고, 끝나면 `create`로 되돌린다(템플릿과의 divergence 방지). **② 폴러의 stdout을 ssh에 물려두면 세션이 안 닫힌다** — 드라이버는 `>/dev/null`로 떼어 둔다. **③ 결과 원본(`.prom` 수십 MB)은 커밋하지 않는다** — 문서에는 `summarize-batch.py` 출력만 옮긴다. **④ 재기동 직후 첫 고부하 run은 버린다** — JIT 예열이 덜 된 상태라 같은 설정인데도 TPS가 20% 이상 낮게 나온다(실측: 예열 30s 뒤 바로 VU 200을 걸었을 때 2,253 → 두 번째 run 2,976). 드라이버가 VU를 5→20→50→200으로 올리는 것이 예열을 겸한다.
+
 ## 6. 병목 지점 확인 방법
 
 ### 6-1. Prometheus에서 직접 확인 (`http://localhost:9090`)
