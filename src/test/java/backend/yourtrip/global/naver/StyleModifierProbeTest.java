@@ -181,6 +181,38 @@ class StyleModifierProbeTest {
         System.out.printf("%n  총 호출 %d회%n", calls);
     }
 
+    /**
+     * <b>{@code 소품샵}이 카페 밖 슬롯에서도 안전한지</b> 확인한다.
+     *
+     * <p>5-8은 modifier를 전 슬롯에 적용하므로 {@code "소품샵 맛집"} 같은 조합이 생긴다.
+     * <b>0건이면 fail-open 이라 무해하지만, 엉뚱한 결과가 나오면 그 슬롯 후보가 오염된다.</b>
+     * 그래서 건수만이 아니라 <b>실제 상호명</b>을 찍어 사람이 판정할 수 있게 한다.
+     */
+    @Test
+    @DisplayName("소품샵 검색어가 카페 밖 슬롯에서 후보를 오염시키지 않는지 확인한다")
+    void 소품샵을_다른_슬롯에서_검증한다() {
+        String term = StyleTag.LIFESTYLE_SHOP.searchTerm().orElseThrow();
+        List<String> areas = List.of("경주", "강릉", "부산");
+
+        System.out.printf("%n%n=== [4-3보강] 소품샵 × 슬롯 교차 검증 ===%n");
+        for (SlotType slotType : List.of(SlotType.CAFE, SlotType.MEAL, SlotType.ATTRACTION)) {
+            for (String area : areas) {
+                Set<String> base = namesOf(area + " " + slotType.getSearchHint());
+                Set<String> styled = namesOf(area + " " + term + " " + slotType.getSearchHint());
+                Set<String> fresh = new LinkedHashSet<>(styled);
+                fresh.removeAll(base);
+                System.out.printf("%n  [%s %s %s] 결과 %d / 신규 %d%n",
+                    area, term, slotType.getSearchHint(), styled.size(), fresh.size());
+                System.out.println("    " + (styled.isEmpty() ? "(없음)" : styled));
+            }
+        }
+        System.out.println();
+        System.out.println("  읽는 법: 0건이면 fail-open 으로 무해하다.");
+        System.out.println("           결과가 있으면 상호명이 실제로 소품·리빙 계열인지 사람이 본다.");
+        System.out.println("           엉뚱한 업소가 섞이면 태그에 적용 슬롯 제한이 필요하다.");
+        System.out.printf("%n  총 호출 %d회%n", calls);
+    }
+
     // ── 측정 ────────────────────────────────────────────────────────────────
 
     private record Row(SlotType slotType, StyleTag tag, String term, int found, int fresh,
