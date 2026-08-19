@@ -130,10 +130,8 @@ public final class StyleModifierDictionary {
             StyleTag.LONG_WAIT, StyleTag.PARKING_DIFFICULT));
         map.put(KeywordType.FRIENDS, Preference.of(
             List.of(StyleTag.LIVELY, StyleTag.GROUP_FRIENDLY, StyleTag.LATE_NIGHT)));
-        // 소품샵은 설계 표에 없던 확장이다 — 아늑함(COZY)의 검색어가 전부 죽어 그 자리를 메운다.
-        // 조용함 뒤에 두어 원래 표의 1순위(아늑함 → 검색 불가)가 빠진 자리를 이어받게 했다.
         map.put(KeywordType.SOLO, Preference.of(
-            List.of(StyleTag.COZY, StyleTag.QUIET, StyleTag.LIFESTYLE_SHOP, StyleTag.UNCROWDED),
+            List.of(StyleTag.COZY, StyleTag.QUIET, StyleTag.UNCROWDED),
             StyleTag.GROUP_FRIENDLY));
 
         // 이동수단
