@@ -1,7 +1,7 @@
 # App EC2 전용 IAM 역할.
 # - CloudWatchAgentServerPolicy: CloudWatch Agent가 mem_used_percent(메모리 사용률)를
 #   게시할 수 있게 해준다. 기본 CloudWatch 지표는 EC2 메모리를 노출하지 않아서,
-#   "t3.micro 1GB로 JVM+Tomcat 200스레드가 버티는가"를 실측으로 확인하려면 이 권한이 필수다.
+#   "배포 타겟 스펙(t3.small, 2GB)으로 JVM+Tomcat이 버티는가"를 실측으로 확인하려면 이 권한이 필수다.
 # - AmazonSSMManagedInstanceCore: SSM Session Manager 포트포워딩(RDS 시딩용, 아래 참고)에
 #   필요. AL2023 AMI는 SSM Agent가 이미 설치·실행 중이라 이 권한만 있으면 별도 설치 없이
 #   바로 동작한다.

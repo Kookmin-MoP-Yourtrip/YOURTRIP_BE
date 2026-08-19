@@ -13,7 +13,7 @@
 | 리소스 | 스펙 | 비고 |
 |---|---|---|
 | VPC (전용) | `10.42.0.0/16` | 계정 기본 VPC 유무에 의존하지 않음. public subnet 2개(AZ 요구조건 충족용), 실제 배치는 전부 1개 AZ로 고정 |
-| App EC2 | `t3.micro` | 실제 배포 타겟과 동일 스펙. 앱(JVM) 단독 실행 |
+| App EC2 | `t3.small` | 실제 배포 타겟과 동일 스펙(vCPU 2, 2GB). 앱(JVM) 단독 실행 |
 | k6 EC2 | `t3.micro` | 부하 생성 전용. Redis를 ElastiCache로 분리해 경합 상대 없음 |
 | RDS PostgreSQL | `db.t3.micro` | 단일 AZ, 로컬 시드 규모(course 6,000행 등)에 여유 |
 | ElastiCache Redis | `cache.t3.micro` | 단일 노드. Docker Redis(`maxmemory 256mb`, `allkeys-lru`)의 관리형 대체 |
@@ -62,7 +62,9 @@ psql --version
 
 ### 5. AWS 프리티어 잔여량 확인
 
-AWS 콘솔 → Billing → Free Tier에서 EC2(t3.micro)/RDS(db.t3.micro)/ElastiCache(cache.t3.micro) 프리티어 자격이 남아있는지 확인한다. (`enable_detailed_monitoring`은 프리티어 대상이 아니라 소액 과금이 있다 — 몇 시간짜리 테스트라면 센트 단위.)
+AWS 콘솔 → Billing → Free Tier에서 EC2(t3.micro)/RDS(db.t3.micro)/ElastiCache(cache.t3.micro) 프리티어 자격이 남아있는지 확인한다.
+
+> **App EC2(`t3.small`)는 프리티어 대상이 아니다** — 배포 타겟 스펙에 맞추느라 t3.micro에서 올린 결과다(시간당 소액 과금). 프리티어가 적용되는 건 k6 EC2(`t3.micro`)·RDS·ElastiCache다. `enable_detailed_monitoring`도 프리티어 밖이다 — 몇 시간짜리 테스트라면 둘 다 센트 단위.
 
 ### 6. 로컬 `session-manager-plugin` 설치 확인
 
@@ -91,7 +93,7 @@ terraform output -raw rds_endpoint
 
 ### 2. App JAR 로컬 빌드
 
-App EC2는 빌드를 하지 않는다 — JAR는 로컬에서 미리 빌드해 scp로 전달한다(이유는 `templates/app-user-data.sh.tpl` 상단 주석과 [ec2-rds-loadtest.md](../../docs/guide/ec2-rds-loadtest.md) 참고 — t3.micro에서 직접 빌드하면 CPU 크레딧을 미리 갉아먹어 측정 시작 조건이 매번 달라지는 문제가 있었다).
+App EC2는 빌드를 하지 않는다 — JAR는 로컬에서 미리 빌드해 scp로 전달한다(이유는 `templates/app-user-data.sh.tpl` 상단 주석과 [ec2-rds-loadtest.md](../../docs/guide/ec2-rds-loadtest.md) 참고 — 당시 t3.micro였던 App EC2에서 직접 빌드하면 CPU 크레딧을 미리 갉아먹어 측정 시작 조건이 매번 달라지는 문제가 있었다).
 
 ```bash
 # 저장소 루트에서, terraform.tfvars의 app_git_ref와 동일한 커밋을 체크아웃한 상태로

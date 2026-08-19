@@ -4,9 +4,9 @@
 # Terraform 변수 치환 대상이고, 순수 bash 변수는 $VAR(중괄호 없이)로만 참조해 충돌을 피한다.
 #
 # 이 인스턴스에서는 애플리케이션을 빌드하지 않는다 — JAR는 로컬(또는 CI)에서 미리
-# 빌드해 apply 이후 별도로 scp 전달한다(README.md "실행 순서" 참고). t3.micro(vCPU 2개지만
-# 물리 코어는 1개인 SMT/하이퍼스레딩 버스터블) 위에서 직접 git clone + Gradle 빌드를 했을 때
-# 실측으로 확인된 문제들 때문이다:
+# 빌드해 apply 이후 별도로 scp 전달한다(README.md "실행 순서" 참고). 이 인스턴스가 아직
+# t3.micro(1GB)이던 시절 — vCPU 2개지만 물리 코어는 1개인 SMT/하이퍼스레딩 버스터블은 지금의
+# t3.small도 동일하다 — 직접 git clone + Gradle 빌드를 했을 때 실측으로 확인된 문제들 때문이다:
 # (1) 빌드가 3~4분간 CPU를 거의 100% 태워 부하테스트 시작 시점의 CPU 크레딧 잔액을
 #     이미 갉아먹는다 — 측정 시작 조건이 매번 달라지는 변수가 된다.
 # (2) 1GB RAM에서 Gradle 빌드가 OOM 없이 끝나려면 임시 스왑이 필요했다(빌드 후 해제).
@@ -87,7 +87,7 @@ systemctl enable --now yourtrip-app.service
 
 # --- CloudWatch Agent: 메모리 지표 수집 ---
 # 기본 CloudWatch 지표는 EC2 메모리를 노출하지 않는다. mem_used_percent가 이번
-# 실험의 핵심 검증 항목(t3.micro 1GB가 실제로 버티는가) 중 하나라 필수로 켠다.
+# 실험의 핵심 검증 항목(배포 타겟 스펙 t3.small 2GB가 실제로 버티는가) 중 하나라 필수로 켠다.
 mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
 cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'CWEOF'
 {
