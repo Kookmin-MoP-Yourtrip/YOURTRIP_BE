@@ -75,7 +75,8 @@ public class KakaoLocalClient {
             // 필터가 max()보다 앞에 있어야 한다 — 순서가 반대면 이름이 전혀 안 맞는 후보가
             // 주소·카테고리 가점만으로 1등이 되어 그대로 선택된다.
             .filter(doc -> nameMatches(doc, placeName))
-            .max(Comparator.comparingInt(doc -> score(doc, placeName, placeLocation))));
+            .max(Comparator.comparingInt(
+                doc -> PlaceMatchScorer.score(doc, placeName, placeLocation))));
     }
 
     /**
@@ -178,7 +179,7 @@ public class KakaoLocalClient {
     /**
      * AI가 준 장소명과 카카오 후보의 상호명이 같은 곳을 가리키는지 판정한다.
      *
-     * <p>이 게이트가 필요한 이유는 {@code score()}의 가점 구조 때문이다. 검색 키워드가
+     * <p>이 게이트가 필요한 이유는 {@link PlaceMatchScorer}의 가점 구조 때문이다. 검색 키워드가
      * "지역명 + 장소명"이라 주소 일치(+3)가 거의 자동으로 붙고 음식점·카페면 카테고리(+2)도
      * 자동이라, <b>이름이 하나도 안 맞아도 5점이 나온다.</b> 실측에서 5~7점 구간의 31%가
      * 오매칭이었던 반면 3점 구간은 표본 전부가 정답이었다 — 점수가 정확도와 단조 관계가
@@ -190,44 +191,4 @@ public class KakaoLocalClient {
         // 해야 하는데, 두 벌이면 한쪽만 고쳐져 "검증은 같은 장소, dedupe 는 다른 장소"가 된다.
         return PlaceNameNormalizer.similar(doc.place_name(), placeName);
     }
-
-    private int score(Document doc, String placeName, String placeLocation) {
-        int score = 0;
-
-        String name = doc.place_name() != null ? doc.place_name() : "";
-        String addr = (doc.road_address_name() != null && !doc.road_address_name().isBlank())
-            ? doc.road_address_name()
-            : (doc.address_name() != null ? doc.address_name() : "");
-
-        // 1) 이름 유사도 (단순 contains 기반)
-        if (!placeName.isBlank()) {
-            String lowerName = name.toLowerCase();
-            String lowerInput = placeName.toLowerCase();
-            if (lowerName.contains(lowerInput) || lowerInput.contains(lowerName)) {
-                score += 5;
-            }
-        }
-
-        // 2) 주소 유사도 (placeLocation 문자열이 카카오 주소(addr)에 포함되면 +3)
-        if (placeLocation != null && !placeLocation.isBlank()) {
-            String lowerKakaoAddr = addr.toLowerCase();
-            String lowerLocation = placeLocation.toLowerCase();
-
-            if (lowerKakaoAddr.contains(lowerLocation)) {
-                score += 3;
-            }
-        }
-
-        // 3) 카테고리 그룹이 관광/카페/음식점이면 가산점
-        String groupCode = doc.category_group_code();
-        if (groupCode != null) {
-            if (groupCode.equals("FD6") || groupCode.equals("CE7") || groupCode.equals("AT4")) {
-                score += 2;
-            }
-        }
-
-        return score;
-    }
-
-
 }

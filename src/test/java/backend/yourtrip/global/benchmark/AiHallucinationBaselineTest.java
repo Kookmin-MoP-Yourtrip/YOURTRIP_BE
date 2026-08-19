@@ -17,6 +17,7 @@ import backend.yourtrip.global.gemini.dto.GeminiCourseDto.DayScheduleDto;
 import backend.yourtrip.global.gemini.dto.GeminiCourseDto.PlaceDto;
 import backend.yourtrip.global.gemini.service.GeminiService;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
+import backend.yourtrip.global.kakao.PlaceMatchScorer;
 import backend.yourtrip.global.kakao.config.KakaoConfig;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
@@ -40,7 +41,6 @@ import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * AI 코스 생성(단일 LLM 호출) 구조의 **환각률 baseline 측정** 하네스.
@@ -52,11 +52,16 @@ import org.springframework.test.util.ReflectionTestUtils;
  * 판정 로직으로 OpenAI를 잰다 — 아래 "측정 축" 참고.
  *
  * <p><b>판정 로직은 한 줄도 바꾸지 않는다.</b> 값이 비교 가능하려면 같은 자로 재야 하므로,
- * {@code KakaoLocalClient.score()}가 private이지만 복제하지 않고
- * {@link ReflectionTestUtils#invokeMethod}로 원본을 그대로 호출한다(SigningBenchmarkTest가 만든 선례).
- * 복제하면 원본과 drift가 생겨 비교 근거가 약해진다.
+ * 점수 계산을 복제하지 않고 프로덕션의 {@link PlaceMatchScorer}를 그대로 호출한다. 복제하면 원본과
+ * drift가 생겨 비교 근거가 약해진다.
  *
- * <p><b>{@code findBestPlace()}가 아니라 {@code searchPlace()} + 리플렉션 {@code score()}를 쓰는 이유</b>:
+ * <p>예전에는 같은 목적으로 {@code KakaoLocalClient}의 <b>private {@code score()}를 리플렉션으로</b>
+ * 불렀다. 복제를 피한다는 목표는 같았지만, 그 방식은 <b>프로덕션의 private 시그니처를 이 하네스의
+ * 계약으로 만든다</b> — 이름이나 인자를 바꾸면 컴파일은 통과하고 여기만 런타임에 깨지는데, 이 클래스는
+ * {@code @Tag("benchmark")}라 일반 빌드에서 돌지 않아 <b>다음 측정 때까지 아무도 모른다.</b>
+ * 점수 계산을 공개 순수 함수로 옮겨 리플렉션 없이 같은 값을 얻는다.
+ *
+ * <p><b>{@code findBestPlace()}가 아니라 {@code searchPlace()} + {@code PlaceMatchScorer}를 쓰는 이유</b>:
  * {@code findBestPlace()}는 매칭된 Document만 돌려주고 점수를 버린다. 점수 없이는 hit과 below_threshold를
  * 구분할 수 없어 환각률 자체를 계산할 수 없다.
  *
@@ -105,7 +110,7 @@ import org.springframework.test.util.ReflectionTestUtils;
  * </pre>
  *
  * <h2>비교 가능성을 위해 건드리지 않는 것</h2>
- * 입력 세트(지역 10 × 키워드셋 3, 3일 고정), {@code KakaoLocalClient.score()} 리플렉션 호출과 점수
+ * 입력 세트(지역 10 × 키워드셋 3, 3일 고정), {@link PlaceMatchScorer}의 점수 계산과 점수
  * 밴드, 층화 추출 시드 42, <b>그리고 프롬프트 95줄 원문</b>. 특히 json_schema 판에서도 프롬프트의
  * 스키마 구간을 빼지 않는다 — 빼면 V2 외에 프롬프트까지 변수가 되어 측정이 무의미해진다
  * (프롬프트 슬림화는 6단계의 일이다). 프롬프트는 복사하지 않고
@@ -477,11 +482,13 @@ class AiHallucinationBaselineTest {
                 totalCount, -1, BAND_NO_RESULT, "", "", "", "");
         }
 
-        // private score() 를 리플렉션으로 원본 그대로 재사용한다 (로직 복제 금지)
+        // 프로덕션 점수 계산을 그대로 재사용한다 (로직 복제 금지).
+        // 예전에는 KakaoLocalClient 의 private score() 를 리플렉션으로 불렀는데,
+        // 그러면 private 시그니처가 이 하네스의 계약이 되어 프로덕션 리팩토링이 조용히 깨진다.
         Document best = null;
         int bestScore = Integer.MIN_VALUE;
         for (Document doc : docs) {
-            int score = invokeScore(kakaoLocalClient, doc, aiPlaceName, placeLocation);
+            int score = PlaceMatchScorer.score(doc, aiPlaceName, placeLocation);
             if (score > bestScore) {
                 bestScore = score;
                 best = doc;
@@ -497,11 +504,6 @@ class AiHallucinationBaselineTest {
             totalCount, bestScore, bandOf(bestScore),
             nullToEmpty(best.place_name()), nullToEmpty(best.category_name()),
             address, nullToEmpty(best.place_url()));
-    }
-
-    private int invokeScore(KakaoLocalClient client, Document doc, String placeName, String placeLocation) {
-        Integer score = ReflectionTestUtils.invokeMethod(client, "score", doc, placeName, placeLocation);
-        return score == null ? 0 : score;
     }
 
     private static String bandOf(int score) {
