@@ -1,5 +1,6 @@
 package backend.yourtrip.global.naver;
 
+import backend.yourtrip.global.common.ApiFailureCause;
 import backend.yourtrip.global.naver.dto.NaverLocalResponse;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -83,7 +84,7 @@ public class NaverLocalClient {
             }
             return NaverLocalResult.of(places);
         } catch (WebClientResponseException e) {
-            NaverLocalResult.Cause cause = classify(e);
+            ApiFailureCause cause = classify(e);
             log.warn("네이버 지역검색 실패({}): query={}, status={}, body={}",
                 cause, query, e.getStatusCode(), e.getResponseBodyAsString());
             return new NaverLocalResult.Failed(cause, e.getStatusCode().toString());
@@ -91,22 +92,22 @@ public class NaverLocalClient {
             // 타임아웃·커넥션 실패·풀 고갈은 WebClientRequestException 으로 올라온다.
             log.warn("네이버 지역검색 호출 실패: query={}, error={}", query, e.getMessage());
             return new NaverLocalResult.Failed(
-                NaverLocalResult.Cause.TRANSPORT_ERROR, e.getMessage());
+                ApiFailureCause.TRANSPORT_ERROR, e.getMessage());
         } catch (RuntimeException e) {
             // 200인데 본문이 스키마와 다른 경우(역직렬화 실패). 후보 공급이 죽어도 코스는 살아야 한다.
             log.warn("네이버 지역검색 응답 해석 실패: query={}, error={}", query, e.getMessage());
-            return new NaverLocalResult.Failed(NaverLocalResult.Cause.MALFORMED, e.getMessage());
+            return new NaverLocalResult.Failed(ApiFailureCause.MALFORMED, e.getMessage());
         }
     }
 
-    private static NaverLocalResult.Cause classify(WebClientResponseException e) {
+    private static ApiFailureCause classify(WebClientResponseException e) {
         int status = e.getStatusCode().value();
         if (status == 429) {
-            return NaverLocalResult.Cause.QUOTA_EXCEEDED;
+            return ApiFailureCause.QUOTA_EXCEEDED;
         }
         if (status == 401 || status == 403) {
-            return NaverLocalResult.Cause.UNAUTHORIZED;
+            return ApiFailureCause.UNAUTHORIZED;
         }
-        return NaverLocalResult.Cause.HTTP_ERROR;
+        return ApiFailureCause.HTTP_ERROR;
     }
 }

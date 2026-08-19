@@ -1,5 +1,6 @@
 package backend.yourtrip.global.naver;
 
+import backend.yourtrip.global.common.ApiFailureCause;
 import java.util.List;
 
 /**
@@ -30,30 +31,15 @@ public sealed interface NaverLocalResult {
 
     }
 
-    /** 물어보지 못했다. 후보 공급만 비고 코스 생성은 계속된다(fail-open). */
-    record Failed(Cause cause, String detail) implements NaverLocalResult {
-
-    }
-
     /**
-     * 실패 사유. 5단계에서 메트릭 태그가 되므로 처음부터 갈라 둔다.
+     * 물어보지 못했다. 후보 공급만 비고 코스 생성은 계속된다(fail-open).
      *
-     * <p>{@link #QUOTA_EXCEEDED}를 따로 두는 이유는 이것만 <b>시간이 지나야 풀리는 실패</b>이기
-     * 때문이다. 네이버 지역검색은 일 25,000건 한도이고 코스 1건이 18~30회를 쓰므로 하루 약
-     * 830~1,400코스에서 이 분기가 켜진다(ROADMAP 0-5). 다른 실패와 뭉치면 "장애인가 한도인가"를
-     * 로그에서 되짚어야 한다.
+     * <p>사유 어휘는 {@link ApiFailureCause}를 공유한다 — 4-8·4-7이 같은 목록을 필요로 해서
+     * 세 벌이 되기 전에 끌어올렸다. 어느 응답이 어느 사유인지 <b>분류</b>하는 일은 여전히
+     * {@link NaverLocalClient}가 한다.
      */
-    enum Cause {
-        /** 429. 일일 한도 초과 — 재시도가 아니라 다음 날을 기다려야 하는 실패다. */
-        QUOTA_EXCEEDED,
-        /** 401/403. 키가 없거나 그 API가 활성화돼 있지 않다(4-2에서 블로그가 이 상태였다). */
-        UNAUTHORIZED,
-        /** 그 밖의 4xx/5xx. */
-        HTTP_ERROR,
-        /** 타임아웃·커넥션 실패·풀 고갈. */
-        TRANSPORT_ERROR,
-        /** 200인데 본문을 읽을 수 없다. */
-        MALFORMED
+    record Failed(ApiFailureCause cause, String detail) implements NaverLocalResult {
+
     }
 
     static NaverLocalResult of(List<NaverPlace> places) {
