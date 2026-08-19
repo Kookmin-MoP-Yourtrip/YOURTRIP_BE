@@ -10,7 +10,8 @@
 # (docs/tasks/cache-effect-measurement/environment.md "운영 중 겪은 사고").
 #
 # 사용:  sudo switch-thread-arm.sh <maxThreads|default> [snc=true|false]
-#   default  → SERVER_TOMCAT_THREADS_MAX 키 제거(=Tomcat 기본 200)
+#   default  → SERVER_TOMCAT_THREADS_MAX 키 제거(= application-prod.yml의 값을 그대로 쓴다.
+#              #88 이후 그 값은 32다 — Tomcat 기본값 200이 아니므로 arm 이름과 헷갈리지 말 것)
 #   snc=false → YOURTRIP_REDIS_SHARE_NATIVE_CONNECTION=false, 아니면 키 제거(=기본 true)
 set -euo pipefail
 
@@ -44,9 +45,14 @@ done
 
 metrics=$(curl -sf "$BASE_URL/actuator/prometheus")
 cfg_max=$(awk '/^tomcat_threads_config_max_threads/ {print $2}' <<< "$metrics" | head -1)
-expected=$([ "$MAX" = "default" ] && echo 200 || echo "$MAX")
-printf 'tomcat_threads_config_max_threads=%s (expected %s)\n' "$cfg_max" "$expected"
-[ "${cfg_max%.*}" = "$expected" ] || { echo "maxThreads not applied" >&2; exit 1; }
+if [ "$MAX" = "default" ]; then
+  # 키를 지운 경우의 기대값은 application-prod.yml이 정하므로 여기서 단정할 수 없다.
+  # (#88 이후 그 값은 32다 — Tomcat 기본값 200이 아니다.) 값만 남기고 넘어간다.
+  printf 'tomcat_threads_config_max_threads=%s (yml 기본값)\n' "$cfg_max"
+else
+  printf 'tomcat_threads_config_max_threads=%s (expected %s)\n' "$cfg_max" "$MAX"
+  [ "${cfg_max%.*}" = "$MAX" ] || { echo "maxThreads not applied" >&2; exit 1; }
+fi
 
 # 활성 프로필과 SNC 스위치는 기동 로그로 확인한다.
 journalctl -u "$SERVICE" --since -3min --no-pager | grep -E 'profile.*active|share-native-connection' | tail -3
