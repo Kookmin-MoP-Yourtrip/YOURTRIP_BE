@@ -68,6 +68,10 @@ naver:
   local:
     base-url: http://localhost:8090
 
+tour:
+  base-url: http://localhost:8091
+  service-key: test-tour-service-key
+
 logging:
   level:
     # prod와 마찬가지로 root는 INFO를 유지한다. 컨텍스트 로딩 실패나 빈 등록 오류는
