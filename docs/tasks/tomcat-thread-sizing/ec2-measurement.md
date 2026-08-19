@@ -101,7 +101,9 @@ Redis 지연 = `lettuce_command_firstresponse` 구간 평균. "대기 커넥션"
 
 **SNC arm이 그 반증이다.** 채널을 8개로 늘려 Redis 지연 지표는 0.84ms까지 낮췄지만, 요청당 CPU는 오히려 **28% 늘었고**(풀 borrow/return + 폴백 비용) 처리량은 26% 떨어졌다. **Redis 지연 지표만 보면 SNC가 6개 arm 중 가장 좋아 보이는데 실제로는 최악**이라는 것이, 그 지표를 성과 지표로 읽으면 안 되는 이유를 보여준다.
 
-> **한계**: 컨텍스트 스위칭 횟수를 직접 재지 않았다(`/proc/stat`의 `ctxt`를 하네스가 수집하지 않는다). 요청당 CPU 감소·runnable 스레드 감소·load average 감소가 모두 같은 방향을 가리키지만, **26% 중 스레드 전환 오버헤드와 CPU 캐시 지역성이 각각 얼마인지는 분해하지 못했다.** 다음 측정에서는 `ctxt`를 폴링에 넣는 것이 맞다.
+> **한계 → [#97](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/97)에서 잇는다**: 컨텍스트 스위칭 횟수를 직접 재지 않았다(`/proc/stat`의 `ctxt`를 하네스가 수집하지 않는다). 요청당 CPU 감소·runnable 스레드 감소·load average 감소가 모두 같은 방향을 가리키지만, **26% 중 스레드 전환 오버헤드와 CPU 캐시 지역성이 각각 얼마인지는 분해하지 못했다.**
+>
+> 후속 작업이 [cpu-cost-decomposition.md](cpu-cost-decomposition.md)에 있다. 거기서 **위 표만 다시 계산해도 상당 부분이 배제법으로 좁혀진다**는 것이 드러났다 — 이 경로의 블로킹 지점이 정확히 2개(랭킹 `GET` + 아이템 `MGET`)라 요청당 전환은 4~6회가 상한인데, 낭비 0.192 vCPU-ms를 직접 전환 비용만으로 설명하려면 요청당 **96회의 추가 전환**(1회 2μs 가정)이 필요하다. **직접 전환 비용의 몫은 어떤 가정에서도 6~16%가 상한**이고, 나머지는 "같은 명령어 스트림이 더 느리게 도는 것" 즉 지역성이다. 그 박스의 2 vCPU가 **물리 코어 하나의 하이퍼스레드 2개**(L2 1MB 공유)라는 것도 그때 확인했다. 실제 배분은 요청당 CPU를 user/sys로 갈라 재는 것으로 확정한다.
 
 ## 스레드 그룹별 런큐 대기 (VU 200 구간 중반 10초, `schedstat`)
 
@@ -119,6 +121,8 @@ lettuce = netty 이벤트루프 스레드(2개 존재, 공유 커넥션이면 1�
 <sub>2회 평균. "runnable 상당" = 그룹의 (실행+대기) ÷ 벽시계 — 그 그룹이 평균 몇 개의 스레드만큼 항상 런큐에 있었는가.</sub>
 
 > **"(실행+대기)÷벽시계" 열은 arm 간 비교에 편향이 있다.** 샘플러가 `/proc/<pid>/task/`를 두 번 훑는데 스레드가 많을수록 그 시간이 길어져 분모(벽시계)가 늘어난다 — T200 11,876ms vs T8 10,354ms. 그래서 T200의 86.6%가 실제보다 낮게, T64·T32의 94%가 상대적으로 높게 나온다. **T8의 41.2%는 이 편향(최대 15%p)보다 훨씬 큰 차이**라 "T8에서 비로소 논다"는 판정은 유효하지만, 나머지 arm 간의 수 %p 차이는 읽지 않는 것이 맞다.
+>
+> **원인을 찾아 고쳤다([#97](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/97)).** 스냅샷이 스레드마다 `cat`과 `grep` 프로세스를 띄우고 있었다(T200이면 스냅샷당 400여 회의 fork, 게다가 t0 조회가 O(N²)). 셸 내장 `read`와 연관 배열로 바꿔 fork를 0으로 만들자 **스냅샷 1회가 740ms → 37ms**(137스레드 기준)로 줄었다. 이후 측정에서는 이 열을 arm 간에 비교해도 된다.
 
 읽는 법:
 - **T200의 워커는 평균 19개가 항상 runnable**이고(호스트 `procs_running` 평균 18.6과 일치) lettuce 스레드는 그 사이에서 91%를 기다린다 — [redis-io-bottleneck.md](../cache-effect-measurement/redis-io-bottleneck.md)의 90.8%가 재현됐다.
@@ -191,5 +195,6 @@ r2·r3가 본 배치의 T32(2,921 / 2.9ms / 82.9ms)를 재현한다. **r1이 낮
 ## 참고 문서
 
 - [README.md](README.md) — 설계·사이징 원칙·판정 기준
+- [cpu-cost-decomposition.md](cpu-cost-decomposition.md) — 위 26%를 전환 횟수와 캐시 지역성으로 분해하는 후속 측정(#97)
 - [../cache-effect-measurement/redis-io-bottleneck.md](../cache-effect-measurement/redis-io-bottleneck.md) — 병목 규명(런큐 대기 90.8%)과 #87 AZ 정렬
 - [../../guide/ec2-rds-loadtest.md](../../guide/ec2-rds-loadtest.md) — 실행 절차·하네스

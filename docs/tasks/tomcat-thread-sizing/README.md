@@ -86,6 +86,7 @@ Tomcat 기본값 200은 CPU와 무관한 범용 상수다(블로킹 I/O·JSP 시
 ## 참고 문서
 
 - [ec2-measurement.md](ec2-measurement.md) — 실측 결과·판정
+- [cpu-cost-decomposition.md](cpu-cost-decomposition.md) — 요청당 CPU 26% 감소를 전환 횟수와 캐시 지역성으로 분해(#97). 측정 전 예산 계산과 사전 등록 예측이 여기 있다
 - [../cache-effect-measurement/redis-io-bottleneck.md](../cache-effect-measurement/redis-io-bottleneck.md) — 이 작업의 근거가 된 병목 규명
 - [../../guide/ec2-rds-loadtest.md](../../guide/ec2-rds-loadtest.md) — 분리 환경 실행 절차·하네스 사용법
 
