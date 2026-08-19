@@ -98,8 +98,8 @@ class StyleModifierProbeTest {
             System.out.printf("%n=== 기본 쿼리 [%s %s] %d건 ===%n  %s%n", AREA, hint, base.size(), base);
 
             for (StyleTag tag : TARGETS.get(slotType)) {
-                String term = tag.searchTerm().orElseThrow();
-                rows.add(measure(slotType, tag, term, base, false));
+                // 이전 측정에서 비운 태그는 잴 것이 없다 — orElseThrow 로 두면 여기서 터진다.
+                tag.searchTerm().ifPresent(term -> rows.add(measure(slotType, tag, term, base, false)));
             }
         }
 
@@ -128,6 +128,56 @@ class StyleModifierProbeTest {
         System.out.println("  죽은 표기   : 결과 0건 또는 신규 0건 → searchTerm 을 비운다");
         System.out.println("  반쪽 표기   : 상호명 포함률이 높다 → 속성이 아니라 이름을 검색한 것이다");
         System.out.println("  쓸 만한 표기: 결과가 있고 신규가 있으며 상호명 포함률이 낮다");
+        System.out.printf("%n  총 호출 %d회%n", calls);
+    }
+
+    /**
+     * 1차·2차에서 <b>1건짜리로 통과한 얇은 표기</b>를 지역 3곳으로 다시 잰다.
+     *
+     * <p>두 가지를 분리하지 못한 것이 문제였다 — 결과가 1건인 이유가 <b>표기가 나쁜 것</b>인지
+     * <b>그 지역에 그런 곳이 적은 것</b>인지. 앞 측정은 경주 한 곳이었다.
+     *
+     * <p>판정 기준도 올린다. {@code 신규 >= 2}를 넘지 못하면 비운다 — 슬롯당 후보 8~15건을
+     * 목표로 하는 설계에서 1건 추가는 쿼리 한 번의 쿼터값을 못 한다.
+     */
+    @Test
+    @DisplayName("얇은 표기를 지역 3곳으로 다시 재 표기 문제와 지역 특성을 분리한다")
+    void 얇은_표기를_다지역으로_재측정한다() {
+        record Candidate(SlotType slotType, StyleTag tag, List<String> terms) {}
+        List<Candidate> candidates = List.of(
+            new Candidate(SlotType.CAFE, StyleTag.UNCROWDED,
+                List.of("한적", "한적함", "한적한", "숨은", "조용한골목")),
+            new Candidate(SlotType.CAFE, StyleTag.COZY,
+                List.of("아늑한", "아늑", "아늑함", "소품샵")),
+            new Candidate(SlotType.MEAL, StyleTag.EXPENSIVE,
+                List.of("고급", "고급스러운", "프리미엄", "파인다이닝")));
+        List<String> areas = List.of("경주", "강릉", "부산");
+
+        System.out.printf("%n%n=== [4-3보강] 3차 측정 — 얇은 표기 × 지역 3곳 ===%n");
+        System.out.printf("%-14s %-12s %-8s %-6s %-6s %-6s %6s  %s%n",
+            "태그", "검색어", "경주", "강릉", "부산", "", "신규합", "판정");
+
+        for (Candidate candidate : candidates) {
+            for (String term : candidate.terms()) {
+                int total = 0;
+                StringBuilder perArea = new StringBuilder();
+                for (String area : areas) {
+                    Set<String> base = namesOf(area + " " + candidate.slotType().getSearchHint());
+                    Set<String> styled = namesOf(
+                        area + " " + term + " " + candidate.slotType().getSearchHint());
+                    Set<String> fresh = new LinkedHashSet<>(styled);
+                    fresh.removeAll(base);
+                    total += fresh.size();
+                    perArea.append(String.format("%-6s ", styled.size() + "/" + fresh.size()));
+                }
+                System.out.printf("%-14s %-12s %s%6d  %s%n",
+                    candidate.tag().name(), term, perArea, total,
+                    total >= 2 * areas.size() ? "쓸만함" : total >= areas.size() ? "경계" : "비운다");
+            }
+            System.out.println();
+        }
+        System.out.println("  표기는 결과수/신규수. 판정은 3개 지역 신규 합계 기준");
+        System.out.println("    쓸만함: 지역당 평균 2건 이상   경계: 평균 1건대   비운다: 그 미만");
         System.out.printf("%n  총 호출 %d회%n", calls);
     }
 
