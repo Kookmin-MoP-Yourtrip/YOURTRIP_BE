@@ -197,6 +197,7 @@ r2·r3가 본 배치의 T32(2,921 / 2.9ms / 82.9ms)를 재현한다. **r1이 낮
 ## 참고 문서
 
 - [README.md](README.md) — 설계·사이징 원칙·판정 기준
-- [cpu-cost-decomposition.md](cpu-cost-decomposition.md) — 위 26%를 전환 횟수와 캐시 지역성으로 분해하는 후속 측정(#97)
+- [cpu-cost-decomposition.md](cpu-cost-decomposition.md) — 위 26%를 전환 횟수와 캐시 지역성으로 분해한 후속 측정(#97)
+- [measurement-harness.md](measurement-harness.md) — 그 측정의 계측 구현·검증. 이 문서의 샘플러 편향 caveat를 고친 내용도 여기 있다
 - [../cache-effect-measurement/redis-io-bottleneck.md](../cache-effect-measurement/redis-io-bottleneck.md) — 병목 규명(런큐 대기 90.8%)과 #87 AZ 정렬
 - [../../guide/ec2-rds-loadtest.md](../../guide/ec2-rds-loadtest.md) — 실행 절차·하네스
