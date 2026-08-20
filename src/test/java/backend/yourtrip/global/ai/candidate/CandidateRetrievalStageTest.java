@@ -1,0 +1,332 @@
+package backend.yourtrip.global.ai.candidate;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
+import backend.yourtrip.global.ai.CourseDeadline;
+import backend.yourtrip.global.ai.pipeline.PlannerDayPlan;
+import backend.yourtrip.global.ai.pipeline.PlannerPlan;
+import backend.yourtrip.global.ai.route.SlotType;
+import backend.yourtrip.global.common.ApiFailureCause;
+import backend.yourtrip.global.tour.TourApiClient;
+import java.time.Duration;
+import java.util.List;
+import java.util.Set;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+/**
+ * {@link CandidateRetrievalStage} 단위 테스트 (ROADMAP 5-8).
+ *
+ * <p><b>executor 를 {@code Runnable::run} 으로 바꿔 실행을 결정론으로 만든다.</b> 이 테스트가
+ * 확인해야 하는 것은 "병렬이 빠른가"가 아니라 <b>무엇을 몇 번 부르고, 실패했을 때 무엇이 남는가</b>다.
+ * 진짜 스레드풀을 쓰면 그 질문이 타이밍에 흔들린다.
+ */
+@ExtendWith(MockitoExtension.class)
+@DisplayName("CandidateRetrievalStage — 후보 풀 조립 (ROADMAP 5-8)")
+class CandidateRetrievalStageTest {
+
+    private static final double ANCHOR_LAT = 35.8386877792;
+    private static final double ANCHOR_LON = 129.2104983997;
+    private static final List<KeywordType> COUPLE = List.of(KeywordType.COUPLE);
+
+    @Mock
+    private AreaGeocoder areaGeocoder;
+    @Mock
+    private NaverLocalSeedSource naverLocalSeedSource;
+    @Mock
+    private TourApiSource tourApiSource;
+
+    private CandidateRetrievalStage stage;
+
+    @BeforeEach
+    void setUp() {
+        stage = new CandidateRetrievalStage(areaGeocoder, naverLocalSeedSource, tourApiSource,
+            Runnable::run);
+    }
+
+    private static PlannerPlan plan(PlannerDayPlan... days) {
+        return new PlannerPlan("경주 3일", "고도의 밤", List.of(days));
+    }
+
+    private static PlannerDayPlan day(int number, SlotType... slots) {
+        return new PlannerDayPlan(number, "황리단길 일대", "대릉원", List.of(slots));
+    }
+
+    private void geocodeSucceeds() {
+        when(areaGeocoder.geocode(anyString(), anyString(), anyString()))
+            .thenReturn(GeocodeResult.resolved(ANCHOR_LAT, ANCHOR_LON, GeocodeOutcome.HIT));
+    }
+
+    private void naverReturns(PlaceCandidate... candidates) {
+        when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any()))
+            .thenReturn(CandidateBatch.of(List.of(candidates)));
+    }
+
+    private void tourReturns(PlaceCandidate... candidates) {
+        when(tourApiSource.fetch(anyDouble(), anyDouble(), anyInt()))
+            .thenReturn(CandidateBatch.of(List.of(candidates)));
+    }
+
+    @Nested
+    @DisplayName("호출 횟수 — 쿼터가 지연보다 희소한 자원이다")
+    class CallCounts {
+
+        @Test
+        @DisplayName("같은 슬롯 타입이 두 자리여도 쿼리는 한 번이다")
+        void distinctSlotTypesOnly() {
+            geocodeSucceeds();
+            naverReturns();
+            when(tourApiSource.fetch(anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(CandidateBatch.empty());
+
+            // [ATTRACTION, MEAL, ATTRACTION] — ATTRACTION 이 두 자리다.
+            stage.retrieve("경주", plan(day(1, SlotType.ATTRACTION, SlotType.MEAL,
+                SlotType.ATTRACTION)), List.of(), CourseDeadline.unbounded());
+
+            // 슬롯 타입 2종 × (기본 1 + modifier 0) = 2회.
+            verify(naverLocalSeedSource, times(2)).fetch(anyString(), any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("슬롯마다 기본 쿼리 1회 + modifier 쿼리만큼 더 부른다")
+        void basicPlusModifierQueries() {
+            geocodeSucceeds();
+            naverReturns();
+
+            stage.retrieve("경주", plan(day(1, SlotType.CAFE)), COUPLE,
+                CourseDeadline.unbounded());
+
+            // 연인 키워드의 검색 가능한 상위 2개(야경·루프탑) → 기본 1 + 2 = 3회.
+            verify(naverLocalSeedSource, times(3)).fetch(anyString(), eq(SlotType.CAFE), any(),
+                any(), any());
+            verify(naverLocalSeedSource).fetch(anyString(), eq(SlotType.CAFE), isNull(), any(),
+                any());
+        }
+
+        @Test
+        @DisplayName("TourAPI 는 관광 슬롯이 요구하는 contentTypeId 합집합만큼만 부른다")
+        void tourApiCalledOncePerContentType() {
+            geocodeSucceeds();
+            naverReturns();
+            when(tourApiSource.fetch(anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(CandidateBatch.empty());
+
+            // ATTRACTION 과 VIEWPOINT 는 같은 12·14 를 요구한다 — 네 번이 아니라 두 번이어야 한다.
+            stage.retrieve("경주", plan(day(1, SlotType.ATTRACTION, SlotType.VIEWPOINT,
+                SlotType.MEAL)), List.of(), CourseDeadline.unbounded());
+
+            verify(tourApiSource, times(2)).fetch(anyDouble(), anyDouble(), anyInt());
+        }
+
+        @Test
+        @DisplayName("관광 슬롯이 없는 day 는 TourAPI 를 아예 부르지 않는다")
+        void noTourApiForCommercialOnlyDay() {
+            geocodeSucceeds();
+            naverReturns();
+
+            stage.retrieve("경주", plan(day(1, SlotType.MEAL, SlotType.CAFE)), List.of(),
+                CourseDeadline.unbounded());
+
+            verify(tourApiSource, never()).fetch(anyDouble(), anyDouble(), anyInt());
+        }
+
+        @Test
+        @DisplayName("지오코딩은 day 당 한 번이다")
+        void geocodesOncePerDay() {
+            geocodeSucceeds();
+            naverReturns();
+
+            stage.retrieve("경주", plan(day(1, SlotType.MEAL), day(2, SlotType.CAFE)), List.of(),
+                CourseDeadline.unbounded());
+
+            verify(areaGeocoder, times(2)).geocode(anyString(), anyString(), anyString());
+        }
+    }
+
+    @Nested
+    @DisplayName("조립 결과")
+    class Assembly {
+
+        @Test
+        @DisplayName("day × 슬롯타입마다 슬롯이 하나씩 생긴다")
+        void oneSlotPerDayAndType() {
+            geocodeSucceeds();
+            naverReturns(CandidateFixtures.cafe("커피플레이스", "경북 경주시 포석로 1080", 1, null));
+
+            CandidatePool pool = stage.retrieve("경주",
+                plan(day(1, SlotType.MEAL, SlotType.CAFE), day(2, SlotType.CAFE)),
+                List.of(), CourseDeadline.unbounded());
+
+            assertThat(pool.slots()).hasSize(3);
+            assertThat(pool.find(2, SlotType.CAFE)).isPresent();
+            assertThat(pool.find(2, SlotType.MEAL)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("TourAPI 후보는 요청한 슬롯 타입으로 다시 붙어 목록에 들어간다")
+        void tourCandidatesAreReattachedToSlot() {
+            geocodeSucceeds();
+            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any()))
+                .thenReturn(CandidateBatch.empty());
+            // contentTypeId=12 응답의 기본 슬롯은 ATTRACTION 이지만, 요청한 자리는 VIEWPOINT 다.
+            tourReturns(CandidateFixtures.listed("첨성대", CandidateFixtures.CHEOMSEONGDAE_LAT,
+                CandidateFixtures.CHEOMSEONGDAE_LON, 0.5, Set.of()));
+
+            CandidatePool pool = stage.retrieve("경주", plan(day(1, SlotType.VIEWPOINT)),
+                List.of(), CourseDeadline.unbounded());
+
+            assertThat(pool.findOrEmpty(1, SlotType.VIEWPOINT).candidates())
+                .extracting(PlaceCandidate::slotType).containsOnly(SlotType.VIEWPOINT);
+        }
+
+        @Test
+        @DisplayName("시드 후보가 목록 앞에 온다 — 순서 자체가 Curator 에게 주는 신호다")
+        void seededComesFirst() {
+            geocodeSucceeds();
+            naverReturns(CandidateFixtures.seeded("대릉원", 1, ANCHOR_LAT, ANCHOR_LON));
+            tourReturns(CandidateFixtures.listed("골굴사", CandidateFixtures.NAEMUL_LAT,
+                CandidateFixtures.NAEMUL_LON, 0.1, Set.of()));
+
+            CandidatePool pool = stage.retrieve("경주", plan(day(1, SlotType.ATTRACTION)),
+                List.of(), CourseDeadline.unbounded());
+
+            assertThat(pool.findOrEmpty(1, SlotType.ATTRACTION).candidates())
+                .extracting(PlaceCandidate::name).containsExactly("대릉원", "골굴사");
+        }
+
+        @Test
+        @DisplayName("두 소스가 같은 장소를 가리키면 하나로 합쳐진다")
+        void mergesSamePlaceAcrossSources() {
+            geocodeSucceeds();
+            naverReturns(CandidateFixtures.seeded("천마총", 2,
+                CandidateFixtures.CHEONMACHONG_LAT, CandidateFixtures.CHEONMACHONG_LON));
+            tourReturns(CandidateFixtures.listed("천마총", CandidateFixtures.CHEONMACHONG_LAT,
+                CandidateFixtures.CHEONMACHONG_LON, 0.4, Set.of(StyleTag.HISTORY)));
+
+            List<PlaceCandidate> candidates =
+                stage.retrieve("경주", plan(day(1, SlotType.ATTRACTION)), List.of(),
+                    CourseDeadline.unbounded()).findOrEmpty(1, SlotType.ATTRACTION).candidates();
+
+            assertThat(candidates).hasSize(1);
+            assertThat(candidates.get(0).seeded()).isTrue();
+            assertThat(candidates.get(0).official()).isTrue();
+        }
+    }
+
+    @Nested
+    @DisplayName("fail-open — 어느 조각이 죽어도 나머지로 성립한다")
+    class FailOpen {
+
+        @Test
+        @DisplayName("지오코딩이 실패하면 그 day 의 TourAPI 만 건너뛴다 — 시더는 그대로 돈다")
+        void geocodeFailureSkipsOnlyTourApi() {
+            when(areaGeocoder.geocode(anyString(), anyString(), anyString()))
+                .thenReturn(GeocodeResult.failed());
+            naverReturns(CandidateFixtures.seeded("대릉원", 1, ANCHOR_LAT, ANCHOR_LON));
+
+            CandidatePool pool = stage.retrieve("경주", plan(day(1, SlotType.ATTRACTION)),
+                List.of(), CourseDeadline.unbounded());
+
+            verifyNoInteractions(tourApiSource);
+            assertThat(pool.findOrEmpty(1, SlotType.ATTRACTION).candidates()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("네이버가 죽으면 관광 슬롯은 TourAPI 만으로 채워진다")
+        void naverFailureLeavesTourApi() {
+            geocodeSucceeds();
+            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any()))
+                .thenReturn(CandidateBatch.failed(ApiFailureCause.QUOTA_EXCEEDED));
+            tourReturns(CandidateFixtures.listed("골굴사", CandidateFixtures.NAEMUL_LAT,
+                CandidateFixtures.NAEMUL_LON, 1.2, Set.of()));
+
+            CandidatePool pool = stage.retrieve("경주", plan(day(1, SlotType.ATTRACTION)),
+                List.of(), CourseDeadline.unbounded());
+
+            assertThat(pool.findOrEmpty(1, SlotType.ATTRACTION).candidates())
+                .extracting(PlaceCandidate::name).containsExactly("골굴사");
+        }
+
+        @Test
+        @DisplayName("둘 다 죽으면 빈 풀이다 — 예외가 아니라 초안 구조로 degrade")
+        void bothSourcesDownYieldsEmptyPool() {
+            geocodeSucceeds();
+            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any()))
+                .thenReturn(CandidateBatch.failed(ApiFailureCause.TRANSPORT_ERROR));
+            when(tourApiSource.fetch(anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(CandidateBatch.failed(ApiFailureCause.TRANSPORT_ERROR));
+
+            CandidatePool pool = stage.retrieve("경주", plan(day(1, SlotType.ATTRACTION)),
+                List.of(), CourseDeadline.unbounded());
+
+            assertThat(pool.isEmpty()).isTrue();
+            // 슬롯 자체는 남는다 — Curator 입력의 구조가 무너지지는 않는다.
+            assertThat(pool.slots()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("예산이 이미 소진됐으면 아무것도 부르지 않는다")
+        void expiredDeadlineSkipsEverything() {
+            lenient().when(areaGeocoder.geocode(anyString(), anyString(), anyString()))
+                .thenReturn(GeocodeResult.failed());
+
+            CandidatePool pool = stage.retrieve("경주", plan(day(1, SlotType.ATTRACTION)),
+                List.of(), CourseDeadline.startingNow(Duration.ZERO));
+
+            assertThat(pool.isEmpty()).isTrue();
+            verifyNoInteractions(areaGeocoder, naverLocalSeedSource, tourApiSource);
+        }
+
+        @Test
+        @DisplayName("Planner 플랜이 비면 빈 풀이다 — 외부 호출도 없다")
+        void emptyPlanYieldsEmptyPool() {
+            CandidatePool pool = stage.retrieve("경주", plan(), List.of(),
+                CourseDeadline.unbounded());
+
+            assertThat(pool.isEmpty()).isTrue();
+            verifyNoInteractions(areaGeocoder, naverLocalSeedSource, tourApiSource);
+        }
+    }
+
+    @Nested
+    @DisplayName("TourAPI 분류와 슬롯의 대응")
+    class ContentTypeRouting {
+
+        @Test
+        @DisplayName("체험 슬롯은 레포츠를, 볼거리 슬롯은 관광지·문화시설을 부른다")
+        void experienceAndSightUseDifferentContentTypes() {
+            geocodeSucceeds();
+            naverReturns();
+            when(tourApiSource.fetch(anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(CandidateBatch.empty());
+
+            stage.retrieve("경주", plan(day(1, SlotType.EXPERIENCE, SlotType.ATTRACTION)),
+                List.of(), CourseDeadline.unbounded());
+
+            verify(tourApiSource).fetch(anyDouble(), anyDouble(),
+                eq(TourApiClient.CONTENT_TYPE_LEISURE));
+            verify(tourApiSource).fetch(anyDouble(), anyDouble(),
+                eq(TourApiClient.CONTENT_TYPE_ATTRACTION));
+            verify(tourApiSource).fetch(anyDouble(), anyDouble(),
+                eq(TourApiClient.CONTENT_TYPE_CULTURE));
+        }
+    }
+}
