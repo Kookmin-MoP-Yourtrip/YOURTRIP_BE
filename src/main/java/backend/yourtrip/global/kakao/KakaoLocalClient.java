@@ -53,6 +53,9 @@ public class KakaoLocalClient {
         return switch (lookupBestPlace(placeName, placeLocation)) {
             case PlaceLookup.Found found -> found.document();
             case PlaceLookup.NoResult ignored -> null;
+            // 이름 불일치도 기존에는 무결과와 한 값이었다 — 5-2가 둘을 값으로 가른 것은
+            // 기록을 위해서이지 이 경로의 동작을 바꾸기 위해서가 아니다.
+            case PlaceLookup.NameMismatch ignored -> null;
             // 실패를 값으로 받았지만 이 경로의 계약은 예외다. 기존 호출부는 부분 실패를 다룰
             // 준비가 되어 있지 않다(장소 하나를 못 붙이면 코스 저장 자체가 무의미하다).
             case PlaceLookup.Failed ignored -> throw new BusinessException(
@@ -128,9 +131,12 @@ public class KakaoLocalClient {
                 return new PlaceLookup.NoResult();
             }
 
+            // 여기까지 왔다면 문서는 있었다. 그런데도 picker 가 아무것도 못 고르면 그건
+            // "카카오에 없다"가 아니라 "우리가 이름 게이트로 걸렀다"는 뜻이다 — 세탁 위험
+            // 구간이라 순수 환각과 갈라 기록한다(5-6).
             return pick.apply(docs)
                 .<PlaceLookup>map(PlaceLookup.Found::new)
-                .orElseGet(PlaceLookup.NoResult::new);
+                .orElseGet(() -> new PlaceLookup.NameMismatch(docs.get(0).place_name()));
         } catch (WebClientResponseException e) {
             ApiFailureCause cause = classify(e);
             log.error("Kakao search API error({}): {} - {}", cause, e.getStatusCode(),

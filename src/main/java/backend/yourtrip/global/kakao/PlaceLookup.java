@@ -22,8 +22,8 @@ import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
  *
  * <h2>{@link Found}는 이름 게이트를 통과한 결과다</h2>
  * "검색 결과가 있다"가 아니라 <b>"이름이 맞는 결과가 있다"</b>는 뜻이다. 그래서 Planner가 없는
- * 랜드마크를 지어내면 {@link NoResult}가 되어 캐스케이드가 다음 단계로 넘어간다 — 환각이
- * 좌표로 굳어 파이프라인에 박히지 않는다(설계 "area → 좌표" 절).
+ * 랜드마크를 지어내면 좌표로 굳지 않고 캐스케이드가 다음 단계로 넘어간다 — 환각이 파이프라인에
+ * 박히지 않는다(설계 "area → 좌표" 절).
  */
 public sealed interface PlaceLookup {
 
@@ -32,8 +32,31 @@ public sealed interface PlaceLookup {
 
     }
 
-    /** 호출은 성공했으나 쓸 수 있는 후보가 없다. <b>다음 쿼리로 넘어가라</b>는 신호다. */
+    /** 카카오에 아무것도 없다 — <b>순수 환각</b>(지어낸 이름)의 신호다. */
     record NoResult() implements PlaceLookup {
+
+    }
+
+    /**
+     * 결과는 있었는데 <b>이름 게이트에서 전멸했다</b> — 비슷한 게 있으나 이름이 안 맞는
+     * <b>세탁 위험 구간</b>이다 (ROADMAP 5-2).
+     *
+     * <p><b>{@link NoResult}와 갈라야 하는 이유는 두 사건이 다른 것을 뜻하기 때문이다.</b>
+     * 배경이 비판한 실수가 정확히 이 구간이었다 — 하한선 없는 {@code score()}가 "그 지역의 무관한
+     * POI"를 최고점으로 뽑아 환각을 실존 장소로 <b>세탁</b>했다. 1-2가 이름 게이트로 그 경로를
+     * 막았고, 이제 그 게이트가 몇 번 발동했는지가 곧 세탁 시도의 빈도다.
+     *
+     * <p>둘을 한 값으로 뭉치면 5-6의 {@code ai.grounding.match{result}}가
+     * {@code no_result}(순수 환각)와 {@code name_mismatch}(세탁 위험)를 구분할 수 없고, 그러면
+     * 환각률 프록시가 <b>무엇이 개선됐는지</b>를 말해주지 못한다.
+     *
+     * <p><b>호출자의 처리는 {@code NoResult}와 같아도 된다</b> — 검증에서는 그 후보만 탈락,
+     * 지오코딩에서는 다음 쿼리로. 다른 것은 <b>기록</b>이다.
+     *
+     * @param bestCandidateName 카카오가 1순위로 준 상호명. 로그에서 "무엇이 왔길래 걸렀나"를
+     *                          바로 보기 위한 것이고 판정에는 쓰지 않는다
+     */
+    record NameMismatch(String bestCandidateName) implements PlaceLookup {
 
     }
 

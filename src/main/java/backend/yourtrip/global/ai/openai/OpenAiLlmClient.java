@@ -1,5 +1,6 @@
 package backend.yourtrip.global.ai.openai;
 
+import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.LlmCall;
 import backend.yourtrip.global.ai.LlmClient;
 import backend.yourtrip.global.ai.LlmResponseParser;
@@ -101,6 +102,7 @@ public class OpenAiLlmClient implements LlmClient {
     private final LlmResponseParser responseParser;
     private final LlmRetryExecutor retryExecutor;
     private final OpenAiChatModel chatModel;
+    private final AiCourseMetrics metrics;
     private final Semaphore concurrencyGate;
 
     /**
@@ -109,8 +111,8 @@ public class OpenAiLlmClient implements LlmClient {
      */
     @Autowired
     public OpenAiLlmClient(AiLlmProperties properties, LlmResponseParser responseParser,
-        LlmRetryExecutor retryExecutor) {
-        this(properties, responseParser, retryExecutor,
+        LlmRetryExecutor retryExecutor, AiCourseMetrics metrics) {
+        this(properties, responseParser, retryExecutor, metrics,
             buildChatModel(properties.openai().baseUrl(), properties.openai().apiKey(),
                 properties.timeoutMs()));
     }
@@ -123,10 +125,11 @@ public class OpenAiLlmClient implements LlmClient {
      * {@code KakaoConfig.buildKakaoWebClient}가 같은 이유로 만든 선례를 따른다.
      */
     public OpenAiLlmClient(AiLlmProperties properties, LlmResponseParser responseParser,
-        LlmRetryExecutor retryExecutor, OpenAiChatModel chatModel) {
+        LlmRetryExecutor retryExecutor, AiCourseMetrics metrics, OpenAiChatModel chatModel) {
         this.properties = properties;
         this.responseParser = responseParser;
         this.retryExecutor = retryExecutor;
+        this.metrics = metrics;
         this.chatModel = chatModel;
         this.concurrencyGate = new Semaphore(properties.maxConcurrentCalls());
 
@@ -191,10 +194,29 @@ public class OpenAiLlmClient implements LlmClient {
     @Override
     public <T> T generate(LlmCall<T> call) {
         acquirePermit(call.agentName());
+        // 세마포어 대기는 지연에 넣지 않는다 — 그건 모델이 아니라 우리가 건 동시성 상한이 만든
+        // 대기이고, 섞으면 "모델이 느려졌다"와 "티어가 좁다"를 구분할 수 없다.
+        long startedAt = System.nanoTime();
+        String outcome = AiCourseMetrics.LLM_OUTCOME_ERROR;
         try {
-            return generateWithSemanticRetry(call);
+            T result = generateWithSemanticRetry(call);
+            outcome = AiCourseMetrics.LLM_OUTCOME_SUCCESS;
+            return result;
+        } catch (LlmTruncatedResponseException e) {
+            // 절단은 따로 센다 — 2-6이 JSON 실패의 진짜 원인으로 지목한 사건이라
+            // "스키마 위반"과 뭉치면 그 결론을 다시 확인할 수 없다.
+            outcome = AiCourseMetrics.LLM_OUTCOME_TRUNCATED;
+            throw e;
+        } catch (LlmResponseException e) {
+            outcome = AiCourseMetrics.LLM_OUTCOME_RESPONSE_ERROR;
+            throw e;
+        } catch (LlmTransportException e) {
+            outcome = AiCourseMetrics.LLM_OUTCOME_TRANSPORT_ERROR;
+            throw e;
         } finally {
             concurrencyGate.release();
+            metrics.llmCall(call.agentName(), properties.provider(), outcome,
+                System.nanoTime() - startedAt);
         }
     }
 

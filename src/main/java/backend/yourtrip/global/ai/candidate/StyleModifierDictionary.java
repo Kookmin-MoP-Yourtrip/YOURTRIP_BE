@@ -84,6 +84,26 @@ public final class StyleModifierDictionary {
      * @return 검색 가능한 태그 0~2개. 빈 목록이면 기본 쿼리만 쓴다(fail-open)
      */
     public static List<StyleTag> modifiersFor(List<KeywordType> keywords) {
+        return preferredTagsFor(keywords).stream()
+            .filter(StyleTag::isSearchable)
+            .limit(MAX_MODIFIERS)
+            .toList();
+    }
+
+    /**
+     * 같은 선정 규칙으로 고른 <b>선호 태그 전량</b>. {@link #modifiersFor}가 여기서 검색 가능한
+     * 상위 2개만 추린 것이다.
+     *
+     * <p><b>둘을 나눠야 하는 이유는 쓰임새가 다르기 때문이다.</b> modifier는 <b>검색어로 나가므로</b>
+     * {@code searchTerm}이 있는 태그만, 그것도 쿼터 예산 안에서 2개만 쓸 수 있다. 반면 후보 목록
+     * 정렬(5-8)의 ②그룹 판정은 <b>이미 받아 온 후보의 {@code styleTags}와 맞춰 보는 것</b>이라
+     * 검색어가 없는 태그({@code 통창}·{@code 아늑함}·{@code 웨이팅})도 그대로 쓸 수 있고, 2개로
+     * 줄일 이유도 없다. 좁은 쪽을 넓은 쪽에 강요하면 TourAPI {@code cat3} 유래 태그 대부분이
+     * 정렬에서 무시된다.
+     *
+     * @return 선호 순서로 정렬된 태그 전량 (감점 태그는 제외됨)
+     */
+    public static List<StyleTag> preferredTagsFor(List<KeywordType> keywords) {
         if (keywords == null || keywords.isEmpty()) {
             return List.of();
         }
@@ -107,13 +127,12 @@ public final class StyleModifierDictionary {
 
         List<StyleTag> selected = new ArrayList<>(hits.keySet());
         selected.removeAll(avoided);
-        selected.removeIf(tag -> !tag.isSearchable());
         selected.sort(Comparator
             .comparingInt((StyleTag tag) -> hits.get(tag)).reversed()
             .thenComparingInt(bestRank::get)
             .thenComparing(Comparator.naturalOrder()));
 
-        return List.copyOf(selected.subList(0, Math.min(selected.size(), MAX_MODIFIERS)));
+        return List.copyOf(selected);
     }
 
     private static Map<KeywordType, Preference> buildPreferences() {

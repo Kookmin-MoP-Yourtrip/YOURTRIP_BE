@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
+import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.LlmCall;
 import backend.yourtrip.global.ai.LlmResponseParser;
 import backend.yourtrip.global.ai.LlmRetryExecutor;
@@ -23,6 +24,7 @@ import backend.yourtrip.global.kakao.dto.KakaoSearchResponse;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -310,6 +312,9 @@ class AiHallucinationBaselineTest {
         CapturingParser parser = new CapturingParser(objectMapper);
         OpenAiLlmClient llmClient = new OpenAiLlmClient(llmProperties, parser,
             new LlmRetryExecutor(llmProperties),
+            // 하네스는 스프링 컨텍스트를 띄우지 않으므로 레지스트리도 직접 만든다. 측정에는
+            // 쓰지 않고, 어댑터가 요구하는 협력자를 채우기 위한 것이다.
+            new AiCourseMetrics(new SimpleMeterRegistry()),
             OpenAiLlmClient.buildChatModel(llmProperties.openai().baseUrl(), openAiKey,
                 llmProperties.timeoutMs()));
 
