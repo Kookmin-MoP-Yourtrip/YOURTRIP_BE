@@ -215,4 +215,47 @@ class StyleModifierDictionaryTest {
             assertThat(modifiers).allMatch(StyleTag::isSearchable);
         }
     }
+
+    @Nested
+    @DisplayName("preferredTagsFor — 후보 목록 정렬용 선호 태그 (ROADMAP 5-8)")
+    class 선호_태그_전량 {
+
+        @Test
+        @DisplayName("검색어가 없는 태그도 포함한다 — 정렬은 검색이 아니라 대조라서 어휘를 줄일 이유가 없다")
+        void 검색어_없는_태그도_남는다() {
+            List<StyleTag> preferred = StyleModifierDictionary.preferredTagsFor(
+                List.of(KeywordType.SOLO));
+
+            // 아늑함은 searchTerm 이 없어 modifier 에서는 탈락하지만 대조에는 그대로 쓸 수 있다.
+            assertThat(preferred).contains(StyleTag.COZY);
+            assertThat(StyleModifierDictionary.modifiersFor(List.of(KeywordType.SOLO)))
+                .doesNotContain(StyleTag.COZY);
+        }
+
+        @Test
+        @DisplayName("두 개로 자르지 않는다 — cap 은 쿼터 제약이지 대조의 제약이 아니다")
+        void 상한을_적용하지_않는다() {
+            List<StyleTag> preferred = StyleModifierDictionary.preferredTagsFor(
+                List.of(KeywordType.COUPLE));
+
+            assertThat(preferred).hasSizeGreaterThan(StyleModifierDictionary.MAX_MODIFIERS);
+        }
+
+        @Test
+        @DisplayName("감점 태그는 여기서도 빠진다 — 원하지 않는 곳을 정렬 앞으로 올리지 않는다")
+        void 감점_태그는_제외된다() {
+            assertThat(StyleModifierDictionary.preferredTagsFor(List.of(KeywordType.COUPLE)))
+                .doesNotContain(StyleTag.LIVELY);
+        }
+
+        @Test
+        @DisplayName("modifier 는 이 목록의 부분집합이다 — 둘이 갈라지면 힌트와 정렬이 어긋난다")
+        void modifier는_부분집합이다() {
+            for (KeywordType keyword : KeywordType.values()) {
+                List<KeywordType> keywords = List.of(keyword);
+                assertThat(StyleModifierDictionary.preferredTagsFor(keywords))
+                    .containsAll(StyleModifierDictionary.modifiersFor(keywords));
+            }
+        }
+    }
 }
