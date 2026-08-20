@@ -15,12 +15,14 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
+import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.CourseDeadline;
 import backend.yourtrip.global.ai.pipeline.PlannerDayPlan;
 import backend.yourtrip.global.ai.pipeline.PlannerPlan;
 import backend.yourtrip.global.ai.route.SlotType;
 import backend.yourtrip.global.common.ApiFailureCause;
 import backend.yourtrip.global.tour.TourApiClient;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
@@ -54,12 +56,20 @@ class CandidateRetrievalStageTest {
     @Mock
     private TourApiSource tourApiSource;
 
+    private SimpleMeterRegistry meterRegistry;
     private CandidateRetrievalStage stage;
 
     @BeforeEach
     void setUp() {
+        meterRegistry = new SimpleMeterRegistry();
         stage = new CandidateRetrievalStage(areaGeocoder, naverLocalSeedSource, tourApiSource,
-            Runnable::run);
+            new AiCourseMetrics(meterRegistry), Runnable::run);
+    }
+
+    private double counted(String name, String... tags) {
+        return meterRegistry.find(name).tags(tags).counter() == null
+            ? 0.0
+            : meterRegistry.find(name).tags(tags).counter().count();
     }
 
     private static PlannerPlan plan(PlannerDayPlan... days) {
@@ -303,6 +313,67 @@ class CandidateRetrievalStageTest {
 
             assertThat(pool.isEmpty()).isTrue();
             verifyNoInteractions(areaGeocoder, naverLocalSeedSource, tourApiSource);
+        }
+    }
+
+    @Nested
+    @DisplayName("메트릭 (ROADMAP 5-6)")
+    class Metrics {
+
+        @Test
+        @DisplayName("지오코딩 결과를 단계별로 센다 — fallback 이 잦으면 Planner anchor 문제다")
+        void countsGeocodeOutcome() {
+            when(areaGeocoder.geocode(anyString(), anyString(), anyString()))
+                .thenReturn(GeocodeResult.resolved(ANCHOR_LAT, ANCHOR_LON,
+                    GeocodeOutcome.FALLBACK_AREA));
+            naverReturns();
+
+            stage.retrieve("경주", plan(day(1, SlotType.MEAL)), List.of(),
+                CourseDeadline.unbounded());
+
+            assertThat(counted(AiCourseMetrics.GEOCODE, "result", "fallback_area")).isEqualTo(1.0);
+        }
+
+        @Test
+        @DisplayName("소스별 결말을 나눠 센다 — empty 와 failed 를 뭉치면 지표가 오염된다")
+        void countsRetrievalBySourceAndOutcome() {
+            geocodeSucceeds();
+            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any()))
+                .thenReturn(CandidateBatch.failed(ApiFailureCause.QUOTA_EXCEEDED));
+            when(tourApiSource.fetch(anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(CandidateBatch.empty());
+
+            stage.retrieve("경주", plan(day(1, SlotType.ATTRACTION)), List.of(),
+                CourseDeadline.unbounded());
+
+            assertThat(counted(AiCourseMetrics.CANDIDATE_RETRIEVAL,
+                "source", AiCourseMetrics.SOURCE_NAVER_LOCAL, "result", "failed")).isEqualTo(1.0);
+            assertThat(counted(AiCourseMetrics.CANDIDATE_RETRIEVAL,
+                "source", AiCourseMetrics.SOURCE_TOUR_API, "result", "empty")).isEqualTo(2.0);
+        }
+
+        @Test
+        @DisplayName("좌표를 못 얻어 부르지 못한 TourAPI 는 skipped 다 — empty 가 아니다")
+        void countsSkippedWhenGeocodeFails() {
+            when(areaGeocoder.geocode(anyString(), anyString(), anyString()))
+                .thenReturn(GeocodeResult.failed());
+            naverReturns();
+
+            stage.retrieve("경주", plan(day(1, SlotType.ATTRACTION)), List.of(),
+                CourseDeadline.unbounded());
+
+            // "물어봤는데 없더라"와 "물어보지 못했다"는 다른 사건이다.
+            assertThat(counted(AiCourseMetrics.CANDIDATE_RETRIEVAL,
+                "source", AiCourseMetrics.SOURCE_TOUR_API, "result", "skipped")).isEqualTo(2.0);
+            assertThat(counted(AiCourseMetrics.CANDIDATE_RETRIEVAL,
+                "source", AiCourseMetrics.SOURCE_TOUR_API, "result", "empty")).isZero();
+        }
+
+        @Test
+        @DisplayName("발생하지 않은 조합도 0 으로 등록돼 있다 — 시계열 부재를 0 으로 오독하지 않게")
+        void registersZeroSeriesUpFront() {
+            assertThat(meterRegistry.find(AiCourseMetrics.GROUNDING_MATCH)
+                .tags("result", "no_result", "source", "suggested").counter()).isNotNull();
         }
     }
 

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.CourseDeadline;
 import backend.yourtrip.global.ai.candidate.CandidatePool;
 import backend.yourtrip.global.ai.candidate.CandidateSlot;
@@ -23,6 +24,7 @@ import backend.yourtrip.global.common.ApiFailureCause;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
 import backend.yourtrip.global.kakao.PlaceLookup;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,11 +51,19 @@ class GroundingStageTest {
     @Mock
     private KakaoLocalClient kakaoLocalClient;
 
+    private SimpleMeterRegistry meterRegistry;
     private GroundingStage stage;
 
     @BeforeEach
     void setUp() {
-        stage = new GroundingStage(kakaoLocalClient, Runnable::run);
+        meterRegistry = new SimpleMeterRegistry();
+        stage = new GroundingStage(kakaoLocalClient, new AiCourseMetrics(meterRegistry),
+            Runnable::run);
+    }
+
+    private double counted(String result, String source) {
+        return meterRegistry.get(AiCourseMetrics.GROUNDING_MATCH)
+            .tags("result", result, "source", source).counter().count();
     }
 
     private static PlaceCandidate seededCafe(String name, String address) {
@@ -284,6 +294,49 @@ class GroundingStageTest {
                 CourseDeadline.unbounded());
 
             assertThat(days.get(0).slots().get(0).survivors()).hasSize(1);
+        }
+    }
+
+    @Nested
+    @DisplayName("메트릭 — 환각률의 운영 프록시 (ROADMAP 5-6)")
+    class Metrics {
+
+        @Test
+        @DisplayName("순수 환각과 인프라 실패를 갈라 센다 — 뭉치면 카카오 장애 때 환각률이 부푼다")
+        void separatesNoResultFromFailed() {
+            when(kakaoLocalClient.lookupBestPlace(eq("없는집"), anyString()))
+                .thenReturn(new PlaceLookup.NoResult());
+            when(kakaoLocalClient.lookupBestPlace(eq("죽은집"), anyString()))
+                .thenReturn(new PlaceLookup.Failed(ApiFailureCause.TRANSPORT_ERROR, "connect"));
+
+            stage.ground("경주", List.of(curated(suggested("없는집"), suggested("죽은집"))),
+                CandidatePool.empty(), CourseDeadline.unbounded());
+
+            assertThat(counted("no_result", "suggested")).isEqualTo(1.0);
+            assertThat(counted("failed", "suggested")).isEqualTo(1.0);
+        }
+
+        @Test
+        @DisplayName("세탁 위험 구간을 따로 센다 — 이름 게이트가 몇 번 발동했는가")
+        void countsNameMismatch() {
+            when(kakaoLocalClient.lookupBestPlace(anyString(), anyString()))
+                .thenReturn(new PlaceLookup.NameMismatch("전혀다른가게"));
+
+            stage.ground("경주", List.of(curated(suggested("있을리없는집"))),
+                CandidatePool.empty(), CourseDeadline.unbounded());
+
+            assertThat(counted("name_mismatch", "suggested")).isEqualTo(1.0);
+        }
+
+        @Test
+        @DisplayName("승계 성공은 출처 태그와 함께 센다 — 무인지 지역 가설의 검증 통로다")
+        void tagsInheritedHitWithSource() {
+            stage.ground("경주", List.of(curated(fromList(0, "커피플레이스"))),
+                poolWith(seededCafe("커피플레이스", "경북 경주시 포석로 1080")),
+                CourseDeadline.unbounded());
+
+            assertThat(counted("hit", "seeded")).isEqualTo(1.0);
+            assertThat(counted("hit", "suggested")).isZero();
         }
     }
 

@@ -1,6 +1,7 @@
 package backend.yourtrip.global.ai.candidate;
 
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
+import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.CourseDeadline;
 import backend.yourtrip.global.ai.pipeline.PlannerDayPlan;
 import backend.yourtrip.global.ai.pipeline.PlannerPlan;
@@ -49,15 +50,18 @@ public class CandidateRetrievalStage {
     private final AreaGeocoder areaGeocoder;
     private final NaverLocalSeedSource naverLocalSeedSource;
     private final TourApiSource tourApiSource;
+    private final AiCourseMetrics metrics;
     private final Executor placeGroundingExecutor;
 
     public CandidateRetrievalStage(AreaGeocoder areaGeocoder,
         NaverLocalSeedSource naverLocalSeedSource,
         TourApiSource tourApiSource,
+        AiCourseMetrics metrics,
         @Qualifier("placeGroundingExecutor") Executor placeGroundingExecutor) {
         this.areaGeocoder = areaGeocoder;
         this.naverLocalSeedSource = naverLocalSeedSource;
         this.tourApiSource = tourApiSource;
+        this.metrics = metrics;
         this.placeGroundingExecutor = placeGroundingExecutor;
     }
 
@@ -98,6 +102,12 @@ public class CandidateRetrievalStage {
         Map<Integer, GeocodeResult> geocodes = new LinkedHashMap<>();
         for (Map.Entry<Integer, GeocodeResult> entry : awaitCompleted(futures, deadline, "지오코딩")) {
             geocodes.put(entry.getKey(), entry.getValue());
+            metrics.geocode(entry.getValue().outcome());
+        }
+        // 예산에 잘려 답을 못 받은 day 도 FAILED 로 센다 — "물어보지 못했다"가 이 값의 뜻이고,
+        // 조용히 빠지면 fallback 비율이 실제보다 좋아 보인다.
+        for (int lost = days.size() - geocodes.size(); lost > 0; lost--) {
+            metrics.geocode(GeocodeOutcome.FAILED);
         }
         return geocodes;
     }
@@ -127,7 +137,10 @@ public class CandidateRetrievalStage {
                 spec.area(), spec.slotType(), spec.modifier(),
                 spec.anchorLatitude(), spec.anchorLongitude()))))
             .toList();
-        return awaitCompleted(futures, deadline, "네이버 시더");
+        List<SeedOutcome> outcomes = awaitCompleted(futures, deadline, "네이버 시더");
+        record(AiCourseMetrics.SOURCE_NAVER_LOCAL,
+            outcomes.stream().map(SeedOutcome::batch).toList(), specs.size());
+        return outcomes;
     }
 
     // ── ③ TourAPI — day × contentTypeId (슬롯 단위가 아니다) ────────────────────
@@ -137,12 +150,17 @@ public class CandidateRetrievalStage {
         List<TourSpec> specs = new ArrayList<>();
         for (PlannerDayPlan day : days) {
             GeocodeResult geocode = geocodes.get(day.day());
+            Set<Integer> contentTypeIds = TourApiSource.contentTypeIdsFor(distinctSlots(day));
             if (geocode == null || !geocode.hasCoordinate()) {
-                // 좌표가 없으면 부를 수 없다. "물어봤는데 없더라"가 아니라 "물어보지 못했다"이고,
-                // 그 사건은 ai.geocode 가 이미 기록한다.
+                // 좌표가 없으면 부를 수 없다. "물어봤는데 없더라"(EMPTY)가 아니라 "물어보지
+                // 못했다"(SKIPPED)이고, 둘을 뭉치면 "외부 데이터가 얇은 지역" 지표가 오염된다.
+                for (int ignored : contentTypeIds) {
+                    metrics.candidateRetrieval(AiCourseMetrics.SOURCE_TOUR_API,
+                        CandidateOutcome.SKIPPED);
+                }
                 continue;
             }
-            for (int contentTypeId : TourApiSource.contentTypeIdsFor(distinctSlots(day))) {
+            for (int contentTypeId : contentTypeIds) {
                 specs.add(new TourSpec(day.day(), contentTypeId,
                     geocode.latitude(), geocode.longitude()));
             }
@@ -153,8 +171,12 @@ public class CandidateRetrievalStage {
                 spec.latitude(), spec.longitude(), spec.contentTypeId()))))
             .toList();
 
+        List<TourOutcome> outcomes = awaitCompleted(futures, deadline, "TourAPI");
+        record(AiCourseMetrics.SOURCE_TOUR_API,
+            outcomes.stream().map(TourOutcome::batch).toList(), specs.size());
+
         Map<Integer, List<TourOutcome>> byDay = new LinkedHashMap<>();
-        for (TourOutcome outcome : awaitCompleted(futures, deadline, "TourAPI")) {
+        for (TourOutcome outcome : outcomes) {
             byDay.computeIfAbsent(outcome.spec().day(), key -> new ArrayList<>()).add(outcome);
         }
         return byDay;
@@ -230,6 +252,19 @@ public class CandidateRetrievalStage {
      */
     private static Set<SlotType> distinctSlots(PlannerDayPlan day) {
         return new LinkedHashSet<>(day.slots());
+    }
+
+    /**
+     * 배치 결과를 메트릭으로. <b>예산에 잘려 돌아오지 못한 호출은 {@code FAILED}로 센다</b> —
+     * 조용히 빠지면 성공률이 실제보다 좋아 보인다.
+     */
+    private void record(String source, List<CandidateBatch> batches, int attempted) {
+        for (CandidateBatch batch : batches) {
+            metrics.candidateRetrieval(source, batch.outcome());
+        }
+        for (int lost = attempted - batches.size(); lost > 0; lost--) {
+            metrics.candidateRetrieval(source, CandidateOutcome.FAILED);
+        }
     }
 
     // ── 병렬 실행 유틸 ────────────────────────────────────────────────────────

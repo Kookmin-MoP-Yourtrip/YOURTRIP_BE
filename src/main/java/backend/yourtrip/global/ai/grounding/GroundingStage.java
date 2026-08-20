@@ -1,5 +1,6 @@
 package backend.yourtrip.global.ai.grounding;
 
+import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.CourseDeadline;
 import backend.yourtrip.global.ai.candidate.CandidateMatcher;
 import backend.yourtrip.global.ai.candidate.CandidatePool;
@@ -14,7 +15,6 @@ import backend.yourtrip.global.kakao.PlaceLookup;
 import backend.yourtrip.global.kakao.PlaceMatchScorer;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -56,11 +56,13 @@ import org.springframework.stereotype.Component;
 public class GroundingStage {
 
     private final KakaoLocalClient kakaoLocalClient;
+    private final AiCourseMetrics metrics;
     private final Executor placeGroundingExecutor;
 
-    public GroundingStage(KakaoLocalClient kakaoLocalClient,
+    public GroundingStage(KakaoLocalClient kakaoLocalClient, AiCourseMetrics metrics,
         @Qualifier("placeGroundingExecutor") Executor placeGroundingExecutor) {
         this.kakaoLocalClient = kakaoLocalClient;
+        this.metrics = metrics;
         this.placeGroundingExecutor = placeGroundingExecutor;
     }
 
@@ -129,7 +131,7 @@ public class GroundingStage {
         // 전 day 에 걸친 중복 제거. Curator 는 day 별로 병렬 실행돼 다른 day 를 모르므로,
         // "경주 3일 내내 같은 카페" 를 막는 것은 프롬프트가 아니라 여기의 책임이다.
         Set<String> placed = new LinkedHashSet<>();
-        Map<GroundingOutcome, Integer> tally = new EnumMap<>(GroundingOutcome.class);
+        Map<Tally, Integer> tally = new LinkedHashMap<>();
 
         List<GroundedDay> days = new ArrayList<>(curatedDays.size());
         for (CuratedDay day : curatedDays) {
@@ -138,7 +140,8 @@ public class GroundingStage {
                 List<GroundedPlace> survivors = new ArrayList<>(slot.choices().size());
                 for (CuratedPlace choice : slot.choices()) {
                     Resolution resolution = resolve(pool, lookups, day.day(), slot, choice);
-                    tally.merge(resolution.outcome(), 1, Integer::sum);
+                    tally.merge(new Tally(resolution.outcome(), resolution.source()), 1,
+                        Integer::sum);
                     resolution.place()
                         .filter(place -> placed.add(
                             CandidateMatcher.dedupeKey(place.name(), place.address())))
@@ -149,6 +152,9 @@ public class GroundingStage {
             days.add(new GroundedDay(day.day(), slots));
         }
 
+        // source 태그로 나누면 "무인지 지역일수록 파라메트릭이 약하다"는 설계 원칙의 미실측
+        // 가설을 운영 데이터로 검증할 수 있다(5-6).
+        tally.forEach((key, count) -> metrics.groundingMatch(key.outcome(), key.source(), count));
         log.debug("그라운딩 결과: {}", tally);
         return days;
     }
@@ -158,31 +164,31 @@ public class GroundingStage {
         Optional<PlaceCandidate> inherited = inherit(pool, day, slot, choice);
         if (inherited.isPresent()) {
             // 호출 0회. 목록 항목의 좌표·주소를 코드가 그대로 옮긴다.
-            return new Resolution(Optional.of(fromCandidate(inherited.get(), slot)),
-                GroundingOutcome.HIT);
+            PlaceCandidate candidate = inherited.get();
+            return new Resolution(Optional.of(fromCandidate(candidate, slot)),
+                GroundingOutcome.HIT, candidate.source());
         }
         if (choice.placeName() == null || choice.placeName().isBlank()) {
-            return new Resolution(Optional.empty(), GroundingOutcome.NO_RESULT);
+            return suggested(GroundingOutcome.NO_RESULT);
         }
 
         PlaceLookup lookup = lookups.get(choice.placeName());
         if (lookup == null) {
             // 데드라인에 잘렸거나 태스크가 죽었다 — 인프라 사건이지 환각이 아니다.
-            return new Resolution(Optional.empty(), GroundingOutcome.FAILED);
+            return suggested(GroundingOutcome.FAILED);
         }
         return switch (lookup) {
             case PlaceLookup.Found found -> fromDocument(found.document(), slot);
             case PlaceLookup.NameMismatch mismatch -> {
                 log.debug("이름 불일치로 탈락: 요청={}, 카카오={}",
                     choice.placeName(), mismatch.bestCandidateName());
-                yield new Resolution(Optional.empty(), GroundingOutcome.NAME_MISMATCH);
+                yield suggested(GroundingOutcome.NAME_MISMATCH);
             }
-            case PlaceLookup.NoResult ignored ->
-                new Resolution(Optional.empty(), GroundingOutcome.NO_RESULT);
+            case PlaceLookup.NoResult ignored -> suggested(GroundingOutcome.NO_RESULT);
             case PlaceLookup.Failed failed -> {
                 log.debug("카카오 검증 실패로 탈락: 요청={}, cause={}",
                     choice.placeName(), failed.cause());
-                yield new Resolution(Optional.empty(), GroundingOutcome.FAILED);
+                yield suggested(GroundingOutcome.FAILED);
             }
         };
     }
@@ -228,14 +234,14 @@ public class GroundingStage {
         if (!isCategoryAllowed(document, slot.slotType())) {
             log.debug("업종 불일치로 탈락: place={}, group={}, slot={}",
                 document.place_name(), document.category_group_code(), slot.slotType());
-            return new Resolution(Optional.empty(), GroundingOutcome.CATEGORY_MISMATCH);
+            return suggested(GroundingOutcome.CATEGORY_MISMATCH);
         }
 
         Double longitude = parseCoordinate(document.x());
         Double latitude = parseCoordinate(document.y());
         if (latitude == null || longitude == null) {
             log.debug("카카오 응답에 좌표가 없어 탈락: place={}", document.place_name());
-            return new Resolution(Optional.empty(), GroundingOutcome.NO_COORDINATE);
+            return suggested(GroundingOutcome.NO_COORDINATE);
         }
         return new Resolution(Optional.of(new GroundedPlace(
             document.place_name(),
@@ -245,7 +251,7 @@ public class GroundingStage {
             PlaceMatchScorer.bestAddressOf(document),
             document.place_url(),
             CandidateSourceType.SUGGESTED,
-            null)), GroundingOutcome.HIT);
+            null)), GroundingOutcome.HIT, CandidateSourceType.SUGGESTED);
     }
 
     /**
@@ -289,6 +295,16 @@ public class GroundingStage {
         }
     }
 
-    private record Resolution(Optional<GroundedPlace> place, GroundingOutcome outcome) {
+    /** 카카오 검증 경로의 결말 — 목록에서 승계하지 못한 후보는 전부 {@code SUGGESTED} 로 센다. */
+    private static Resolution suggested(GroundingOutcome outcome) {
+        return new Resolution(Optional.empty(), outcome, CandidateSourceType.SUGGESTED);
+    }
+
+    private record Resolution(Optional<GroundedPlace> place, GroundingOutcome outcome,
+                              CandidateSourceType source) {
+    }
+
+    /** 메트릭 집계 키. 같은 (결말, 출처)를 모아 한 번에 올린다. */
+    private record Tally(GroundingOutcome outcome, CandidateSourceType source) {
     }
 }

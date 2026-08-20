@@ -7,6 +7,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.LlmCall;
 import backend.yourtrip.global.ai.LlmResponseParser;
 import backend.yourtrip.global.ai.LlmRetryExecutor;
@@ -22,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.github.tomakehurst.wiremock.verification.LoggedRequest;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -275,6 +277,48 @@ class OpenAiLlmClientTest {
     }
 
     @Nested
+    @DisplayName("호출 메트릭 (ROADMAP 5-11)")
+    class CallMetrics {
+
+        @Test
+        @DisplayName("성공한 호출을 agent·provider 태그와 함께 잰다")
+        void recordsSuccess() {
+            stubSuccess("{\\\"title\\\":\\\"경주 3일\\\"}", "stop");
+            OpenAiLlmClient client = client();
+
+            client.generate(call(SCHEMA));
+
+            assertThat(llmCallCount(AiCourseMetrics.LLM_OUTCOME_SUCCESS)).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("절단은 따로 센다 — 2-6이 JSON 실패의 진짜 원인으로 지목한 사건이다")
+        void recordsTruncation() {
+            stubSuccess("{\\\"title\\\":\\\"경주 야", "length");
+            OpenAiLlmClient client = client();
+
+            assertThatThrownBy(() -> client.generate(call(SCHEMA)))
+                .isInstanceOf(LlmTruncatedResponseException.class);
+
+            assertThat(llmCallCount(AiCourseMetrics.LLM_OUTCOME_TRUNCATED)).isEqualTo(1);
+            assertThat(llmCallCount(AiCourseMetrics.LLM_OUTCOME_RESPONSE_ERROR)).isZero();
+        }
+
+        @Test
+        @DisplayName("전송 실패와 응답 오류를 갈라 센다 — 인프라와 모델은 다른 문제다")
+        void separatesTransportFromResponse() {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .willReturn(aResponse().withStatus(500)));
+            OpenAiLlmClient client = client();
+
+            assertThatThrownBy(() -> client.generate(call(SCHEMA)))
+                .isInstanceOf(LlmTransportException.class);
+
+            assertThat(llmCallCount(AiCourseMetrics.LLM_OUTCOME_TRANSPORT_ERROR)).isEqualTo(1);
+        }
+    }
+
+    @Nested
     @DisplayName("동시 호출 게이트")
     class ConcurrencyGate {
 
@@ -316,11 +360,27 @@ class OpenAiLlmClientTest {
     }
 
     private OpenAiLlmClient clientWith(AiLlmProperties properties) {
+        meterRegistry = new SimpleMeterRegistry();
         return new OpenAiLlmClient(
             properties,
             new LlmResponseParser(new ObjectMapper()),
             new LlmRetryExecutor(properties),
+            new AiCourseMetrics(meterRegistry),
             OpenAiLlmClient.buildChatModel(wireMock.baseUrl(), "test-api-key", properties.timeoutMs()));
+    }
+
+    /** 마지막으로 조립한 클라이언트의 레지스트리. 5-11 의 타이머를 확인하는 데 쓴다. */
+    private SimpleMeterRegistry meterRegistry;
+
+    /**
+     * {@code ai.llm.call} 은 {@code agent} 태그가 설정에서 오므로 <b>0 등록에서 빠지는 유일한
+     * 계열</b>이다. 그래서 아직 발생하지 않은 조합은 예외가 아니라 0으로 읽는다.
+     */
+    private long llmCallCount(String outcome) {
+        io.micrometer.core.instrument.Timer timer = meterRegistry.find(AiCourseMetrics.LLM_CALL)
+            .tags("agent", AGENT, "provider", "openai", "outcome", outcome)
+            .timer();
+        return timer == null ? 0L : timer.count();
     }
 
     private static AiLlmProperties properties(int maxConcurrentCalls, Retry retry) {

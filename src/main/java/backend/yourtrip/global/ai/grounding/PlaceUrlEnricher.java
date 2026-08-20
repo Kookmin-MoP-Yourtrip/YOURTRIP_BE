@@ -1,5 +1,6 @@
 package backend.yourtrip.global.ai.grounding;
 
+import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.CourseDeadline;
 import backend.yourtrip.global.ai.candidate.CandidateMatcher;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
@@ -47,11 +48,13 @@ import org.springframework.stereotype.Component;
 public class PlaceUrlEnricher {
 
     private final KakaoLocalClient kakaoLocalClient;
+    private final AiCourseMetrics metrics;
     private final Executor placeGroundingExecutor;
 
-    public PlaceUrlEnricher(KakaoLocalClient kakaoLocalClient,
+    public PlaceUrlEnricher(KakaoLocalClient kakaoLocalClient, AiCourseMetrics metrics,
         @Qualifier("placeGroundingExecutor") Executor placeGroundingExecutor) {
         this.kakaoLocalClient = kakaoLocalClient;
+        this.metrics = metrics;
         this.placeGroundingExecutor = placeGroundingExecutor;
     }
 
@@ -78,6 +81,7 @@ public class PlaceUrlEnricher {
         if (deadline.expired()) {
             // 데드라인 임박 시 통째로 스킵한다 — URL 은 코스 성립 조건이 아니다.
             log.info("예산이 부족해 URL 보강을 건너뛴다: 대상 {}건", targets.size());
+            metrics.placeUrl(PlaceUrlOutcome.SKIPPED, targets.size());
             return places;
         }
 
@@ -100,6 +104,7 @@ public class PlaceUrlEnricher {
             }
         }
 
+        tally.forEach(metrics::placeUrl);
         log.debug("URL 보강 결과: {}", tally);
         return List.copyOf(enriched);
     }

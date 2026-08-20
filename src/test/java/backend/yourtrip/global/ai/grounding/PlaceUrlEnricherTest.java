@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.CourseDeadline;
 import backend.yourtrip.global.ai.candidate.CandidateSourceType;
 import backend.yourtrip.global.ai.route.SlotType;
@@ -16,6 +17,7 @@ import backend.yourtrip.global.common.ApiFailureCause;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
 import backend.yourtrip.global.kakao.PlaceLookup;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,11 +50,19 @@ class PlaceUrlEnricherTest {
     @Mock
     private KakaoLocalClient kakaoLocalClient;
 
+    private SimpleMeterRegistry meterRegistry;
     private PlaceUrlEnricher enricher;
 
     @BeforeEach
     void setUp() {
-        enricher = new PlaceUrlEnricher(kakaoLocalClient, Runnable::run);
+        meterRegistry = new SimpleMeterRegistry();
+        enricher = new PlaceUrlEnricher(kakaoLocalClient, new AiCourseMetrics(meterRegistry),
+            Runnable::run);
+    }
+
+    private double counted(String result) {
+        return meterRegistry.get(AiCourseMetrics.PLACE_URL).tag("result", result)
+            .counter().count();
     }
 
     private static GroundedPlace place(String name, String url) {
@@ -188,6 +198,26 @@ class PlaceUrlEnricherTest {
 
             verifyNoInteractions(kakaoLocalClient);
             assertThat(result.get(0).placeUrl()).isNull();
+        }
+
+        @Test
+        @DisplayName("건너뛴 건수도 센다 — 조용히 빠지면 URL 채움률이 실제보다 좋아 보인다")
+        void countsSkipped() {
+            enricher.enrich("경주", List.of(place("천마총", null), place("첨성대", null)),
+                CourseDeadline.startingNow(Duration.ZERO));
+
+            assertThat(counted("skipped")).isEqualTo(2.0);
+        }
+
+        @Test
+        @DisplayName("좌표가 멀어 비운 건수는 too_far 로 남는다 — 동명 업소 문제의 지표다")
+        void countsTooFar() {
+            when(kakaoLocalClient.lookupBestPlace(anyString(), anyString()))
+                .thenReturn(new PlaceLookup.Found(document(CHEOMSEONGDAE_LAT, CHEOMSEONGDAE_LON)));
+
+            enricher.enrich("경주", List.of(place("천마총", null)), CourseDeadline.unbounded());
+
+            assertThat(counted("too_far")).isEqualTo(1.0);
         }
 
         @Test
