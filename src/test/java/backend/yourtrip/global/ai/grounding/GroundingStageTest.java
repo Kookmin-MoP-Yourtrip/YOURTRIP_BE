@@ -80,8 +80,13 @@ class GroundingStageTest {
     }
 
     private static Document document(String name, String x, String y) {
-        return new Document("1", name, "음식점 > 카페", "CE7", "카페", "", "경북 경주시 황남동",
-            "경북 경주시 포석로 1080", x, y, "http://place.map.kakao.com/1", null);
+        return document(name, x, y, "CE7");
+    }
+
+    private static Document document(String name, String x, String y, String categoryGroupCode) {
+        return new Document("1", name, "음식점 > 카페", categoryGroupCode, "카페", "",
+            "경북 경주시 황남동", "경북 경주시 포석로 1080", x, y,
+            "http://place.map.kakao.com/1", null);
     }
 
     @Nested
@@ -234,6 +239,51 @@ class GroundingStageTest {
             verify(kakaoLocalClient, never()).lookupBestPlace(anyString(), anyString());
             assertThat(days.get(0).slots().get(0).survivors())
                 .extracting(GroundedPlace::name).containsExactly("커피플레이스");
+        }
+    }
+
+    @Nested
+    @DisplayName("슬롯별 업종 하드 제약 (ROADMAP 5-3)")
+    class CategoryConstraint {
+
+        @Test
+        @DisplayName("카페 자리에 온 음식점은 탈락한다 — 가점 +2 로는 막지 못하던 어긋남이다")
+        void rejectsWrongCategoryGroup() {
+            when(kakaoLocalClient.lookupBestPlace(anyString(), anyString()))
+                .thenReturn(new PlaceLookup.Found(
+                    document("황남국밥", "129.21", "35.83", "FD6")));
+
+            List<GroundedDay> days = stage.ground("경주", List.of(curated(suggested("황남국밥"))),
+                CandidatePool.empty(), CourseDeadline.unbounded());
+
+            assertThat(days.get(0).slots().get(0).isEmpty()).isTrue();
+        }
+
+        @Test
+        @DisplayName("허용 코드면 통과한다")
+        void acceptsAllowedGroup() {
+            when(kakaoLocalClient.lookupBestPlace(anyString(), anyString()))
+                .thenReturn(new PlaceLookup.Found(
+                    document("커피플레이스", "129.21", "35.83", "CE7")));
+
+            List<GroundedDay> days = stage.ground("경주",
+                List.of(curated(suggested("커피플레이스"))), CandidatePool.empty(),
+                CourseDeadline.unbounded());
+
+            assertThat(days.get(0).slots().get(0).survivors()).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("그룹 코드가 없는 응답은 통과시킨다 — 모르는 것을 불일치로 취급하지 않는다")
+        void passesWhenGroupCodeMissing() {
+            when(kakaoLocalClient.lookupBestPlace(anyString(), anyString()))
+                .thenReturn(new PlaceLookup.Found(document("이름없는가게", "129.21", "35.83", "")));
+
+            List<GroundedDay> days = stage.ground("경주",
+                List.of(curated(suggested("이름없는가게"))), CandidatePool.empty(),
+                CourseDeadline.unbounded());
+
+            assertThat(days.get(0).slots().get(0).survivors()).hasSize(1);
         }
     }
 

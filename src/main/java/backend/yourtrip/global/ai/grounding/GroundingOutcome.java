@@ -31,6 +31,15 @@ public enum GroundingOutcome {
      */
     NO_COORDINATE,
 
+    /**
+     * 이름은 맞는데 <b>업종이 슬롯과 다르다</b> (ROADMAP 5-3).
+     *
+     * <p>{@link #NAME_MISMATCH}와 다른 사건이다 — 저쪽은 "다른 장소를 가져왔다"이고 이쪽은
+     * "그 장소가 맞는데 카페 자리에 주유소"다. 뭉치면 5-3의 제약이 실제로 무엇을 걸렀는지
+     * 측정할 수 없고, 환각률 프록시({@code name_mismatch})가 업종 불일치만큼 부풀어 오른다.
+     */
+    CATEGORY_MISMATCH,
+
     /** 호출 자체가 실패했다(HTTP·타임아웃·쿼터). <b>인프라 문제이지 환각이 아니다.</b> */
     FAILED
 }

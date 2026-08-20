@@ -160,6 +160,35 @@ class NaverLocalSeedSourceTest {
         }
 
         @Test
+        @DisplayName("매핑이 아는 분류가 슬롯과 어긋나면 후보가 되지 못한다 (ROADMAP 5-3)")
+        void dropsCategoryMismatch() {
+            // 카페를 물었는데 국밥집이 왔다. 풀에 넣으면 Curator 입력 토큰만 먹고,
+            // 골라지면 "카페 자리에 국밥집"이 된다.
+            when(naverLocalClient.search(anyString(), anyInt())).thenReturn(
+                new NaverLocalResult.Found(List.of(
+                    new NaverPlace("황남국밥", "음식점>한식>국밥", "경북 경주시 포석로 1", "", "",
+                        35.83, 129.21, 1),
+                    place("커피플레이스", 35.83, 129.21, 2))));
+
+            assertThat(source.fetch("황리단길", SlotType.CAFE, null, null, null).candidates())
+                .extracting(PlaceCandidate::name).containsExactly("커피플레이스");
+        }
+
+        @Test
+        @DisplayName("매핑에 없는 분류는 통과시킨다 — 하드 드롭은 매핑이 아는 것에만 건다")
+        void passesUnmappedCategory() {
+            // 주유소는 사전 어느 규칙에도 걸리지 않는다. 모르는 것을 불일치로 취급하면
+            // 실존하는 장소가 이유 없이 탈락한다(4-4의 "통과시키되 표시한다").
+            when(naverLocalClient.search(anyString(), anyInt())).thenReturn(
+                new NaverLocalResult.Found(List.of(
+                    new NaverPlace("경주주유소", "자동차>주유소", "경북 경주시 포석로 1", "", "",
+                        35.83, 129.21, 1))));
+
+            assertThat(source.fetch("황리단길", SlotType.CAFE, null, null, null).candidates())
+                .hasSize(1);
+        }
+
+        @Test
         @DisplayName("anchor 좌표가 없으면 거리를 비운다 — 모르는 것을 0으로 적지 않는다")
         void leavesDistanceNullWithoutAnchor() {
             when(naverLocalClient.search(anyString(), anyInt())).thenReturn(

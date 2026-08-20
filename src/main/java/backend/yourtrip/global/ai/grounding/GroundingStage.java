@@ -8,6 +8,7 @@ import backend.yourtrip.global.ai.candidate.PlaceCandidate;
 import backend.yourtrip.global.ai.pipeline.CuratedDay;
 import backend.yourtrip.global.ai.pipeline.CuratedPlace;
 import backend.yourtrip.global.ai.pipeline.CuratedSlot;
+import backend.yourtrip.global.ai.route.SlotType;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
 import backend.yourtrip.global.kakao.PlaceLookup;
 import backend.yourtrip.global.kakao.PlaceMatchScorer;
@@ -220,6 +221,16 @@ public class GroundingStage {
      * 같은 장소를 다시 부르지 않게 하기 위해서다.
      */
     private static Resolution fromDocument(Document document, CuratedSlot slot) {
+        // 슬롯별 카테고리 하드 제약(5-3). 기존에는 category_group_code 가 점수 +2 로만 쓰여
+        // "점심 슬롯에 술집" 같은 어긋남을 막지 못했다. 비용이 사실상 0인데 큰 오배정이 사라진다.
+        // score() 자체는 건드리지 않는다 — 하네스가 밴드 경계를 그 함수 기준으로 고정해 뒀고
+        // 바꾸면 세 측정점의 비교 가능성이 깨진다(1-2가 점수 하한선을 폐기할 때와 같은 판단).
+        if (!isCategoryAllowed(document, slot.slotType())) {
+            log.debug("업종 불일치로 탈락: place={}, group={}, slot={}",
+                document.place_name(), document.category_group_code(), slot.slotType());
+            return new Resolution(Optional.empty(), GroundingOutcome.CATEGORY_MISMATCH);
+        }
+
         Double longitude = parseCoordinate(document.x());
         Double latitude = parseCoordinate(document.y());
         if (latitude == null || longitude == null) {
@@ -235,6 +246,21 @@ public class GroundingStage {
             document.place_url(),
             CandidateSourceType.SUGGESTED,
             null)), GroundingOutcome.HIT);
+    }
+
+    /**
+     * 슬롯이 허용하는 업종인가.
+     *
+     * <p><b>코드가 비어 있으면 통과시킨다.</b> 카카오는 그룹 코드가 없는 POI 를 돌려주기도 하는데,
+     * 모르는 것을 불일치로 취급하면 실존하는 장소가 이유 없이 탈락한다 — 4-4 가 "매핑에 없는 분류는
+     * 통과시키되 표시한다"고 정한 것과 같은 태도다.
+     */
+    private static boolean isCategoryAllowed(Document document, SlotType slotType) {
+        String groupCode = document.category_group_code();
+        if (groupCode == null || groupCode.isBlank()) {
+            return true;
+        }
+        return slotType.getAllowedCategoryCodes().contains(groupCode);
     }
 
     private static Double parseCoordinate(String raw) {

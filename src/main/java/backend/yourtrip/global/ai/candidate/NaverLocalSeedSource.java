@@ -68,11 +68,19 @@ public class NaverLocalSeedSource {
         StyleTag modifier, Double anchorLatitude, Double anchorLongitude) {
         List<PlaceCandidate> candidates = new ArrayList<>(places.size());
         int withoutCoordinates = 0;
+        int categoryMismatched = 0;
         for (NaverPlace place : places) {
             // 좌표 없는 후보는 풀에 넣어봐야 RouteOptimizer 에 못 들어간다. 거르는 책임이
             // 소스에 있다는 것이 PlaceCandidate 의 계약이다.
             if (!place.hasCoordinates()) {
                 withoutCoordinates++;
+                continue;
+            }
+            // 슬롯 힌트로 물었는데 다른 업종이 온 경우(5-3). 풀에 넣으면 Curator 입력 토큰만
+            // 먹고, 골라지면 "카페 자리에 주유소"가 된다. 매핑에 없는 분류는 통과시킨다 —
+            // 하드 드롭은 매핑이 아는 것에만 건다(4-4).
+            if (!NaverCategoryMapper.isCompatibleWith(place.category(), slotType)) {
+                categoryMismatched++;
                 continue;
             }
             candidates.add(new PlaceCandidate(
@@ -90,8 +98,9 @@ public class NaverLocalSeedSource {
                 distanceKm(place, anchorLatitude, anchorLongitude),
                 place.category()));
         }
-        if (withoutCoordinates > 0) {
-            log.debug("좌표 없는 네이버 후보 {}건을 제외했다: slot={}", withoutCoordinates, slotType);
+        if (withoutCoordinates > 0 || categoryMismatched > 0) {
+            log.debug("네이버 후보 제외: slot={}, 좌표없음={}건, 분류불일치={}건",
+                slotType, withoutCoordinates, categoryMismatched);
         }
         return candidates;
     }

@@ -9,6 +9,7 @@ import static backend.yourtrip.global.ai.candidate.CandidateFixtures.NAEMUL_LON;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import backend.yourtrip.global.ai.route.SlotType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -88,6 +89,49 @@ class CandidateOrderingTest {
 
             assertThat(CandidateOrdering.order(List.of(unknown, far), Set.of()))
                 .extracting(PlaceCandidate::name).containsExactly("멀지만아는곳", "거리모름");
+        }
+    }
+
+    @Nested
+    @DisplayName("식사 자리의 술집 — 버리지 않고 뒤로 민다 (ROADMAP 5-3)")
+    class BarDeprioritization {
+
+        private static PlaceCandidate meal(String name, String category, Integer seedRank) {
+            return new PlaceCandidate(CandidateSourceType.SEEDED, name,
+                "경북 경주시 " + name + "로 1", CHEONMACHONG_LAT, CHEONMACHONG_LON,
+                SlotType.MEAL, Set.of(), seedRank, null, null, category);
+        }
+
+        @Test
+        @DisplayName("시드 1위 술집도 평범한 시드 뒤로 간다 — 시드 여부보다 먼저 판정한다")
+        void barGoesBehindEvenWhenSeededFirst() {
+            List<PlaceCandidate> ordered = CandidateOrdering.order(List.of(
+                meal("황리단길호프", "음식점>술집>호프", 1),
+                meal("황남밀면", "음식점>한식>국수", 4)), Set.of());
+
+            assertThat(ordered).extracting(PlaceCandidate::name)
+                .containsExactly("황남밀면", "황리단길호프");
+        }
+
+        @Test
+        @DisplayName("그 슬롯에 술집밖에 없으면 여전히 쓰인다 — 감점이지 하드 드롭이 아니다")
+        void barSurvivesWhenAlone() {
+            assertThat(CandidateOrdering.order(
+                List.of(meal("황리단길호프", "음식점>술집>호프", 1)), Set.of())).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("카페 슬롯의 술집은 밀지 않는다 — 애초에 4-4가 슬롯 단계에서 거른다")
+        void onlyMealSlotIsAffected() {
+            PlaceCandidate bar = new PlaceCandidate(CandidateSourceType.SEEDED, "와인바",
+                "경북 경주시 포석로 1", CHEONMACHONG_LAT, CHEONMACHONG_LON, SlotType.CAFE,
+                Set.of(), 1, null, null, "음식점>와인바");
+            PlaceCandidate cafe = new PlaceCandidate(CandidateSourceType.SEEDED, "커피플레이스",
+                "경북 경주시 원화로 1", CHEONMACHONG_LAT, CHEONMACHONG_LON, SlotType.CAFE,
+                Set.of(), 2, null, null, "음식점>카페,디저트");
+
+            assertThat(CandidateOrdering.order(List.of(bar, cafe), Set.of()))
+                .extracting(PlaceCandidate::name).containsExactly("와인바", "커피플레이스");
         }
     }
 
