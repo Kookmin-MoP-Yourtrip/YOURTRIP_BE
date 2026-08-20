@@ -90,9 +90,9 @@ public class CandidateRetrievalStage {
         // 소스별로 나눠 기다리면 라운드가 둘로 갈려 설계 지연 예산의 "네이버 ∥ TourAPI"가
         // 깨진다(TourAPI 라운드만큼 통째로 늘어난다).
         List<SeedSpec> seedSpecs = seedSpecs(days, geocodes, modifiers);
-        List<TourSpec> tourSpecs = tourSpecs(days, geocodes);
+        Map<TourCall, List<Integer>> tourCalls = tourCalls(days, geocodes);
         List<CompletableFuture<SeedOutcome>> seedFutures = submitSeeds(seedSpecs);
-        List<CompletableFuture<TourOutcome>> tourFutures = submitTours(tourSpecs);
+        List<CompletableFuture<TourOutcome>> tourFutures = submitTours(tourCalls.keySet());
 
         List<CompletableFuture<?>> pending =
             new ArrayList<>(seedFutures.size() + tourFutures.size());
@@ -101,7 +101,7 @@ public class CandidateRetrievalStage {
         awaitAll(pending, deadline, "후보 공급");
 
         List<SeedOutcome> seeds = collectSeeds(seedFutures, seedSpecs.size());
-        Map<Integer, List<TourOutcome>> tours = collectTours(tourFutures, tourSpecs.size());
+        Map<Integer, List<TourOutcome>> tours = collectTours(tourCalls, tourFutures);
 
         return assemble(days, seeds, tours, preferredTags);
     }
@@ -171,11 +171,26 @@ public class CandidateRetrievalStage {
         return outcomes;
     }
 
-    // ── ③ TourAPI — day × contentTypeId (슬롯 단위가 아니다) ────────────────────
+    // ── ③ TourAPI — (좌표 × contentTypeId) 단위. 슬롯도 day도 아니다 ────────────
 
-    private List<TourSpec> tourSpecs(List<PlannerDayPlan> days,
+    /**
+     * 실제로 던질 TourAPI 호출과 <b>그 호출이 대신해 줄 day 목록</b>.
+     *
+     * <p><b>좌표가 같은 day 들은 한 번만 부른다.</b> 3일 내내 같은 권역인 코스에서 Planner가 같은
+     * {@code anchor}를 주거나 지오코딩 캐스케이드가 두 day 모두 {@code location}으로 떨어지면,
+     * 세 day가 <b>완전히 같은 좌표</b>로 같은 분류를 물어보게 된다 — 그대로 두면 개발계정
+     * 일 1,000건을 필요량의 세 배로 쓴다.
+     *
+     * <p><b>격자가 아니라 좌표 완전 일치로 묶는 이유.</b> TourAPI의 {@code dist}는 <b>우리가 보낸
+     * 좌표 기준</b>으로 API가 계산해 준 값이라(4-7), 근처지만 다른 좌표의 결과를 재사용하면 그
+     * 거리가 그대로 {@code distanceKm}에 실려 목록 정렬이 어긋난다. {@code TourGridKey}(0.01°)로
+     * 묶으면 같은 셀 안에서도 최대 ~1.4km가 벌어진다. 격자 단위 재사용은 <b>거리를 직접 다시
+     * 계산하는 것과 한 세트</b>이므로 10단계 캐시와 함께 다룬다 — 실제 중복은 대부분 "완전히 같은
+     * 좌표"라 이것만으로도 대부분 사라진다.
+     */
+    private Map<TourCall, List<Integer>> tourCalls(List<PlannerDayPlan> days,
         Map<Integer, GeocodeResult> geocodes) {
-        List<TourSpec> specs = new ArrayList<>();
+        Map<TourCall, List<Integer>> daysByCall = new LinkedHashMap<>();
         for (PlannerDayPlan day : days) {
             GeocodeResult geocode = geocodes.get(day.day());
             Set<Integer> contentTypeIds = TourApiSource.contentTypeIdsFor(distinctSlots(day));
@@ -189,30 +204,47 @@ public class CandidateRetrievalStage {
                 continue;
             }
             for (int contentTypeId : contentTypeIds) {
-                specs.add(new TourSpec(day.day(), contentTypeId,
-                    geocode.latitude(), geocode.longitude()));
+                daysByCall.computeIfAbsent(
+                        new TourCall(contentTypeId, geocode.latitude(), geocode.longitude()),
+                        key -> new ArrayList<>())
+                    .add(day.day());
             }
         }
-
-        return specs;
+        return daysByCall;
     }
 
-    private List<CompletableFuture<TourOutcome>> submitTours(List<TourSpec> specs) {
-        return specs.stream()
-            .map(spec -> submit(() -> new TourOutcome(spec, tourApiSource.fetch(
-                spec.latitude(), spec.longitude(), spec.contentTypeId()))))
+    private List<CompletableFuture<TourOutcome>> submitTours(Collection<TourCall> calls) {
+        return calls.stream()
+            .map(call -> submit(() -> new TourOutcome(call, tourApiSource.fetch(
+                call.latitude(), call.longitude(), call.contentTypeId()))))
             .toList();
     }
 
-    private Map<Integer, List<TourOutcome>> collectTours(
-        List<CompletableFuture<TourOutcome>> futures, int attempted) {
-        List<TourOutcome> outcomes = collectDone(futures);
-        record(AiCourseMetrics.SOURCE_TOUR_API,
-            outcomes.stream().map(TourOutcome::batch).toList(), attempted);
-
+    /**
+     * 호출 결과를 그 호출이 대신한 day 들에 나눠 싣는다.
+     *
+     * <p><b>메트릭 단위는 {@code (day, 분류)}로 유지한다.</b> 중복 제거는 호출 수를 줄이는
+     * 최적화일 뿐이고, 이 지표가 답해야 하는 질문("이 day의 이 분류에 후보가 모였는가")은 바뀌지
+     * 않는다. 호출을 세는 쪽으로 바꾸면 5-9의 집계와 단위가 어긋나 전후 비교가 깨진다.
+     */
+    private Map<Integer, List<TourOutcome>> collectTours(Map<TourCall, List<Integer>> daysByCall,
+        List<CompletableFuture<TourOutcome>> futures) {
+        List<TourCall> calls = List.copyOf(daysByCall.keySet());
         Map<Integer, List<TourOutcome>> byDay = new LinkedHashMap<>();
-        for (TourOutcome outcome : outcomes) {
-            byDay.computeIfAbsent(outcome.spec().day(), key -> new ArrayList<>()).add(outcome);
+
+        for (int i = 0; i < calls.size(); i++) {
+            CompletableFuture<TourOutcome> future = futures.get(i);
+            boolean done = future.isDone() && !future.isCompletedExceptionally()
+                && !future.isCancelled();
+            TourOutcome outcome = done ? future.join() : null;
+
+            for (int day : daysByCall.get(calls.get(i))) {
+                metrics.candidateRetrieval(AiCourseMetrics.SOURCE_TOUR_API,
+                    outcome == null ? CandidateOutcome.FAILED : outcome.batch().outcome());
+                if (outcome != null) {
+                    byDay.computeIfAbsent(day, key -> new ArrayList<>()).add(outcome);
+                }
+            }
         }
         return byDay;
     }
@@ -271,7 +303,7 @@ public class CandidateRetrievalStage {
         }
         List<PlaceCandidate> candidates = new ArrayList<>();
         for (TourOutcome outcome : dayTours) {
-            if (!wanted.contains(outcome.spec().contentTypeId())) {
+            if (!wanted.contains(outcome.call().contentTypeId())) {
                 continue;
             }
             for (PlaceCandidate candidate : outcome.batch().candidates()) {
@@ -364,9 +396,13 @@ public class CandidateRetrievalStage {
     private record SeedOutcome(SeedSpec spec, CandidateBatch batch) {
     }
 
-    private record TourSpec(int day, int contentTypeId, double latitude, double longitude) {
+    /**
+     * TourAPI 호출 하나의 신원. <b>{@code day} 가 없는 것이 핵심이다</b> — 좌표와 분류가 같으면
+     * 어느 day 가 요구했든 같은 호출이므로, day 를 키에 넣으면 중복 제거가 성립하지 않는다.
+     */
+    private record TourCall(int contentTypeId, double latitude, double longitude) {
     }
 
-    private record TourOutcome(TourSpec spec, CandidateBatch batch) {
+    private record TourOutcome(TourCall call, CandidateBatch batch) {
     }
 }

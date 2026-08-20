@@ -322,6 +322,69 @@ class CandidateRetrievalStageTest {
     }
 
     @Nested
+    @DisplayName("day 간 중복 호출 제거 — 쿼터가 가장 빠듯한 소스다")
+    class TourCallDeduplication {
+
+        @Test
+        @DisplayName("좌표가 같은 day 들은 TourAPI 를 한 번만 부르고 결과를 나눠 쓴다")
+        void sameCoordinateDaysShareOneCall() {
+            // 3일 내내 같은 권역이면 Planner 가 같은 anchor 를 주고 지오코딩도 같은 좌표를
+            // 돌려준다. 그대로 두면 개발계정 일 1,000건을 필요량의 세 배로 쓴다.
+            geocodeSucceeds();
+            naverReturns();
+            tourReturns(CandidateFixtures.listed("골굴사", CandidateFixtures.NAEMUL_LAT,
+                CandidateFixtures.NAEMUL_LON, 1.2, Set.of()));
+
+            CandidatePool pool = stage.retrieve("경주", plan(
+                day(1, SlotType.ATTRACTION), day(2, SlotType.ATTRACTION),
+                day(3, SlotType.ATTRACTION)), List.of(), CourseDeadline.unbounded());
+
+            // 12·14 두 번뿐 — day 수만큼 곱해지지 않는다.
+            verify(tourApiSource, times(2)).fetch(anyDouble(), anyDouble(), anyInt());
+            // 그래도 세 day 모두 후보를 받는다.
+            for (int day = 1; day <= 3; day++) {
+                assertThat(pool.findOrEmpty(day, SlotType.ATTRACTION).candidates())
+                    .extracting(PlaceCandidate::name).containsExactly("골굴사");
+            }
+        }
+
+        @Test
+        @DisplayName("좌표가 다르면 각각 부른다 — 권역이 갈린 여행은 합치지 않는다")
+        void differentCoordinatesCallSeparately() {
+            when(areaGeocoder.geocode(anyString(), anyString(), anyString()))
+                .thenReturn(GeocodeResult.resolved(ANCHOR_LAT, ANCHOR_LON, GeocodeOutcome.HIT))
+                .thenReturn(GeocodeResult.resolved(CandidateFixtures.CHEOMSEONGDAE_LAT,
+                    CandidateFixtures.CHEOMSEONGDAE_LON, GeocodeOutcome.HIT));
+            naverReturns();
+            when(tourApiSource.fetch(anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(CandidateBatch.empty());
+
+            stage.retrieve("경주", plan(day(1, SlotType.ATTRACTION), day(2, SlotType.ATTRACTION)),
+                List.of(), CourseDeadline.unbounded());
+
+            // 좌표 2종 × 분류 2종 = 4회.
+            verify(tourApiSource, times(4)).fetch(anyDouble(), anyDouble(), anyInt());
+        }
+
+        @Test
+        @DisplayName("메트릭은 여전히 day 수만큼 센다 — 중복 제거가 지표의 단위를 바꾸지 않는다")
+        void metricStaysPerDay() {
+            geocodeSucceeds();
+            naverReturns();
+            when(tourApiSource.fetch(anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(CandidateBatch.empty());
+
+            stage.retrieve("경주", plan(day(1, SlotType.ATTRACTION), day(2, SlotType.ATTRACTION)),
+                List.of(), CourseDeadline.unbounded());
+
+            // 호출은 2회지만 "(day, 분류)에 후보가 모였는가"는 2일 × 2분류 = 4건이다.
+            // 호출을 세는 쪽으로 바꾸면 5-9 집계와 단위가 어긋나 전후 비교가 깨진다.
+            assertThat(counted(AiCourseMetrics.CANDIDATE_RETRIEVAL,
+                "source", AiCourseMetrics.SOURCE_TOUR_API, "result", "empty")).isEqualTo(4.0);
+        }
+    }
+
+    @Nested
     @DisplayName("병렬 구조 — 시더와 TourAPI 는 한 라운드다")
     class OneRound {
 
