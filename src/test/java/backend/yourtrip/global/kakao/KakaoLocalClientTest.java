@@ -155,12 +155,35 @@ class KakaoLocalClientTest {
     class ValueReturningLookup {
 
         @Test
-        @DisplayName("무결과는 NoResult다 — 실패와 뭉치면 캐스케이드가 헛돈다")
-        void returnsNoResultWhenNothingMatches() {
-            stubDocuments(document("전혀다른가게", "경북 경주시 첨성로 1", "FD6"));
+        @DisplayName("카카오에 아무것도 없으면 NoResult다 — 실패와 뭉치면 캐스케이드가 헛돈다")
+        void returnsNoResultWhenKakaoHasNothing() {
+            stubDocuments();
 
             assertThat(kakaoLocalClient.lookupBestPlace("있을리없는가게이름", "경주"))
                 .isInstanceOf(PlaceLookup.NoResult.class);
+        }
+
+        @Test
+        @DisplayName("결과는 있는데 이름이 안 맞으면 NameMismatch다 — 세탁 위험 구간 (ROADMAP 5-2)")
+        void returnsNameMismatchWhenGateRejectsAll() {
+            // 배경이 비판한 실수가 정확히 이 구간이다 — 하한선 없는 score()가 "그 지역의 무관한
+            // POI"를 최고점으로 뽑아 환각을 실존 장소로 세탁했다. 1-2가 이름 게이트로 막았고,
+            // 이제 그 게이트가 몇 번 발동했는지를 no_result 와 갈라 세야 한다(5-6).
+            stubDocuments(document("전혀다른가게", "경북 경주시 첨성로 1", "FD6"));
+
+            assertThat(kakaoLocalClient.lookupBestPlace("있을리없는가게이름", "경주"))
+                .isInstanceOfSatisfying(PlaceLookup.NameMismatch.class, mismatch ->
+                    assertThat(mismatch.bestCandidateName()).isEqualTo("전혀다른가게"));
+        }
+
+        @Test
+        @DisplayName("이름 게이트를 걸지 않는 조회는 NameMismatch를 낼 수 없다 — 4-8 판정 14")
+        void firstPlaceLookupNeverMismatches() {
+            // 캐스케이드 마지막 단계는 사용자가 입력한 지역명이라 막을 환각이 없다.
+            stubDocuments(document("전혀다른가게", "경북 경주시 첨성로 1", "FD6"));
+
+            assertThat(kakaoLocalClient.lookupFirstPlace("경주"))
+                .isInstanceOf(PlaceLookup.Found.class);
         }
 
         @Test
