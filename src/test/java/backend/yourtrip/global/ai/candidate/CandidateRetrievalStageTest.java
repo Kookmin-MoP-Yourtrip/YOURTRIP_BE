@@ -26,6 +26,11 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -313,6 +318,54 @@ class CandidateRetrievalStageTest {
 
             assertThat(pool.isEmpty()).isTrue();
             verifyNoInteractions(areaGeocoder, naverLocalSeedSource, tourApiSource);
+        }
+    }
+
+    @Nested
+    @DisplayName("병렬 구조 — 시더와 TourAPI 는 한 라운드다")
+    class OneRound {
+
+        /**
+         * <b>진짜 스레드풀을 쓰는 유일한 테스트다.</b> 다른 테스트는 {@code Runnable::run} 으로
+         * 결정론을 얻지만, "두 소스가 동시에 떠 있는가"는 직렬 실행에서는 물을 수조차 없는 질문이다.
+         *
+         * <p>시더가 TourAPI 호출을 기다리게 걸어 둔다 — 라운드가 갈려 있으면 그 래치는 시더가
+         * 전부 끝난 뒤에야 풀리므로 대기가 타임아웃으로 끝난다.
+         */
+        @Test
+        @DisplayName("시더가 TourAPI 를 기다려도 교착되지 않는다 — 둘이 함께 떠 있다")
+        void bothSourcesAreInFlightTogether() throws Exception {
+            ExecutorService pool = Executors.newFixedThreadPool(4);
+            CountDownLatch tourCalled = new CountDownLatch(1);
+            AtomicBoolean seedSawTour = new AtomicBoolean(false);
+
+            when(areaGeocoder.geocode(anyString(), anyString(), anyString()))
+                .thenReturn(GeocodeResult.resolved(ANCHOR_LAT, ANCHOR_LON, GeocodeOutcome.HIT));
+            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    seedSawTour.set(tourCalled.await(2, TimeUnit.SECONDS));
+                    return CandidateBatch.of(List.of(
+                        CandidateFixtures.seeded("대릉원", 1, ANCHOR_LAT, ANCHOR_LON)));
+                });
+            when(tourApiSource.fetch(anyDouble(), anyDouble(), anyInt()))
+                .thenAnswer(invocation -> {
+                    tourCalled.countDown();
+                    return CandidateBatch.empty();
+                });
+
+            CandidateRetrievalStage parallelStage = new CandidateRetrievalStage(areaGeocoder,
+                naverLocalSeedSource, tourApiSource, new AiCourseMetrics(meterRegistry), pool);
+            try {
+                CandidatePool result = parallelStage.retrieve("경주",
+                    plan(day(1, SlotType.ATTRACTION)), List.of(), CourseDeadline.unbounded());
+
+                assertThat(seedSawTour)
+                    .as("시더가 도는 동안 TourAPI 호출이 시작되지 않았다면 라운드가 갈린 것이다")
+                    .isTrue();
+                assertThat(result.findOrEmpty(1, SlotType.ATTRACTION).candidates()).hasSize(1);
+            } finally {
+                pool.shutdownNow();
+            }
         }
     }
 

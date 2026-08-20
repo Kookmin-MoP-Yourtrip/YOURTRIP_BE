@@ -31,9 +31,13 @@ import org.springframework.stereotype.Component;
  * 공급한다 — 네이버 시더가 인기 축을, TourAPI가 관광 슬롯의 커버리지·분류 축을 맡는다.
  * <b>카카오는 후보 소스가 아니다</b>(인기도 정렬이 없어 밀집 지역에서 임의 슬라이스가 된다).
  *
- * <h2>병렬 구조 — day별로 감싸지 않고 평평하게 편다</h2>
- * 지오코딩 한 라운드를 먼저 끝내고, 그 결과로 만든 <b>모든 리프 호출을 한 번에 fan-out</b>한다.
- * day 단위로 감싸면 day 태스크가 자식 태스크를 기다리며 같은 풀의 스레드를 붙잡는데
+ * <h2>병렬 구조 — 두 라운드뿐이다</h2>
+ * 지오코딩 한 라운드를 먼저 끝내고(TourAPI가 그 좌표를 쓰므로 필연이다), 그 결과로 만든
+ * <b>시더와 TourAPI 호출을 전부 함께 던져 한 번만 기다린다</b> — 소스별로 나눠 기다리면
+ * 라운드가 셋으로 갈려 설계 지연 예산의 "네이버 ∥ TourAPI"가 깨진다.
+ *
+ * <p>day 단위로 감싸지 않는 이유는 따로 있다.
+ * day 태스크가 자식 태스크를 기다리며 같은 풀의 스레드를 붙잡는데
  * ({@code placeGroundingExecutor} 하나를 공유하므로) 그건 풀 고갈을 부르는 구조다. 평평하게 펴면
  * 대기하는 스레드가 요청 스레드 하나뿐이고, 설계의 지연 예산("지오코딩 ≤3 → 네이버 ∥ TourAPI /
  * 풀 12")과도 그대로 맞는다.
@@ -80,8 +84,24 @@ public class CandidateRetrievalStage {
         Set<StyleTag> preferredTags = Set.copyOf(StyleModifierDictionary.preferredTagsFor(keywords));
 
         Map<Integer, GeocodeResult> geocodes = geocodeDays(location, days, deadline);
-        List<SeedOutcome> seeds = fetchSeeds(days, geocodes, modifiers, deadline);
-        Map<Integer, List<TourOutcome>> tours = fetchTours(days, geocodes, deadline);
+
+        // 시더와 TourAPI 는 서로를 기다릴 이유가 없다 — 지오코딩 결과만 있으면 둘 다 바로
+        // 던질 수 있다. 그래서 두 소스의 호출을 먼저 전부 띄우고 **한 번만** 기다린다.
+        // 소스별로 나눠 기다리면 라운드가 둘로 갈려 설계 지연 예산의 "네이버 ∥ TourAPI"가
+        // 깨진다(TourAPI 라운드만큼 통째로 늘어난다).
+        List<SeedSpec> seedSpecs = seedSpecs(days, geocodes, modifiers);
+        List<TourSpec> tourSpecs = tourSpecs(days, geocodes);
+        List<CompletableFuture<SeedOutcome>> seedFutures = submitSeeds(seedSpecs);
+        List<CompletableFuture<TourOutcome>> tourFutures = submitTours(tourSpecs);
+
+        List<CompletableFuture<?>> pending =
+            new ArrayList<>(seedFutures.size() + tourFutures.size());
+        pending.addAll(seedFutures);
+        pending.addAll(tourFutures);
+        awaitAll(pending, deadline, "후보 공급");
+
+        List<SeedOutcome> seeds = collectSeeds(seedFutures, seedSpecs.size());
+        Map<Integer, List<TourOutcome>> tours = collectTours(tourFutures, tourSpecs.size());
 
         return assemble(days, seeds, tours, preferredTags);
     }
@@ -114,8 +134,8 @@ public class CandidateRetrievalStage {
 
     // ── ② 네이버 시더 — (day × 슬롯타입) × (기본 1 + modifier 1~2) ──────────────
 
-    private List<SeedOutcome> fetchSeeds(List<PlannerDayPlan> days,
-        Map<Integer, GeocodeResult> geocodes, List<StyleTag> modifiers, CourseDeadline deadline) {
+    private static List<SeedSpec> seedSpecs(List<PlannerDayPlan> days,
+        Map<Integer, GeocodeResult> geocodes, List<StyleTag> modifiers) {
         List<SeedSpec> specs = new ArrayList<>();
         for (PlannerDayPlan day : days) {
             GeocodeResult geocode = geocodes.get(day.day());
@@ -132,21 +152,29 @@ public class CandidateRetrievalStage {
             }
         }
 
-        List<CompletableFuture<SeedOutcome>> futures = specs.stream()
+        return specs;
+    }
+
+    private List<CompletableFuture<SeedOutcome>> submitSeeds(List<SeedSpec> specs) {
+        return specs.stream()
             .map(spec -> submit(() -> new SeedOutcome(spec, naverLocalSeedSource.fetch(
                 spec.area(), spec.slotType(), spec.modifier(),
                 spec.anchorLatitude(), spec.anchorLongitude()))))
             .toList();
-        List<SeedOutcome> outcomes = awaitCompleted(futures, deadline, "네이버 시더");
+    }
+
+    private List<SeedOutcome> collectSeeds(List<CompletableFuture<SeedOutcome>> futures,
+        int attempted) {
+        List<SeedOutcome> outcomes = collectDone(futures);
         record(AiCourseMetrics.SOURCE_NAVER_LOCAL,
-            outcomes.stream().map(SeedOutcome::batch).toList(), specs.size());
+            outcomes.stream().map(SeedOutcome::batch).toList(), attempted);
         return outcomes;
     }
 
     // ── ③ TourAPI — day × contentTypeId (슬롯 단위가 아니다) ────────────────────
 
-    private Map<Integer, List<TourOutcome>> fetchTours(List<PlannerDayPlan> days,
-        Map<Integer, GeocodeResult> geocodes, CourseDeadline deadline) {
+    private List<TourSpec> tourSpecs(List<PlannerDayPlan> days,
+        Map<Integer, GeocodeResult> geocodes) {
         List<TourSpec> specs = new ArrayList<>();
         for (PlannerDayPlan day : days) {
             GeocodeResult geocode = geocodes.get(day.day());
@@ -166,14 +194,21 @@ public class CandidateRetrievalStage {
             }
         }
 
-        List<CompletableFuture<TourOutcome>> futures = specs.stream()
+        return specs;
+    }
+
+    private List<CompletableFuture<TourOutcome>> submitTours(List<TourSpec> specs) {
+        return specs.stream()
             .map(spec -> submit(() -> new TourOutcome(spec, tourApiSource.fetch(
                 spec.latitude(), spec.longitude(), spec.contentTypeId()))))
             .toList();
+    }
 
-        List<TourOutcome> outcomes = awaitCompleted(futures, deadline, "TourAPI");
+    private Map<Integer, List<TourOutcome>> collectTours(
+        List<CompletableFuture<TourOutcome>> futures, int attempted) {
+        List<TourOutcome> outcomes = collectDone(futures);
         record(AiCourseMetrics.SOURCE_TOUR_API,
-            outcomes.stream().map(TourOutcome::batch).toList(), specs.size());
+            outcomes.stream().map(TourOutcome::batch).toList(), attempted);
 
         Map<Integer, List<TourOutcome>> byDay = new LinkedHashMap<>();
         for (TourOutcome outcome : outcomes) {
@@ -282,8 +317,18 @@ public class CandidateRetrievalStage {
      */
     private static <T> List<T> awaitCompleted(List<CompletableFuture<T>> futures,
         CourseDeadline deadline, String label) {
+        awaitAll(futures, deadline, label);
+        return collectDone(futures);
+    }
+
+    /**
+     * 여러 소스의 호출을 <b>한 번에</b> 기다린다. 소스별로 나눠 기다리면 라운드가 갈려
+     * 설계 지연 예산의 "네이버 ∥ TourAPI"가 깨진다.
+     */
+    private static void awaitAll(Collection<? extends CompletableFuture<?>> futures,
+        CourseDeadline deadline, String label) {
         if (futures.isEmpty()) {
-            return List.of();
+            return;
         }
         try {
             CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
@@ -298,7 +343,6 @@ public class CandidateRetrievalStage {
             // 예상 밖 결함이고, 그래도 나머지 조각은 살린다.
             log.warn("{} 중 예상 밖 오류가 났다 — 끝난 것만 쓴다: {}", label, e.getCause().toString());
         }
-        return collectDone(futures);
     }
 
     private static <T> List<T> collectDone(Collection<CompletableFuture<T>> futures) {
