@@ -63,6 +63,19 @@ public record PlaceCandidate(
         }
     }
 
+    /**
+     * 같은 후보를 다른 슬롯의 목록에 올린다.
+     *
+     * <p>TourAPI는 <b>슬롯이 아니라 좌표·{@code contentTypeId} 단위로</b> 조회된다(쿼터가 그렇게
+     * 요구한다 — 슬롯마다 부르면 코스당 호출이 설계 예산의 네 배가 된다). 그래서 한 번 받은
+     * 관광지 목록을 그 day의 관광 슬롯 여럿에 나눠 실을 때 이 복사가 필요하다.
+     */
+    public PlaceCandidate withSlotType(SlotType target) {
+        return target == slotType ? this : new PlaceCandidate(source, name, address,
+            latitude, longitude, target, styleTags, seedRank, matchedModifier, distanceKm,
+            rawCategory);
+    }
+
     /** 네이버 시드에 든 후보인가 — 목록 정렬 ①그룹의 판정 기준이다. */
     public boolean seeded() {
         return seedRank != null;
