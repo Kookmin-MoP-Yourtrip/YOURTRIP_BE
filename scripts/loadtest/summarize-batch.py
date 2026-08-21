@@ -28,16 +28,28 @@ COLS = [('label', 'run'), ('tps', 'TPS'), ('server_avg_ms', '서버 평균(ms)')
         ('ctxt_per_req', '요청당 전환'), ('gc_ms_per_req', '요청당 GC(ms)'),
         ('alloc_kb_per_req', '요청당 할당(KB)'), ('minflt_per_req', '요청당 minflt'),
         ('gc_names', 'GC'), ('jvm_threads_max', 'JVM 스레드 최대'), ('host_ncpu', 'vCPU'),
+        # #101 — -Xmx 재산정에 쓰는 열. heap_max는 힙 arm이 실제로 적용됐는지 검증하는
+        # 용도이고(config_max_threads와 같은 역할), native_other는 Actuator가 노출하지 않는
+        # 스레드 스택·GC·컴파일러 영역을 RSS에서 역산한 잔여다.
+        # 표가 이미 넓으므로 사이징 판정에 직접 쓰는 열만 싣는다. 메타스페이스·코드캐시처럼
+        # 분해에만 쓰는 값은 --json으로 뽑아 문서 표에 옮긴다.
+        ('heap_max_mb', '힙 상한(MB)'), ('heap_used_max_mb', '힙 사용 최대(MB)'),
+        ('heap_committed_max_mb', '힙 committed(MB)'),
+        ('nonheap_committed_max_mb', '논힙 committed(MB)'), ('direct_buffer_mb', 'direct(MB)'),
+        ('jvm_known_mb', 'JVM 보고 합계(MB)'), ('rss_max_mb', 'RSS 최대(MB)'),
+        ('native_other_mb', '힙 밖 잔여(MB)'), ('mem_avail_min_mb', 'MemAvail 최소(MB)'),
         ('pid_changed', 'PID 변경'),
         ('k6_avg_ms', 'k6 avg'), ('k6_p95_ms', 'p95'), ('k6_p99_ms', 'p99'),
         ('k6_fail_rate', '실패율'), ('errors_5xx', '5xx'), ('scheduler_cmds', '스케줄러 명령'), ('sql', 'SQL')]
 
 
 def arm_key(arm):
-    m = re.match(r'T(\d+)(\+snc)?', arm)
+    # T<max>[H<heapMB>][+snc] — 스레드 수 내림차순, 같으면 힙 오름차순, +snc는 뒤로.
+    # 힙을 정렬 키에 넣어야 T32H448 -> T32H768 -> T32H1024가 용량 순으로 붙어 나온다.
+    m = re.match(r'T(\d+)(?:H(\d+))?(\+snc)?$', arm)
     if not m:
-        return (999, arm)
-    return (-int(m.group(1)), 1 if m.group(2) else 0)
+        return (999, 0, 0, arm)
+    return (-int(m.group(1)), int(m.group(2) or 0), 1 if m.group(3) else 0, '')
 
 
 def main():

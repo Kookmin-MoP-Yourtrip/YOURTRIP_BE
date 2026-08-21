@@ -14,7 +14,7 @@ Tomcat 기본값 200은 CPU와 무관한 범용 상수다(블로킹 I/O·JSP 시
 |---|---|---|
 | **CPU 대비** — Goetz, *Java Concurrency in Practice*; HikariCP 위키가 풀 사이징에 인용하는 공식 | `N = cores × (1 + 대기시간 / 계산시간)` | 인기 코스 히트 경로: Redis 대기 0.33ms vs 계산 ~1.5ms → `2 × 1.2 ≈ 3`. 상세 조회(DB): 대기 5~8ms vs 계산 1~2ms → `2 × 5 ≈ 10` |
 | **다운스트림 용량** | 후단이 소화 못 하는 워커는 어차피 후단 큐(`hikaricp_connections_pending`)에서 잔다. 대기줄은 Tomcat 커넥션 큐(`maxConnections`/`acceptCount`)에 두는 편이 싸다 | HikariCP 10개 → DB 경로에 10~20개 넘는 워커는 의미가 없다. 이 레포가 실측한 `pending 187 = busy 200 − 풀 10`이 그 증거 |
-| **메모리** | 스레드당 스택(`-Xss`) × N | 1GB 박스에 `-Xss512k` × 200 = 최대 100MB. 32면 16MB |
+| **메모리** | 스레드당 스택(`-Xss`) × N | t3.small(2GB) 박스에 `-Xss512k` × 200 = 최대 100MB. 32면 16MB |
 
 ### 선행 사례 — "코어 수에 맞춰 200보다 낮게"는 반복해서 나오는 결론이다
 

@@ -32,6 +32,15 @@
 | [tasks/popular-n-plus-one/](tasks/popular-n-plus-one/README.md) | 인기 코스 아이템 조회의 N+1 제거 — to-one 연관 LAZY 전환으로 요청당 SQL 8 → 2문장 |
 | [tasks/popular-theme-index/](tasks/popular-theme-index/README.md) | 테마 지정 조회의 선형 증가 제거 — 랭킹 쿼리 분리 + `course_keyword` 복합 인덱스로 50,000건 5.4ms → 0.05ms |
 
+### 런타임 사이징 — Tomcat 스레드와 JVM 힙
+
+배포 타겟(t3.small, vCPU 2 / 2GB) 위에서 워커 수와 힙 상한을 실측으로 정하는 작업들이다. 앞의 인기 코스 사슬에서 "Redis 대기가 아니라 CPU 낭비였다"가 규명되면서 갈라져 나왔다.
+
+| 문서 | 내용 |
+|---|---|
+| [tasks/tomcat-thread-sizing/](tasks/tomcat-thread-sizing/README.md) | `server.tomcat.threads.max` 200 → 32 — VU 200에서 TPS +16%, p95 -33%. 요청당 CPU 26% 감소가 전환 횟수인지 캐시 지역성인지의 분해까지 |
+| [tasks/jvm-heap-sizing/](tasks/jvm-heap-sizing/README.md) | `-Xmx448m`이 t3.micro(1GB)·maxThreads 200 전제로 잡힌 값이라 t3.small(2GB) 기준으로 768m으로 재산정 — 힙 밖 165MB의 NMT 분해와, 천장을 올려도 G1이 대개 커밋을 늘리지 않는다는 실측 포함 |
+
 ### 커넥션 풀 / presigned URL 병목
 
 | 문서 | 내용 |
@@ -62,3 +71,4 @@
 - [../CLAUDE.md](../CLAUDE.md) — 프로젝트 개요, 기술 스택, 작업 규칙(에이전트용 진입점)
 - [../.claude/rules/](../.claude/rules/) — 커밋·이슈·PR 작성 규칙
 - [../terraform/README.md](../terraform/README.md), [../terraform/loadtest/README.md](../terraform/loadtest/README.md) — 인프라 구성과 운영 절차
+- [../deploy/prod/README.md](../deploy/prod/README.md) — 운영 서버의 JVM 기동 옵션(값·산정 근거·적용/확인 절차)

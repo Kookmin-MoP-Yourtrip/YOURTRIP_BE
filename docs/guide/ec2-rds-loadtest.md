@@ -137,11 +137,12 @@ Grafana로 눈으로 보는 것과 별개로, **run 단위 수치(구간 평균 
 | 스크립트 | 실행 위치 | 역할 |
 |---|---|---|
 | `poll-metrics.sh <base-url> <out>` | k6 EC2 | 1초 간격으로 `/actuator/prometheus`를 **전량** 저장(`# ts=` 구분자). 화이트리스트를 두지 않는다 — 15개 지표만 걸러 담다가 처음부터 노출되던 `lettuce_command_*`를 놓친 전례 때문 |
-| `sample-host.sh <out> [sec] [service\|pid]` | App EC2 | `/proc/loadavg`·`procs_running`·`/proc/stat` cpu 행(steal 포함)에 더해 **`ctxt`(시스템 전역 전환 총량)** 와 JVM 프로세스의 **`utime`/`stime`**·`minflt`를 1초 간격으로 기록. 3번째 인자로 PID를 직접 줄 수 있다(systemd 서비스가 아닌 벤치마크 프로세스를 재기 위해) |
+| `sample-host.sh <out> [sec] [service\|pid]` | App EC2 | `/proc/loadavg`·`procs_running`·`/proc/stat` cpu 행(steal 포함)에 더해 **`ctxt`(시스템 전역 전환 총량)** 와 JVM 프로세스의 **`utime`/`stime`**·`minflt`·**`RSS`/`vsize`**, 그리고 `/proc/meminfo`의 **`MemTotal`/`MemFree`/`MemAvailable`**을 1초 간격으로 기록. 3번째 인자로 PID를 직접 줄 수 있다(systemd 서비스가 아닌 벤치마크 프로세스를 재기 위해). RSS는 Actuator가 노출하지 않는 힙 밖 네이티브를 역산하는 데 쓴다 |
 | `sample-schedstat.sh [sec] [service\|pid] [url]` | App EC2 | JVM 스레드 그룹(lettuce / http-nio / **gc** / **jit** / 기타)별 CPU 실행 vs **런큐 대기** 시간에 더해, **전환 횟수(schedstat의 pcount)** 와 **자발/비자발 분해**(`/proc/<pid>/task/*/status`)를 낸다. 창 양 끝에서 요청 수도 함께 찍어 **요청당 전환**으로 정규화한다 |
 | `run-switch-benchmark.sh [out]` | App EC2 (앱 정지 상태) | 컨텍스트 스위칭 1회 비용을 (스레드 수 N) x (워킹셋 S)로 스윕해 **직접(커널 경로)과 간접(캐시 재적재)을 분리**한다. jar은 로컬에서 `./gradlew contextSwitchBenchmarkJar`로 만들어 scp한다(App EC2에는 javac가 없다) |
 | `switch-thread-arm.sh <max\|default> [snc]` | App EC2 (`sudo`) | `/opt/app/.env`의 측정용 키를 치환(append 금지 — spring-dotenv 중복 키 사고) → 재기동 → health·`tomcat_threads_config_max_threads`·활성 프로필 검증 |
-| `run-batch.sh` | 로컬 | 위를 ssh로 엮는 드라이버. IP·키는 환경변수(`APP_IP`/`K6_IP`/`APP_PRIVATE`/`SSH_KEY`)로만 받는다. `SCENARIO=mixed`·`FLUSH_REDIS=1`로 혼합 부하(arm마다 `FLUSHALL`)도 돌린다 |
+| `switch-heap-arm.sh set <heap\|default>` / `verify <heap>` | App EC2 (`sudo`) | `/opt/app/.env`의 `JVM_OPTS`를 치환하고 systemd **드롭인**으로 `ExecStart`가 그 값을 읽게 만든다. 힙 플래그는 원래 user_data가 쓴 유닛에 하드코딩돼 있는데, 템플릿을 고쳐 apply하면 `user_data_replace_on_change = true` 때문에 인스턴스가 교체된다 — 드롭인은 형상이 아니라 실행 상태만 바꾸는 조작이라 drift가 없다. **재기동은 하지 않는다**(`switch-thread-arm.sh`가 한다). `verify`는 `/proc/<pid>/cmdline`과 `jvm_memory_max_bytes{area="heap"}` 두 갈래로 확인한다 |
+| `run-batch.sh` | 로컬 | 위를 ssh로 엮는 드라이버. IP·키는 환경변수(`APP_IP`/`K6_IP`/`APP_PRIVATE`/`SSH_KEY`)로만 받는다. `SCENARIO=mixed`·`FLUSH_REDIS=1`로 혼합 부하(arm마다 `FLUSHALL`)도 돌린다. arm 표기는 `T<max>[H<heapMB>][+snc]`이고(예: `T32`, `T32H1024`, `T200+snc`), `H` 토큰이 없으면 힙을 건드리지 않는다 |
 | `aggregate.py`, `summarize-batch.py` | 로컬 | run 창(`.window`의 t0/t1)의 첫/끝 스냅샷 Δ로 카운터를 집계(Δsum ÷ Δcount), 게이지는 창 평균/최대. k6 summary JSON의 p95/p99를 합쳐 마크다운 표로 |
 
 **요청당 지표 읽는 법.** arm마다 TPS가 다르므로(T200 2,517 vs T32 2,921) 초당 값을 그대로 비교하면 안 된다. 집계기가 내는 요청당 열은 아래와 같다.
@@ -156,11 +157,22 @@ Grafana로 눈으로 보는 것과 별개로, **run 단위 수치(구간 평균 
 | `GC` | `jvm_gc_pause_seconds`의 `gc` 라벨 | `-XX` 플래그가 하나도 없어 GC를 ergonomics가 정한다. `G1 Young Generation`이면 G1, `Copy`면 Serial |
 | `PID 변경` | 창 안에서 JVM PID가 바뀌었는가 | true면 `/proc` 누적 카운터가 리셋된 것이라 JVM 파생값을 버린다 |
 
+**메모리 열 읽는 법.** `-Xmx`를 박스 크기에 맞춰 재산정하려면 "힙 밖에 얼마나 쓰는가"를 알아야 한다([tasks/jvm-heap-sizing](../tasks/jvm-heap-sizing/README.md)).
+
+| 열 | 뜻 | 왜 보는가 |
+|---|---|---|
+| `힙 상한(MB)` | `jvm_memory_max_bytes{area="heap"}`의 **양수** 합 | 힙 arm이 실제로 적용됐는지 검증하는 열이다(`config_max_threads`가 Tomcat arm을 검증하는 것과 같은 역할). G1은 Eden/Survivor의 max를 `-1`로 내보내므로 양수만 더한다 |
+| `힙 사용 최대(MB)` / `힙 committed(MB)` | `jvm_memory_used/committed_bytes{area="heap"}` | G1은 `-Xmx`까지 무조건 자라지 않는다. **committed가 상한을 훨씬 밑돌면 힙 상한이 제약이 아니었다는 뜻**이다 |
+| `논힙 committed(MB)` | `area="nonheap"` 합에서 **Compressed Class Space를 뺀 값** | CCS는 Metaspace 풀에 **포함**돼 있어 그냥 더하면 이중계상이다(약 18MB). 이 레포 실측에서 논힙은 스레드 수와 무관하게 190~194MB로 거의 일정하다 |
+| `RSS 최대(MB)` | `/proc/<pid>/stat`의 rss | JVM이 실제로 만진 물리 메모리 총량. Actuator만으로는 알 수 없다 |
+| `힙 밖 잔여(MB)` | `RSS − (힙 committed + 논힙 + direct)` | **스레드 스택 실주거·GC 자료구조·컴파일러 아레나·심볼·malloc 아레나.** NMT 없이 얻는 근사치이고, NMT 프로파일 run으로 교차검증한다 |
+| `MemAvail 최소(MB)` | `/proc/meminfo`의 `MemAvailable` 창 안 **최소** | 힙을 키웠을 때의 안전 조건. 최대가 아니라 최소를 본다 — 가장 빠듯했던 순간이 판정 기준이다 |
+
 이 지표들이 **실제로 그 이름으로 노출되는지**는 [`LoadtestMetricsExposureTest`](../../src/test/java/backend/yourtrip/global/config/LoadtestMetricsExposureTest.java)가 잠근다 — 지표가 있는데 하네스가 못 받아 병목 규명이 늦어진 전례가 있어(`lettuce_command_*`) EC2 비용을 쓰기 전에 걸러낸다.
 
 ```bash
 # 사전 배포 (한 번)
-scp -i $KEY scripts/loadtest/{switch-thread-arm,sample-host,sample-schedstat}.sh ec2-user@<App>:/tmp/lt/
+scp -i $KEY scripts/loadtest/{switch-thread-arm,switch-heap-arm,sample-host,sample-schedstat}.sh ec2-user@<App>:/tmp/lt/
 scp -i $KEY scripts/loadtest/poll-metrics.sh ec2-user@<k6>:/tmp/lt/
 # k6 EC2의 /opt/app/scripts/k6/에 쓰려는 스크립트가 있는지 확인(checkout이 오래됐으면 scp)
 

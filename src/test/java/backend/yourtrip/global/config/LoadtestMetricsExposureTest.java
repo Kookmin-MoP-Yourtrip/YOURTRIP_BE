@@ -70,7 +70,13 @@ class LoadtestMetricsExposureTest {
         "system_cpu_usage",
         "jvm_gc_memory_allocated_bytes_total",
         "jvm_threads_live_threads",
-        "jvm_compilation_time_ms_total"
+        "jvm_compilation_time_ms_total",
+        // #101 — -Xmx를 t3.small(2GB) 기준으로 재산정하려면 "힙 밖에 얼마나 쓰는가"를 알아야 한다.
+        // 집계기가 이 넷으로 힙/논힙/다이렉트를 분해하고, RSS에서 그 합을 빼 잔여 네이티브를 낸다.
+        "jvm_memory_used_bytes",
+        "jvm_memory_committed_bytes",
+        "jvm_memory_max_bytes",
+        "jvm_buffer_memory_used_bytes"
     );
 
     @Autowired
@@ -129,12 +135,83 @@ class LoadtestMetricsExposureTest {
     void gcLabelIdentifiesCollector() {
         System.gc();
         String scrape = scrape();
-        // 이 라벨이 G1인지 Serial인지를 가른다. -XX 플래그가 하나도 없어 ergonomics가 정하는데,
-        // 인스턴스 타입을 t3.micro -> t3.small로 올린 시점에 조용히 바뀌었을 수 있고
-        // 어느 문서에도 기록이 없다(t3.micro는 메모리 1792MB 문턱 미달로 SerialGC).
+        // 이 라벨이 G1인지 Serial인지를 가른다. -XX 플래그가 하나도 없어 ergonomics가 정한다
+        // (t3.micro는 메모리 1792MB 문턱 미달로 SerialGC, t3.small은 G1). 인스턴스 타입을
+        // t3.micro -> t3.small로 올린 시점에 조용히 바뀌었고, 그 사실은 #97 실측에서
+        // gc="G1 Young Generation" 라벨로 확인됐다
+        // (docs/tasks/tomcat-thread-sizing/cpu-cost-decomposition.md).
         assertThat(scrape)
             .as("gc 라벨이 없으면 실측 문서에 GC 종류를 기록할 수 없다")
             .containsPattern("jvm_gc_(pause|memory)[^\\n]*gc=\"[^\"]+\"");
+    }
+
+    @Test
+    @DisplayName("메모리 풀 지표가 area/id 라벨을 달고 나온다")
+    void memoryPoolsCarryAreaAndIdLabels() {
+        // 집계기의 힙/논힙 합산은 지표 **이름**이 아니라 area·id **라벨 값**에 의존한다.
+        // 이름만 잠그면 라벨 표기가 바뀌었을 때 열이 조용히 0이 되고, 그 상태로도 표는
+        // 멀쩡해 보인다 — lettuce_command_*를 놓쳤던 것과 같은 실패 방식이다.
+        String scrape = scrape();
+        assertThat(scrape).as("area=heap 라벨이 없으면 힙 합산이 0이 된다")
+            .contains("jvm_memory_used_bytes{area=" + Q + "heap" + Q);
+        assertThat(scrape).as("area=nonheap 라벨이 없으면 논힙 합산이 0이 된다")
+            .contains("area=" + Q + "nonheap" + Q);
+        assertThat(scrape).as("메타스페이스는 논힙의 대부분을 차지해 따로 뽑는다")
+            .contains("id=" + Q + "Metaspace" + Q);
+        assertThat(scrape).as("코드 캐시는 id가 CodeHeap으로 시작하는 풀들의 합이다")
+            .contains("id=" + Q + "CodeHeap");
+        assertThat(scrape).as("다이렉트 버퍼는 메모리 예산의 한 항목이다")
+            .contains("jvm_buffer_memory_used_bytes{id=" + Q + "direct" + Q);
+    }
+
+    @Test
+    @DisplayName("힙 상한은 양수 풀 max의 합과 같다")
+    void heapMaxEqualsSumOfPositivePoolMaxes() {
+        // switch-heap-arm.sh의 verify가 정확히 이 항등식 위에 서 있다 — -Xmx가 실제로
+        // 적용됐는지를 jvm_memory_max_bytes{area="heap"}의 양수 합으로 판정한다.
+        // G1은 Eden/Survivor의 max를 -1로 내보내고 Old Gen에만 실제 상한을 싣기 때문에
+        // "양수만" 더해야 한다. GC가 바뀌어 풀 구성이 달라지면 이 등식이 깨지고,
+        // 그러면 힙 arm 검증이 통째로 무의미해지므로 EC2를 켜기 전에 여기서 잠근다.
+        double sum = sumPositive("jvm_memory_max_bytes", "area=" + Q + "heap" + Q);
+        assertThat(sum)
+            .as("힙 풀 max의 양수 합이 Runtime.maxMemory()와 달라지면 switch-heap-arm.sh가 오판한다")
+            .isCloseTo(Runtime.getRuntime().maxMemory(),
+                org.assertj.core.data.Offset.offset(Runtime.getRuntime().maxMemory() * 0.01));
+    }
+
+    @Test
+    @DisplayName("Compressed Class Space는 Metaspace 풀에 포함된다")
+    void compressedClassSpaceIsContainedInMetaspace() {
+        // 집계기는 논힙 합계에서 CCS를 뺀다. CCS가 Metaspace 풀에 포함돼 있어 그냥 더하면
+        // 이중계상이기 때문이다 — JDK 21에서 NMT로 확인했다: Metadata committed 9,306,112 +
+        // Class space committed 1,376,256 = 10,682,368 이 MXBean의 Metaspace committed와
+        // 정확히 일치했다. MXBean만으로는 포함관계를 직접 증명할 수 없으므로, 여기서는
+        // 포함의 필요조건(Metaspace >= CCS)과 두 풀의 존재를 잠근다. 이 조건이 깨지면
+        // 포함관계 전제가 바뀐 것이므로 aggregate.py의 뺄셈을 다시 검토해야 한다.
+        double metaspace = sumPositive("jvm_memory_committed_bytes", "id=" + Q + "Metaspace" + Q);
+        double ccs = sumPositive("jvm_memory_committed_bytes",
+            "id=" + Q + "Compressed Class Space" + Q);
+        assertThat(ccs).as("CCS 풀이 없으면 뺄셈 자체가 불필요하다 — 전제가 바뀐 것이다")
+            .isGreaterThan(0);
+        assertThat(metaspace)
+            .as("Metaspace가 CCS보다 작으면 포함관계가 성립하지 않는다")
+            .isGreaterThanOrEqualTo(ccs);
+    }
+
+    /** 큰따옴표. Prometheus 라벨을 문자열로 조립할 때 이스케이프를 피하려고 상수로 둔다. */
+    private static final String Q = String.valueOf((char) 34);
+
+    /**
+     * {@code /actuator/prometheus}에서 지표 한 종류의 값을 더한다. 라벨 조각으로 걸러내고
+     * <b>양수만</b> 더하는 것이 핵심이다 — JVM은 상한이 없는 풀의 max를 -1로 내보낸다.
+     * {@code scripts/loadtest/aggregate.py}와 {@code switch-heap-arm.sh}가 쓰는 것과 같은 규칙이다.
+     */
+    private double sumPositive(String metric, String labelFragment) {
+        return scrape().lines()
+            .filter(line -> line.startsWith(metric + "{") && line.contains(labelFragment))
+            .mapToDouble(line -> Double.parseDouble(line.substring(line.lastIndexOf(' ') + 1)))
+            .filter(v -> v > 0)
+            .sum();
     }
 
     /** 하네스의 {@code poll-metrics.sh}와 같은 방식으로 엔드포인트를 긁는다. */
