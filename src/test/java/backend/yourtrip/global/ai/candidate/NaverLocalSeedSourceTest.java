@@ -37,6 +37,16 @@ class NaverLocalSeedSourceTest {
     @InjectMocks
     private NaverLocalSeedSource source;
 
+    /** anchor 단계 — 3건에 못 미치면 탄다. */
+    private static NaverLocalSeedSource.Fallback anchorRung(String area) {
+        return new NaverLocalSeedSource.Fallback(area, 3);
+    }
+
+    /** location 단계 — 0건일 때만 탄다. */
+    private static NaverLocalSeedSource.Fallback cityRung(String area) {
+        return new NaverLocalSeedSource.Fallback(area, 1);
+    }
+
     private static NaverPlace attraction(String name, Double latitude, Double longitude,
         int seedRank) {
         return new NaverPlace(name, "여행,명소>관광,명소", "전남 순천시 순천만길 513", "전남 순천시 대대동",
@@ -238,26 +248,6 @@ class NaverLocalSeedSourceTest {
     @DisplayName("0건일 때 넓혀 다시 묻는다 (이슈 #110)")
     class Fallback {
 
-        /**
-         * 실측에서 {@code 송산리고분군} 권역의 MEAL·CAFE 가 그랬다 — 유적·고분군처럼 상권이 없는
-         * 지명이 권역명이 되면 표기 정규화만으로는 살아나지 않는다.
-         */
-        @Test
-        @DisplayName("권역명이 0건이면 넓은 지명으로 한 번 더 묻는다")
-        void retriesWithFallbackArea() {
-            when(naverLocalClient.search(eq("송산리고분군 카페"), anyInt()))
-                .thenReturn(new NaverLocalResult.Empty());
-            when(naverLocalClient.search(eq("공주 카페"), anyInt()))
-                .thenReturn(new NaverLocalResult.Found(List.of(
-                    place("루치아의 뜰", 36.45, 127.12, 1))));
-
-            CandidateBatch batch = source.fetch("송산리고분군·국립공주박물관 일대", List.of("공주"),
-                SlotType.CAFE, null, null, null);
-
-            assertThat(batch.candidates()).extracting(PlaceCandidate::name)
-                .containsExactly("루치아의 뜰");
-        }
-
         @Test
         @DisplayName("권역명이 결과를 주면 다시 묻지 않는다")
         void doesNotRetryWhenFound() {
@@ -265,7 +255,7 @@ class NaverLocalSeedSourceTest {
                 .thenReturn(new NaverLocalResult.Found(List.of(
                     place("카페 A", 35.83, 129.21, 1))));
 
-            source.fetch("황리단길·대릉원 일대", List.of("경주"), SlotType.CAFE, null, null, null);
+            source.fetch("황리단길·대릉원 일대", List.of(cityRung("경주")), SlotType.CAFE, null, null, null);
 
             verify(naverLocalClient, never()).search(eq("경주 카페"), anyInt());
         }
@@ -276,7 +266,7 @@ class NaverLocalSeedSourceTest {
             when(naverLocalClient.search(anyString(), anyInt()))
                 .thenReturn(new NaverLocalResult.Empty());
 
-            source.fetch("송산리고분군 일대", List.of("공주"), SlotType.CAFE, StyleTag.ROOFTOP, null, null);
+            source.fetch("송산리고분군 일대", List.of(anchorRung("무령왕릉"), cityRung("공주")), SlotType.CAFE, StyleTag.ROOFTOP, null, null);
 
             verify(naverLocalClient).search(eq("송산리고분군 루프탑 카페"), anyInt());
             verify(naverLocalClient, never()).search(eq("공주 루프탑 카페"), anyInt());
@@ -289,7 +279,7 @@ class NaverLocalSeedSourceTest {
                 .thenReturn(new NaverLocalResult.Failed(ApiFailureCause.QUOTA_EXCEEDED, "429"));
 
             CandidateBatch batch =
-                source.fetch("송산리고분군 일대", List.of("공주"), SlotType.CAFE, null, null, null);
+                source.fetch("송산리고분군 일대", List.of(anchorRung("무령왕릉"), cityRung("공주")), SlotType.CAFE, null, null, null);
 
             assertThat(batch.outcome()).isEqualTo(CandidateOutcome.FAILED);
             verify(naverLocalClient).search(eq("송산리고분군 카페"), anyInt());
@@ -303,10 +293,12 @@ class NaverLocalSeedSourceTest {
                 // 5건이 왔지만 분류가 카페라 MEAL 슬롯에서 전부 탈락한다.
                 .thenReturn(new NaverLocalResult.Found(List.of(
                     place("카페 A", 36.45, 127.12, 1))));
+            when(naverLocalClient.search(eq("무령왕릉 맛집"), anyInt()))
+                .thenReturn(new NaverLocalResult.Empty());
             when(naverLocalClient.search(eq("공주 맛집"), anyInt()))
                 .thenReturn(new NaverLocalResult.Empty());
 
-            source.fetch("송산리고분군 일대", List.of("공주"), SlotType.MEAL, null, null, null);
+            source.fetch("송산리고분군 일대", List.of(anchorRung("무령왕릉"), cityRung("공주")), SlotType.MEAL, null, null, null);
 
             verify(naverLocalClient).search(eq("공주 맛집"), anyInt());
         }
@@ -316,6 +308,87 @@ class NaverLocalSeedSourceTest {
          * 후보는 권역 안에 머물러(거리 중앙값 0.61km) day 를 나눈 의미가 유지된다 — 곧장
          * location 으로 넓히면 6.2km 로 벌어진다.
          */
+        /**
+         * 실측 근거: 1단계만으로는 <b>96칸 중 24%가 3건에 못 미쳤다.</b> 그런 슬롯에서는 Curator 가
+         * 3순위를 실존 후보로 채우지 못한다. anchor 로 채운 후보는 거리 중앙값 1.07km 로 1단계
+         * (1.20km)와 다르지 않아 밀착도 손해 없이 메울 수 있다.
+         */
+        @Test
+        @DisplayName("area 가 3건에 못 미치면 anchor 로 더 모은다")
+        void fillsThinSlotFromAnchor() {
+            when(naverLocalClient.search(eq("송산리고분군 카페"), anyInt()))
+                .thenReturn(new NaverLocalResult.Found(List.of(
+                    place("고분군 카페", 36.46, 127.11, 1))));
+            when(naverLocalClient.search(eq("무령왕릉 카페"), anyInt()))
+                .thenReturn(new NaverLocalResult.Found(List.of(
+                    place("루치아의 뜰", 36.45, 127.12, 1),
+                    place("커피인터뷰", 36.44, 127.13, 2))));
+
+            CandidateBatch batch = source.fetch("송산리고분군·박물관 일대",
+                List.of(anchorRung("무령왕릉"), cityRung("공주")), SlotType.CAFE, null, null, null);
+
+            assertThat(batch.candidates()).extracting(PlaceCandidate::name)
+                .containsExactly("고분군 카페", "루치아의 뜰", "커피인터뷰");
+            verify(naverLocalClient, never()).search(eq("공주 카페"), anyInt());
+        }
+
+        @Test
+        @DisplayName("area 가 이미 3건이면 anchor 를 부르지 않는다")
+        void leavesFullSlotAlone() {
+            when(naverLocalClient.search(eq("황리단길 카페"), anyInt()))
+                .thenReturn(new NaverLocalResult.Found(List.of(
+                    place("카페 A", 35.83, 129.21, 1),
+                    place("카페 B", 35.84, 129.22, 2),
+                    place("카페 C", 35.85, 129.23, 3))));
+
+            source.fetch("황리단길·대릉원 일대",
+                List.of(anchorRung("대릉원"), cityRung("경주")), SlotType.CAFE, null, null, null);
+
+            verify(naverLocalClient).search(eq("황리단길 카페"), anyInt());
+            verify(naverLocalClient, times(1)).search(anyString(), anyInt());
+        }
+
+        /**
+         * <b>하한선은 anchor 단계까지만이다.</b> location 으로 채우면 거리 중앙값이 6.34km 로
+         * 다섯 배가 되어 day 를 권역으로 나눈 의미가 사라진다 — 그래서 "없는 것보다 낫다"가
+         * 성립하는 0건에만 쓴다.
+         */
+        @Test
+        @DisplayName("anchor 까지 모아도 3건이 안 되면 location 으로는 채우지 않는다")
+        void doesNotFillFromLocation() {
+            when(naverLocalClient.search(eq("송산리고분군 카페"), anyInt()))
+                .thenReturn(new NaverLocalResult.Found(List.of(
+                    place("고분군 카페", 36.46, 127.11, 1))));
+            when(naverLocalClient.search(eq("무령왕릉 카페"), anyInt()))
+                .thenReturn(new NaverLocalResult.Found(List.of(
+                    place("루치아의 뜰", 36.45, 127.12, 1))));
+
+            CandidateBatch batch = source.fetch("송산리고분군·박물관 일대",
+                List.of(anchorRung("무령왕릉"), cityRung("공주")), SlotType.CAFE, null, null, null);
+
+            assertThat(batch.candidates()).hasSize(2);
+            verify(naverLocalClient, never()).search(eq("공주 카페"), anyInt());
+        }
+
+        @Test
+        @DisplayName("겹치는 장소는 합치고 seedRank 는 가까운 질의의 것이 남는다")
+        void keepsSeedRankOfTheNarrowerQuery() {
+            when(naverLocalClient.search(eq("송산리고분군 카페"), anyInt()))
+                .thenReturn(new NaverLocalResult.Found(List.of(
+                    place("루치아의 뜰", 36.45, 127.12, 1))));
+            when(naverLocalClient.search(eq("무령왕릉 카페"), anyInt()))
+                .thenReturn(new NaverLocalResult.Found(List.of(
+                    place("루치아의 뜰", 36.45, 127.12, 4),
+                    place("커피인터뷰", 36.44, 127.13, 5))));
+
+            CandidateBatch batch = source.fetch("송산리고분군·박물관 일대",
+                List.of(anchorRung("무령왕릉"), cityRung("공주")), SlotType.CAFE, null, null, null);
+
+            assertThat(batch.candidates()).extracting(PlaceCandidate::name)
+                .containsExactly("루치아의 뜰", "커피인터뷰");
+            assertThat(batch.candidates().getFirst().seedRank()).isEqualTo(1);
+        }
+
         @Test
         @DisplayName("area 가 0건이면 location 보다 anchor 를 먼저 물어본다")
         void triesAnchorBeforeLocation() {
@@ -326,7 +399,7 @@ class NaverLocalSeedSourceTest {
                     place("루치아의 뜰", 36.45, 127.12, 1))));
 
             CandidateBatch batch = source.fetch("송산리고분군·박물관 일대",
-                List.of("무령왕릉", "공주"), SlotType.CAFE, null, null, null);
+                List.of(anchorRung("무령왕릉"), cityRung("공주")), SlotType.CAFE, null, null, null);
 
             assertThat(batch.candidates()).extracting(PlaceCandidate::name)
                 .containsExactly("루치아의 뜰");
@@ -345,7 +418,7 @@ class NaverLocalSeedSourceTest {
                     attraction("순천만습지", 34.88, 127.50, 1))));
 
             CandidateBatch batch = source.fetch("원도심·문화의거리 일대",
-                List.of("순천부읍성", "순천"), SlotType.ATTRACTION, null, null, null);
+                List.of(anchorRung("순천부읍성"), cityRung("순천")), SlotType.ATTRACTION, null, null, null);
 
             assertThat(batch.candidates()).extracting(PlaceCandidate::name)
                 .containsExactly("순천만습지");
@@ -357,7 +430,7 @@ class NaverLocalSeedSourceTest {
             when(naverLocalClient.search(anyString(), anyInt()))
                 .thenReturn(new NaverLocalResult.Empty());
 
-            source.fetch("안목해변·송정동 일대", List.of("안목해변", "강릉"),
+            source.fetch("안목해변·송정동 일대", List.of(anchorRung("안목해변"), cityRung("강릉")),
                 SlotType.CAFE, null, null, null);
 
             verify(naverLocalClient).search(eq("안목해변 카페"), anyInt());
@@ -371,7 +444,7 @@ class NaverLocalSeedSourceTest {
             when(naverLocalClient.search(anyString(), anyInt()))
                 .thenReturn(new NaverLocalResult.Empty());
 
-            source.fetch("공주 일대", List.of("공주"), SlotType.CAFE, null, null, null);
+            source.fetch("공주 일대", List.of(anchorRung("무령왕릉"), cityRung("공주")), SlotType.CAFE, null, null, null);
 
             verify(naverLocalClient).search(eq("공주 카페"), anyInt());
         }
