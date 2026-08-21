@@ -12,6 +12,7 @@
   label | 요청 수 | TPS | Redis GET/MGET 평균(first/completion ms) | 요청당 명령 | 요청당 Redis(ms)
   | busy 최대 | 대기 커넥션 최대(current-busy) | CPU proc/sys 평균 | load1 평균 | steal% | pending 최대
   | 요청당 CPU(vCPU-ms) | 요청당 user/sys(ms) | 요청당 전환 | 요청당 GC(ms)
+  | 힙/논힙 committed·RSS(MB) | MemAvailable 최소(MB)
   | k6 avg/p95/p99 | k6 실패 | 스케줄러 틱(EVALSHA/DEL Δ)
 """
 import argparse
@@ -155,6 +156,44 @@ def main():
     live = gauge_series(snaps, 'jvm_threads_live_threads')
     r['jvm_threads_max'] = int(max(live)) if live else None
 
+    # JVM 메모리 영역 — #101에서 추가했다. -Xmx448m은 t3.micro(1GB) 전제로 잡힌 값이라
+    # t3.small(2GB) 기준으로 재산정해야 하는데, 그러려면 "힙 밖에 실제로 얼마나 쓰는가"를
+    # 알아야 한다. 전부 게이지라 창 안 최대를 쓴다(1초 해상도의 최대라는 한계는 위와 같다).
+    MB = 1024 * 1024
+
+    def mem_max_mb(name, pred=lambda l: True):
+        vals = gauge_series(snaps, name, pred)
+        return round(max(vals) / MB, 1) if vals else None
+
+    in_area = lambda want: (lambda l: l.get('area') == want)
+    r['heap_used_max_mb'] = mem_max_mb('jvm_memory_used_bytes', in_area('heap'))
+    r['heap_committed_max_mb'] = mem_max_mb('jvm_memory_committed_bytes', in_area('heap'))
+    # Compressed Class Space는 Metaspace 풀에 **포함**된다 — 논힙 풀을 그냥 다 더하면
+    # 이중계상이다. JDK 21에서 NMT로 직접 확인했다: Metadata committed 9,306,112 +
+    # Class space committed 1,376,256 = 10,682,368 이 MXBean의 Metaspace committed와
+    # 정확히 일치했다. 그래서 합계에서는 CCS를 빼고, 값 자체는 따로 낸다(약 19MB 차이).
+    nonheap = lambda l: l.get('area') == 'nonheap' and l.get('id') != 'Compressed Class Space'
+    r['nonheap_used_max_mb'] = mem_max_mb('jvm_memory_used_bytes', nonheap)
+    r['nonheap_committed_max_mb'] = mem_max_mb('jvm_memory_committed_bytes', nonheap)
+    r['ccs_committed_mb'] = mem_max_mb('jvm_memory_committed_bytes',
+                                       lambda l: l.get('id') == 'Compressed Class Space')
+    # 논힙의 70%가 메타스페이스라 따로 뽑는다. 코드 캐시는 CodeHeap 3종(non-nmethods,
+    # non-profiled nmethods, profiled nmethods)의 합이다.
+    r['metaspace_mb'] = mem_max_mb('jvm_memory_used_bytes', lambda l: l.get('id') == 'Metaspace')
+    r['codecache_mb'] = mem_max_mb('jvm_memory_used_bytes',
+                                   lambda l: l.get('id', '').startswith('CodeHeap'))
+    r['direct_buffer_mb'] = mem_max_mb('jvm_buffer_memory_used_bytes',
+                                       lambda l: l.get('id') == 'direct')
+    # 힙 상한 — 힙 arm이 실제로 적용됐는지 검증하는 열이다(config_max_threads가 Tomcat arm을
+    # 검증하는 것과 같은 역할). G1은 Eden/Survivor의 max를 -1로 내보내므로 양수만 더한다.
+    heap_max = []
+    for _, snap in snaps:
+        vals = [v for (n, l), v in snap.items()
+                if n == 'jvm_memory_max_bytes' and labels_of(l).get('area') == 'heap' and v > 0]
+        if vals:
+            heap_max.append(sum(vals))
+    r['heap_max_mb'] = round(max(heap_max) / MB, 1) if heap_max else None
+
     if a.host:
         rows = []
         with open(a.host) as f:
@@ -209,6 +248,20 @@ def main():
                 mf = hdelta('jvm_minflt')
                 if mf is not None:
                     r['jvm_minflt'] = mf
+                # RSS는 누적 카운터가 아니라 게이지라 Δ가 아니라 창 안 최대를 쓴다.
+                # sample-host.sh가 이미 KB로 환산해 남기므로 페이지 크기를 여기서 가정하지 않는다.
+                def hmax_mb(key):
+                    v = [int(x[key]) for x in rows if x.get(key) not in (None, '')]
+                    return round(max(v) / 1024, 1) if v else None
+
+                def hmin_mb(key):
+                    v = [int(x[key]) for x in rows if x.get(key) not in (None, '')]
+                    return round(min(v) / 1024, 1) if v else None
+
+                r['rss_max_mb'] = hmax_mb('jvm_rss_kb')
+                r['mem_total_mb'] = hmax_mb('mem_total_kb')
+                # MemAvailable은 최소값이 안전 판정 기준이다 — 창 안에서 가장 빠듯했던 순간.
+                r['mem_avail_min_mb'] = hmin_mb('mem_avail_kb')
 
     # 파생 — 요청당 값. #97의 분해는 전부 이 정규화 위에서 이뤄진다.
     # arm마다 TPS가 다르므로(2,517 vs 2,921) 초당 값을 그대로 비교하면 안 된다.
@@ -232,6 +285,20 @@ def main():
     r['minflt_per_req'] = per_req(r.get('jvm_minflt'), nd=3)
     r['gc_ms_per_req'] = per_req(r.get('gc_ms'), nd=4)
     r['alloc_kb_per_req'] = per_req(r.get('gc_alloc_mb'), scale=1024, nd=2)
+
+    # 힙 밖 잔여 = RSS − (힙 committed + 논힙 committed + direct buffer).
+    # 스레드 스택과 GC/컴파일러/심볼 같은 네이티브가 여기 들어간다 — Actuator가 노출하지
+    # 않는 영역이라 이 뺄셈이 유일한 근사치다. NMT 프로파일 run(5~10% 오버헤드가 있어
+    # 비교 run과 분리한다)의 jcmd 덤프로 교차검증한다.
+    _known = ('heap_committed_max_mb', 'nonheap_committed_max_mb', 'direct_buffer_mb')
+    if all(r.get(k) is not None for k in _known):
+        # JVM이 스스로 보고하는 몫. CCS는 논힙에 이미 포함돼 있으므로 더하지 않는다.
+        r['jvm_known_mb'] = round(sum(r[k] for k in _known), 1)
+    if r.get('jvm_known_mb') is not None and r.get('rss_max_mb') is not None:
+        r['native_other_mb'] = round(r['rss_max_mb'] - r['jvm_known_mb'], 1)
+    if r.get('mem_total_mb') is not None and r.get('rss_max_mb') is not None:
+        # 박스에 남는 여유. -Xmx 상한을 정하는 안전 조건이다.
+        r['mem_headroom_mb'] = round(r['mem_total_mb'] - r['rss_max_mb'], 1)
 
     if a.k6:
         with open(a.k6) as f:
@@ -267,6 +334,8 @@ def main():
         f(r.get('req_cpu_ms')),
         f"{f(r.get('user_ms_per_req'))} / {f(r.get('sys_ms_per_req'))}",
         f(r.get('ctxt_per_req')), f(r.get('gc_ms_per_req')),
+        f"{f(r.get('heap_committed_max_mb'))} / {f(r.get('nonheap_committed_max_mb'))} / {f(r.get('rss_max_mb'))}",
+        f(r.get('mem_avail_min_mb')),
         f"{f(r.get('k6_avg_ms'))} / {f(r.get('k6_p95_ms'))} / {f(r.get('k6_p99_ms'))}",
         f(r.get('k6_fail_rate')), f(r['scheduler_cmds']),
     ]) + ' |')
