@@ -1,5 +1,6 @@
 package backend.yourtrip.global.ai;
 
+import backend.yourtrip.global.ai.agent.DemotionReason;
 import backend.yourtrip.global.ai.candidate.CandidateOutcome;
 import backend.yourtrip.global.ai.candidate.CandidateSourceType;
 import backend.yourtrip.global.ai.candidate.GeocodeOutcome;
@@ -43,6 +44,16 @@ public class AiCourseMetrics {
      * 3점 비교가 오염된다.
      */
     public static final String GROUNDING_MATCH = "ai.grounding.match";
+
+    /**
+     * <b>Curator 가 목록 참조를 위조한 빈도</b> (ROADMAP 6-7). {@code SEEDED}·{@code LISTED} 가
+     * 카카오 검증을 생략하는 근거는 "목록에 있는 것은 실존이 확인됐다"인데, 이 값이 크면 그 전제가
+     * 실제로 얼마나 자주 깨지는지를 말해 준다.
+     *
+     * <p><b>강등만 센다.</b> 자리 번호가 범위 밖이거나 상호명이 비어 있어 <b>폐기</b>된 경우는
+     * 여기 오지 않는다 — 섞으면 "얼마나 자주 위조가 일어나는가" 라는 질문에 다른 사건이 섞인다.
+     */
+    public static final String CANDIDATE_DEMOTED = "ai.candidate.demoted";
 
     /** URL 을 채운 비율. {@code too_far}가 많으면 동명 업소, {@code name_mismatch}면 표기 차이 문제다. */
     public static final String PLACE_URL = "ai.place.url";
@@ -106,6 +117,9 @@ public class AiCourseMetrics {
         for (PlaceUrlOutcome outcome : PlaceUrlOutcome.values()) {
             placeUrlCounter(outcome);
         }
+        for (DemotionReason reason : DemotionReason.values()) {
+            demotedCounter(reason);
+        }
     }
 
     public void candidateRetrieval(String source, CandidateOutcome outcome) {
@@ -125,6 +139,18 @@ public class AiCourseMetrics {
     public void placeUrl(PlaceUrlOutcome outcome, int count) {
         if (count > 0) {
             placeUrlCounter(outcome).increment(count);
+        }
+    }
+
+    /**
+     * 강등 집계를 사유별로 올린다 (ROADMAP 6-7).
+     *
+     * <p>{@code CuratedChoiceValidator} 가 순수 함수로 남기 위해 집계를 값으로 돌려주므로,
+     * 레지스트리를 만지는 것은 그 호출자인 {@code CuratorAgent} 다(5-6 이 세운 주입 패턴).
+     */
+    public void candidateDemoted(DemotionReason reason, int count) {
+        if (count > 0) {
+            demotedCounter(reason).increment(count);
         }
     }
 
@@ -160,6 +186,12 @@ public class AiCourseMetrics {
         return Counter.builder(GROUNDING_MATCH)
             .tag("result", tag(outcome.name()))
             .tag("source", tag(source.name()))
+            .register(registry);
+    }
+
+    private Counter demotedCounter(DemotionReason reason) {
+        return Counter.builder(CANDIDATE_DEMOTED)
+            .tag("reason", tag(reason.name()))
             .register(registry);
     }
 
