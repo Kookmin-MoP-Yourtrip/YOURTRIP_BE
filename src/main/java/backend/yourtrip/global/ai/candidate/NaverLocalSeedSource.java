@@ -6,7 +6,10 @@ import backend.yourtrip.global.naver.NaverLocalClient;
 import backend.yourtrip.global.naver.NaverLocalResult;
 import backend.yourtrip.global.naver.NaverPlace;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,45 +34,81 @@ public class NaverLocalSeedSource {
     private final NaverLocalClient naverLocalClient;
 
     /**
-     * {@code "{검색 가능한 지명} [{modifier}] {searchHint}"}로 한 번 물어 상위 5건을 후보로 만든다.
+     * {@code "{검색 가능한 지명} [{modifier}] {searchHint}"}로 물어 상위 5건을 후보로 만든다.
      * 권역 라벨을 지명으로 줄이는 것은 {@link AreaQueryNormalizer}다(이슈 #110).
      *
-     * @param fallbackArea    권역명으로 0건일 때 넓혀서 다시 물을 지명(보통 사용자가 입력한 여행지).
-     *                        <b>유적·고분군처럼 상권이 없는 지명이 권역명이 되면 정규화만으로는
-     *                        살아나지 않는다</b> — 실측에서 {@code 송산리고분군} 권역의 MEAL·CAFE가
-     *                        그랬다. null이면 재질의하지 않는다
-     * @param modifier        스타일 수식어. null이면 기본 쿼리
-     * @param anchorLatitude  권역 중심 좌표. null이면 {@code distanceKm}을 채우지 않는다
+     * <h2>0건이면 지명을 넓혀 가며 다시 묻는다</h2>
+     * 표기 정규화만으로는 <b>상권이 없는 지명이 권역명일 때</b> 살아나지 않는다 — 실측에서
+     * {@code 송산리 고분군} 권역의 MEAL·CAFE가 0건이었다. 그래서 넓은 지명으로 차례로 물어본다.
+     *
+     * <p><b>{@code anchor}를 {@code location}보다 먼저 두는 것이 요점이다.</b> 실측에서 area 질의가
+     * 0건이던 4칸 중 <b>3칸이 {@code anchor}에서 살아났고</b>, 그렇게 살아난 후보는 권역 안에
+     * 머문다(거리 중앙값 0.61km). 곧장 {@code location}으로 넓히면 같은 칸이 채워지긴 해도
+     * <b>거리 중앙값이 6.2km</b>로 열 배가 되어 day 단위 권역이 사실상 무의미해진다.
+     *
+     * <p>지오코딩이 {@code anchor → area → location}으로 내려가는 것과 같은 형태다 — <b>이 저장소가
+     * 권역을 다루는 방식이 캐스케이드라는 것</b>이 여기서 한 번 더 쓰인다.
+     *
+     * @param fallbackAreas 0건일 때 차례로 시도할 지명. <b>{@code anchor} → {@code location} 순서</b>로
+     *                      넣는다. 이미 물어본 지명과 겹치면 건너뛴다(60%는 정규화 결과가
+     *                      {@code anchor}와 같아서, 그대로 두면 같은 질의를 두 번 던진다).
+     *                      비어 있으면 재질의하지 않는다
+     * @param modifier      스타일 수식어. null이면 기본 쿼리
+     * @param anchorLatitude 권역 중심 좌표. null이면 {@code distanceKm}을 채우지 않는다
      */
-    public CandidateBatch fetch(String area, String fallbackArea, SlotType slotType,
+    public CandidateBatch fetch(String area, List<String> fallbackAreas, SlotType slotType,
         StyleTag modifier, Double anchorLatitude, Double anchorLongitude) {
-        CandidateBatch batch =
-            searchOnce(area, slotType, modifier, anchorLatitude, anchorLongitude);
-        if (!needsFallback(batch, area, fallbackArea, modifier)) {
-            return batch;
-        }
+        List<String> terms = searchTerms(area, fallbackAreas, modifier);
 
-        // 권역명으로는 아무것도 못 찾았다. 도시 전체로 넓혀 한 번 더 묻는다.
-        log.debug("권역 '{}' 의 {} 후보가 0건이라 '{}' 로 다시 묻는다", area, slotType, fallbackArea);
-        return searchOnce(fallbackArea, slotType, modifier, anchorLatitude, anchorLongitude);
+        CandidateBatch batch = CandidateBatch.empty();
+        for (int step = 0; step < terms.size(); step++) {
+            String term = terms.get(step);
+            if (step > 0) {
+                log.debug("권역 '{}' 의 {} 후보가 0건이라 '{}' 로 다시 묻는다", area, slotType, term);
+            }
+            batch = searchOnce(term, slotType, modifier, anchorLatitude, anchorLongitude);
+            // HIT 이면 끝이고, FAILED 여도 멈춘다 — "물어봤는데 없더라"와 "물어보지 못했다"는
+            // 다른 사건이라, 후자에 재질의를 걸면 네이버 장애 때 호출만 배로 늘어난다(4-1).
+            if (batch.outcome() != CandidateOutcome.EMPTY) {
+                return batch;
+            }
+        }
+        return batch;
     }
 
     /**
-     * 넓은 지명으로 다시 물어야 하는가.
+     * 차례로 물어볼 지명 목록.
      *
-     * <p><b>기본 쿼리에서만 발동한다.</b> modifier 쿼리는 부가 축이라 기본이 0건이면 그쪽도 0건일
-     * 가능성이 높고, 전부 재질의하면 호출이 두 배가 되면서 얻는 것은 거의 없다.
-     *
-     * <p>{@code FAILED}에는 발동하지 않는다 — "물어봤는데 없더라"와 "물어보지 못했다"는 다른
-     * 사건이고, 후자에 재질의를 걸면 네이버 장애 때 호출만 두 배가 된다(4-1이 {@code Empty}와
-     * {@code Failed}를 가른 이유가 이것이다).
+     * <p><b>modifier 쿼리는 재질의하지 않는다.</b> 부가 축이라 기본이 0건이면 그쪽도 0건일 가능성이
+     * 높고, 전부 재질의하면 호출이 배로 늘면서 얻는 것은 거의 없다.
      */
-    private static boolean needsFallback(CandidateBatch batch, String area, String fallbackArea,
+    private static List<String> searchTerms(String area, List<String> fallbackAreas,
         StyleTag modifier) {
-        return batch.outcome() == CandidateOutcome.EMPTY
-            && modifier == null
-            && fallbackArea != null && !fallbackArea.isBlank()
-            && !fallbackArea.equalsIgnoreCase(AreaQueryNormalizer.toSearchTerm(area));
+        String primary = AreaQueryNormalizer.toSearchTerm(area);
+        List<String> onlyPrimary = List.of(primary == null ? "" : primary);
+        if (modifier != null || fallbackAreas == null || fallbackAreas.isEmpty()) {
+            return onlyPrimary;
+        }
+
+        Map<String, String> byKey = new LinkedHashMap<>();
+        putIfNew(byKey, primary);
+        for (String fallback : fallbackAreas) {
+            putIfNew(byKey, AreaQueryNormalizer.toSearchTerm(fallback));
+        }
+        return byKey.isEmpty() ? onlyPrimary : List.copyOf(byKey.values());
+    }
+
+    /**
+     * 아직 안 물어본 지명이면 목록에 더한다.
+     *
+     * <p>공백과 대소문자를 무시하고 비교한다 — {@code 송산리 고분군}과 {@code 송산리고분군}은 같은
+     * 곳을 가리키므로 둘 다 던질 이유가 없다.
+     */
+    private static void putIfNew(Map<String, String> byKey, String term) {
+        if (term == null || term.isBlank()) {
+            return;
+        }
+        byKey.putIfAbsent(term.replace(" ", "").toLowerCase(Locale.ROOT), term);
     }
 
     private CandidateBatch searchOnce(String area, SlotType slotType, StyleTag modifier,

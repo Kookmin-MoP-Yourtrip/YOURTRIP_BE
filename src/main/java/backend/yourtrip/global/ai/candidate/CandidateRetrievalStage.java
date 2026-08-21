@@ -141,13 +141,14 @@ public class CandidateRetrievalStage {
             GeocodeResult geocode = geocodes.get(day.day());
             Double latitude = geocode != null && geocode.hasCoordinate() ? geocode.latitude() : null;
             Double longitude = geocode != null && geocode.hasCoordinate() ? geocode.longitude() : null;
+            List<String> fallbacks = fallbackAreas(day, location);
             for (SlotType slotType : distinctSlots(day)) {
                 // 기본 쿼리를 먼저 넣는다 — dedupe 에서 "먼저 만난 쪽이 이긴다"가 곧
                 // "기본 쿼리의 seedRank 가 남는다"가 되게 하려면 이 순서가 계약이다.
-                specs.add(new SeedSpec(day.day(), slotType, day.area(), location, null,
+                specs.add(new SeedSpec(day.day(), slotType, day.area(), fallbacks, null,
                     latitude, longitude));
                 for (StyleTag modifier : modifiers) {
-                    specs.add(new SeedSpec(day.day(), slotType, day.area(), location, modifier,
+                    specs.add(new SeedSpec(day.day(), slotType, day.area(), fallbacks, modifier,
                         latitude, longitude));
                 }
             }
@@ -156,10 +157,29 @@ public class CandidateRetrievalStage {
         return specs;
     }
 
+    /**
+     * 권역명으로 0건일 때 넓혀 가며 물어볼 지명 — <b>{@code anchor} → {@code location} 순서</b>.
+     *
+     * <p>{@code anchor}를 먼저 두는 근거는 실측이다. area 질의가 0건이던 4칸 중 <b>3칸이
+     * {@code anchor}에서 살아났고</b>, 그 후보들은 권역 안에 머문다(거리 중앙값 0.61km). 곧장
+     * {@code location}으로 넓히면 채워지긴 해도 <b>6.2km</b>로 벌어져, day를 권역으로 나눈 의미가
+     * 사라진다. 나머지 1칸처럼 {@code anchor}로도 안 되는 경우가 있어 {@code location}을 뒤에 남긴다.
+     */
+    private static List<String> fallbackAreas(PlannerDayPlan day, String location) {
+        List<String> fallbacks = new ArrayList<>(2);
+        if (day.anchor() != null && !day.anchor().isBlank()) {
+            fallbacks.add(day.anchor());
+        }
+        if (location != null && !location.isBlank()) {
+            fallbacks.add(location);
+        }
+        return List.copyOf(fallbacks);
+    }
+
     private List<CompletableFuture<SeedOutcome>> submitSeeds(List<SeedSpec> specs) {
         return specs.stream()
             .map(spec -> submit(() -> new SeedOutcome(spec, naverLocalSeedSource.fetch(
-                spec.area(), spec.fallbackArea(), spec.slotType(), spec.modifier(),
+                spec.area(), spec.fallbackAreas(), spec.slotType(), spec.modifier(),
                 spec.anchorLatitude(), spec.anchorLongitude()))))
             .toList();
     }
@@ -393,13 +413,18 @@ public class CandidateRetrievalStage {
     /**
      * 시더 호출 하나의 명세.
      *
-     * <p>{@code fallbackArea}는 <b>권역명으로 0건일 때 넓혀 묻는 지명</b>이다(이슈 #110).
-     * 상권이 없는 유적 지명이 권역명이 되면 정규화만으로는 살아나지 않아, 도시 전체로 한 번 더
-     * 묻는다. 재질의를 스테이지가 아니라 소스 안에서 하는 이유는 <b>라운드를 가르지 않기
-     * 위해서</b>다 — 여기서 다시 던지면 라운드가 하나 늘어 지연 예산의 "네이버 ∥ TourAPI"가 깨진다.
+     * <p>{@code fallbackAreas}는 <b>권역명으로 0건일 때 차례로 넓혀 묻는 지명</b>이다(이슈 #110).
+     * 상권이 없는 유적 지명이 권역명이 되면 정규화만으로는 살아나지 않아, {@code anchor} →
+     * {@code location} 순으로 물어본다. 재질의를 스테이지가 아니라 소스 안에서 하는 이유는
+     * <b>라운드를 가르지 않기 위해서</b>다 — 여기서 다시 던지면 라운드가 하나 늘어 지연 예산의
+     * "네이버 ∥ TourAPI"가 깨진다.
      */
-    private record SeedSpec(int day, SlotType slotType, String area, String fallbackArea,
+    private record SeedSpec(int day, SlotType slotType, String area, List<String> fallbackAreas,
                             StyleTag modifier, Double anchorLatitude, Double anchorLongitude) {
+
+        private SeedSpec {
+            fallbackAreas = fallbackAreas == null ? List.of() : List.copyOf(fallbackAreas);
+        }
     }
 
     private record SeedOutcome(SeedSpec spec, CandidateBatch batch) {
