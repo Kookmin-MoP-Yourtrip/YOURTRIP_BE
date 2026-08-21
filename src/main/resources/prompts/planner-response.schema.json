@@ -1,0 +1,62 @@
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "코스 전체의 제목"
+    },
+    "concept": {
+      "type": "string",
+      "description": "코스 전체를 관통하는 한두 문장의 컨셉"
+    },
+    "days": {
+      "type": "array",
+      "description": "요청한 여행 일수만큼. day는 1부터 1씩 증가한다",
+      "items": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "integer",
+            "description": "며칠째인지. 1부터 시작한다"
+          },
+          "area": {
+            "type": "string",
+            "description": "그 day가 머무를 권역. 자연어 그대로 (예: 황리단길·대릉원 일대)"
+          },
+          "anchor": {
+            "type": "string",
+            "description": "권역 안의 랜드마크 하나. 수식 없는 짧은 명사 (예: 대릉원)"
+          },
+          "theme": {
+            "type": "string",
+            "description": "그 day를 한 줄로 요약한 테마"
+          },
+          "dayStartTime": {
+            "type": "string",
+            "description": "그 day를 시작하는 시각. HH:mm 24시간 표기, 07:00~12:00"
+          },
+          "slots": {
+            "type": "array",
+            "description": "채울 자리의 종류를 순서대로 3~6개. MEAL을 최소 하나 포함한다",
+            "items": {
+              "type": "string",
+              "enum": [
+                "ATTRACTION",
+                "MEAL",
+                "CAFE",
+                "EXPERIENCE",
+                "VIEWPOINT",
+                "SHOPPING",
+                "STROLL"
+              ]
+            }
+          }
+        },
+        "required": ["day", "area", "anchor", "theme", "dayStartTime", "slots"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["title", "concept", "days"],
+  "additionalProperties": false
+}
