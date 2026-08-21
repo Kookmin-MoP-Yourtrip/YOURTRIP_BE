@@ -31,7 +31,8 @@ public class NaverLocalSeedSource {
     private final NaverLocalClient naverLocalClient;
 
     /**
-     * {@code "{area} [{modifier}] {searchHint}"}로 한 번 물어 상위 5건을 후보로 만든다.
+     * {@code "{검색 가능한 지명} [{modifier}] {searchHint}"}로 한 번 물어 상위 5건을 후보로 만든다.
+     * 권역 라벨을 지명으로 줄이는 것은 {@link AreaQueryNormalizer}다(이슈 #110).
      *
      * @param modifier        스타일 수식어. null이면 기본 쿼리
      * @param anchorLatitude  권역 중심 좌표. null이면 {@code distanceKm}을 채우지 않는다
@@ -52,11 +53,18 @@ public class NaverLocalSeedSource {
     /**
      * 검색어 조립. <b>어순은 4-3 실측(3라운드·122회)으로 확정한 표기를 그대로 쓴다</b> —
      * {@code "황리단길 루프탑 카페"}처럼 수식어가 슬롯 힌트 앞에 온다.
+     *
+     * <p><b>{@code area}를 그대로 붙이지 않는다.</b> Planner가 내는 권역 라벨은 사람이 읽는
+     * 문자열이라({@code "황리단길·대릉원 일대"}) 그대로 검색하면 <b>0건이 된다</b> — 실측에서
+     * 12권역 × 3슬롯의 95%가 빈 결과였다(이슈 #110). {@link AreaQueryNormalizer}가 검색 가능한
+     * 지명으로 줄인다. <b>{@code PlannerDayPlan.area} 필드 자체는 바꾸지 않는다</b> — Curator
+     * 프롬프트와 로그가 읽는 값이라 사람이 읽는 형태로 남아야 한다.
      */
     static String buildQuery(String area, SlotType slotType, StyleTag modifier) {
         StringBuilder query = new StringBuilder();
-        if (area != null && !area.isBlank()) {
-            query.append(area.strip()).append(' ');
+        String searchTerm = AreaQueryNormalizer.toSearchTerm(area);
+        if (searchTerm != null && !searchTerm.isBlank()) {
+            query.append(searchTerm).append(' ');
         }
         if (modifier != null) {
             modifier.searchTerm().ifPresent(term -> query.append(term).append(' '));
