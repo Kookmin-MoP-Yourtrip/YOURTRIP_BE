@@ -26,6 +26,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -242,6 +245,182 @@ class AreaQueryStrategyProbeTest {
 
     private static Double longitudeOf(GeocodeResult point) {
         return point.hasCoordinate() ? point.longitude() : null;
+    }
+
+    /** 관측된 (지역, area, anchor) 삼중항. Planner 를 다시 부르지 않으려고 고정했다. */
+    private record Case(String location, String area, String anchor) {}
+
+    private static final List<Case> OBSERVED = List.of(
+        new Case("강릉", "경포호·경포해변 일대", "경포호"),
+        new Case("강릉", "경포호·초당동 일대", "경포호"),
+        new Case("강릉", "안목해변·송정동 일대", "안목해변"),
+        new Case("강릉", "안목해변·커피거리 일대", "안목해변"),
+        new Case("강릉", "안목해변·해안 산책로 일대", "안목해변"),
+        new Case("경주", "교촌·월정교 일대", "월정교"),
+        new Case("경주", "교촌마을·월정교 일대", "월정교"),
+        new Case("경주", "보문호·보문관광단지 일대", "보문호"),
+        new Case("경주", "황리단길·대릉원 일대", "대릉원"),
+        new Case("공주", "공산성·금강변 일대", "공산성"),
+        new Case("공주", "무령왕릉·국립공주박물관 일대", "무령왕릉"),
+        new Case("공주", "무령왕릉·송산리 고분군 일대", "무령왕릉"),
+        new Case("공주", "무령왕릉·송산리 일대", "무령왕릉"),
+        new Case("공주", "송산리 고분군·박물관 일대", "무령왕릉"),
+        new Case("공주", "송산리고분군·국립공주박물관 일대", "무령왕릉"),
+        new Case("공주", "송산리고분군·박물관 일대", "무령왕릉"),
+        new Case("공주", "송산리고분군·박물관 일대", "송산리 고분군"),
+        new Case("부산", "광안리·민락수변공원 일대", "광안대교"),
+        new Case("부산", "광안리·민락수변공원 일대", "광안리해수욕장"),
+        new Case("부산", "달맞이길·청사포 일대", "달맞이길"),
+        new Case("부산", "해운대 해변·달맞이길 일대", "해운대해수욕장"),
+        new Case("부산", "해운대·동백섬 일대", "동백섬"),
+        new Case("순천", "순천만국가정원·오천그린광장 일대", "순천만국가정원"),
+        new Case("순천", "순천만국가정원·오천동 일대", "순천만국가정원"),
+        new Case("순천", "순천만습지 일대", "순천만습지"),
+        new Case("순천", "순천만습지·대대동 갈대밭 일대", "순천만습지"),
+        new Case("순천", "순천만습지·대대동 일대", "순천만습지"),
+        new Case("순천", "원도심·문화의거리 일대", "순천부읍성"),
+        new Case("영주", "무섬마을 일대", "무섬마을"),
+        new Case("영주", "부석사·봉황산 방면", "부석사"),
+        new Case("영주", "선비촌·소수서원 일대", "소수서원"),
+        new Case("영주", "소수서원·선비촌 일대", "소수서원"));
+
+    /** 시더 전용 슬롯. 관광 계열은 TourAPI 가 25건까지 채워 얇아질 일이 없다. */
+    private static final List<SlotType> SEEDER_ONLY_SLOTS =
+        List.of(SlotType.MEAL, SlotType.CAFE, SlotType.SHOPPING);
+
+    /** Curator 가 슬롯당 내야 하는 선택 수. 후보가 이보다 적으면 3순위가 실존 후보가 아니게 된다. */
+    private static final int DESIRED_CHOICES = 3;
+
+    /**
+     * <b>얇은 슬롯이 얼마나 자주 생기고, 채우려면 얼마나 멀리 가야 하는가</b> (이슈 #110 후속).
+     *
+     * <p>현재 캐스케이드는 <b>0건일 때만</b> 다음 단계로 간다. 하한선을 두는 것이 이득인지 판단하려면
+     * "1건이라도 나왔지만 3건에 못 미치는" 칸이 얼마나 되는지, 그리고 다음 단계까지 <b>누적</b>하면
+     * 몇 건이 붙고 그 후보가 얼마나 먼지를 알아야 한다. 그래서 여기서는 멈추지 않고 세 단계를 전부
+     * 불러 병합한다 — <b>실제 동작이 아니라 "하한선을 뒀다면" 을 재는 것이다.</b>
+     *
+     * <p><b>판정 기준(결과보다 먼저 못 박는다)</b>
+     * <ol>
+     *   <li>1단계 3건 미만인 칸이 <b>10% 미만</b>이면 하한선을 두지 않는다 — 드물고, 1순위는 어차피 배치된다</li>
+     *   <li>10% 이상이고 anchor 추가분의 거리가 1단계와 비슷하면 <b>하한선 3, anchor 까지만</b> 채운다</li>
+     *   <li>anchor 로도 못 채워 location 이 필요하면 <b>정렬 수정이 선행</b>돼야 한다 — 먼 후보가
+     *       {@code seedRank} 로 앞줄에 서는 문제가 되살아난다</li>
+     * </ol>
+     *
+     * <p>LLM 을 부르지 않는다. 같은 (지명, 슬롯) 질의는 캐시해 호출을 줄인다.
+     */
+    @Test
+    @DisplayName("시더 전용 슬롯의 후보 수 분포와 단계별 증분을 잰다 (LLM 호출 없음)")
+    void measureThinSlots() {
+        String naverId = env("NAVER_CLIENT_ID");
+        String naverSecret = env("NAVER_CLIENT_SECRET");
+        String kakaoKey = env("KAKAO_API_KEY");
+        assumeTrue(naverId != null && naverSecret != null && kakaoKey != null,
+            "네이버·카카오 키가 있어야 실측할 수 있다");
+
+        KakaoLocalClient kakaoClient = new KakaoLocalClient(
+            KakaoConfig.buildKakaoWebClient("https://dapi.kakao.com", kakaoKey));
+        AreaGeocoder geocoder = new AreaGeocoder(kakaoClient);
+        NaverLocalSeedSource seedSource = new NaverLocalSeedSource(new NaverLocalClient(
+            NaverConfig.buildNaverWebClient("https://naverapihub.apigw.ntruss.com", naverId,
+                naverSecret)));
+
+        Map<String, List<PlaceCandidate>> cache = new HashMap<>();
+        List<int[]> counts = new ArrayList<>();
+        List<Double> distL1 = new ArrayList<>();
+        List<Double> distAddedL2 = new ArrayList<>();
+        List<Double> distAddedL3 = new ArrayList<>();
+
+        System.out.printf("%n%-7s %-24s %-9s %6s %8s %6s%n",
+            "지역", "권역", "슬롯", "1단계", "+anchor", "+city");
+        System.out.println("-".repeat(66));
+
+        for (Case one : OBSERVED) {
+            GeocodeResult point = geocoder.geocode(one.location(), one.area(), one.anchor());
+            Double lat = latitudeOf(point);
+            Double lon = longitudeOf(point);
+
+            for (SlotType slot : SEEDER_ONLY_SLOTS) {
+                List<PlaceCandidate> l1 = seedCached(cache, seedSource,
+                    AreaQueryNormalizer.toSearchTerm(one.area()), slot, lat, lon);
+                List<PlaceCandidate> l2 = seedCached(cache, seedSource,
+                    AreaQueryNormalizer.toSearchTerm(one.anchor()), slot, lat, lon);
+                List<PlaceCandidate> l3 =
+                    seedCached(cache, seedSource, one.location(), slot, lat, lon);
+
+                List<PlaceCandidate> m1 = CandidateMerger.dedupeWithinSource(l1);
+                List<PlaceCandidate> m12 = CandidateMerger.dedupeWithinSource(concat(l1, l2));
+                List<PlaceCandidate> m123 =
+                    CandidateMerger.dedupeWithinSource(concat(concat(l1, l2), l3));
+
+                counts.add(new int[]{m1.size(), m12.size(), m123.size()});
+                collectAdded(distL1, m1, List.of());
+                collectAdded(distAddedL2, m12, m1);
+                collectAdded(distAddedL3, m123, m12);
+
+                System.out.printf("%-7s %-24s %-9s %6d %8d %6d%n", one.location(),
+                    truncate(one.area()), slot, m1.size(), m12.size(), m123.size());
+            }
+        }
+        printThinSlotSummary(counts, distL1, distAddedL2, distAddedL3);
+    }
+
+    private static void printThinSlotSummary(List<int[]> counts, List<Double> l1,
+        List<Double> addedL2, List<Double> addedL3) {
+        long thin1 = counts.stream().filter(c -> c[0] < DESIRED_CHOICES).count();
+        long thin12 = counts.stream().filter(c -> c[1] < DESIRED_CHOICES).count();
+        long thin123 = counts.stream().filter(c -> c[2] < DESIRED_CHOICES).count();
+        long empty1 = counts.stream().filter(c -> c[0] == 0).count();
+
+        System.out.printf("%n=== 요약 (칸 %d개 = 권역 %d x 슬롯 %d) ===%n",
+            counts.size(), OBSERVED.size(), SEEDER_ONLY_SLOTS.size());
+        System.out.printf("  1단계        평균 %.1f건 · 0건 %d칸 · 3건 미만 %d칸 (%.0f%%)%n",
+            counts.stream().mapToInt(c -> c[0]).average().orElse(0), empty1, thin1,
+            thin1 * 100.0 / counts.size());
+        System.out.printf("  +anchor 누적 평균 %.1f건 ·          3건 미만 %d칸 (%.0f%%)%n",
+            counts.stream().mapToInt(c -> c[1]).average().orElse(0), thin12,
+            thin12 * 100.0 / counts.size());
+        System.out.printf("  +city   누적 평균 %.1f건 ·          3건 미만 %d칸 (%.0f%%)%n",
+            counts.stream().mapToInt(c -> c[2]).average().orElse(0), thin123,
+            thin123 * 100.0 / counts.size());
+        System.out.printf("%n  거리 중앙값 — 1단계 %s · anchor 추가분 %s · city 추가분 %s%n",
+            format(median(l1)), format(median(addedL2)), format(median(addedL3)));
+    }
+
+    /** 새로 붙은 후보(wider 에는 있고 narrower 에는 없는 것)의 거리를 모은다. */
+    private static void collectAdded(List<Double> sink, List<PlaceCandidate> wider,
+        List<PlaceCandidate> narrower) {
+        Set<String> seen = new HashSet<>();
+        for (PlaceCandidate candidate : narrower) {
+            seen.add(CandidateMatcher.dedupeKey(candidate.name(), candidate.address()));
+        }
+        for (PlaceCandidate candidate : wider) {
+            if (!seen.contains(CandidateMatcher.dedupeKey(candidate.name(), candidate.address()))
+                && candidate.distanceKm() != null) {
+                sink.add(candidate.distanceKm());
+            }
+        }
+    }
+
+    private static List<PlaceCandidate> seedCached(Map<String, List<PlaceCandidate>> cache,
+        NaverLocalSeedSource source, String term, SlotType slot, Double lat, Double lon) {
+        if (term == null || term.isBlank()) {
+            return List.of();
+        }
+        return cache.computeIfAbsent(term + "|" + slot + "|" + lat,
+            key -> source.fetch(term, List.of(), slot, null, lat, lon).candidates());
+    }
+
+    private static List<PlaceCandidate> concat(List<PlaceCandidate> left,
+        List<PlaceCandidate> right) {
+        List<PlaceCandidate> all = new ArrayList<>(left.size() + right.size());
+        all.addAll(left);
+        all.addAll(right);
+        return all;
+    }
+
+    private static String truncate(String value) {
+        return value.length() <= 22 ? value : value.substring(0, 21) + "~";
     }
 
     // ── 출력 — 판정은 사람이 한다 ─────────────────────────────────────────────
