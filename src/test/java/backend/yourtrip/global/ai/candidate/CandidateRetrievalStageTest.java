@@ -82,7 +82,7 @@ class CandidateRetrievalStageTest {
     }
 
     private static PlannerDayPlan day(int number, SlotType... slots) {
-        return new PlannerDayPlan(number, "황리단길 일대", "대릉원", List.of(slots));
+        return PlannerDayPlan.of(number, "황리단길 일대", "대릉원", List.of(slots));
     }
 
     private void geocodeSucceeds() {

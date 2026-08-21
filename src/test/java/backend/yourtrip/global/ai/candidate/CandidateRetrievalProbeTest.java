@@ -139,7 +139,7 @@ class CandidateRetrievalProbeTest {
         // anchor 를 지역명 그대로 둔다 — Planner 가 없으므로 결정론적 기본 플랜과 같은 조건이고,
         // 그래야 지역 간 비교에서 anchor 품질이 변수로 끼어들지 않는다.
         PlannerPlan plan = new PlannerPlan(region.name(), "실측",
-            List.of(new PlannerDayPlan(1, region.name(), region.name(),
+            List.of(PlannerDayPlan.of(1, region.name(), region.name(),
                 List.of(SlotType.values()))));
         return stage.retrieve(region.name(), plan, KEYWORDS, CourseDeadline.unbounded());
     }

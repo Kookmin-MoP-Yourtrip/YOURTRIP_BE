@@ -312,7 +312,7 @@ class AiCourseStagesStubIntegrationTest {
     private CandidatePool retrieve(SlotType slotType) {
         return retrievalStage.retrieve("경주",
             new PlannerPlan("경주 1일", "고도", List.of(
-                new PlannerDayPlan(1, "황리단길 일대", "대릉원", List.of(slotType)))),
+                PlannerDayPlan.of(1, "황리단길 일대", "대릉원", List.of(slotType)))),
             List.of(KeywordType.HEALING), CourseDeadline.unbounded());
     }
 
