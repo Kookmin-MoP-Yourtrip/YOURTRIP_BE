@@ -234,6 +234,12 @@ terraform apply \
   -target=aws_security_group_rule.k6_ingress_ssh_from_dev
 ```
 
+`jvm-heap-sizing`(#101) 측정에서도 같은 경로를 썼다:
+
+- **JVM 힙 옵션을 `user_data` 적용 없이 바꿨다.** 힙 플래그가 원래 유닛 파일의 `ExecStart`에 하드코딩돼 있어, arm을 바꾸려면 템플릿을 고쳐야 하는 구조였다. 대신 `/opt/app/.env`의 `JVM_OPTS`와 systemd 드롭인(`10-jvm-opts.conf`)으로 실행 상태만 바꿨다 — `scripts/loadtest/switch-heap-arm.sh`가 그 역할을 한다.
+- **개발 머신 IP가 바뀌어 SSH가 막혔을 때는 `-target`으로 보안그룹 규칙 3개만 apply했다**(`3 to add, 0 to change, 3 to destroy` — 인스턴스가 목록에 없음을 `plan`으로 먼저 확인).
+- 측정이 끝난 뒤 확정값(`-Xmx768m`)을 템플릿에 반영했지만 **apply하지 않았다.** 지금 `plan`을 돌리면 `user_data` 변경과 AMI 갱신(`most_recent = true`) 두 가지 이유로 App/k6 EC2 교체가 뜬다. 다음 인스턴스 생성 시점에 자연히 적용된다.
+
 **전체 `apply`로 교체를 수용할 생각이라면** 배포물을 먼저 백업하거나, 교체 후 재배포를 절차에 포함시켜야 한다. 새 인스턴스는 `user_data`가 최초 부팅 때 실행되므로 `.env`에 프로필이 자동으로 들어간다.
 
 ### 형상 변경이 필요할 때

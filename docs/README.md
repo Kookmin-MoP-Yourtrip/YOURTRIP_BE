@@ -39,7 +39,7 @@
 | 문서 | 내용 |
 |---|---|
 | [tasks/tomcat-thread-sizing/](tasks/tomcat-thread-sizing/README.md) | `server.tomcat.threads.max` 200 → 32 — VU 200에서 TPS +16%, p95 -33%. 요청당 CPU 26% 감소가 전환 횟수인지 캐시 지역성인지의 분해까지 |
-| [tasks/jvm-heap-sizing/](tasks/jvm-heap-sizing/README.md) | `-Xmx448m`이 t3.micro(1GB)·maxThreads 200 전제로 잡힌 값이라 t3.small(2GB) 기준으로 재산정 — 힙 밖 실사용량 계측 포함 |
+| [tasks/jvm-heap-sizing/](tasks/jvm-heap-sizing/README.md) | `-Xmx448m`이 t3.micro(1GB)·maxThreads 200 전제로 잡힌 값이라 t3.small(2GB) 기준으로 768m으로 재산정 — 힙 밖 165MB의 NMT 분해와, 천장을 올려도 G1이 대개 커밋을 늘리지 않는다는 실측 포함 |
 
 ### 커넥션 풀 / presigned URL 병목
 
