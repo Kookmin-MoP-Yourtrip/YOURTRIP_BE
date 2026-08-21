@@ -214,7 +214,9 @@ class AreaQueryStrategyProbeTest {
         GeocodeResult anchorPoint, GeocodeResult areaPoint) {
         // 후보는 한 번만 받고 거리만 두 기준점으로 각각 계산한다 — 두 번 부르면 같은 표본을
         // 비교하는 것이 아니게 된다.
-        CandidateBatch batch = seedSource.fetch(prefix, slotType, null,
+        // 전략끼리만 비교하는 측정이라 재질의는 끈다 — 켜면 어느 전략이든 도시 전체로
+        // 살아나서 "권역명이 검색되는가" 라는 질문 자체가 사라진다.
+        CandidateBatch batch = seedSource.fetch(prefix, null, slotType, null,
             latitudeOf(anchorPoint), longitudeOf(anchorPoint));
 
         return new Row(region, day.day(), day.area(), day.anchor(), strategy, slotType,

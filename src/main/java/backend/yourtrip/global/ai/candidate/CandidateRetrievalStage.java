@@ -89,7 +89,7 @@ public class CandidateRetrievalStage {
         // 던질 수 있다. 그래서 두 소스의 호출을 먼저 전부 띄우고 **한 번만** 기다린다.
         // 소스별로 나눠 기다리면 라운드가 둘로 갈려 설계 지연 예산의 "네이버 ∥ TourAPI"가
         // 깨진다(TourAPI 라운드만큼 통째로 늘어난다).
-        List<SeedSpec> seedSpecs = seedSpecs(days, geocodes, modifiers);
+        List<SeedSpec> seedSpecs = seedSpecs(location, days, geocodes, modifiers);
         Map<TourCall, List<Integer>> tourCalls = tourCalls(days, geocodes);
         List<CompletableFuture<SeedOutcome>> seedFutures = submitSeeds(seedSpecs);
         List<CompletableFuture<TourOutcome>> tourFutures = submitTours(tourCalls.keySet());
@@ -134,7 +134,7 @@ public class CandidateRetrievalStage {
 
     // ── ② 네이버 시더 — (day × 슬롯타입) × (기본 1 + modifier 1~2) ──────────────
 
-    private static List<SeedSpec> seedSpecs(List<PlannerDayPlan> days,
+    private static List<SeedSpec> seedSpecs(String location, List<PlannerDayPlan> days,
         Map<Integer, GeocodeResult> geocodes, List<StyleTag> modifiers) {
         List<SeedSpec> specs = new ArrayList<>();
         for (PlannerDayPlan day : days) {
@@ -144,9 +144,10 @@ public class CandidateRetrievalStage {
             for (SlotType slotType : distinctSlots(day)) {
                 // 기본 쿼리를 먼저 넣는다 — dedupe 에서 "먼저 만난 쪽이 이긴다"가 곧
                 // "기본 쿼리의 seedRank 가 남는다"가 되게 하려면 이 순서가 계약이다.
-                specs.add(new SeedSpec(day.day(), slotType, day.area(), null, latitude, longitude));
+                specs.add(new SeedSpec(day.day(), slotType, day.area(), location, null,
+                    latitude, longitude));
                 for (StyleTag modifier : modifiers) {
-                    specs.add(new SeedSpec(day.day(), slotType, day.area(), modifier,
+                    specs.add(new SeedSpec(day.day(), slotType, day.area(), location, modifier,
                         latitude, longitude));
                 }
             }
@@ -158,7 +159,7 @@ public class CandidateRetrievalStage {
     private List<CompletableFuture<SeedOutcome>> submitSeeds(List<SeedSpec> specs) {
         return specs.stream()
             .map(spec -> submit(() -> new SeedOutcome(spec, naverLocalSeedSource.fetch(
-                spec.area(), spec.slotType(), spec.modifier(),
+                spec.area(), spec.fallbackArea(), spec.slotType(), spec.modifier(),
                 spec.anchorLatitude(), spec.anchorLongitude()))))
             .toList();
     }
@@ -389,8 +390,16 @@ public class CandidateRetrievalStage {
 
     // ── 내부 값 타입 ──────────────────────────────────────────────────────────
 
-    private record SeedSpec(int day, SlotType slotType, String area, StyleTag modifier,
-                            Double anchorLatitude, Double anchorLongitude) {
+    /**
+     * 시더 호출 하나의 명세.
+     *
+     * <p>{@code fallbackArea}는 <b>권역명으로 0건일 때 넓혀 묻는 지명</b>이다(이슈 #110).
+     * 상권이 없는 유적 지명이 권역명이 되면 정규화만으로는 살아나지 않아, 도시 전체로 한 번 더
+     * 묻는다. 재질의를 스테이지가 아니라 소스 안에서 하는 이유는 <b>라운드를 가르지 않기
+     * 위해서</b>다 — 여기서 다시 던지면 라운드가 하나 늘어 지연 예산의 "네이버 ∥ TourAPI"가 깨진다.
+     */
+    private record SeedSpec(int day, SlotType slotType, String area, String fallbackArea,
+                            StyleTag modifier, Double anchorLatitude, Double anchorLongitude) {
     }
 
     private record SeedOutcome(SeedSpec spec, CandidateBatch batch) {

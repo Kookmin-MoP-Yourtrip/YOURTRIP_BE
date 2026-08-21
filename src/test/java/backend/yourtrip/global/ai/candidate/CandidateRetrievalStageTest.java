@@ -91,7 +91,7 @@ class CandidateRetrievalStageTest {
     }
 
     private void naverReturns(PlaceCandidate... candidates) {
-        when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any()))
+        when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any(), any()))
             .thenReturn(CandidateBatch.of(List.of(candidates)));
     }
 
@@ -117,7 +117,7 @@ class CandidateRetrievalStageTest {
                 SlotType.ATTRACTION)), List.of(), CourseDeadline.unbounded());
 
             // 슬롯 타입 2종 × (기본 1 + modifier 0) = 2회.
-            verify(naverLocalSeedSource, times(2)).fetch(anyString(), any(), any(), any(), any());
+            verify(naverLocalSeedSource, times(2)).fetch(anyString(), any(), any(), any(), any(), any());
         }
 
         @Test
@@ -130,9 +130,9 @@ class CandidateRetrievalStageTest {
                 CourseDeadline.unbounded());
 
             // 연인 키워드의 검색 가능한 상위 2개(야경·루프탑) → 기본 1 + 2 = 3회.
-            verify(naverLocalSeedSource, times(3)).fetch(anyString(), eq(SlotType.CAFE), any(),
+            verify(naverLocalSeedSource, times(3)).fetch(anyString(), any(), eq(SlotType.CAFE), any(),
                 any(), any());
-            verify(naverLocalSeedSource).fetch(anyString(), eq(SlotType.CAFE), isNull(), any(),
+            verify(naverLocalSeedSource).fetch(anyString(), any(), eq(SlotType.CAFE), isNull(), any(),
                 any());
         }
 
@@ -199,7 +199,7 @@ class CandidateRetrievalStageTest {
         @DisplayName("TourAPI 후보는 요청한 슬롯 타입으로 다시 붙어 목록에 들어간다")
         void tourCandidatesAreReattachedToSlot() {
             geocodeSucceeds();
-            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any()))
+            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any(), any()))
                 .thenReturn(CandidateBatch.empty());
             // contentTypeId=12 응답의 기본 슬롯은 ATTRACTION 이지만, 요청한 자리는 VIEWPOINT 다.
             tourReturns(CandidateFixtures.listed("첨성대", CandidateFixtures.CHEOMSEONGDAE_LAT,
@@ -268,7 +268,7 @@ class CandidateRetrievalStageTest {
         @DisplayName("네이버가 죽으면 관광 슬롯은 TourAPI 만으로 채워진다")
         void naverFailureLeavesTourApi() {
             geocodeSucceeds();
-            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any()))
+            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any(), any()))
                 .thenReturn(CandidateBatch.failed(ApiFailureCause.QUOTA_EXCEEDED));
             tourReturns(CandidateFixtures.listed("골굴사", CandidateFixtures.NAEMUL_LAT,
                 CandidateFixtures.NAEMUL_LON, 1.2, Set.of()));
@@ -284,7 +284,7 @@ class CandidateRetrievalStageTest {
         @DisplayName("둘 다 죽으면 빈 풀이다 — 예외가 아니라 초안 구조로 degrade")
         void bothSourcesDownYieldsEmptyPool() {
             geocodeSucceeds();
-            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any()))
+            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any(), any()))
                 .thenReturn(CandidateBatch.failed(ApiFailureCause.TRANSPORT_ERROR));
             when(tourApiSource.fetch(anyDouble(), anyDouble(), anyInt()))
                 .thenReturn(CandidateBatch.failed(ApiFailureCause.TRANSPORT_ERROR));
@@ -404,7 +404,7 @@ class CandidateRetrievalStageTest {
 
             when(areaGeocoder.geocode(anyString(), anyString(), anyString()))
                 .thenReturn(GeocodeResult.resolved(ANCHOR_LAT, ANCHOR_LON, GeocodeOutcome.HIT));
-            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any()))
+            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any(), any()))
                 .thenAnswer(invocation -> {
                     seedSawTour.set(tourCalled.await(2, TimeUnit.SECONDS));
                     return CandidateBatch.of(List.of(
@@ -454,7 +454,7 @@ class CandidateRetrievalStageTest {
         @DisplayName("소스별 결말을 나눠 센다 — empty 와 failed 를 뭉치면 지표가 오염된다")
         void countsRetrievalBySourceAndOutcome() {
             geocodeSucceeds();
-            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any()))
+            when(naverLocalSeedSource.fetch(anyString(), any(), any(), any(), any(), any()))
                 .thenReturn(CandidateBatch.failed(ApiFailureCause.QUOTA_EXCEEDED));
             when(tourApiSource.fetch(anyDouble(), anyDouble(), anyInt()))
                 .thenReturn(CandidateBatch.empty());

@@ -34,10 +34,45 @@ public class NaverLocalSeedSource {
      * {@code "{검색 가능한 지명} [{modifier}] {searchHint}"}로 한 번 물어 상위 5건을 후보로 만든다.
      * 권역 라벨을 지명으로 줄이는 것은 {@link AreaQueryNormalizer}다(이슈 #110).
      *
+     * @param fallbackArea    권역명으로 0건일 때 넓혀서 다시 물을 지명(보통 사용자가 입력한 여행지).
+     *                        <b>유적·고분군처럼 상권이 없는 지명이 권역명이 되면 정규화만으로는
+     *                        살아나지 않는다</b> — 실측에서 {@code 송산리고분군} 권역의 MEAL·CAFE가
+     *                        그랬다. null이면 재질의하지 않는다
      * @param modifier        스타일 수식어. null이면 기본 쿼리
      * @param anchorLatitude  권역 중심 좌표. null이면 {@code distanceKm}을 채우지 않는다
      */
-    public CandidateBatch fetch(String area, SlotType slotType, StyleTag modifier,
+    public CandidateBatch fetch(String area, String fallbackArea, SlotType slotType,
+        StyleTag modifier, Double anchorLatitude, Double anchorLongitude) {
+        CandidateBatch batch =
+            searchOnce(area, slotType, modifier, anchorLatitude, anchorLongitude);
+        if (!needsFallback(batch, area, fallbackArea, modifier)) {
+            return batch;
+        }
+
+        // 권역명으로는 아무것도 못 찾았다. 도시 전체로 넓혀 한 번 더 묻는다.
+        log.debug("권역 '{}' 의 {} 후보가 0건이라 '{}' 로 다시 묻는다", area, slotType, fallbackArea);
+        return searchOnce(fallbackArea, slotType, modifier, anchorLatitude, anchorLongitude);
+    }
+
+    /**
+     * 넓은 지명으로 다시 물어야 하는가.
+     *
+     * <p><b>기본 쿼리에서만 발동한다.</b> modifier 쿼리는 부가 축이라 기본이 0건이면 그쪽도 0건일
+     * 가능성이 높고, 전부 재질의하면 호출이 두 배가 되면서 얻는 것은 거의 없다.
+     *
+     * <p>{@code FAILED}에는 발동하지 않는다 — "물어봤는데 없더라"와 "물어보지 못했다"는 다른
+     * 사건이고, 후자에 재질의를 걸면 네이버 장애 때 호출만 두 배가 된다(4-1이 {@code Empty}와
+     * {@code Failed}를 가른 이유가 이것이다).
+     */
+    private static boolean needsFallback(CandidateBatch batch, String area, String fallbackArea,
+        StyleTag modifier) {
+        return batch.outcome() == CandidateOutcome.EMPTY
+            && modifier == null
+            && fallbackArea != null && !fallbackArea.isBlank()
+            && !fallbackArea.equalsIgnoreCase(AreaQueryNormalizer.toSearchTerm(area));
+    }
+
+    private CandidateBatch searchOnce(String area, SlotType slotType, StyleTag modifier,
         Double anchorLatitude, Double anchorLongitude) {
         String query = buildQuery(area, slotType, modifier);
         NaverLocalResult result = naverLocalClient.search(query, NaverLocalClient.MAX_DISPLAY);
