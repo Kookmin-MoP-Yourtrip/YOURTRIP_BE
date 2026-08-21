@@ -91,6 +91,12 @@ chmod 600 /opt/app/.env
 # 공간뿐이다. 반대로 Hibernate처럼 콜스택이 깊은 코드에서 StackOverflowError 위험은 남는다.
 # 200스레드 시절의 근거(최대 100MB 절약)는 maxThreads=32에서 무너졌다 — 제거 여부는
 # 별도 판단으로 남겨 뒀다(docs/tasks/jvm-heap-sizing/memory-map.md).
+#
+# GC는 일부러 지정하지 않는다 — ergonomics에 맡겨야 배포 타겟과 같은 조건을 재현한다.
+# t3.small(MemTotal 1,913MB)은 server-class 문턱 1,792MB 바로 위라 G1으로 뜨지만,
+# 인스턴스를 한 단계라도 내리면 SerialGC로 조용히 바뀐다. 명시 대신 감시로 대응한다 —
+# 집계기의 gc_names 열과 LoadtestMetricsExposureTest가 그 역할이다
+# (근거 전문: docs/tasks/jvm-heap-sizing/memory-map.md '1. GC와 기본 힙').
 cat > /etc/systemd/system/yourtrip-app.service <<'SERVICEEOF'
 [Unit]
 Description=YOURTRIP Spring Boot App (loadtest)
