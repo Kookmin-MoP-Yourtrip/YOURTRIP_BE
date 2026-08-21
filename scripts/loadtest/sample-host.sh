@@ -17,6 +17,16 @@
 #                 반대로 전환 경로·스케줄러·시스템콜은 전부 커널 시간에 잡힌다. t3는 PMU가 없어
 #                 perf로 cache-misses를 못 재므로(PMC는 대형/전용 호스트 한정) 이것이 대체재다.
 #   jvm_minflt  : 마이너 페이지 폴트 누적(메모리/TLB 압박 신호).
+#   jvm_rss_kb  : /proc/<pid>/stat의 상주 메모리(RSS). 페이지 단위로 나오는 값을 KB로 환산해
+#                 남긴다 — 페이지 크기를 집계기가 가정하지 않게 하기 위해서다.
+#                 #101에서 추가했다 — Actuator는 힙/논힙만 내보내고 스레드 스택·GC·컴파일러
+#                 같은 네이티브 영역은 전혀 노출하지 않는다. 프로세스 RSS에서 (힙 committed +
+#                 논힙 committed + direct buffer)를 뺀 잔여가 곧 힙 밖에 실제로 쓰는 양이고,
+#                 그것이 -Xmx를 t3.small(2GB) 기준으로 재산정하는 근거가 된다.
+#   jvm_vsz_b   : 가상 메모리 크기. RSS와 나란히 두면 '예약했지만 안 만진' 양이 보인다.
+#   mem_*_kb    : /proc/meminfo의 MemTotal/MemFree/MemAvailable. 힙을 키웠을 때 박스에
+#                 남는 여유가 얼마인지가 -Xmx 상한을 정하는 안전 조건이라 함께 잰다.
+#                 MemAvailable이 바닥나면 페이지 캐시가 밀려 I/O가 느려지고 결국 OOM이다.
 #
 # 출력은 탭 구분 한 줄/초. aggregate.py가 창의 첫/끝 스냅샷 Δ로 비율·요청당 값을 계산한다.
 #
@@ -41,8 +51,11 @@ resolve_pid() {
   esac
 }
 PID=$(resolve_pid)
+# 페이지 크기는 부팅 중 안 바뀌므로 루프 밖에서 한 번만 구한다 — 루프 안에서 부르면
+# 초당 fork가 하나 늘어난다(샘플러에 fork를 더하지 않는다는 이 파일의 원칙).
+PAGE_KB=$(( $(getconf PAGESIZE) / 1024 ))
 
-echo -e "ts\tload1\tload5\trunnable_total\tprocs_running\tcpu_user\tcpu_nice\tcpu_system\tcpu_idle\tcpu_iowait\tcpu_irq\tcpu_softirq\tcpu_steal\tctxt\tprocs_blocked\tpid\tjvm_utime\tjvm_stime\tjvm_minflt\tjvm_majflt\tjvm_nthreads" > "$OUT"
+echo -e "ts\tload1\tload5\trunnable_total\tprocs_running\tcpu_user\tcpu_nice\tcpu_system\tcpu_idle\tcpu_iowait\tcpu_irq\tcpu_softirq\tcpu_steal\tctxt\tprocs_blocked\tpid\tjvm_utime\tjvm_stime\tjvm_minflt\tjvm_majflt\tjvm_nthreads\tjvm_vsz_b\tjvm_rss_kb\tmem_total_kb\tmem_free_kb\tmem_avail_kb" > "$OUT"
 start=$(date +%s)
 while true; do
   ts=$(date +%s.%N)
@@ -55,8 +68,13 @@ while true; do
   pr=${stat##*$'\t'}          # 마지막 필드가 procs_running
   stat=${stat%$'\t'*}         # 나머지(cpu 8필드 + ctxt + procs_blocked)
 
+  # MemTotal/MemFree/MemAvailable은 /proc/meminfo의 첫 세 줄이다(리눅스 3.14+ 고정 순서).
+  # awk/grep 대신 셸 내장 read로 읽어 fork를 늘리지 않는다. 순서 전제는 측정 시작 전
+  # `head -3 /proc/meminfo`로 한 번 확인한다.
+  { read -r _ mt _; read -r _ mf _; read -r _ ma _; } < /proc/meminfo
+
   [ -d "/proc/$PID" ] || PID=$(resolve_pid)
-  ut=""; st=""; mn=""; mj=""; nt=""
+  ut=""; st=""; mn=""; mj=""; nt=""; rs=""; vz=""
   if [ "$PID" != "0" ] && [ -r "/proc/$PID/stat" ]; then
     # comm(2번 필드)은 괄호로 감싸이고 공백을 포함할 수 있어 $14 같은 위치 참조가 어긋난다.
     # 마지막 ') ' 이후로 잘라내면 남은 첫 필드가 state(원래 3번)이므로, 원래 N번 필드는 N-2번이다.
@@ -64,9 +82,9 @@ while true; do
     rest=${line##*') '}
     # shellcheck disable=SC2086
     set -- $rest
-    mn=$8; mj=${10}; ut=${12}; st=${13}; nt=${18}
+    mn=$8; mj=${10}; ut=${12}; st=${13}; nt=${18}; vz=${21}; rs=$(( ${22} * PAGE_KB ))
   fi
-  echo -e "$ts\t$l1\t$l5\t$rt\t$pr\t$stat\t$PID\t$ut\t$st\t$mn\t$mj\t$nt" >> "$OUT"
+  echo -e "$ts\t$l1\t$l5\t$rt\t$pr\t$stat\t$PID\t$ut\t$st\t$mn\t$mj\t$nt\t$vz\t$rs\t$mt\t$mf\t$ma" >> "$OUT"
   if [ "$DURATION" -gt 0 ] && [ $(( $(date +%s) - start )) -ge "$DURATION" ]; then break; fi
   sleep 1
 done
