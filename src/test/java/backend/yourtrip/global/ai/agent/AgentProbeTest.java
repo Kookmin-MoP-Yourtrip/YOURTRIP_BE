@@ -74,6 +74,12 @@ class AgentProbeTest {
     private static final List<String> REGIONS = List.of("경주", "공주");
 
     private static final int DAYS = 2;
+    /** 관광 계열 하나와 시더 전용 슬롯 둘. 어느 쪽이 비는지 가르기 위한 최소 조합이다. */
+    private static final List<backend.yourtrip.global.ai.route.SlotType> PROBE_SLOTS = List.of(
+        backend.yourtrip.global.ai.route.SlotType.ATTRACTION,
+        backend.yourtrip.global.ai.route.SlotType.MEAL,
+        backend.yourtrip.global.ai.route.SlotType.CAFE);
+
     private static final List<KeywordType> KEYWORDS =
         List.of(KeywordType.WALK, KeywordType.COUPLE, KeywordType.HEALING, KeywordType.SENSIBILITY);
 
@@ -127,6 +133,51 @@ class AgentProbeTest {
         printDemotionSummary(registry);
     }
 
+    /**
+     * <b>Planner 가 내는 자연어 {@code area}가 네이버 시더에서 통하는가.</b>
+     *
+     * <p>5-9 실측은 "빈 슬롯 0%"였지만 그때의 {@code area}는 {@code "경주"} 같은 <b>단순 지역명</b>이었다.
+     * 실제 Planner 는 설계가 요구한 대로 {@code "황리단길·대릉원 일대"} 같은 자연어를 내고, 그 문자열이
+     * 그대로 {@code "{area} {searchHint}"} 쿼리의 접두사가 된다. 가운뎃점과 "일대"가 붙은 채로도
+     * 지역검색이 결과를 주는지는 <b>실호출로만 알 수 있다.</b>
+     *
+     * <p>LLM 을 부르지 않으므로 위 프로브와 따로 돌려도 비용이 들지 않는다.
+     */
+    @Test
+    @DisplayName("Planner 가 내는 자연어 area 로 시더가 후보를 확보하는지 본다 (LLM 호출 없음)")
+    void probeNaturalLanguageArea() {
+        String naverId = env("NAVER_CLIENT_ID");
+        String naverSecret = env("NAVER_CLIENT_SECRET");
+        String tourKey = env("TOUR_API_KEY");
+        String kakaoKey = env("KAKAO_API_KEY");
+        assumeTrue(naverId != null && naverSecret != null && tourKey != null && kakaoKey != null,
+            "네이버·TourAPI·카카오 키가 모두 있어야 실측할 수 있다");
+
+        AiCourseMetrics metrics = new AiCourseMetrics(new SimpleMeterRegistry());
+        CandidateRetrievalStage retrieval =
+            retrievalStage(naverId, naverSecret, tourKey, kakaoKey, metrics);
+
+        // Planner 가 실제로 낸 자연어 area 를 한 단계씩 벗겨 어느 표기부터 0건이 되는지 본다.
+        // 대조군은 단순 지역명 — 5-9 실측이 쓴 형태이고, 그때 "빈 슬롯 0%" 가 나온 조건이다.
+        List<PlannerDayPlan> cases = List.of(
+            PlannerDayPlan.of(1, "황리단길·대릉원 일대", "대릉원", PROBE_SLOTS),
+            PlannerDayPlan.of(2, "황리단길·대릉원", "대릉원", PROBE_SLOTS),
+            PlannerDayPlan.of(3, "황리단길 일대", "대릉원", PROBE_SLOTS),
+            PlannerDayPlan.of(4, "황리단길", "대릉원", PROBE_SLOTS),
+            PlannerDayPlan.of(5, "경주 황리단길", "대릉원", PROBE_SLOTS),
+            PlannerDayPlan.of(6, "경주", "대릉원", PROBE_SLOTS));
+
+        CandidatePool pool = retrieval.retrieve("경주", new PlannerPlan("t", "c", cases),
+            KEYWORDS, CourseDeadline.unbounded());
+
+        System.out.printf("%n[자연어 area] 슬롯별 확보 건수 — SEEDED 만 따로 센다%n");
+        pool.slots().forEach(slot -> {
+            long seeded = slot.candidates().stream().filter(candidate -> candidate.seeded()).count();
+            System.out.printf("  %-24s %-11s 전체 %2d건 · SEEDED %2d건%n",
+                cases.get(slot.day() - 1).area(), slot.slotType(), slot.candidates().size(), seeded);
+        });
+    }
+
     // ── 출력 — 판정은 사람이 한다 ─────────────────────────────────────────────
 
     private static void printPlan(String region, PlannerPlan plan) {
@@ -141,6 +192,8 @@ class AgentProbeTest {
     private static void printCuration(String region, PlannerPlan plan, CandidatePool pool,
         List<CuratedDay> curated, SimpleMeterRegistry registry) {
         System.out.printf("%n[Curator] %s — 후보 수(day별)=%s%n", region, pool.candidateCountByDay());
+        pool.slots().forEach(slot -> System.out.printf("    후보 day %d %-11s %d건%n",
+            slot.day(), slot.slotType(), slot.candidates().size()));
 
         int total = 0;
         int suggested = 0;
