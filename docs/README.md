@@ -71,3 +71,4 @@
 - [../CLAUDE.md](../CLAUDE.md) — 프로젝트 개요, 기술 스택, 작업 규칙(에이전트용 진입점)
 - [../.claude/rules/](../.claude/rules/) — 커밋·이슈·PR 작성 규칙
 - [../terraform/README.md](../terraform/README.md), [../terraform/loadtest/README.md](../terraform/loadtest/README.md) — 인프라 구성과 운영 절차
+- [../deploy/prod/README.md](../deploy/prod/README.md) — 운영 서버의 JVM 기동 옵션(값·산정 근거·적용/확인 절차)
