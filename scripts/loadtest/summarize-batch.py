@@ -44,10 +44,12 @@ COLS = [('label', 'run'), ('tps', 'TPS'), ('server_avg_ms', '서버 평균(ms)')
 
 
 def arm_key(arm):
-    m = re.match(r'T(\d+)(\+snc)?', arm)
+    # T<max>[H<heapMB>][+snc] — 스레드 수 내림차순, 같으면 힙 오름차순, +snc는 뒤로.
+    # 힙을 정렬 키에 넣어야 T32H448 -> T32H768 -> T32H1024가 용량 순으로 붙어 나온다.
+    m = re.match(r'T(\d+)(?:H(\d+))?(\+snc)?$', arm)
     if not m:
-        return (999, arm)
-    return (-int(m.group(1)), 1 if m.group(2) else 0)
+        return (999, 0, 0, arm)
+    return (-int(m.group(1)), int(m.group(2) or 0), 1 if m.group(3) else 0, '')
 
 
 def main():

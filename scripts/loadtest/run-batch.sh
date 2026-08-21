@@ -7,7 +7,11 @@
 # k6 summary(p95/p99)와 Prometheus 스냅샷 파일이 1:1로 남는다. VU 최상위 레벨에서는 App EC2에서
 # sample-schedstat.sh를 10초 돌려 스레드 그룹별 런큐 대기 비율을 남긴다.
 #
-# arm 표기:  T<max>[+snc]   예) T200, T32, T200+snc(=shareNativeConnection=false)
+# arm 표기:  T<max>[H<heapMB>][+snc]
+#   T200            Tomcat maxThreads만 바꾼다(힙은 건드리지 않는다)
+#   T32H1024        maxThreads 32 + -Xmx1024m
+#   T200+snc        shareNativeConnection=false
+# H 토큰이 없으면 힙을 건드리지 않으므로 기존 배치 이름이 그대로 동작한다.
 #
 # 필수 환경변수(하드코딩 금지 — 재기동마다 퍼블릭 IP가 바뀌고, IP를 두 곳에 박아뒀다가 한쪽만
 # 고쳐 죽은 IP로 ssh하던 사고가 있었다):
@@ -23,7 +27,7 @@
 #                  (mixed 시나리오용. ElastiCache는 App SG에서만 열려 있어 App EC2의 /dev/tcp로 보낸다)
 #   REDIS_HOST=<엔드포인트>  FLUSH_REDIS=1일 때 필수
 #
-# 사전 조건: App EC2에 scripts/loadtest/{switch-thread-arm,sample-host,sample-schedstat}.sh,
+# 사전 조건: App EC2에 scripts/loadtest/{switch-thread-arm,switch-heap-arm,sample-host,sample-schedstat}.sh,
 #            k6 EC2에 scripts/loadtest/poll-metrics.sh와 scripts/k6/{popular-cold,popular-mixed}.js,
 #            scripts/k6/lib/scenarios.mjs 가 있어야 한다(scp).
 set -euo pipefail
@@ -54,15 +58,30 @@ log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$OUT/batch.log"; }
 
 app "mkdir -p $REMOTE_DIR"; k6h "mkdir -p $REMOTE_DIR"
 
-switch_arm() { # T32 | T200+snc
-  local arm="$1" max snc=true
-  max="${arm#T}"; max="${max%%+*}"
+switch_arm() { # T32 | T200+snc | T32H1024
+  local arm="$1" max heap="" snc=true body
+  body="${arm%%+*}"                       # +snc 꼬리를 떼고 T<max>[H<heap>]만 남긴다
   [[ "$arm" == *+snc ]] && snc=false
+  max="${body#T}"
+  if [[ "$max" == *H* ]]; then            # H 토큰이 있으면 힙 축이 붙은 arm이다
+    heap="${max#*H}"
+    max="${max%%H*}"
+  fi
   # 예전에는 T200을 default(키 제거)로 넘겼다 — Tomcat 기본값이 200이라 같은 뜻이었기 때문이다.
   # #88이 application-prod.yml에 server.tomcat.threads.max: 32를 넣으면서 그 전제가 깨졌다.
   # 이제 키를 지우면 200이 아니라 32가 되므로, 모든 arm에서 값을 명시적으로 넘긴다.
-  log "switch arm=$arm (max=$max snc=$snc)"
+  log "switch arm=$arm (max=$max heap=${heap:-unchanged} snc=$snc)"
+  # 힙은 .env의 JVM_OPTS와 systemd 드롭인만 갈아두고 재기동하지 않는다. 재기동·health
+  # 폴링·적용 검증은 switch-thread-arm.sh가 하므로, arm당 재기동이 1회로 유지된다.
+  if [ -n "$heap" ]; then
+    app "sudo bash $REMOTE_DIR/switch-heap-arm.sh set $heap" | tee -a "$OUT/batch.log"
+  fi
   app "sudo bash $REMOTE_DIR/switch-thread-arm.sh $max $snc" | tee -a "$OUT/batch.log"
+  # 기동된 뒤에야 확인할 수 있다. JVM_OPTS가 비면 $JVM_OPTS가 사라져 JVM이 조용히
+  # ergonomics 기본(2GB의 25% = 약 494MB)으로 뜨는데 448m과 비슷해 눈으로 구분되지 않는다.
+  if [ -n "$heap" ]; then
+    app "sudo bash $REMOTE_DIR/switch-heap-arm.sh verify $heap" | tee -a "$OUT/batch.log"
+  fi
   if [ "$FLUSH_REDIS" = "1" ]; then
     : "${REDIS_HOST:?FLUSH_REDIS=1 needs REDIS_HOST}"
     log "FLUSHALL on $REDIS_HOST"
