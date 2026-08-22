@@ -98,6 +98,46 @@ class CuratorOrderSensitivityProbeTest {
         new Case("순천", "원도심·문화의거리 일대", "순천부읍성"),
         new Case("경주", "황리단길·대릉원 일대", "대릉원"));
 
+    /**
+     * 넓게 재는 쪽의 표본 — {@code AreaQueryStrategyProbeTest.OBSERVED}와 같은 32권역이다.
+     *
+     * <p><b>같은 목록을 쓰는 것이 중요하다.</b> 96칸 중 12칸이라는 이슈의 발동률이 이 표본에서
+     * 나온 수치라, 다른 권역으로 재면 그 수치와 비교할 수 없다.
+     */
+    private static final List<Case> WIDE_OBSERVED = List.of(
+        new Case("강릉", "경포호·경포해변 일대", "경포호"),
+        new Case("강릉", "경포호·초당동 일대", "경포호"),
+        new Case("강릉", "안목해변·송정동 일대", "안목해변"),
+        new Case("강릉", "안목해변·커피거리 일대", "안목해변"),
+        new Case("강릉", "안목해변·해안 산책로 일대", "안목해변"),
+        new Case("경주", "교촌·월정교 일대", "월정교"),
+        new Case("경주", "교촌마을·월정교 일대", "월정교"),
+        new Case("경주", "보문호·보문관광단지 일대", "보문호"),
+        new Case("경주", "황리단길·대릉원 일대", "대릉원"),
+        new Case("공주", "공산성·금강변 일대", "공산성"),
+        new Case("공주", "무령왕릉·국립공주박물관 일대", "무령왕릉"),
+        new Case("공주", "무령왕릉·송산리 고분군 일대", "무령왕릉"),
+        new Case("공주", "무령왕릉·송산리 일대", "무령왕릉"),
+        new Case("공주", "송산리 고분군·박물관 일대", "무령왕릉"),
+        new Case("공주", "송산리고분군·국립공주박물관 일대", "무령왕릉"),
+        new Case("공주", "송산리고분군·박물관 일대", "무령왕릉"),
+        new Case("공주", "송산리고분군·박물관 일대", "송산리 고분군"),
+        new Case("부산", "광안리·민락수변공원 일대", "광안대교"),
+        new Case("부산", "광안리·민락수변공원 일대", "광안리해수욕장"),
+        new Case("부산", "달맞이길·청사포 일대", "달맞이길"),
+        new Case("부산", "해운대 해변·달맞이길 일대", "해운대해수욕장"),
+        new Case("부산", "해운대·동백섬 일대", "동백섬"),
+        new Case("순천", "순천만국가정원·오천그린광장 일대", "순천만국가정원"),
+        new Case("순천", "순천만국가정원·오천동 일대", "순천만국가정원"),
+        new Case("순천", "순천만습지 일대", "순천만습지"),
+        new Case("순천", "순천만습지·대대동 갈대밭 일대", "순천만습지"),
+        new Case("순천", "순천만습지·대대동 일대", "순천만습지"),
+        new Case("순천", "원도심·문화의거리 일대", "순천부읍성"),
+        new Case("영주", "무섬마을 일대", "무섬마을"),
+        new Case("영주", "부석사·봉황산 방면", "부석사"),
+        new Case("영주", "선비촌·소수서원 일대", "소수서원"),
+        new Case("영주", "소수서원·선비촌 일대", "소수서원"));
+
     /** 관광 계열 하나와 시더 전용 슬롯 둘 — 얇아지는 쪽이 뒤의 둘이다. */
     private static final List<SlotType> PROBE_SLOTS =
         List.of(SlotType.ATTRACTION, SlotType.MEAL, SlotType.CAFE);
@@ -163,6 +203,91 @@ class CuratorOrderSensitivityProbeTest {
         printIndexDistribution("원본 순서", fromOrdered);
         printIndexDistribution("섞은 순서", fromShuffled);
         printCityWideSlots(plan, ordered, fromOrdered);
+    }
+
+    /**
+     * <b>광역 후보가 실제로 목록 앞에 서는가</b> — 이슈 #113 이 든 예시를 수치로 잰다 (LLM 호출 없음).
+     *
+     * <p>위 프로브로는 이걸 못 잰다. {@code location} 단계는 <b>0건일 때만</b> 타서 발동률이 96칸 중
+     * 12칸이고, 3권역 표본에서는 한두 칸밖에 안 걸린다. 그런데 Curator 를 부르는 비용 때문에 권역을
+     * 늘릴 수 없다. <b>그래서 LLM 을 빼고 후보 공급만 32권역으로 돌린다</b> — 이슈가 주장하는 것은
+     * "광역 후보가 잘못된 표식을 달고 <b>앞에 선다</b>"이고, 그 앞뒤는 Curator 가 아니라
+     * {@code CandidateOrdering} 이 정하므로 LLM 없이 관측된다.
+     *
+     * <p>덤프하는 것 셋 — <b>발동한 슬롯 수</b>, 그중 <b>광역 후보가 0번을 차지한 슬롯 수</b>,
+     * 그리고 그때 <b>0번과 그 슬롯의 가장 가까운 후보의 거리 차</b>. 세 번째가 "권역 안 후보를
+     * 제치고 앞에 선다"는 주장의 크기다.
+     */
+    @Test
+    @DisplayName("광역 후보가 목록 몇 번을 차지하는지 32권역으로 잰다 (LLM 호출 없음)")
+    void measureCityWideExposure() {
+        String naverId = env("NAVER_CLIENT_ID");
+        String naverSecret = env("NAVER_CLIENT_SECRET");
+        String tourKey = env("TOUR_API_KEY");
+        String kakaoKey = env("KAKAO_API_KEY");
+        assumeTrue(naverId != null && naverSecret != null && tourKey != null && kakaoKey != null,
+            "네이버·TourAPI·카카오 키가 모두 있어야 실측할 수 있다");
+
+        AiCourseMetrics metrics = new AiCourseMetrics(new SimpleMeterRegistry());
+        CandidateRetrievalStage retrieval =
+            retrievalStage(naverId, naverSecret, tourKey, kakaoKey, metrics);
+
+        int slotsWithCityWide = 0;
+        int cityWideAtHead = 0;
+        List<String> headLines = new ArrayList<>();
+
+        System.out.printf("%n[광역 노출] %d권역 × %d슬롯 — location 폴백이 걸린 칸만 적는다%n",
+            WIDE_OBSERVED.size(), PROBE_SLOTS.size());
+        for (Case one : WIDE_OBSERVED) {
+            PlannerDayPlan single = PlannerDayPlan.of(1, one.area(), one.anchor(), PROBE_SLOTS);
+            CandidatePool pool = retrieval.retrieve(one.location(),
+                new PlannerPlan("probe", "권역 안에 머무는 하루", List.of(single)), KEYWORDS,
+                CourseDeadline.unbounded());
+
+            for (CandidateSlot slot : pool.slots()) {
+                int headIndex = indexOfFirstCityWide(slot.candidates());
+                if (headIndex < 0) {
+                    continue;
+                }
+                slotsWithCityWide++;
+                if (headIndex != 0) {
+                    continue;
+                }
+                cityWideAtHead++;
+                PlaceCandidate head = slot.candidates().getFirst();
+                Double nearest = nearestDistance(slot.candidates());
+                headLines.add("  %-24s %-11s 0번=%s(%s) · 그 슬롯 최단=%s".formatted(
+                    one.area(), slot.slotType(), head.name(), format(head.distanceKm()),
+                    format(nearest)));
+            }
+        }
+        headLines.forEach(System.out::println);
+        System.out.printf("  → 광역이 섞인 슬롯 %d개, 그중 광역이 0번인 슬롯 %d개%n",
+            slotsWithCityWide, cityWideAtHead);
+        System.out.printf("  (0번을 차지하는 것은 CandidateOrdering 이 정한다 — "
+            + "이번 작업은 그 순서가 아니라 표식만 고쳤다)%n");
+    }
+
+    /** 목록에서 광역 후보가 처음 나오는 위치. 없으면 -1. */
+    private static int indexOfFirstCityWide(List<PlaceCandidate> candidates) {
+        for (int index = 0; index < candidates.size(); index++) {
+            if (candidates.get(index).fromCityWideQuery()) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private static Double nearestDistance(List<PlaceCandidate> candidates) {
+        return candidates.stream()
+            .map(PlaceCandidate::distanceKm)
+            .filter(java.util.Objects::nonNull)
+            .min(Double::compareTo)
+            .orElse(null);
+    }
+
+    private static String format(Double distanceKm) {
+        return distanceKm == null ? "거리모름" : "%.1fkm".formatted(distanceKm);
     }
 
     // ── 셔플 — 운영 코드를 건드리지 않는다 ────────────────────────────────────
