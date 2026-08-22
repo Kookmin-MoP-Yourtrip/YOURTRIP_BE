@@ -14,6 +14,11 @@ import backend.yourtrip.global.ai.candidate.CandidateSourceType;
 import backend.yourtrip.global.ai.candidate.NaverLocalSeedSource;
 import backend.yourtrip.global.ai.candidate.PlaceCandidate;
 import backend.yourtrip.global.ai.candidate.TourApiSource;
+import backend.yourtrip.global.ai.agent.CuratorAgent;
+import backend.yourtrip.global.ai.agent.PlannerAgent;
+import backend.yourtrip.global.ai.agent.dto.CuratorResponse;
+import backend.yourtrip.global.ai.agent.dto.PlannerResponse;
+import backend.yourtrip.global.ai.prompt.PromptLoader;
 import backend.yourtrip.global.ai.grounding.GroundedDay;
 import backend.yourtrip.global.ai.grounding.GroundedPlace;
 import backend.yourtrip.global.ai.grounding.GroundingStage;
@@ -30,11 +35,15 @@ import backend.yourtrip.global.naver.NaverLocalClient;
 import backend.yourtrip.global.naver.config.NaverConfig;
 import backend.yourtrip.global.tour.TourApiClient;
 import backend.yourtrip.global.tour.config.TourApiConfig;
+import backend.yourtrip.global.ai.LlmCall;
+import backend.yourtrip.global.ai.LlmClient;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -68,6 +77,8 @@ class AiCourseStagesStubIntegrationTest {
     private WireMockServer wireMock;
     private SimpleMeterRegistry meterRegistry;
     private CandidateRetrievalStage retrievalStage;
+    private AiCourseMetrics metrics;
+    private StubLlmClient llmClient;
     private GroundingStage groundingStage;
     private PlaceUrlEnricher urlEnricher;
 
@@ -84,7 +95,8 @@ class AiCourseStagesStubIntegrationTest {
             KakaoConfig.buildKakaoWebClient(wireMock.baseUrl(), "test-key"));
 
         meterRegistry = new SimpleMeterRegistry();
-        AiCourseMetrics metrics = new AiCourseMetrics(meterRegistry);
+        metrics = new AiCourseMetrics(meterRegistry);
+        llmClient = new StubLlmClient();
         retrievalStage = new CandidateRetrievalStage(new AreaGeocoder(kakaoClient),
             new NaverLocalSeedSource(naverClient), new TourApiSource(tourClient), metrics,
             Runnable::run);
@@ -307,12 +319,114 @@ class AiCourseStagesStubIntegrationTest {
         }
     }
 
+    @Nested
+    @DisplayName("에이전트까지 이어 붙인 흐름 (ROADMAP 6단계)")
+    class WithAgents {
+
+        /**
+         * <b>단위 테스트가 물을 수 없는 것 하나를 여기서 묻는다 — {@code listIndex}가 실제로 만들어진
+         * 풀과 맞물리는가.</b>
+         *
+         * <p>6-7 검증기의 단위 테스트는 후보 풀을 손으로 만들어 넣는다. 그러면 "정렬·dedupe·cap 을
+         * 거친 뒤에도 인덱스가 같은 항목을 가리키는가" 는 검사되지 않는데, 그게 어긋나면
+         * <b>아무 오류 없이</b> 위조 검증이 무력화된다(5단계가 {@code listIndex}를 별도 필드로 두지
+         * 않기로 한 이유가 정확히 그것이다). 여기서는 스텁 응답 → 실제 조립을 거친 풀에 대고 묻는다.
+         */
+        @Test
+        @DisplayName("Planner 의 권역으로 모은 목록을 Curator 의 listIndex 가 그대로 가리킨다")
+        void listIndexResolvesAgainstTheRealPool() {
+            stubKakaoDocuments(kakaoDocument("대릉원", "AT4", ANCHOR_X, ANCHOR_Y));
+            stubNaver(naverBody(naverItem("황리단길", "관광,명소>거리", "1292104983", "358386877")));
+            stubTour(tourBody(tourItem("골굴사", "A02010800", "129.4", "35.9", "5000.0")));
+
+            llmClient.planner = new PlannerResponse("경주 1일", "고도", List.of(
+                new PlannerResponse.Day(1, "황리단길 일대", "대릉원", "골목 산책", "10:00",
+                    List.of("ATTRACTION"))));
+            // 목록 1번은 조립 뒤에야 정해진다 — 시더가 앞, TourAPI 가 뒤다.
+            llmClient.curator = new CuratorResponse(1, List.of(new CuratorResponse.Slot(
+                0, "ATTRACTION", List.of(
+                new CuratorResponse.Choice("LISTED", 1, "골굴사"),
+                new CuratorResponse.Choice("SEEDED", 0, "황리단길")))));
+
+            PlannerAgent planner = new PlannerAgent(llmClient, new PromptLoader(), Runnable::run);
+            CuratorAgent curator =
+                new CuratorAgent(llmClient, new PromptLoader(), metrics, Runnable::run);
+
+            PlannerPlan plan = planner.plan("경주", 1, List.of(KeywordType.HEALING),
+                CourseDeadline.unbounded());
+            CandidatePool pool = retrievalStage.retrieve("경주", plan,
+                List.of(KeywordType.HEALING), CourseDeadline.unbounded());
+            List<CuratedDay> curated = curator.curate(plan, pool, List.of(KeywordType.HEALING),
+                CourseDeadline.unbounded());
+
+            // 강등이 없다는 것이 곧 "인덱스와 이름이 같은 항목을 가리켰다" 는 뜻이다.
+            assertThat(counter(AiCourseMetrics.CANDIDATE_DEMOTED, "reason", "name_mismatch"))
+                .isZero();
+            assertThat(counter(AiCourseMetrics.CANDIDATE_DEMOTED, "reason", "index_out_of_range"))
+                .isZero();
+            assertThat(curated.getFirst().slots().getFirst().choices())
+                .extracting(CuratedPlace::source)
+                .containsExactly(CandidateSourceType.LISTED, CandidateSourceType.SEEDED);
+
+            // 그리고 그 선택이 그라운딩에서 카카오 없이 좌표를 승계한다.
+            int kakaoBefore = kakaoCallCount();
+            List<GroundedDay> days = groundingStage.ground("경주", curated, pool,
+                CourseDeadline.unbounded());
+            assertThat(kakaoCallCount()).isEqualTo(kakaoBefore);
+            assertThat(days.getFirst().slots().getFirst().survivors())
+                .extracting(GroundedPlace::name).containsExactly("골굴사", "황리단길");
+        }
+
+        @Test
+        @DisplayName("Planner 가 MEAL 을 빠뜨려도 코드가 채워 넣어 그 슬롯의 후보까지 모인다")
+        void mealSlotIsGuaranteedEndToEnd() {
+            stubKakaoDocuments(kakaoDocument("대릉원", "AT4", ANCHOR_X, ANCHOR_Y));
+            stubNaver(naverBody(naverItem("황리단길", "관광,명소>거리", "1292104983", "358386877")));
+            stubTour(emptyTourBody());
+
+            llmClient.planner = new PlannerResponse("경주 1일", "고도", List.of(
+                new PlannerResponse.Day(1, "황리단길 일대", "대릉원", "골목 산책", "10:00",
+                    List.of("ATTRACTION", "CAFE", "STROLL"))));
+            llmClient.curator = new CuratorResponse(1, List.of());
+
+            PlannerPlan plan = new PlannerAgent(llmClient, new PromptLoader(), Runnable::run)
+                .plan("경주", 1, List.of(), CourseDeadline.unbounded());
+
+            assertThat(plan.days().getFirst().slots()).contains(SlotType.MEAL);
+            CandidatePool pool = retrievalStage.retrieve("경주", plan, List.of(),
+                CourseDeadline.unbounded());
+            assertThat(pool.find(1, SlotType.MEAL)).isPresent();
+        }
+    }
+
+    /**
+     * 스텁 LLM. <b>OpenAI 어댑터를 거치지 않는다</b> — 어댑터의 전송·재시도·스키마 전송은
+     * {@code OpenAiLlmClientTest}가 WireMock 으로 이미 검증하고, 여기서 보려는 것은
+     * "에이전트의 출력이 실제 풀과 맞물리는가" 라 LLM 은 고정값이면 충분하다.
+     */
+    private static final class StubLlmClient implements LlmClient {
+
+        private PlannerResponse planner;
+        private CuratorResponse curator;
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <T> T generate(LlmCall<T> call) {
+            return (T) (PlannerAgent.AGENT_NAME.equals(call.agentName()) ? planner : curator);
+        }
+
+        @Override
+        public <T> CompletableFuture<T> generateAsync(LlmCall<T> call, Executor executor) {
+            return CompletableFuture.completedFuture(generate(call));
+        }
+    }
+
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
     private CandidatePool retrieve(SlotType slotType) {
         return retrievalStage.retrieve("경주",
             new PlannerPlan("경주 1일", "고도", List.of(
-                new PlannerDayPlan(1, "황리단길 일대", "대릉원", List.of(slotType)))),
+                PlannerDayPlan.of(1, "황리단길 일대", "대릉원", List.of(slotType)))),
             List.of(KeywordType.HEALING), CourseDeadline.unbounded());
     }
 

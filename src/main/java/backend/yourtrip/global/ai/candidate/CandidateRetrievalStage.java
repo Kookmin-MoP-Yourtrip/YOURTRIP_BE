@@ -89,7 +89,7 @@ public class CandidateRetrievalStage {
         // 던질 수 있다. 그래서 두 소스의 호출을 먼저 전부 띄우고 **한 번만** 기다린다.
         // 소스별로 나눠 기다리면 라운드가 둘로 갈려 설계 지연 예산의 "네이버 ∥ TourAPI"가
         // 깨진다(TourAPI 라운드만큼 통째로 늘어난다).
-        List<SeedSpec> seedSpecs = seedSpecs(days, geocodes, modifiers);
+        List<SeedSpec> seedSpecs = seedSpecs(location, days, geocodes, modifiers);
         Map<TourCall, List<Integer>> tourCalls = tourCalls(days, geocodes);
         List<CompletableFuture<SeedOutcome>> seedFutures = submitSeeds(seedSpecs);
         List<CompletableFuture<TourOutcome>> tourFutures = submitTours(tourCalls.keySet());
@@ -134,19 +134,21 @@ public class CandidateRetrievalStage {
 
     // ── ② 네이버 시더 — (day × 슬롯타입) × (기본 1 + modifier 1~2) ──────────────
 
-    private static List<SeedSpec> seedSpecs(List<PlannerDayPlan> days,
+    private static List<SeedSpec> seedSpecs(String location, List<PlannerDayPlan> days,
         Map<Integer, GeocodeResult> geocodes, List<StyleTag> modifiers) {
         List<SeedSpec> specs = new ArrayList<>();
         for (PlannerDayPlan day : days) {
             GeocodeResult geocode = geocodes.get(day.day());
             Double latitude = geocode != null && geocode.hasCoordinate() ? geocode.latitude() : null;
             Double longitude = geocode != null && geocode.hasCoordinate() ? geocode.longitude() : null;
+            List<NaverLocalSeedSource.Fallback> fallbacks = fallbackAreas(day, location);
             for (SlotType slotType : distinctSlots(day)) {
                 // 기본 쿼리를 먼저 넣는다 — dedupe 에서 "먼저 만난 쪽이 이긴다"가 곧
                 // "기본 쿼리의 seedRank 가 남는다"가 되게 하려면 이 순서가 계약이다.
-                specs.add(new SeedSpec(day.day(), slotType, day.area(), null, latitude, longitude));
+                specs.add(new SeedSpec(day.day(), slotType, day.area(), fallbacks, null,
+                    latitude, longitude));
                 for (StyleTag modifier : modifiers) {
-                    specs.add(new SeedSpec(day.day(), slotType, day.area(), modifier,
+                    specs.add(new SeedSpec(day.day(), slotType, day.area(), fallbacks, modifier,
                         latitude, longitude));
                 }
             }
@@ -155,10 +157,45 @@ public class CandidateRetrievalStage {
         return specs;
     }
 
+    /**
+     * Curator가 슬롯당 골라야 하는 후보 수. <b>{@code anchor} 단계의 하한선</b>이다 — 후보가 이보다
+     * 적으면 3순위가 실존 후보가 아니게 되고, 1순위가 탈락했을 때의 예비도 없다.
+     *
+     * <p>실측에서 <b>1단계만으로는 24%의 칸이 3건에 못 미쳤다</b>(96칸 기준).
+     */
+    private static final int ANCHOR_FILL_THRESHOLD = 3;
+
+    /**
+     * {@code location} 단계의 하한선 — <b>0건일 때만 탄다.</b>
+     *
+     * <p>여기까지 넓히면 후보가 채워지긴 하지만 거리 중앙값이 <b>6.34km</b>로 벌어진다(anchor 추가분은
+     * 1.07km). day를 권역으로 나눈 의미가 사라지므로, "없는 것보다 낫다"가 성립하는 0건에만 쓴다.
+     */
+    private static final int LOCATION_FILL_THRESHOLD = 1;
+
+    /**
+     * 후보가 모자랄 때 넓혀 가며 물어볼 단계 — <b>{@code anchor} → {@code location} 순서</b>.
+     *
+     * <p>{@code anchor}를 먼저 두는 근거는 실측이다. area 질의가 0건이던 4칸 중 <b>3칸이
+     * {@code anchor}에서 살아났고</b>, 그 후보들은 권역 안에 머문다. 나머지 1칸처럼 {@code anchor}로도
+     * 안 되는 경우가 있어 {@code location}을 뒤에 남긴다.
+     */
+    private static List<NaverLocalSeedSource.Fallback> fallbackAreas(PlannerDayPlan day,
+        String location) {
+        List<NaverLocalSeedSource.Fallback> fallbacks = new ArrayList<>(2);
+        if (day.anchor() != null && !day.anchor().isBlank()) {
+            fallbacks.add(new NaverLocalSeedSource.Fallback(day.anchor(), ANCHOR_FILL_THRESHOLD));
+        }
+        if (location != null && !location.isBlank()) {
+            fallbacks.add(new NaverLocalSeedSource.Fallback(location, LOCATION_FILL_THRESHOLD));
+        }
+        return List.copyOf(fallbacks);
+    }
+
     private List<CompletableFuture<SeedOutcome>> submitSeeds(List<SeedSpec> specs) {
         return specs.stream()
             .map(spec -> submit(() -> new SeedOutcome(spec, naverLocalSeedSource.fetch(
-                spec.area(), spec.slotType(), spec.modifier(),
+                spec.area(), spec.fallbackAreas(), spec.slotType(), spec.modifier(),
                 spec.anchorLatitude(), spec.anchorLongitude()))))
             .toList();
     }
@@ -389,8 +426,23 @@ public class CandidateRetrievalStage {
 
     // ── 내부 값 타입 ──────────────────────────────────────────────────────────
 
-    private record SeedSpec(int day, SlotType slotType, String area, StyleTag modifier,
-                            Double anchorLatitude, Double anchorLongitude) {
+    /**
+     * 시더 호출 하나의 명세.
+     *
+     * <p>{@code fallbackAreas}는 <b>후보가 모자랄 때 차례로 넓혀 묻는 단계</b>다(이슈 #110).
+     * 상권이 없는 유적 지명이 권역명이 되면 정규화만으로는 살아나지 않아, {@code anchor} →
+     * {@code location} 순으로 물어본다. <b>단계마다 하한선이 다르다</b> — anchor 는 3건, location 은
+     * 0건일 때만. 재질의를 스테이지가 아니라 소스 안에서 하는 이유는
+     * <b>라운드를 가르지 않기 위해서</b>다 — 여기서 다시 던지면 라운드가 하나 늘어 지연 예산의
+     * "네이버 ∥ TourAPI"가 깨진다.
+     */
+    private record SeedSpec(int day, SlotType slotType, String area,
+                            List<NaverLocalSeedSource.Fallback> fallbackAreas,
+                            StyleTag modifier, Double anchorLatitude, Double anchorLongitude) {
+
+        private SeedSpec {
+            fallbackAreas = fallbackAreas == null ? List.of() : List.copyOf(fallbackAreas);
+        }
     }
 
     private record SeedOutcome(SeedSpec spec, CandidateBatch batch) {

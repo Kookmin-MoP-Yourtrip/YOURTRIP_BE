@@ -1,0 +1,63 @@
+{
+  "type": "object",
+  "properties": {
+    "day": {
+      "type": "integer",
+      "description": "며칠째인지. 입력으로 받은 값을 그대로 적는다"
+    },
+    "slots": {
+      "type": "array",
+      "description": "채울 자리마다 하나씩. 입력의 자리 순서를 그대로 따른다",
+      "items": {
+        "type": "object",
+        "properties": {
+          "slotIndex": {
+            "type": "integer",
+            "description": "채울 자리의 번호. 입력에 적힌 값을 그대로 적는다"
+          },
+          "slotType": {
+            "type": "string",
+            "description": "그 자리의 종류. 입력에 적힌 값을 그대로 적는다",
+            "enum": [
+              "ATTRACTION",
+              "MEAL",
+              "CAFE",
+              "EXPERIENCE",
+              "VIEWPOINT",
+              "SHOPPING",
+              "STROLL"
+            ]
+          },
+          "choices": {
+            "type": "array",
+            "description": "그 자리에 넣을 후보 3개를 선호 순서로",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "description": "목록에서 골랐으면 SEEDED 또는 LISTED, 목록 밖 제안이면 SUGGESTED",
+                  "enum": ["SEEDED", "LISTED", "SUGGESTED"]
+                },
+                "listIndex": {
+                  "type": ["integer", "null"],
+                  "description": "목록에서 고른 항목의 번호(0부터). SUGGESTED면 null"
+                },
+                "placeName": {
+                  "type": "string",
+                  "description": "상호명. 목록에서 골랐으면 목록에 적힌 그대로"
+                }
+              },
+              "required": ["source", "listIndex", "placeName"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["slotIndex", "slotType", "choices"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["day", "slots"],
+  "additionalProperties": false
+}

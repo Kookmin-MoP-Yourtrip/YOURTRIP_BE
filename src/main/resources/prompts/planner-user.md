@@ -1,0 +1,3 @@
+- 여행지: {{location}}
+- 여행 일수: {{days}}
+- 선호 키워드: {{keywords}}

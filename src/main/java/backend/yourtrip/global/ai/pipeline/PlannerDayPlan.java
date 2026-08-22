@@ -1,6 +1,7 @@
 package backend.yourtrip.global.ai.pipeline;
 
 import backend.yourtrip.global.ai.route.SlotType;
+import java.time.LocalTime;
 import java.util.List;
 
 /**
@@ -19,12 +20,30 @@ import java.util.List;
  *               전부 "경주시") 행정구역으로 바꾸면 그 locality를 잃는다. 네이버 쿼리 접두사로도 쓰인다
  * @param anchor 권역 안의 구체적 랜드마크 하나("대릉원"). 자연어 {@code area}를 그대로 지오코딩하면
  *               가운뎃점·"일대" 때문에 결과가 흔들려서 따로 받는다
+ * @param theme  그 day를 한 줄로 요약한 테마("한옥 골목 산책과 야경"). <b>Curator 프롬프트의 입력</b>이다 —
+ *               코스 전체의 {@code concept}만 주면 day마다 무엇이 달라야 하는지가 전달되지 않는다
+ * @param dayStartTime 그 day를 시작하는 시각. <b>{@code null}이면 {@code RouteRequest.DEFAULT_DAY_START}</b>.
+ *               표시용 값이 아니라 <b>최적화 입력</b>이다 — 시간 모델이 {@code t[0] = dayStartTime}이라,
+ *               시작이 밀리면 식사 시간창 벌점이 달라져 <b>같은 장소 집합이라도 최적 순열이 바뀐다</b>.
+ *               <p><b>종료 시각은 받지 않는다.</b> 받으면 3-5의 축소→드롭 절차가 살아나 장소가 조용히
+ *               사라지는데, 그 대가를 치를 만큼 LLM이 종료 시각을 잘 안다는 근거가 없다
  * @param slots  day의 슬롯 구성. <b>같은 슬롯 타입이 여러 번 올 수 있다</b>
  *               ({@code [ATTRACTION, MEAL, CAFE, ATTRACTION, MEAL]})
  */
-public record PlannerDayPlan(int day, String area, String anchor, List<SlotType> slots) {
+public record PlannerDayPlan(int day, String area, String anchor, String theme,
+                             LocalTime dayStartTime, List<SlotType> slots) {
 
     public PlannerDayPlan {
         slots = slots == null ? List.of() : List.copyOf(slots);
+    }
+
+    /**
+     * 테마와 시작 시각 없이 권역과 슬롯만 있는 day.
+     *
+     * <p>테스트와 후보 공급 프로브처럼 <b>권역만 있으면 되는 호출부</b>를 위한 것이다
+     * ({@code RouteRequest.of}가 세운 선례). 운영 경로에서는 Planner가 전 필드를 채운다.
+     */
+    public static PlannerDayPlan of(int day, String area, String anchor, List<SlotType> slots) {
+        return new PlannerDayPlan(day, area, anchor, null, null, slots);
     }
 }
