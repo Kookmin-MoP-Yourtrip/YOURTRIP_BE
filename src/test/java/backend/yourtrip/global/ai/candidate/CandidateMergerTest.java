@@ -6,6 +6,7 @@ import static backend.yourtrip.global.ai.candidate.CandidateFixtures.CHEONMACHON
 import static backend.yourtrip.global.ai.candidate.CandidateFixtures.CHEONMACHONG_LON;
 import static backend.yourtrip.global.ai.candidate.CandidateFixtures.NAEMUL_LAT;
 import static backend.yourtrip.global.ai.candidate.CandidateFixtures.NAEMUL_LON;
+import static backend.yourtrip.global.ai.candidate.CandidateFixtures.withScope;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
@@ -42,6 +43,24 @@ class CandidateMergerTest {
                 CandidateFixtures.cafe("커피플레이스", "경북 경주시 포석로 1080", 4, StyleTag.ROOFTOP)));
 
             assertThat(deduped.get(0).matchedModifier()).isEqualTo(StyleTag.ROOFTOP);
+        }
+
+        @Test
+        @DisplayName("순위와 함께 지명 단계도 먼저 만난 쪽이 남는다 — 둘이 어긋나면 표식이 거짓이 된다")
+        void keepsSeedScopeOfFirstOccurrence() {
+            PlaceCandidate fromArea = withScope(
+                CandidateFixtures.cafe("커피플레이스", "경북 경주시 포석로 1080", 2, null),
+                SeedScope.AREA);
+            PlaceCandidate fromCity = withScope(
+                CandidateFixtures.cafe("커피플레이스", "경북 경주시 포석로 1080", 1, null),
+                SeedScope.LOCATION);
+
+            List<PlaceCandidate> deduped =
+                CandidateMerger.dedupeWithinSource(List.of(fromArea, fromCity));
+
+            assertThat(deduped).hasSize(1);
+            assertThat(deduped.get(0).seedRank()).isEqualTo(2);
+            assertThat(deduped.get(0).seedScope()).isEqualTo(SeedScope.AREA);
         }
 
         @Test
@@ -122,6 +141,23 @@ class CandidateMergerTest {
 
             assertThat(merged).extracting(PlaceCandidate::name)
                 .containsExactly("황리단길", "골굴사");
+        }
+
+        @Test
+        @DisplayName("병합 후보의 지명 단계는 시드에서 온다 — seedRank 를 시드에서 받는 것과 한 쌍이다")
+        void inheritsSeedScopeFromSeed() {
+            PlaceCandidate cityWideSeed = withScope(
+                CandidateFixtures.seeded("천마총", 1, CHEONMACHONG_LAT, CHEONMACHONG_LON),
+                SeedScope.LOCATION);
+
+            List<PlaceCandidate> merged = CandidateMerger.mergeAcrossSources(
+                List.of(cityWideSeed),
+                List.of(CandidateFixtures.listed("천마총", CHEONMACHONG_LAT, CHEONMACHONG_LON, 6.3,
+                    Set.of())));
+
+            assertThat(merged).hasSize(1);
+            assertThat(merged.get(0).seedRank()).isEqualTo(1);
+            assertThat(merged.get(0).fromCityWideQuery()).isTrue();
         }
 
         @Test

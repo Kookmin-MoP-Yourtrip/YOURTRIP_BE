@@ -115,6 +115,9 @@ public final class CandidateMerger {
             base.slotType(),
             union(base.styleTags(), duplicate.styleTags()),
             base.seedRank(),
+            // 순위와 한 쌍으로 남긴다(이슈 #113) — 한쪽만 base 를 따르면 좁은 질의의 순위에
+            // 넓은 질의의 단계가 붙어, 없애려던 오해를 반대 방향으로 만든다.
+            base.seedScope(),
             base.matchedModifier() != null ? base.matchedModifier() : duplicate.matchedModifier(),
             base.distanceKm() != null ? base.distanceKm() : duplicate.distanceKm(),
             base.rawCategory() != null ? base.rawCategory() : duplicate.rawCategory());
@@ -137,6 +140,7 @@ public final class CandidateMerger {
             official.slotType(),
             union(seed.styleTags(), official.styleTags()),
             seed.seedRank(),
+            seed.seedScope(),
             seed.matchedModifier(),
             official.distanceKm() != null ? official.distanceKm() : seed.distanceKm(),
             official.rawCategory() != null ? official.rawCategory() : seed.rawCategory());

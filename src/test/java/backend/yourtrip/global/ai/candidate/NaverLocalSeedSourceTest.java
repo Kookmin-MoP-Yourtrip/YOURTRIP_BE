@@ -39,12 +39,12 @@ class NaverLocalSeedSourceTest {
 
     /** anchor 단계 — 3건에 못 미치면 탄다. */
     private static NaverLocalSeedSource.Fallback anchorRung(String area) {
-        return new NaverLocalSeedSource.Fallback(area, 3);
+        return new NaverLocalSeedSource.Fallback(area, 3, SeedScope.ANCHOR);
     }
 
     /** location 단계 — 0건일 때만 탄다. */
     private static NaverLocalSeedSource.Fallback cityRung(String area) {
-        return new NaverLocalSeedSource.Fallback(area, 1);
+        return new NaverLocalSeedSource.Fallback(area, 1, SeedScope.LOCATION);
     }
 
     private static NaverPlace attraction(String name, Double latitude, Double longitude,
@@ -387,6 +387,10 @@ class NaverLocalSeedSourceTest {
             assertThat(batch.candidates()).extracting(PlaceCandidate::name)
                 .containsExactly("루치아의 뜰", "커피인터뷰");
             assertThat(batch.candidates().getFirst().seedRank()).isEqualTo(1);
+            // 순위와 단계는 한 쌍이다 — 좁은 질의의 1위에 넓은 질의의 단계가 붙으면
+            // 이슈 #113 이 없애려던 오해가 반대 방향으로 생긴다.
+            assertThat(batch.candidates().getFirst().seedScope()).isEqualTo(SeedScope.AREA);
+            assertThat(batch.candidates().getLast().seedScope()).isEqualTo(SeedScope.ANCHOR);
         }
 
         @Test
@@ -422,6 +426,10 @@ class NaverLocalSeedSourceTest {
 
             assertThat(batch.candidates()).extracting(PlaceCandidate::name)
                 .containsExactly("순천만습지");
+            // 이 후보의 seedRank 1 은 "순천 전역 1위"다 — 그 사실이 값으로 남아야
+            // 목록에서 권역 1위와 구별된다(이슈 #113).
+            assertThat(batch.candidates().getFirst().seedScope()).isEqualTo(SeedScope.LOCATION);
+            assertThat(batch.candidates().getFirst().fromCityWideQuery()).isTrue();
         }
 
         @Test

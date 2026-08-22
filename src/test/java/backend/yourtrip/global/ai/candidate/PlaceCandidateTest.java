@@ -74,6 +74,63 @@ class PlaceCandidateTest {
     }
 
     @Nested
+    @DisplayName("seedScope — 그 순위를 낳은 질의의 지명 단계 (이슈 #113)")
+    class SeedScopeContract {
+
+        @Test
+        @DisplayName("시드에 들지 않았는데 단계가 붙으면 거부한다 — 물을 질의가 없던 후보다")
+        void rejectsScopeWithoutRank() {
+            assertThatThrownBy(() -> new PlaceCandidate(CandidateSourceType.LISTED, "골굴사", "",
+                35.8, 129.2, SlotType.ATTRACTION, Set.of(), null, SeedScope.LOCATION, null, 1.2,
+                "A02"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("seedScope");
+        }
+
+        @Test
+        @DisplayName("단계를 안 적은 호출부는 AREA 로 읽는다 — 캐스케이드 이전의 유일한 단계였다")
+        void delegatingConstructorDefaultsToArea() {
+            PlaceCandidate candidate = new PlaceCandidate(CandidateSourceType.SEEDED, "대릉원", "",
+                35.8, 129.2, SlotType.ATTRACTION, Set.of(), 1, null, 0.4, "여행,명소");
+
+            assertThat(candidate.seedScope()).isEqualTo(SeedScope.AREA);
+            assertThat(candidate.fromCityWideQuery()).isFalse();
+        }
+
+        @Test
+        @DisplayName("시드에 못 든 후보는 위임 생성자에서도 단계가 비어 있다")
+        void delegatingConstructorLeavesScopeNullWithoutRank() {
+            PlaceCandidate candidate = new PlaceCandidate(CandidateSourceType.LISTED, "골굴사", "",
+                35.8, 129.2, SlotType.ATTRACTION, Set.of(), null, null, 1.2, "A02");
+
+            assertThat(candidate.seedScope()).isNull();
+            assertThat(candidate.fromCityWideQuery()).isFalse();
+        }
+
+        @Test
+        @DisplayName("도시 전역 질의에서 온 후보만 fromCityWideQuery 다 — anchor 는 아니다")
+        void onlyLocationRungIsCityWide() {
+            PlaceCandidate anchorRung = new PlaceCandidate(CandidateSourceType.SEEDED, "식당 A", "",
+                35.8, 129.2, SlotType.MEAL, Set.of(), 1, SeedScope.ANCHOR, null, 1.1, "음식점");
+            PlaceCandidate cityRung = new PlaceCandidate(CandidateSourceType.SEEDED, "식당 B", "",
+                35.8, 129.2, SlotType.MEAL, Set.of(), 1, SeedScope.LOCATION, null, 8.4, "음식점");
+
+            assertThat(anchorRung.fromCityWideQuery()).isFalse();
+            assertThat(cityRung.fromCityWideQuery()).isTrue();
+        }
+
+        @Test
+        @DisplayName("슬롯을 바꿔 복사해도 단계는 따라간다 — TourAPI 목록을 여러 슬롯에 나눌 때다")
+        void withSlotTypeCarriesScope() {
+            PlaceCandidate candidate = new PlaceCandidate(CandidateSourceType.LISTED, "대릉원", "",
+                35.8, 129.2, SlotType.ATTRACTION, Set.of(), 2, SeedScope.LOCATION, null, 6.3, "A02");
+
+            assertThat(candidate.withSlotType(SlotType.VIEWPOINT).seedScope())
+                .isEqualTo(SeedScope.LOCATION);
+        }
+    }
+
+    @Nested
     @DisplayName("CandidateSlot.at — Curator 가 지목한 listIndex")
     class ListIndexLookup {
 
