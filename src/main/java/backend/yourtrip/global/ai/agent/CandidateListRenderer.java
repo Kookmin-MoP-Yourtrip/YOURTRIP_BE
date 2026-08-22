@@ -130,11 +130,31 @@ public final class CandidateListRenderer {
      * 출처 표식. <b>{@code seedRank}를 점수가 아니라 표식으로만 쓴다</b> — 쿼리 하나 안에서의 상대
      * 순위일 뿐이라 스타일 쿼리의 3위와 기본 쿼리의 3위는 같은 등급이 아니다. 숫자를 보여주되
      * 계산에 넣지 않는 것이 그 거친 신호를 다루는 안전한 방식이다.
+     *
+     * <h3>그 경고에는 축이 하나 더 있다 (이슈 #113)</h3>
+     * 지명 캐스케이드(이슈 #110)가 생기면서 순위는 <b>지리적 범위</b>로도 갈렸다. {@code location}
+     * 단계에서 온 후보의 1위는 <b>도시 전역의 1위</b>이고, 그 후보의 거리 중앙값은 6.34km로 권역
+     * 질의(1.20km)의 다섯 배다. 그런데 모델은 질의가 무엇이었는지 모르므로 {@code [seed 1위]}를
+     * <b>"이 권역 인기 1위"로 읽고</b>, 프롬프트의 선별 기준 2가 그 잘못된 근거로 발동한다.
+     *
+     * <p>그래서 그 후보만 <b>순위 숫자를 빼고 범위를 밝힌다</b>({@code [seed·광역]}).
+     * <ul>
+     *   <li><b>표식 자체를 없애지는 않는다</b> — {@code seed}가 사라지면 모델이 {@code source}를
+     *       {@code SUGGESTED}로 적을 근거가 생겨 6-7의 {@code unknown_source} 강등을 부른다</li>
+     *   <li><b>{@code anchor} 단계는 그대로 둔다</b> — 추가분 거리 중앙값이 1.07km로 권역 질의와
+     *       다르지 않아 등급을 나눌 근거가 없다</li>
+     *   <li><b>여기서 순서를 바꾸지는 않는다</b> — 목록 순서가 선택을 얼마나 좌우하는지는 아직
+     *       측정된 바 없고, {@code CandidateOrdering} 수정은 그 실측 뒤의 일이다</li>
+     * </ul>
      */
     private static String marker(PlaceCandidate candidate) {
         StringJoiner marks = new StringJoiner("·");
         if (candidate.seeded()) {
-            marks.add("seed %d위".formatted(candidate.seedRank()));
+            // 순위는 그 질의 안에서만 뜻이 있다. 도시 전역 질의의 순위를 그대로 실으면
+            // "이 권역 인기 n위"라는 없는 사실을 주장하게 된다.
+            marks.add(candidate.fromCityWideQuery()
+                ? "seed·광역"
+                : "seed %d위".formatted(candidate.seedRank()));
         }
         if (candidate.official()) {
             marks.add("관광");
