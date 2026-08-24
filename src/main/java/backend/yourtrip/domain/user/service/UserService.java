@@ -29,6 +29,8 @@ public interface UserService {
 
     User getUser(Long userId);
 
+    void logout();
+
     Long getCurrentUserId();
 
     /**
