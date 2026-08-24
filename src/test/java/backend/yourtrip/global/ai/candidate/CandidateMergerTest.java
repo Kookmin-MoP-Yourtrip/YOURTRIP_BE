@@ -169,4 +169,134 @@ class CandidateMergerTest {
             assertThat(CandidateMerger.mergeAcrossSources(seeds, List.of())).isEqualTo(seeds);
         }
     }
+
+    @Nested
+    @DisplayName("본체와 부속 — 진포함 AND 거리 (이슈 #106)")
+    class Subordinates {
+
+        @Test
+        @DisplayName("본체가 남고 부속이 사라진다 — 5-9 에서 둘 다 목록에 실리던 쌍이다")
+        void collapsesSubordinateIntoPrimary() {
+            List<PlaceCandidate> collapsed = CandidateMerger.collapseSubordinates(List.of(
+                CandidateFixtures.listed("대릉원", CHEONMACHONG_LAT, CHEONMACHONG_LON, 0.4,
+                    Set.of()),
+                CandidateFixtures.listed("대릉원 주차장", NAEMUL_LAT, NAEMUL_LON, 0.5, Set.of())));
+
+            assertThat(collapsed).hasSize(1);
+            assertThat(collapsed.get(0).name()).isEqualTo("대릉원");
+        }
+
+        @Test
+        @DisplayName("부속이 목록 앞에 있어도 본체가 남는다 — 순서가 아니라 이름이 정한다")
+        void primaryWinsRegardlessOfInputOrder() {
+            List<PlaceCandidate> collapsed = CandidateMerger.collapseSubordinates(List.of(
+                CandidateFixtures.listed("대릉원 주차장", NAEMUL_LAT, NAEMUL_LON, 0.5, Set.of()),
+                CandidateFixtures.listed("대릉원", CHEONMACHONG_LAT, CHEONMACHONG_LON, 0.4,
+                    Set.of())));
+
+            assertThat(collapsed).hasSize(1);
+            assertThat(collapsed.get(0).name()).isEqualTo("대릉원");
+        }
+
+        @Test
+        @DisplayName("부속이 갖고 있던 스타일 태그는 본체에 합쳐진다 — 버리는 게 아니라 흡수다")
+        void absorbsStyleTagsOfSubordinate() {
+            List<PlaceCandidate> collapsed = CandidateMerger.collapseSubordinates(List.of(
+                CandidateFixtures.listed("대릉원", CHEONMACHONG_LAT, CHEONMACHONG_LON, 0.4,
+                    Set.of(StyleTag.HISTORY)),
+                CandidateFixtures.listed("대릉원 주차장", NAEMUL_LAT, NAEMUL_LON, 0.5,
+                    Set.of(StyleTag.QUIET))));
+
+            assertThat(collapsed.get(0).styleTags())
+                .containsExactlyInAnyOrder(StyleTag.HISTORY, StyleTag.QUIET);
+        }
+
+        @Test
+        @DisplayName("이름이 진포함이어도 멀면 둘 다 남는다 — 거리 조건이 AND 로 살아 있다")
+        void keepsBothWhenFarApart() {
+            List<PlaceCandidate> collapsed = CandidateMerger.collapseSubordinates(List.of(
+                CandidateFixtures.listed("대릉원", CHEONMACHONG_LAT, CHEONMACHONG_LON, 0.4,
+                    Set.of()),
+                CandidateFixtures.listed("대릉원 주차장", CHEOMSEONGDAE_LAT, CHEOMSEONGDAE_LON, 0.9,
+                    Set.of())));
+
+            assertThat(collapsed).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("같은 상호의 다른 지점은 둘 다 남는다 — 진포함으로 좁힌 이유다")
+        void keepsFranchiseBranches() {
+            List<PlaceCandidate> collapsed = CandidateMerger.collapseSubordinates(List.of(
+                CandidateFixtures.listed("스타벅스", CHEONMACHONG_LAT, CHEONMACHONG_LON, 0.4,
+                    Set.of()),
+                CandidateFixtures.listed("스타벅스", NAEMUL_LAT, NAEMUL_LON, 0.5, Set.of())));
+
+            assertThat(collapsed)
+                .as("288m 떨어진 같은 이름 — similar 였다면 하나로 합쳐졌다")
+                .hasSize(2);
+        }
+
+        @Test
+        @DisplayName("본체 없이 홀로 있는 부속은 지우지 않는다 — 이름이 아니라 짝이 근거다")
+        void keepsStandaloneSubordinate() {
+            List<PlaceCandidate> collapsed = CandidateMerger.collapseSubordinates(List.of(
+                CandidateFixtures.listed("대릉원 주차장", CHEONMACHONG_LAT, CHEONMACHONG_LON, 0.4,
+                    Set.of()),
+                CandidateFixtures.listed("첨성대", CHEOMSEONGDAE_LAT, CHEOMSEONGDAE_LON, 0.9,
+                    Set.of())));
+
+            assertThat(collapsed).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("체인은 가장 짧은 본체 하나로 모인다")
+        void collapsesChainIntoShortestPrimary() {
+            List<PlaceCandidate> collapsed = CandidateMerger.collapseSubordinates(List.of(
+                CandidateFixtures.listed("갑사철당간", CHEONMACHONG_LAT, CHEONMACHONG_LON, 0.4,
+                    Set.of()),
+                CandidateFixtures.listed("갑사", NAEMUL_LAT, NAEMUL_LON, 0.5, Set.of()),
+                CandidateFixtures.listed("공주 갑사 철당간", CHEONMACHONG_LAT, CHEONMACHONG_LON, 0.4,
+                    Set.of())));
+
+            assertThat(collapsed).extracting(PlaceCandidate::name).containsExactly("갑사");
+        }
+
+        @Test
+        @DisplayName("돌려주는 순서는 입력 순서다 — 시드 먼저를 무너뜨리면 정렬 결과가 흔들린다")
+        void preservesInputOrder() {
+            List<PlaceCandidate> collapsed = CandidateMerger.collapseSubordinates(List.of(
+                CandidateFixtures.seeded("황리단길", 1, CHEONMACHONG_LAT, CHEONMACHONG_LON),
+                CandidateFixtures.listed("대릉원", NAEMUL_LAT, NAEMUL_LON, 0.5, Set.of()),
+                CandidateFixtures.listed("대릉원 주차장", NAEMUL_LAT, NAEMUL_LON, 0.5, Set.of()),
+                CandidateFixtures.listed("첨성대", CHEOMSEONGDAE_LAT, CHEOMSEONGDAE_LON, 0.9,
+                    Set.of())));
+
+            assertThat(collapsed).extracting(PlaceCandidate::name)
+                .containsExactly("황리단길", "대릉원", "첨성대");
+        }
+
+        @Test
+        @DisplayName("합칠 것이 없으면 목록이 그대로다")
+        void passesThroughWhenNothingToCollapse() {
+            List<PlaceCandidate> candidates = List.of(
+                CandidateFixtures.listed("대릉원", CHEONMACHONG_LAT, CHEONMACHONG_LON, 0.4,
+                    Set.of()),
+                CandidateFixtures.listed("첨성대", CHEOMSEONGDAE_LAT, CHEOMSEONGDAE_LON, 0.9,
+                    Set.of()));
+
+            assertThat(CandidateMerger.collapseSubordinates(candidates)).isEqualTo(candidates);
+        }
+
+        @Test
+        @DisplayName("빈 목록과 한 건짜리 목록에서 죽지 않는다")
+        void handlesTrivialInputs() {
+            assertThat(CandidateMerger.collapseSubordinates(null)).isEmpty();
+            assertThat(CandidateMerger.collapseSubordinates(List.of())).isEmpty();
+
+            List<PlaceCandidate> single = List.of(
+                CandidateFixtures.listed("대릉원", CHEONMACHONG_LAT, CHEONMACHONG_LON, 0.4,
+                    Set.of()));
+            assertThat(CandidateMerger.collapseSubordinates(single)).isEqualTo(single);
+        }
+    }
 }

@@ -98,4 +98,56 @@ class PlaceNameNormalizerTest {
                 .isTrue();
         }
     }
+
+    @Nested
+    @DisplayName("진포함 판정 — 부속 POI (이슈 #106)")
+    class ProperlyContains {
+
+        @Test
+        @DisplayName("본체 이름에 수식이 붙어 길어진 부속을 잡는다 — 5-9 실측 표본")
+        void detectsSubordinateNames() {
+            assertThat(PlaceNameNormalizer.properlyContains("영주댐전망대", "영주댐전망대주차장1"))
+                .isTrue();
+            assertThat(PlaceNameNormalizer.properlyContains("공주 갑사 철당간", "갑사")).isTrue();
+        }
+
+        @Test
+        @DisplayName("완전 일치는 부속이 아니다 — 같은 상호의 다른 지점을 뭉치지 않기 위해서다")
+        void rejectsExactMatch() {
+            assertThat(PlaceNameNormalizer.properlyContains("스타벅스", "스타벅스")).isFalse();
+        }
+
+        @Test
+        @DisplayName("정규화하면 같아지는 표기도 완전 일치다 — similar와 갈리는 지점")
+        void rejectsMatchThatOnlyNormalizationSeparates() {
+            assertThat(PlaceNameNormalizer.similar("동궁과 월지", "동궁과월지"))
+                .as("소스 간 병합은 이 쌍을 합쳐야 한다")
+                .isTrue();
+            assertThat(PlaceNameNormalizer.properlyContains("동궁과 월지", "동궁과월지"))
+                .as("부속 판정은 이 쌍을 합치면 안 된다")
+                .isFalse();
+        }
+
+        @Test
+        @DisplayName("전혀 다른 이름은 다르다")
+        void rejectsUnrelatedNames() {
+            assertThat(PlaceNameNormalizer.properlyContains("천마총", "경주 쌈밥거리")).isFalse();
+        }
+
+        @Test
+        @DisplayName("비교할 이름이 없으면 부속이라고 하지 않는다")
+        void refusesEmptyNames() {
+            assertThat(PlaceNameNormalizer.properlyContains("", "천마총")).isFalse();
+            assertThat(PlaceNameNormalizer.properlyContains("천마총", null)).isFalse();
+            assertThat(PlaceNameNormalizer.properlyContains("  ", "천마총")).isFalse();
+        }
+
+        @Test
+        @DisplayName("진포함도 느슨하다 — CandidateMatcher가 거리와 AND로 묶는 이유는 그대로다")
+        void isStillDeliberatelyLoose() {
+            assertThat(PlaceNameNormalizer.properlyContains("왕릉", "경주 내물왕릉"))
+                .as("이 판정만으로 합치면 전국의 왕릉이 하나가 된다")
+                .isTrue();
+        }
+    }
 }

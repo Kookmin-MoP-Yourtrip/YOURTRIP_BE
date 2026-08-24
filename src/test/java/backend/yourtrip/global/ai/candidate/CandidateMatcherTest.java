@@ -145,6 +145,90 @@ class CandidateMatcherTest {
     }
 
     @Nested
+    @DisplayName("부속 POI — 진포함 AND 거리 (이슈 #106)")
+    class Subordinate {
+
+        /**
+         * 위도 1도 ≈ 111.19km. <b>5-9가 실측한 쌍의 거리를 재현하는 데만 쓴다</b> — 좌표 원본이
+         * 커밋되지 않은 {@code results/candidate-supply-pairs.csv}에만 있어서다. 임계값 자체는
+         * 위 {@code AcrossSources}가 4-7 실좌표로 이미 시험한다.
+         */
+        private static final double DEGREE_PER_METER = 1.0 / 111_190.0;
+
+        private static double northOf(double latitude, double meters) {
+            return latitude + meters * DEGREE_PER_METER;
+        }
+
+        @Test
+        @DisplayName("99m 떨어진 주차장은 본체의 부속이다 — 5-9 실측 표본")
+        void detectsParkingLotOfSamePlace() {
+            assertThat(CandidateMatcher.isSubordinate(
+                "영주댐전망대", CHEONMACHONG_LAT, CHEONMACHONG_LON,
+                "영주댐전망대주차장1", northOf(CHEONMACHONG_LAT, 99), CHEONMACHONG_LON))
+                .isTrue();
+        }
+
+        @Test
+        @DisplayName("196m 떨어진 경내 문화재도 부속이다 — 판정 10이 임계값 하한으로 쓴 쌍이다")
+        void detectsCulturalAssetInsideTemple() {
+            assertThat(CandidateMatcher.isSubordinate(
+                "공주 갑사 철당간", CHEONMACHONG_LAT, CHEONMACHONG_LON,
+                "갑사", northOf(CHEONMACHONG_LAT, 196), CHEONMACHONG_LON))
+                .isTrue();
+        }
+
+        @Test
+        @DisplayName("이름이 진포함이어도 멀면 부속이 아니다 — 판정 10의 '합치면 안 되는' 쌍")
+        void rejectsProperContainmentFarApart() {
+            assertThat(CandidateMatcher.isSubordinate(
+                "선암사", CHEONMACHONG_LAT, CHEONMACHONG_LON,
+                "선암사계곡", northOf(CHEONMACHONG_LAT, 1072), CHEONMACHONG_LON))
+                .as("1,072m — 거리 조건이 AND로 살아 있어야 한다")
+                .isFalse();
+        }
+
+        @Test
+        @DisplayName("같은 자리의 같은 상호는 부속이 아니다 — 프랜차이즈를 뭉치지 않는다")
+        void rejectsExactSameName() {
+            assertThat(CandidateMatcher.isSubordinate(
+                "스타벅스", CHEONMACHONG_LAT, CHEONMACHONG_LON,
+                "스타벅스", CHEONMACHONG_LAT, CHEONMACHONG_LON))
+                .as("isSamePlace 였다면 참이다 — 두 판정이 갈리는 지점")
+                .isFalse();
+
+            assertThat(CandidateMatcher.isSamePlace(
+                "스타벅스", CHEONMACHONG_LAT, CHEONMACHONG_LON,
+                "스타벅스", CHEONMACHONG_LAT, CHEONMACHONG_LON))
+                .isTrue();
+        }
+
+        @Test
+        @DisplayName("가까워도 이름이 무관하면 부속이 아니다")
+        void rejectsUnrelatedNearbyPlace() {
+            assertThat(CandidateMatcher.isSubordinate(
+                "천마총", CHEONMACHONG_LAT, CHEONMACHONG_LON,
+                "경주 쌈밥거리", SSAMBAP_LAT, SSAMBAP_LON))
+                .isFalse();
+        }
+
+        @Test
+        @DisplayName("임계값을 isSamePlace 와 공유한다 — 300m 근거가 두 곳으로 갈라지면 안 된다")
+        void sharesThresholdWithIsSamePlace() {
+            double inside = northOf(CHEONMACHONG_LAT, 290);
+            double outside = northOf(CHEONMACHONG_LAT, 310);
+
+            assertThat(CandidateMatcher.isSubordinate(
+                "대릉원", CHEONMACHONG_LAT, CHEONMACHONG_LON,
+                "대릉원 주차장", inside, CHEONMACHONG_LON))
+                .isTrue();
+            assertThat(CandidateMatcher.isSubordinate(
+                "대릉원", CHEONMACHONG_LAT, CHEONMACHONG_LON,
+                "대릉원 주차장", outside, CHEONMACHONG_LON))
+                .isFalse();
+        }
+    }
+
+    @Nested
     @DisplayName("거리 계산은 RouteOptimizer와 같은 함수를 쓴다")
     class Distance {
 
