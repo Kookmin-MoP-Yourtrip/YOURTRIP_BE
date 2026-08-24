@@ -51,6 +51,21 @@ spring:
       # 지금까지는 PostgreSQL이 embedded가 아니라 실행되지 않았을 뿐이므로 반드시 끈다.
       mode: never
 
+  # 아래 두 블록은 파일 끝의 "테스트 전용 더미값" 주석이 설명하는 것과 같은 목적이다.
+  mail:
+    username: test@example.com
+    password: test-mail-password
+
+  data:
+    redis:
+      host: localhost
+      # 의도적으로 아무것도 듣고 있지 않을 포트를 쓴다. 6379(네이티브 Redis)나 6479
+      # (이 프로젝트 docker-compose의 매핑 포트)를 쓰면 개발 머신에서는 실제 Redis에 붙어
+      # 로컬 캐시를 오염시키고, Redis가 없는 CI에서는 폴백으로 도는 — 환경마다 다르게
+      # 동작하는 테스트가 된다. 연결 실패는 RedisCacheErrorHandler가 DB 폴백으로 처리하며
+      # connect-timeout 1000ms가 대기 상한이라 테스트가 늘어지지 않는다.
+      port: 63799
+
 # 외부 API — 자격증명은 더미로, base-url은 WireMock 스텁으로.
 # WireMock 포트는 테스트마다 달라질 수 있으므로, 실제 테스트에서는 @DynamicPropertySource로
 # 주입해 아래 기본값을 덮어쓴다. 여기 적힌 8089는 WireMock 기본 포트다.
@@ -81,3 +96,55 @@ logging:
     org.hibernate: WARN
     software.amazon.awssdk: WARN
     io.lettuce.core: WARN
+
+# ---------------------------------------------------------------------------
+# 테스트 전용 더미값
+#
+# 공통 application.yml은 이 값들을 ${JWT_SECRET} 같은 환경변수 placeholder로 두고 있고,
+# 그 환경변수는 레포 루트 .env(git 미추적)에서 온다. 그래서 .env가 없는 환경 — 새로 clone한
+# 머신이나 CI 러너 — 에서는 @SpringBootTest가 컨텍스트를 못 띄우고
+# "Could not resolve placeholder 'JWT_SECRET'"로 죽었다(#116에서 실측 확인).
+#
+# 여기서 같은 키에 값을 주면 프로필 파일이 공통 파일보다 우선하므로, ${JWT_SECRET} 줄은
+# 조회 대상이 되지 않는다 — 환경변수를 채우는 것이 아니라 찾을 필요를 없애는 방식이다.
+# 덕분에 테스트는 어떤 환경에서도 외부 준비물 없이 돈다.
+#
+# 공통 파일에 ${VAR:기본값} 형태로 기본값을 박지 않은 이유: 그러면 배포에서 환경변수가
+# 빠져도 앱이 조용히 더미로 떠버린다. 누락을 반드시 드러내는 docs/guide/profile.md §4의
+# fail-fast 원칙과 정면으로 충돌한다.
+#
+# 값은 전부 형식만 맞춘 가짜이며, 이 프로필의 테스트는 외부 서비스에 접속하지 않는다.
+# 실제 자격증명을 넣으면 테스트가 운영 리소스를 건드리고(예: Gemini 호출 과금) 외부 상태에
+# 의존해 비결정적이 된다 — CI가 시크릿을 요구하게 되는 순간이 설계가 틀어진 신호다.
+# ---------------------------------------------------------------------------
+
+jwt:
+  # jjwt의 Keys.hmacShaKeyFor()는 HS256 최소 길이인 256비트(UTF-8 32바이트)를 요구하며,
+  # 짧으면 컨텍스트 로딩 단계에서 WeakKeyException으로 죽는다. 아래 값은 49바이트다.
+  secret: test-only-jwt-secret-that-is-long-enough-for-hs256
+
+s3:
+  bucket: yourtrip-test-bucket
+  access-key: test-access-key
+  secret-key: test-secret-key
+
+cloudfront:
+  # .invalid는 RFC 2606이 "절대 해석되지 않음"을 보장하는 TLD다. 혹시라도 테스트가 이 도메인에
+  # 실제로 접속을 시도하면 DNS 단계에서 즉시 실패해, 조용히 외부로 나가는 일이 없다.
+  domain: test.cloudfront.invalid
+  key-pair-id: TESTKEYPAIRID
+  distribution-id: TESTDISTRIBUTIONID
+  # CloudFrontService의 @PostConstruct가 기동 시점에 이 PEM을 즉시 읽고, 실패하면 예외를
+  # 던져 컨텍스트가 뜨지 않는다. 그래서 실재하는 파일이 반드시 있어야 한다.
+  #
+  # 이 키는 저장소에 커밋하지 않고 build.gradle의 generateTestCloudFrontKey 태스크가
+  # 빌드할 때마다 만든다 — public 저장소에 개인키 형태의 파일을 두면 secret scanning 경보가
+  # 뜨고, 어떤 CloudFront 키 그룹과도 연결되지 않은 일회용 더미인데도 리뷰어에게 오해를 준다.
+  # 경로가 상대경로인 것은 Gradle test 태스크의 작업 디렉터리가 프로젝트 루트이기 때문이다.
+  private-key-path: build/test-keys/cloudfront-test-key.pem
+
+# kakao 더미는 위 "외부 API" 블록이 이미 제공한다 — 여기에 다시 쓰면 YAML 중복 키가 되어
+# 뒤엣것이 앞을 덮어쓰고 WireMock base-url 이 조용히 사라진다.
+
+gemini:
+  api-key: test-gemini-api-key
