@@ -1,0 +1,52 @@
+# PR과 dev push에서 테스트·빌드를 자동 검증한다(#116).
+#
+# 이 워크플로에 secrets도 env도 하나 없는 것은 의도적이다. 테스트에 필요한 설정은
+# test 프로필이 자급하므로(src/test/resources/application-test.yml) 외부 준비물이 없고,
+# 실제 자격증명을 넣으면 테스트가 운영 리소스를 건드리며(예: Gemini 호출 과금) 외부 상태에
+# 의존해 비결정적이 된다. CI가 시크릿을 요구하게 되는 순간이 설계가 틀어진 신호다.
+#
+# 배포 환경과도 무관하다. 이 프로젝트의 운영 서버는 데모·측정 시에만 올리는 온디맨드
+# 모델이라 대부분의 기간 내려가 있지만, 이 워크플로는 러너 안에서 소스만 다루므로 서버
+# 가동 여부와 상관없이 항상 돈다. 배경과 한계는 docs/guide/ci.md 참고.
+
+name: CI
+
+# dev가 이 저장소의 기본 브랜치이자 실질 통합 브랜치다(main은 2025-12 이후 멈춰 있다).
+on:
+  pull_request:
+    branches: [ dev ]
+  push:
+    branches: [ dev ]
+
+# 기본 권한을 좁힌다. 이 워크플로는 소스를 읽기만 하고 아무것도 쓰지 않는다.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # build.gradle의 toolchain이 21을 요구하므로 러너에도 21이 있어야 한다.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Gradle 배포판과 의존성을 캐시한다. 캐시 쓰기는 기본 브랜치에서만 일어나고
+      # PR에서는 읽기만 하므로, 포크 PR이 캐시를 오염시킬 수 없다.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # build = compileJava + test + bootJar. 배포 가능한 아티팩트가 실제로 나오는지까지
+      # 확인해야 하므로 test만 돌리지 않는다.
+      #
+      # @Tag("benchmark") 테스트는 build.gradle의 excludeTags로 이미 제외된다 — openssl
+      # 프로세스 호출과 12,000회 반복 서명으로 느린 데다, AiHallucinationBaselineTest는
+      # 실제 GEMINI_API_KEY를 요구해서 CI의 "빠르고 결정적" 조건을 둘 다 깬다.
+      - name: Build
+        run: ./gradlew build
