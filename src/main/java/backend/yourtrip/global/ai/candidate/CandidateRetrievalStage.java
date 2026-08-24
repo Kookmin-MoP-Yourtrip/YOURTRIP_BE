@@ -288,7 +288,7 @@ public class CandidateRetrievalStage {
         return byDay;
     }
 
-    // ── ④ 조립 — 소스 안 dedupe → 소스 간 병합 → 사전식 정렬 → cap ─────────────
+    // ── ④ 조립 — 소스 안 dedupe → 소스 간 병합 → 부속 병합 → 사전식 정렬 → cap ──
 
     private CandidatePool assemble(List<PlannerDayPlan> days, List<SeedOutcome> seeds,
         Map<Integer, List<TourOutcome>> tours, Set<StyleTag> preferredTags) {
@@ -301,8 +301,11 @@ public class CandidateRetrievalStage {
                 List<PlaceCandidate> listed = CandidateMerger.dedupeWithinSource(
                     tourCandidates(dayTours, slotType));
 
+                // 부속 병합은 소스 간 병합 뒤·정렬 앞이다 — 뒤라야 소스가 다른 부속 관계도
+                // 함께 잡히고, 앞이라야 비운 자리가 실제로 cap 정원이 된다(이슈 #106).
                 List<PlaceCandidate> ordered = CandidateOrdering.order(
-                    CandidateMerger.mergeAcrossSources(seeded, listed), preferredTags);
+                    CandidateMerger.collapseSubordinates(
+                        CandidateMerger.mergeAcrossSources(seeded, listed)), preferredTags);
                 slots.add(new CandidateSlot(day.day(), slotType, ordered));
             }
         }
