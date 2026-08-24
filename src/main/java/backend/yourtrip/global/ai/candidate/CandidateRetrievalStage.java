@@ -51,6 +51,12 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class CandidateRetrievalStage {
 
+    /**
+     * 부속 병합 로그의 포맷 (이슈 #106). <b>5-9 오탈락 검수 프로브가 이 상수로 이벤트를 골라낸다</b>
+     * — 프로브가 문자열을 따로 적으면 여기가 바뀔 때 조용히 0건을 수집한다.
+     */
+    static final String SUBORDINATE_COLLAPSE_LOG = "day {} {} — 부속 '{}' 을(를) '{}' 에 접었다 ({}m)";
+
     private final AreaGeocoder areaGeocoder;
     private final NaverLocalSeedSource naverLocalSeedSource;
     private final TourApiSource tourApiSource;
@@ -172,6 +178,25 @@ public class CandidateRetrievalStage {
      * 1.07km). day를 권역으로 나눈 의미가 사라지므로, "없는 것보다 낫다"가 성립하는 0건에만 쓴다.
      */
     private static final int LOCATION_FILL_THRESHOLD = 1;
+
+    /**
+     * 부속 병합({@link CandidateMerger#collapseSubordinates})을 걸 슬롯인가 (이슈 #106).
+     *
+     * <h3>왜 TourAPI 사용 여부로 가르는가</h3>
+     * 부속 POI는 <b>TourAPI가 주차장·입구·매표소까지 관광지로 등록해서</b> 생긴다. 그러니 위험
+     * 구간은 정확히 "TourAPI를 쓰는 슬롯"이고, {@link TourApiSource#contentTypeIdsFor(SlotType)}가
+     * 빈 집합으로 그 경계를 이미 말하고 있다. 슬롯 이름을 여기 다시 나열하면 두 곳이 어긋난다.
+     *
+     * <h3>좁힌 근거는 실측이다</h3>
+     * 5-9 재측정에서 접힌 19건 중 <b>18건이 관광 슬롯</b>이었고 MEAL·SHOPPING은 0건이었다. 유일한
+     * 비관광 건인 {@code 해지개 ← 해지개더궁}(69m, CAFE)은 <b>오합침이 의심되는 쌍</b>이다 —
+     * 관광지는 포함 관계가 실제 종속을 반영하지만({@code 갑사} ⊂ {@code 공주 갑사 철당간}),
+     * <b>상호명은 같은 지명을 두 가게가 나눠 쓰는 일이 흔하다.</b> 좁혀서 잃는 것이 그 한 건뿐이라
+     * 이름 관습이 다른 구간을 규칙에서 뺀다.
+     */
+    private static boolean usesTourApi(SlotType slotType) {
+        return !TourApiSource.contentTypeIdsFor(slotType).isEmpty();
+    }
 
     /**
      * 후보가 모자랄 때 넓혀 가며 물어볼 단계 — <b>{@code anchor} → {@code location} 순서</b>.
@@ -303,9 +328,21 @@ public class CandidateRetrievalStage {
 
                 // 부속 병합은 소스 간 병합 뒤·정렬 앞이다 — 뒤라야 소스가 다른 부속 관계도
                 // 함께 잡히고, 앞이라야 비운 자리가 실제로 cap 정원이 된다(이슈 #106).
-                List<PlaceCandidate> ordered = CandidateOrdering.order(
-                    CandidateMerger.collapseSubordinates(
-                        CandidateMerger.mergeAcrossSources(seeded, listed)), preferredTags);
+                //
+                // 접은 쌍을 로그로 남기는 것은 검수용 사치가 아니다. 조립이 끝난 목록에는 본체만
+                // 남아 "왜 이 후보가 없지"에 답할 방법이 사라진다.
+                int dayNumber = day.day();
+                List<PlaceCandidate> merged = CandidateMerger.mergeAcrossSources(seeded, listed);
+                List<PlaceCandidate> collapsed = usesTourApi(slotType)
+                    ? CandidateMerger.collapseSubordinates(merged,
+                        (primary, subordinate) -> log.debug(SUBORDINATE_COLLAPSE_LOG,
+                            dayNumber, slotType, subordinate.name(), primary.name(),
+                            Math.round(CandidateMatcher.distanceKm(
+                                primary.latitude(), primary.longitude(),
+                                subordinate.latitude(), subordinate.longitude()) * 1000)))
+                    : merged;
+
+                List<PlaceCandidate> ordered = CandidateOrdering.order(collapsed, preferredTags);
                 slots.add(new CandidateSlot(day.day(), slotType, ordered));
             }
         }

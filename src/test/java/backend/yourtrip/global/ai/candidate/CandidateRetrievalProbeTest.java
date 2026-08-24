@@ -15,6 +15,10 @@ import backend.yourtrip.global.naver.NaverLocalClient;
 import backend.yourtrip.global.naver.config.NaverConfig;
 import backend.yourtrip.global.tour.TourApiClient;
 import backend.yourtrip.global.tour.config.TourApiConfig;
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -27,6 +31,7 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 /**
  * 후보 공급 실측 프로브 (ROADMAP 5-9). <b>외부 API를 실제로 호출한다.</b>
@@ -109,10 +114,16 @@ class CandidateRetrievalProbeTest {
             new NaverLocalSeedSource(naverClient), new TourApiSource(tourClient),
             new AiCourseMetrics(new SimpleMeterRegistry()), Runnable::run);
 
+        ListAppender<ILoggingEvent> collapseLog = captureCollapseLog();
+
         List<SlotRow> slotRows = new ArrayList<>();
         List<PairRow> pairRows = new ArrayList<>();
+        List<CollapsedRow> collapsedRows = new ArrayList<>();
         for (Region region : REGIONS) {
+            int before = collapseLog.list.size();
             CandidatePool pool = retrieve(region);
+            collapsedRows.addAll(collapsedSince(region, collapseLog, before));
+
             for (CandidateSlot slot : pool.slots()) {
                 slotRows.add(SlotRow.of(region, slot));
                 pairRows.addAll(pairsOf(region, slot));
@@ -123,8 +134,11 @@ class CandidateRetrievalProbeTest {
             slotRows.stream().map(SlotRow::toCsv).toList());
         writeCsv("candidate-supply-pairs", PairRow.HEADER,
             pairRows.stream().map(PairRow::toCsv).toList());
+        writeCsv("subordinate-collapsed", CollapsedRow.HEADER,
+            collapsedRows.stream().map(CollapsedRow::toCsv).toList());
         printSlotSummary(slotRows);
         printPairSummary(pairRows);
+        printSubordinateSummary(collapsedRows, pairRows);
 
         // 이 설계가 성립하려면 반드시 참이어야 하는 것 — "시더가 무인지 지역에서도 후보를
         // 준다"가 깨지면 후보 공급 층 자체의 전제가 무너진다(4-2 판정 5의 재확인).
@@ -133,6 +147,13 @@ class CandidateRetrievalProbeTest {
             .mapToInt(SlotRow::total).sum())
             .as("무인지 지역에서 후보가 하나도 모이지 않으면 이 층의 전제가 무너진다")
             .isPositive();
+
+        // 이슈 #106 — 조립을 마친 목록에 부속 쌍이 남아 있으면 규칙이 새고 있다는 뜻이다.
+        // 오합침 여부(합치면 안 될 것을 합쳤는가)는 자동으로 판정할 수 없어 CSV 를 사람이 읽지만,
+        // "잡아야 할 것을 놓쳤는가"는 여기서 걸린다.
+        assertThat(pairRows.stream().filter(PairRow::subordinatePair).toList())
+            .as("300m 이내 진포함 쌍은 collapseSubordinates 가 이미 접었어야 한다")
+            .isEmpty();
     }
 
     private CandidatePool retrieve(Region region) {
@@ -155,11 +176,47 @@ class CandidateRetrievalProbeTest {
                 double distanceKm = CandidateMatcher.distanceKm(
                     left.latitude(), left.longitude(), right.latitude(), right.longitude());
                 boolean similar = PlaceNameNormalizer.similar(left.name(), right.name());
+                boolean proper = PlaceNameNormalizer.properlyContains(left.name(), right.name());
                 // 임계값 조정에 쓸 구간만 남긴다 — 1km 밖 쌍은 어떤 임계값에서도 합쳐지지 않는다.
                 if (distanceKm <= 1.0 || similar) {
-                    rows.add(new PairRow(region, slot.slotType(), left, right, distanceKm, similar));
+                    rows.add(new PairRow(region, slot.slotType(), left, right, distanceKm, similar,
+                        proper));
                 }
             }
+        }
+        return rows;
+    }
+
+    // ── 부속 병합 검수 (이슈 #106) ────────────────────────────────────────────
+
+    /**
+     * 스테이지가 남기는 부속 병합 로그를 가로챈다.
+     *
+     * <p><b>메시지를 파싱하지 않는다.</b> 포맷 문자열은 {@code CandidateRetrievalStage}의 상수를
+     * 그대로 대조하고, 값은 SLF4J가 보존하는 <b>인자 배열</b>에서 꺼낸다. 로그 문구가 바뀌어도
+     * 상수를 함께 쓰므로 조용히 0건이 되지 않는다.
+     */
+    private static ListAppender<ILoggingEvent> captureCollapseLog() {
+        Logger logger = (Logger) LoggerFactory.getLogger(CandidateRetrievalStage.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        logger.setLevel(Level.DEBUG);
+        return appender;
+    }
+
+    private static List<CollapsedRow> collapsedSince(Region region,
+        ListAppender<ILoggingEvent> appender, int from) {
+        List<CollapsedRow> rows = new ArrayList<>();
+        List<ILoggingEvent> events = List.copyOf(appender.list);
+        for (int i = from; i < events.size(); i++) {
+            ILoggingEvent event = events.get(i);
+            if (!CandidateRetrievalStage.SUBORDINATE_COLLAPSE_LOG.equals(event.getMessage())) {
+                continue;
+            }
+            Object[] args = event.getArgumentArray();
+            rows.add(new CollapsedRow(region, String.valueOf(args[1]), String.valueOf(args[3]),
+                String.valueOf(args[2]), ((Number) args[4]).longValue()));
         }
         return rows;
     }
@@ -221,6 +278,35 @@ class CandidateRetrievalProbeTest {
                 row.region(), row.slotType()));
     }
 
+    /**
+     * 부속 병합 검수 출력 (이슈 #106).
+     *
+     * <p><b>오합침 여부는 기계가 판정할 수 없다.</b> "갑사 철당간을 갑사에 합치는 것이 옳은가"는
+     * 사람이 답해야 하므로, 접힌 쌍을 <b>전부</b> 찍고 {@code results/subordinate-collapsed.csv}에
+     * 남긴다. 표본을 잘라 요약하면 남은 오합침이 그 뒤에 숨는다.
+     */
+    private static void printSubordinateSummary(List<CollapsedRow> collapsed,
+        List<PairRow> pairs) {
+        System.out.printf("%n=== 부속 병합 — 접힌 쌍 전부 (%d건) ===%n", collapsed.size());
+        System.out.printf("%n오합침 검수: 아래 각 행이 '합쳐야 맞는 쌍'인지 직접 판정한다.%n");
+        collapsed.forEach(row -> System.out.printf("%6dm  %-24s ← %-24s (%s/%s)%n",
+            row.distanceM(), row.primary(), row.subordinate(), row.region().name(), row.slotType()));
+
+        // 규칙을 넓히면 무엇이 더 합쳐지는지. 남는 이유가 둘이라 함께 찍는다 — 거리가 임계값
+        // 밖이거나(판정 10 이 (196m, 440m) 에서 고른 300m), TourAPI 를 쓰지 않는 슬롯이거나.
+        // 어느 쪽이든 "합치면 안 되는 것"으로 남아 있어야 정상이다.
+        List<PairRow> nearMiss = pairs.stream()
+            .filter(PairRow::properlyContains)
+            .sorted((a, b) -> Double.compare(a.distanceKm(), b.distanceKm()))
+            .toList();
+        System.out.printf("%n--- 진포함이지만 접지 않고 남은 쌍 (%d건) ---%n", nearMiss.size());
+        nearMiss.forEach(row -> System.out.printf("%6.0fm  %-24s ↔ %-24s (%s/%s, %s)%n",
+            row.distanceKm() * 1000, row.leftName(), row.rightName(),
+            row.region().name(), row.slotType(),
+            TourApiSource.contentTypeIdsFor(row.slotType()).isEmpty()
+                ? "규칙 미적용 슬롯" : "임계값 밖"));
+    }
+
     // ── CSV ───────────────────────────────────────────────────────────────────
 
     private static void writeCsv(String prefix, String header, List<String> lines)
@@ -259,9 +345,11 @@ class CandidateRetrievalProbeTest {
     }
 
     private record PairRow(Region region, SlotType slotType, PlaceCandidate left,
-                           PlaceCandidate right, double distanceKm, boolean nameSimilar) {
+                           PlaceCandidate right, double distanceKm, boolean nameSimilar,
+                           boolean properlyContains) {
 
-        static final String HEADER = "region,tier,slot,left,right,distanceM,nameSimilar";
+        static final String HEADER =
+            "region,tier,slot,left,right,distanceM,nameSimilar,properlyContains";
 
         String leftName() {
             return left.name();
@@ -271,10 +359,34 @@ class CandidateRetrievalProbeTest {
             return right.name();
         }
 
+        /**
+         * 접혔어야 하는데 목록에 남아 있는 쌍 — 이슈 #106 규칙이 새는지 보는 지표다.
+         *
+         * <p><b>TourAPI 를 쓰지 않는 슬롯은 세지 않는다.</b> 거기는 규칙을 걸지 않기로 했으므로
+         * (상호명은 같은 지명을 여러 가게가 나눠 쓴다) 진포함 쌍이 남는 것이 정상이다.
+         */
+        boolean subordinatePair() {
+            return properlyContains
+                && distanceKm <= CandidateMatcher.PROXIMITY_THRESHOLD_KM
+                && !TourApiSource.contentTypeIdsFor(slotType).isEmpty();
+        }
+
         String toCsv() {
-            return "%s,%s,%s,\"%s\",\"%s\",%.0f,%s".formatted(
+            return "%s,%s,%s,\"%s\",\"%s\",%.0f,%s,%s".formatted(
                 region.name(), region.tier(), slotType,
-                left.name(), right.name(), distanceKm * 1000, nameSimilar);
+                left.name(), right.name(), distanceKm * 1000, nameSimilar, properlyContains);
+        }
+    }
+
+    /** 접힌 쌍 하나. 스테이지 로그의 인자 배열에서 만든다. */
+    private record CollapsedRow(Region region, String slotType, String primary,
+                                String subordinate, long distanceM) {
+
+        static final String HEADER = "region,tier,slot,primary,subordinate,distanceM";
+
+        String toCsv() {
+            return "%s,%s,%s,\"%s\",\"%s\",%d".formatted(
+                region.name(), region.tier(), slotType, primary, subordinate, distanceM);
         }
     }
 

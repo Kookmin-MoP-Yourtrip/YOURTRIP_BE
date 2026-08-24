@@ -244,6 +244,41 @@ class CandidateRetrievalStageTest {
             assertThat(candidates.get(0).seeded()).isTrue();
             assertThat(candidates.get(0).official()).isTrue();
         }
+
+        @Test
+        @DisplayName("관광 슬롯에서는 부속이 본체에 접힌다 (이슈 #106)")
+        void collapsesSubordinateInSightSlot() {
+            geocodeSucceeds();
+            naverReturns();
+            tourReturns(
+                CandidateFixtures.listed("영주댐전망대", CandidateFixtures.CHEONMACHONG_LAT,
+                    CandidateFixtures.CHEONMACHONG_LON, 0.4, Set.of()),
+                CandidateFixtures.listed("영주댐전망대주차장1", CandidateFixtures.NAEMUL_LAT,
+                    CandidateFixtures.NAEMUL_LON, 0.5, Set.of()));
+
+            CandidatePool pool = stage.retrieve("영주", plan(day(1, SlotType.VIEWPOINT)),
+                List.of(), CourseDeadline.unbounded());
+
+            assertThat(pool.findOrEmpty(1, SlotType.VIEWPOINT).candidates())
+                .extracting(PlaceCandidate::name).containsExactly("영주댐전망대");
+        }
+
+        @Test
+        @DisplayName("TourAPI 를 쓰지 않는 슬롯에는 부속 병합을 걸지 않는다 — 상호명은 지명을 나눠 쓴다")
+        void doesNotCollapseInNonSightSlot() {
+            geocodeSucceeds();
+            // 5-9 재측정에서 오합침이 의심된 실제 쌍(69m). 상호가 겹쳐도 별개 가게일 수 있다.
+            naverReturns(
+                CandidateFixtures.cafe("해지개", "제주 서귀포시 남성중로 1", 1, null),
+                CandidateFixtures.cafe("해지개더궁", "제주 서귀포시 남성중로 20", 2, null));
+
+            CandidatePool pool = stage.retrieve("제주", plan(day(1, SlotType.CAFE)),
+                List.of(), CourseDeadline.unbounded());
+
+            assertThat(pool.findOrEmpty(1, SlotType.CAFE).candidates())
+                .extracting(PlaceCandidate::name)
+                .containsExactlyInAnyOrder("해지개", "해지개더궁");
+        }
     }
 
     @Nested

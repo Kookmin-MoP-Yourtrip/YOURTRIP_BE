@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 
 /**
  * 후보 풀의 중복 정리 (ROADMAP 5-8). <b>순수 함수</b>라 스테이지에서 떼어내 결정론적으로 테스트한다.
@@ -143,6 +144,21 @@ public final class CandidateMerger {
      * 결과가 흔들린다.
      */
     public static List<PlaceCandidate> collapseSubordinates(List<PlaceCandidate> candidates) {
+        return collapseSubordinates(candidates, (host, absorbed) -> {
+        });
+    }
+
+    /**
+     * 접힌 쌍을 관측할 수 있는 오버로드.
+     *
+     * <p><b>사라진 것을 셀 수 없으면 이 규칙은 검수할 수 없다.</b> 조립이 끝난 목록에는 본체만
+     * 남아 "무엇이 왜 빠졌는가"를 되짚을 방법이 없으므로, 접는 순간에 훅을 준다. 5-9 오탈락
+     * 검수가 이 훅으로 쌍을 모으고, {@code CandidateRetrievalStage}는 같은 훅으로 로그를 남긴다.
+     *
+     * @param onCollapse {@code (본체, 흡수된 부속)}. 흡수 <b>전</b>의 본체가 넘어간다
+     */
+    public static List<PlaceCandidate> collapseSubordinates(List<PlaceCandidate> candidates,
+        BiConsumer<PlaceCandidate, PlaceCandidate> onCollapse) {
         if (candidates == null || candidates.size() < 2) {
             return candidates == null ? List.of() : List.copyOf(candidates);
         }
@@ -168,7 +184,9 @@ public final class CandidateMerger {
                 primaries.put(index, candidate);
                 continue;
             }
-            primaries.put(host, absorbDuplicate(primaries.get(host), candidate));
+            PlaceCandidate primary = primaries.get(host);
+            onCollapse.accept(primary, candidate);
+            primaries.put(host, absorbDuplicate(primary, candidate));
         }
 
         // ③ 입력 순서로 복원.
