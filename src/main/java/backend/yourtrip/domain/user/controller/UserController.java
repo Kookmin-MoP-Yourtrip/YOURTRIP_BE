@@ -58,6 +58,7 @@ public class UserController {
             ### 예외상황 / 에러코드
             - `EMAIL_ALREADY_EXIST(400)`: 이미 가입된 이메일로 요청.
             - `INVALID_REQUEST_FIELD(400)`: 이메일 형식 불일치 또는 빈 값.
+            - `VERIFICATION_SERVICE_UNAVAILABLE(503)`: 인증 저장소 장애 — 메일 미발송, 잠시 후 재시도.
             ### 테스트 방법
             1. Swagger에서 **POST** `/api/users/email/send` 실행
             2. 요청 예시:
@@ -97,9 +98,9 @@ public class UserController {
             - 요청 본문에 **email**과 **code(6자리)** 모두 필수입니다.
             - 올바른 코드라도 유효시간이 지나면 실패합니다.
             ### 예외상황 / 에러코드
-            - `INVALID_VERIFICATION_CODE(400)`: 코드 불일치.
-            - `VERIFICATION_CODE_EXPIRED(400)`: 코드 만료 또는 미발급.
+            - `INVALID_VERIFICATION_CODE(400)`: 코드 불일치·만료·미발급.
             - `INVALID_REQUEST_FIELD(400)`: 필드 누락/형식 오류.
+            - `VERIFICATION_SERVICE_UNAVAILABLE(503)`: 인증 저장소 장애 — 잠시 후 재시도.
             ### 테스트 방법
             1. 이메일로 수신한 인증번호를 입력해 **POST** `/api/users/email/verify` 요청
             2. 요청 예시:
@@ -111,23 +112,24 @@ public class UserController {
     )
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "인증 성공(본문 없음)"),
-        @ApiResponse(responseCode = "400", description = "코드 오류/만료/필드 오류",
-            content = @Content(mediaType = "application/json", examples = {
-                @ExampleObject(name = "코드 불일치", value = """
+        @ApiResponse(responseCode = "400", description = "코드 오류/필드 오류",
+            content = @Content(mediaType = "application/json",
+                examples = @ExampleObject(name = "코드 불일치·만료·미발급", value = """
                     {
                       "timestamp": "2025-11-11T10:03:00",
                       "code": "INVALID_VERIFICATION_CODE",
                       "message": "인증번호가 올바르지 않습니다."
                     }
-                    """),
-                @ExampleObject(name = "코드 만료", value = """
+                    """))),
+        @ApiResponse(responseCode = "503", description = "인증 저장소 장애(fail-closed)",
+            content = @Content(mediaType = "application/json",
+                examples = @ExampleObject(value = """
                     {
                       "timestamp": "2025-11-11T10:04:00",
-                      "code": "VERIFICATION_CODE_EXPIRED",
-                      "message": "인증번호가 만료되었습니다."
+                      "code": "VERIFICATION_SERVICE_UNAVAILABLE",
+                      "message": "이메일 인증을 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요."
                     }
-                    """)
-            }))
+                    """)))
     })
     @PostMapping("/email/verify")
     @ResponseStatus(HttpStatus.OK)
@@ -150,6 +152,7 @@ public class UserController {
             ### 예외상황 / 에러코드
             - `EMAIL_NOT_VERIFIED(400)`: 이메일 인증 미완료 상태에서 요청.
             - `INVALID_REQUEST_FIELD(400)`: 비밀번호 형식 위반/필드 누락.
+            - `VERIFICATION_SERVICE_UNAVAILABLE(503)`: 인증 저장소 장애 — 잠시 후 재시도.
             ### 테스트 방법
             1. **POST** `/api/users/password`
             2. 요청 예시:
@@ -195,6 +198,7 @@ public class UserController {
         - `INVALID_REQUEST_FIELD(400)`: 닉네임 규칙 위반/필드 누락.
         - `USER_NOT_FOUND(404)`: 내부 임시 정보 미존재 등으로 가입 완료 불가.
         - `EMAIL_ALREADY_EXIST(400)`: 경합 상황에서 동일 이메일이 이미 가입 완료된 경우.
+        - `VERIFICATION_SERVICE_UNAVAILABLE(503)`: 인증 저장소 장애 — 잠시 후 재시도.
 
         ### 테스트 방법
         1. **POST** `/api/users/profile`
@@ -399,6 +403,7 @@ public class UserController {
     ### 예외상황 / 에러코드
     - `EMAIL_NOT_FOUND(400)` : 가입되지 않은 이메일
     - `INVALID_REQUEST_FIELD(400)` : 이메일 누락/형식 오류
+    - `VERIFICATION_SERVICE_UNAVAILABLE(503)` : 인증 저장소 장애 — 메일 미발송, 잠시 후 재시도
 
     ### 테스트 방법
     1. Swagger에서 **POST** `/api/users/password/find/email`
@@ -442,9 +447,9 @@ public class UserController {
     - 불일치 시 실패
 
     ### 예외상황 / 에러코드
-    - `INVALID_VERIFICATION_CODE(400)` : 코드 불일치
-    - `VERIFICATION_CODE_EXPIRED(400)` : 인증번호 만료
+    - `INVALID_VERIFICATION_CODE(400)` : 코드 불일치·만료·미발급
     - `INVALID_REQUEST_FIELD(400)` : 필드 누락/형식 오류
+    - `VERIFICATION_SERVICE_UNAVAILABLE(503)` : 인증 저장소 장애 — 잠시 후 재시도
 
     ### 테스트 방법
     1. **POST** `/api/users/password/find/verify`
@@ -457,23 +462,24 @@ public class UserController {
     )
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "인증 성공(본문 없음)"),
-        @ApiResponse(responseCode = "400", description = "코드 불일치 / 만료 / 필드 오류",
-            content = @Content(mediaType = "application/json", examples = {
-                @ExampleObject(name = "코드 불일치", value = """
+        @ApiResponse(responseCode = "400", description = "코드 오류 / 필드 오류",
+            content = @Content(mediaType = "application/json",
+                examples = @ExampleObject(name = "코드 불일치·만료·미발급", value = """
             {
               "timestamp": "2025-11-16T20:12:00",
               "code": "INVALID_VERIFICATION_CODE",
               "message": "인증번호가 올바르지 않습니다."
             }
-            """),
-                @ExampleObject(name = "인증번호 만료", value = """
+            """))),
+        @ApiResponse(responseCode = "503", description = "인증 저장소 장애(fail-closed)",
+            content = @Content(mediaType = "application/json",
+                examples = @ExampleObject(value = """
             {
               "timestamp": "2025-11-16T20:13:00",
-              "code": "VERIFICATION_CODE_EXPIRED",
-              "message": "인증번호가 만료되었습니다."
+              "code": "VERIFICATION_SERVICE_UNAVAILABLE",
+              "message": "이메일 인증을 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해주세요."
             }
-            """)
-            }))
+            """)))
     })
     @PostMapping("/password/find/verify")
     @ResponseStatus(HttpStatus.OK)
@@ -503,6 +509,7 @@ public class UserController {
     - `EMAIL_NOT_VERIFIED(400)` : 인증되지 않은 이메일
     - `INVALID_REQUEST_FIELD(400)` : 비밀번호 형식 오류
     - `EMAIL_NOT_FOUND(400)` : 가입 계정 없음
+    - `VERIFICATION_SERVICE_UNAVAILABLE(503)` : 인증 저장소 장애 — 잠시 후 재시도
 
     ### 테스트 방법
     1. **POST** `/api/users/password/find/reset`
