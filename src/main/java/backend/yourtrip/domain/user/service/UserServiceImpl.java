@@ -204,6 +204,16 @@ public class UserServiceImpl implements UserService {
             .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
     }
 
+    @Transactional
+    @Override
+    public void logout() {
+        Long userId = getCurrentUserId();
+        User user = getUser(userId);
+
+        user = user.withRefreshToken(null);
+        userRepository.save(user);
+    }
+
     @Override
     public Long getCurrentUserId() {
         Object principal = SecurityContextHolder.getContext()
