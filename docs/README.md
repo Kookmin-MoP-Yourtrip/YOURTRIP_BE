@@ -12,6 +12,7 @@
 
 | 문서 | 내용 |
 |---|---|
+| [ci.md](guide/ci.md) | GitHub Actions CI — 검증 범위와 한계, 시크릿을 쓰지 않는 이유, 실패 시 재현·대응 |
 | [profile.md](guide/profile.md) | Spring 프로필(`local`/`prod`/`test`) 구성 원칙, 배포 서버 적용·확인 절차 |
 | [worktree.md](guide/worktree.md) | `git worktree`에서 gitignore된 파일을 다루는 법, `.worktreeinclude` 메커니즘 |
 | [monitoring.md](guide/monitoring.md) | Prometheus·Grafana 구축과 사용 |
