@@ -8,6 +8,18 @@ group = 'backend'
 version = '0.0.1-SNAPSHOT'
 description = 'yourtrip'
 
+// ci(#116): 자바 버전을 빌드 스크립트가 직접 선언한다. 종전에는 toolchain도
+// sourceCompatibility도 없어서 Gradle을 실행한 JDK가 무엇이든 그대로 컴파일됐다 —
+// "Java 21"이 IntelliJ 프로젝트 설정과 배포 스크립트(Corretto 21)에만 암묵적으로 존재했고,
+// 다른 버전으로 빌드해도 아무도 눈치채지 못하는 상태였다.
+// CI 러너의 setup-java 지정만으로는 부족하다. 그건 러너 환경의 약속일 뿐이라 로컬·IDE에는
+// 닿지 않으므로, 빌드 스크립트가 스스로 요구해야 어디서 빌드하든 같은 바이트코드가 나온다.
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 configurations {
     compileOnly {
         extendsFrom annotationProcessor
