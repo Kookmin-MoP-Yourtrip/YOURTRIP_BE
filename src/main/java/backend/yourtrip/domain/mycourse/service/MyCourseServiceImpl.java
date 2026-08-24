@@ -544,7 +544,7 @@ public class MyCourseServiceImpl implements MyCourseService {
         List<ResolvedDay> resolvedDays = resolveDays(request, courseDto);
 
         //저장 (짧은 트랜잭션)
-        Long courseId = aiCoursePersister.save(request, courseDto, resolvedDays, userId);
+        Long courseId = aiCoursePersister.save(request, courseDto.title(), resolvedDays, userId);
 
         return new AICourseCreateResponse(courseId);
     }
