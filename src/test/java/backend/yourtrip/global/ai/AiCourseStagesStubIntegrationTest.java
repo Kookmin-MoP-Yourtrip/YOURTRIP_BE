@@ -5,6 +5,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.global.ai.candidate.AreaGeocoder;
@@ -23,12 +24,21 @@ import backend.yourtrip.global.ai.grounding.GroundedDay;
 import backend.yourtrip.global.ai.grounding.GroundedPlace;
 import backend.yourtrip.global.ai.grounding.GroundingStage;
 import backend.yourtrip.global.ai.grounding.PlaceUrlEnricher;
+import backend.yourtrip.global.ai.config.AiCourseProperties;
+import backend.yourtrip.global.ai.pipeline.AiCourseDay;
+import backend.yourtrip.global.ai.pipeline.AiCourseDraft;
+import backend.yourtrip.global.ai.pipeline.AiCoursePipeline;
+import backend.yourtrip.global.ai.pipeline.AiCoursePlace;
+import backend.yourtrip.global.ai.pipeline.CourseBrief;
 import backend.yourtrip.global.ai.pipeline.CuratedDay;
 import backend.yourtrip.global.ai.pipeline.CuratedPlace;
 import backend.yourtrip.global.ai.pipeline.CuratedSlot;
 import backend.yourtrip.global.ai.pipeline.PlannerDayPlan;
 import backend.yourtrip.global.ai.pipeline.PlannerPlan;
+import backend.yourtrip.global.ai.route.RouteOptimizer;
 import backend.yourtrip.global.ai.route.SlotType;
+import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.AiCourseErrorCode;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
 import backend.yourtrip.global.kakao.config.KakaoConfig;
 import backend.yourtrip.global.naver.NaverLocalClient;
@@ -41,6 +51,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -396,6 +407,128 @@ class AiCourseStagesStubIntegrationTest {
             CandidatePool pool = retrievalStage.retrieve("경주", plan, List.of(),
                 CourseDeadline.unbounded());
             assertThat(pool.find(1, SlotType.MEAL)).isPresent();
+        }
+    }
+
+    /**
+     * 조립까지 이어 붙인 흐름 (ROADMAP 7단계).
+     *
+     * <p>목으로 만든 {@code AiCoursePipelineTest}가 <b>분기</b>를 묻는다면, 여기서 묻는 것은
+     * <b>실제 응답이 여섯 스테이지를 통과해 좌표·시각이 붙은 초안으로 나오는가</b>다.
+     * 5·6단계가 "목으로 재현한 것과 실제 응답으로 재현한 것을 둘 다 갖는다"는 선례를 세웠고,
+     * 그 값이 여기서도 같다 — 목은 스테이지 사이의 계약이 실제로 맞물리는지를 검사하지 못한다.
+     */
+    @Nested
+    @DisplayName("파이프라인 전체 (ROADMAP 7단계)")
+    class FullPipeline {
+
+        private AiCoursePipeline pipeline() {
+            return new AiCoursePipeline(
+                new PlannerAgent(llmClient, new PromptLoader(), Runnable::run),
+                retrievalStage,
+                new CuratorAgent(llmClient, new PromptLoader(), metrics, Runnable::run),
+                groundingStage, new RouteOptimizer(), urlEnricher, metrics,
+                new AiCourseProperties(30_000));
+        }
+
+        private void givenPlannerSays(String... slots) {
+            llmClient.planner = new PlannerResponse("경주 1일", "고도", List.of(
+                new PlannerResponse.Day(1, "황리단길 일대", "대릉원", "골목 산책", "10:00",
+                    List.of(slots))));
+        }
+
+        @Test
+        @DisplayName("스텁 응답만으로 좌표·시각·순서가 확정된 초안이 나온다")
+        void producesDraftFromStubs() {
+            stubKakaoDocuments(kakaoDocument("대릉원", "AT4", ANCHOR_X, ANCHOR_Y));
+            stubNaver(naverBody(naverItem("황리단길", "관광,명소>거리", "1292104983", "358386877")));
+            stubTour(emptyTourBody());
+            givenPlannerSays("ATTRACTION");
+            llmClient.curator = new CuratorResponse(1, List.of(new CuratorResponse.Slot(
+                0, "ATTRACTION", List.of(new CuratorResponse.Choice("SEEDED", 0, "황리단길")))));
+
+            AiCourseDraft draft = pipeline()
+                .generate(CourseBrief.of("경주", 1, List.of(KeywordType.HEALING)));
+
+            assertThat(draft.title()).isEqualTo("경주 1일");
+            assertThat(draft.days()).hasSize(1);
+
+            AiCourseDay day = draft.days().getFirst();
+            assertThat(day.startTime()).isEqualTo(LocalTime.of(10, 0));
+            assertThat(day.places()).isNotEmpty();
+            assertThat(day.places()).extracting(place -> place.place().name())
+                .contains("황리단길");
+            // 좌표가 0.0/0.0 이 아니라 네이버 응답에서 온 실값이어야 한다 (목표 4·7-4).
+            assertThat(day.places()).allSatisfy(place -> {
+                assertThat(place.place().latitude()).isNotZero();
+                assertThat(place.place().longitude()).isNotZero();
+                assertThat(place.startTime()).isNotNull();
+            });
+            // 두 modifier 축을 합해서 센다 - 같은 스텁을 기본 쿼리와 스타일 modifier 쿼리가
+            // 모두 받으므로 어느 쪽 유래로 잡히는지는 이 테스트가 통제하는 축이 아니다.
+            // 물어야 하는 것은 "채택 집계의 분모가 최종 코스의 장소 수와 일치하는가" 다.
+            double adopted = counter(AiCourseMetrics.CANDIDATE_ADOPTED, "source", "seeded",
+                "modifier", "false")
+                + counter(AiCourseMetrics.CANDIDATE_ADOPTED, "source", "seeded",
+                "modifier", "true");
+            assertThat(adopted).isEqualTo(day.places().size());
+        }
+
+        @Test
+        @DisplayName("후보 공급이 전면 실패해도 SUGGESTED 로 코스가 나온다 — 초안 구조로 degrade")
+        void degradesToSuggestedWhenSourcesAreDown() {
+            stubNaverStatus(500);
+            stubTourStatus(500);
+            stubKakaoDocuments(kakaoDocument("대릉원", "AT4", ANCHOR_X, ANCHOR_Y));
+            givenPlannerSays("ATTRACTION");
+            llmClient.curator = new CuratorResponse(1, List.of(new CuratorResponse.Slot(
+                0, "ATTRACTION", List.of(new CuratorResponse.Choice("SUGGESTED", null, "대릉원")))));
+
+            AiCourseDraft draft = pipeline()
+                .generate(CourseBrief.of("경주", 1, List.of(KeywordType.HEALING)));
+
+            assertThat(draft.days().getFirst().places())
+                .extracting(place -> place.place().name())
+                .containsExactly("대릉원");
+            assertThat(counter(AiCourseMetrics.CANDIDATE_ADOPTED, "source", "suggested",
+                "modifier", "false")).isEqualTo(1.0);
+        }
+
+        @Test
+        @DisplayName("Curator 가 빈 응답을 줘도 후보 목록으로 채워 코스가 나온다 (7-3)")
+        void fillsFromPoolWhenCuratorReturnsNothing() {
+            stubKakaoDocuments(kakaoDocument("대릉원", "AT4", ANCHOR_X, ANCHOR_Y));
+            stubNaver(naverBody(naverItem("황리단길", "관광,명소>거리", "1292104983", "358386877")));
+            stubTour(emptyTourBody());
+            givenPlannerSays("ATTRACTION");
+            llmClient.curator = new CuratorResponse(1, List.of());
+
+            AiCourseDraft draft = pipeline()
+                .generate(CourseBrief.of("경주", 1, List.of(KeywordType.HEALING)));
+
+            assertThat(draft.days().getFirst().places())
+                .extracting(place -> place.place().name())
+                .contains("황리단길");
+            // SEEDED 로 통과했다는 것이 곧 "폴백이 카카오 호출을 늘리지 않았다" 는 뜻이다.
+            assertThat(counter(AiCourseMetrics.GROUNDING_MATCH, "result", "hit",
+                "source", "seeded")).isPositive();
+        }
+
+        @Test
+        @DisplayName("좌표 소스가 전부 죽으면 AI_GROUNDING_FAILED(503) — 유일한 hard fail (7-4)")
+        void hardFailsWhenEveryCoordinateSourceIsDown() {
+            stubNaverStatus(500);
+            stubTourStatus(500);
+            stubKakaoStatus(500);
+            givenPlannerSays("ATTRACTION");
+            llmClient.curator = new CuratorResponse(1, List.of(new CuratorResponse.Slot(
+                0, "ATTRACTION", List.of(new CuratorResponse.Choice("SUGGESTED", null, "대릉원")))));
+
+            assertThatThrownBy(() -> pipeline()
+                .generate(CourseBrief.of("경주", 1, List.of(KeywordType.HEALING))))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(AiCourseErrorCode.AI_GROUNDING_FAILED);
         }
     }
 
