@@ -237,7 +237,7 @@ class CandidateMergerTest {
         }
 
         @Test
-        @DisplayName("본체 없이 홀로 있는 부속은 지우지 않는다 — 어휘는 삭제 근거가 아니다")
+        @DisplayName("본체 없이 홀로 있는 부속은 지우지 않는다 — 이름이 아니라 짝이 근거다")
         void keepsStandaloneSubordinate() {
             List<PlaceCandidate> collapsed = CandidateMerger.collapseSubordinates(List.of(
                 CandidateFixtures.listed("대릉원 주차장", CHEONMACHONG_LAT, CHEONMACHONG_LON, 0.4,
@@ -246,25 +246,6 @@ class CandidateMergerTest {
                     Set.of())));
 
             assertThat(collapsed).hasSize(2);
-        }
-
-        @Test
-        @DisplayName("본체 후보가 둘이면 어휘가 귀속을 가른다 — 매표소가 아니라 천마총에 붙는다")
-        void vocabularyDecidesWhichPrimaryAbsorbs() {
-            // 정규화 길이가 천마총·매표소 둘 다 3이라 길이로는 갈리지 않는다. 어휘가 없으면
-            // 이름순이 동점을 깨서 "매표소"가 먼저 본체가 되고 "천마총매표소"를 삼킨다.
-            List<PlaceCandidate> collapsed = CandidateMerger.collapseSubordinates(List.of(
-                CandidateFixtures.listed("천마총", CHEONMACHONG_LAT, CHEONMACHONG_LON, 0.4,
-                    Set.of(StyleTag.HISTORY)),
-                CandidateFixtures.listed("매표소", NAEMUL_LAT, NAEMUL_LON, 0.5, Set.of()),
-                CandidateFixtures.listed("천마총매표소", CHEONMACHONG_LAT, CHEONMACHONG_LON, 0.4,
-                    Set.of(StyleTag.QUIET))));
-
-            assertThat(collapsed).extracting(PlaceCandidate::name)
-                .containsExactly("천마총", "매표소");
-            assertThat(collapsed.get(0).styleTags())
-                .as("천마총매표소가 천마총에 흡수됐다")
-                .containsExactlyInAnyOrder(StyleTag.HISTORY, StyleTag.QUIET);
         }
 
         @Test

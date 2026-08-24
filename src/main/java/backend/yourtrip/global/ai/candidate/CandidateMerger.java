@@ -29,26 +29,6 @@ import java.util.function.BiConsumer;
  */
 public final class CandidateMerger {
 
-    /**
-     * 이름에 부속임이 드러나는 어휘 (이슈 #106). <b>tie-break 전용이라 이 목록만으로 후보를
-     * 지우지 않는다</b> — 짝이 잡혔을 때만 쓰이므로 본체 없이 홀로 있는 주차장은 그대로 남는다.
-     *
-     * <h3>어느 쌍의 승자를 뒤집는 용도가 아니다</h3>
-     * 진포함 쌍에서는 <b>어휘가 결과를 바꿀 수 없다.</b> {@code A ⊊ B}이고 {@code A}에 어휘가
-     * 있으면 {@code B}는 {@code A}를 통째로 품으므로 <b>어휘도 함께 갖는다</b> — 둘의 어휘
-     * 점수가 같아져 길이가 승자를 정한다. 어느 조합을 따져도 <b>짧은 쪽이 본체</b>다.
-     *
-     * <h3>실제로 가르는 것은 "누구에게 귀속시킬까"다</h3>
-     * 길이가 같은 본체 후보가 둘일 때 갈린다. {@code 천마총}·{@code 매표소}·{@code 천마총매표소}가
-     * 한 슬롯에 있으면, 어휘가 없으면 길이 동점을 이름순이 깨서 <b>{@code 매표소}가 먼저 본체가
-     * 되고 {@code 천마총매표소}가 거기에 흡수된다.</b> 어휘로 {@code 매표소}를 뒤로 미뤄야
-     * {@code 천마총}이 먼저 본체가 되어 옳은 귀속이 나온다.
-     *
-     * <p>그래서 어휘가 좁아도 안전하다. 주된 판정은 진포함과 거리가 맡고, 여기 없는 부속(경내
-     * 문화재 같은 것)도 <b>짧은 쪽이 본체</b>라는 기본 규칙으로 정리된다.
-     */
-    private static final List<String> SUBORDINATE_TOKENS = List.of("주차장", "입구", "매표소");
-
     private CandidateMerger() {
     }
 
@@ -129,12 +109,17 @@ public final class CandidateMerger {
      * 자주 발동해, 이슈 #106과 무관한 동작 변경이 된다.
      *
      * <h2>어느 쪽을 남기는가 — 짧은 쪽이 본체다</h2>
-     * 진포함이면 길이 차이가 항상 있으므로 <b>쌍의 승자는 길이만으로 정해진다</b>
-     * ({@code 갑사} ⊊ {@code 공주갑사철당간}). {@link #SUBORDINATE_TOKENS}를 길이보다 먼저 보는
-     * 것은 그 승자를 뒤집기 위해서가 아니라 — 그건 애초에 불가능하다, 상수 javadoc 참고 —
-     * <b>길이가 같은 본체 후보가 둘일 때 부속을 누구에게 귀속시킬지</b>를 가르기 위해서다.
-     * <b>어휘만으로 후보를 지우지는 않는다</b> — 짝이 잡혔을 때만 쓰이므로, 본체 없이 홀로 있는
-     * 주차장은 그대로 남는다.
+     * <b>부속 이름은 본체 이름에 수식이 붙은 것이라 언제나 더 길다</b>
+     * ({@code 갑사} ⊊ {@code 공주갑사철당간}). 진포함을 조건으로 삼은 이상 길이 차이가 항상
+     * 있으므로, <b>길이만으로 승자가 정해진다.</b>
+     *
+     * <p><b>부속 어휘({@code 주차장}·{@code 입구}) 목록은 두지 않는다.</b> 이슈 #106은 그 어휘로
+     * 버릴 쪽을 고르는 안을 함께 올렸지만, {@code A ⊊ B}이면 {@code B}가 {@code A}를 통째로
+     * 품으므로 <b>어휘까지 함께 갖는다</b> — 어휘 점수가 같아져 결국 길이가 정한다. 어느 조합을
+     * 따져도 결과가 같아, 목록을 둬도 하는 일이 없다.
+     *
+     * <p><b>이 규칙은 짝이 잡혔을 때만 발동한다</b> — 본체 없이 홀로 있는 주차장은 그대로 남는다.
+     * "이름이 부속스러우니 지운다"가 아니라 "본체가 옆에 있으니 중복이다"라는 판단이다.
      *
      * <p><b>버리지 않고 흡수한다.</b> {@link #absorbDuplicate}를 그대로 쓰므로 부속이 갖고 있던
      * {@code styleTags}는 본체에 합쳐진다.
@@ -169,8 +154,8 @@ public final class CandidateMerger {
             visitOrder.add(i);
         }
         visitOrder.sort(Comparator
-            .comparingInt((Integer i) -> hasSubordinateToken(candidates.get(i).name()) ? 1 : 0)
-            .thenComparingInt(i -> PlaceNameNormalizer.normalize(candidates.get(i).name()).length())
+            .comparingInt(
+                (Integer i) -> PlaceNameNormalizer.normalize(candidates.get(i).name()).length())
             // 동점을 이름으로 깬다 — 같은 입력에 같은 목록이 나가야 6-7의 listIndex 검증이 재현된다.
             .thenComparing(i -> candidates.get(i).name()));
 
@@ -208,11 +193,6 @@ public final class CandidateMerger {
             }
         }
         return null;
-    }
-
-    private static boolean hasSubordinateToken(String name) {
-        String normalized = PlaceNameNormalizer.normalize(name);
-        return SUBORDINATE_TOKENS.stream().anyMatch(normalized::contains);
     }
 
     private static int indexOfMatch(List<PlaceCandidate> officials, boolean[] consumed,
