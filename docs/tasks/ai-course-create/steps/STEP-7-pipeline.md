@@ -321,15 +321,54 @@ TourAPI가 실제로 반환한 실존 장소만 들어가므로 LLM이 이름을
 
 ---
 
+## 판정 14 — 요청 전체 지연을 태그 없는 별도 타이머로 잰다 ★★ (7-5 추가 보강)
+
+판정 12에서 단계별 히스토그램을 붙였지만, **단계별 p95의 합은 요청 전체 p95가 아니다.** 단계가
+서로 독립이면 "모든 단계가 동시에 최악인 요청"은 실제 20명 중 1명보다 드물어 합이 과대평가고,
+반대로 외부 요인(OpenAI 전반 지연 등)으로 단계들이 **같이** 느려지면 합에 가깝거나 넘을 수도
+있다 — **어느 쪽인지는 단계별 분포만으로 알 수 없다.**
+
+그런데 **11-2의 202 Accepted 전환 판단 기준이 정확히 요청 전체 p95**다. 부분의 합을 그 자리에
+쓰면 판단이 오차의 방향도 모르는 값 위에 서게 된다.
+
+### `ai.course.request.duration` — 태그 없는 단일 타이머
+
+`AiCoursePipeline.generate()`를 `try/finally`로 감싸 요청 시작부터 끝까지를 잰다. `doGenerate()`로
+기존 본문을 그대로 옮기고, `generate()`는 시간만 재는 얇은 껍데기가 됐다 — 스테이지별 `timed()`
+헬퍼와 같은 모양이다.
+
+- **실패해도 기록한다.** hard fail로 끝난 요청도 그 시간만큼 예산을 썼다는 사실은 성공했을 때와
+  다르지 않다(판정 12가 스테이지에 대해 세운 원칙과 같다)
+- DB 저장·직렬화는 포함하지 않는다. 컨트롤러 계층에 아직 연결된 경로가 없어(8단계 전) 잴 수도
+  없고, 파이프라인이 전체 시간의 대부분을 차지해 202 판단에는 이 값으로 충분하다
+- 상한은 스테이지 타이머와 같은 30초(요청 예산)를 그대로 쓴다 — 재는 대상의 성질이 같다
+
+### `http_server_requests`를 켜는 대신 별도 타이머를 둔 이유
+
+STEP-7 초안의 "남은 작업"은 8단계에서 컨트롤러가 연결되면 Actuator의 `http_server_requests`가
+같은 값을 잡을 거라고 적어 뒀다. **그 계획을 뒤집었다.**
+
+| | `http_server_requests` 히스토그램 | 전용 타이머 (채택) |
+|---|---|---|
+| 적용 범위 | **전 엔드포인트** — 카디널리티 판단이 선행돼야 한다 | 이 엔드포인트 하나. 영향 0 |
+| 착수 시점 | 8단계 이후에만 가능(컨트롤러 연결이 전제) | **지금 가능** |
+| 8-6 측정과의 관계 | 8단계 스위치 뒤에나 설정을 켤 수 있어, 8-6 측정 시점에 없을 위험이 있다 | 8-6이 돌기 전에 이미 켜져 있다 |
+
+8-6·11-2 측정은 30요청 × LLM 호출을 쓰는 **유료 배치 측정**이다(적용 원칙). 측정 시점에 잴
+준비가 안 돼 있으면 전체 p95만 다시 재기 위해 같은 비용을 한 번 더 내야 한다 — 그 위험을
+없애는 쪽을 택했다.
+
+---
+
 ## 검증 기록
 
 | 항목 | 방법 | 결과 |
 |---|---|---|
-| 단위·통합 테스트 | `./gradlew test` | **754개 전부 통과**(7단계에서 46개 추가) |
-| 정상 기동 | `bootRun` | **14.3초**, `Started YourtripApplication` |
+| 단위·통합 테스트 | `./gradlew test` | **756개 전부 통과**(7단계에서 48개 추가) |
+| 정상 기동 | `bootRun` | **14.8초**, `Started YourtripApplication` |
 | 빈 배선 | 위와 동일 | `AiCoursePipeline`이 `AiCourseProperties`를 요구하므로 **기동 성공이 곧 배선 성공**이다 |
-| 신규 메트릭 0 등록 | `/actuator/prometheus` | `ai_course_pipeline_duration_seconds_count` **6개** + `ai_candidate_adopted_total` **6개** + `ai_curation_slot_total` **3개**, 전부 0 |
-| 히스토그램 버킷 | 같은 엔드포인트 | `ai_course_pipeline_duration_seconds_bucket` 단계당 **69개**(총 414 시계열). `histogram_quantile`로 p95 계산 가능 |
+| 신규 메트릭 0 등록 | `/actuator/prometheus` | `ai_course_pipeline_duration_seconds_count` **6개** + `ai_candidate_adopted_total` **6개** + `ai_curation_slot_total` **3개** + `ai_course_request_duration_seconds_count` **1개**, 전부 0 |
+| 히스토그램 버킷 | 같은 엔드포인트 | `ai_course_pipeline_duration_seconds_bucket` 단계당 **69개**(총 414 시계열) + `ai_course_request_duration_seconds_bucket` **69개**. `histogram_quantile`로 단계별·요청 전체 p95 모두 계산 가능 |
 | 기존 메트릭 무회귀 | 같은 엔드포인트 | 5·6단계 계열 **42개 시계열 그대로** |
 | 기존 경로 무변화 | 컨트롤러 확인 | 여전히 `GeminiService` — 파이프라인으로 가는 경로 없음 |
 
@@ -348,14 +387,14 @@ TourAPI가 실제로 반환한 실존 장소만 들어가므로 LLM이 이름을
 재현된다. 실호출로만 드러나는 것(모델 응답의 실제 형태)은 6단계 프로브가 이미 봤고, 파이프라인 전체의
 실호출은 8단계 E2E가 같은 경로를 태운다 — 여기서 한 번 더 쏘면 비용만 두 배가 된다.
 
-### 테스트 구성 (36개)
+### 테스트 구성 (38개)
 
 | 파일 | 개수 | 무엇을 묻는가 |
 |---|---|---|
-| `AiCoursePipelineTest` | 17 | 조립 순서·degrade 분기·hard fail 경계·인덱스 재조립·메트릭 |
+| `AiCoursePipelineTest` | 19 | 조립 순서·degrade 분기·hard fail 경계·인덱스 재조립·메트릭(요청 전체 지연 포함) |
 | `DeterministicCurationTest` | 14 | 빈 자리만 채우는가, `listIndex`가 0-based인가, 슬롯 집계가 전체를 나누는가 |
 | `CourseBriefTest` | 7 | 이동수단이 키워드에서 읽히는가(판정 8) |
-| `AiCourseMetricsTest` | 4 | **실제 Prometheus 출력**에 버킷과 0 시계열이 실리는가(판정 12) |
+| `AiCourseMetricsTest` | 6 | **실제 Prometheus 출력**에 버킷과 0 시계열이 실리는가(판정 12·14) |
 | `AiCourseStagesStubIntegrationTest$FullPipeline` | 4 | 실제 스텁 응답이 여섯 스테이지를 통과하는가 |
 
 `AiCourseMetricsTest`만 `PrometheusMeterRegistry`를 쓴다 — **`SimpleMeterRegistry`는 집계 가능한
@@ -386,13 +425,12 @@ TourAPI가 실제로 반환한 실존 장소만 들어가므로 LLM이 이름을
 - ~~**폴백 발동 빈도가 계측되지 않는다**~~ → **해소했다**(판정 13). `ai.curation.slot{result}`로
   슬롯 단위 집계를 추가했다
 - ~~**지연 Timer 가 p95 를 못 낸다**~~ → **해소했다**(판정 12). 두 Timer에 히스토그램 버킷을 켰다
-- **요청 전체의 p95는 아직 없다** — 지금 있는 것은 단계별 분포뿐이고, **p95의 합은 합의 p95가
-  아니다.** 8단계에서 컨트롤러가 연결되면 Actuator의 `http_server_requests`가 `POST /api/my-courses/ai`를
-  잡으므로 별도 메트릭은 필요 없지만, **그쪽도 히스토그램을 켜야 한다**
-  (`management.metrics.distribution.percentiles-histogram.http.server.requests`). 전 엔드포인트에
-  적용되는 설정이라 카디널리티 판단이 따로 필요해 여기서는 손대지 않았다
-- **히스토그램 414개 시계열의 비용** — 로컬 Prometheus에서는 문제가 없지만, 배포 환경의 보존 기간과
-  함께 한 번은 확인할 값이다. 줄이려면 `serviceLevelObjectives`로 필요한 경계만 남기는 방법이 있다
+- ~~**요청 전체의 p95는 아직 없다**~~ → **해소했다**(판정 14). `ai.course.request.duration`
+  전용 타이머를 붙였다 — `http_server_requests`를 켜는 안은 8단계 이후에나 가능하고 전 엔드포인트
+  카디널리티 판단이 선행돼야 해 8-6 측정 시점에 없을 위험이 있었다
+- **히스토그램 483개 시계열의 비용**(단계별 414 + 요청 전체 69) — 로컬 Prometheus에서는 문제가
+  없지만, 배포 환경의 보존 기간과 함께 한 번은 확인할 값이다. 줄이려면 `serviceLevelObjectives`로
+  필요한 경계만 남기는 방법이 있다
 
 ---
 

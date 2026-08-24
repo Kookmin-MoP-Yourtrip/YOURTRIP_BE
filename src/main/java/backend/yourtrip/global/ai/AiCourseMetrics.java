@@ -33,7 +33,7 @@ import org.springframework.stereotype.Component;
  * ({@code llm.agents})에서 오므로 조합을 미리 알 수 없다.
  *
  * <h2>지연은 히스토그램으로 낸다</h2>
- * 두 Timer({@code ai.course.pipeline.duration}·{@code ai.llm.call})는
+ * 세 Timer({@code ai.course.pipeline.duration}·{@code ai.course.request.duration}·{@code ai.llm.call})는
  * {@code publishPercentileHistogram()}으로 버킷을 내보낸다. 기본값(count·sum·max)으로는 평균만
  * 나오는데, <b>11-2가 요구하는 판단 기준은 p95</b>다 — 꼬리가 긴 분포에서 평균은 "20명 중 1명이
  * 25초를 기다린다"를 가린다.
@@ -107,6 +107,23 @@ public class AiCourseMetrics {
      * 예외를 올리지 않고 degrade하므로 그 축이 사실상 상수가 된다.
      */
     public static final String PIPELINE_DURATION = "ai.course.pipeline.duration";
+
+    /**
+     * <b>요청 하나가 시작부터 끝까지 걸린 시간</b> (ROADMAP 7-5 보강).
+     *
+     * <p>{@link #PIPELINE_DURATION}의 단계별 값을 더해도 이 값이 되지 않는다 — 단계별 p95의 합은
+     * 전체 p95가 아니다. 단계가 서로 독립이면 "모든 단계가 동시에 최악인 요청"은 실제 20명 중
+     * 1명보다 드물어 합이 과대평가고, 외부 요인(OpenAI 전반 지연 등)으로 단계들이 <b>같이</b>
+     * 느려지면 합에 가깝거나 넘을 수도 있다 — 어느 쪽인지는 단계별 분포만으로 알 수 없다.
+     *
+     * <p><b>11-2의 202 Accepted 전환 판단은 정확히 이 값(요청 전체 p95)에 걸려 있다.</b> 판단
+     * 기준이 부분합이 아니라 전체 시간이므로, 태그 없는 단일 타이머로 따로 잰다.
+     *
+     * <p>DB 저장(30~80ms 설계 추정)·직렬화는 포함하지 않는다 — 파이프라인이 전체 시간의
+     * 대부분을 차지해 202 판단에는 이 값으로 충분하고, 그 나머지까지 재려면 컨트롤러 계층에
+     * 태그 없는 타이머를 하나 더 둬야 하는데 지금은 그 계층에 연결된 경로가 없다(8단계 스위치 전).
+     */
+    public static final String REQUEST_DURATION = "ai.course.request.duration";
 
     /**
      * <b>최종 코스에 실린 장소가 어디서 왔는가</b> (ROADMAP 7-5, 5-8에서 이관).
@@ -197,6 +214,7 @@ public class AiCourseMetrics {
         for (PipelineStage stage : PipelineStage.values()) {
             pipelineTimer(stage);
         }
+        requestTimer();
         for (CandidateSourceType source : CandidateSourceType.values()) {
             for (boolean fromModifier : new boolean[]{true, false}) {
                 adoptedCounter(source, fromModifier);
@@ -268,6 +286,14 @@ public class AiCourseMetrics {
     }
 
     /**
+     * 요청 하나의 시작부터 끝까지 (ROADMAP 7-5 보강). 실패해도 기록한다 — hard fail로 끝난
+     * 요청도 그 시간만큼 예산을 썼다는 사실은 성공했을 때와 다르지 않다.
+     */
+    public void requestDuration(long durationNanos) {
+        requestTimer().record(durationNanos, TimeUnit.NANOSECONDS);
+    }
+
+    /**
      * 최종 코스에 실린 장소를 출처별로 집계한다 (ROADMAP 7-5).
      *
      * @param fromModifier 스타일 modifier 쿼리에서 온 후보인가
@@ -302,6 +328,14 @@ public class AiCourseMetrics {
     private Timer pipelineTimer(PipelineStage stage) {
         return Timer.builder(PIPELINE_DURATION)
             .tag("stage", tag(stage.name()))
+            .publishPercentileHistogram()
+            .minimumExpectedValue(LATENCY_MIN)
+            .maximumExpectedValue(PIPELINE_LATENCY_MAX)
+            .register(registry);
+    }
+
+    private Timer requestTimer() {
+        return Timer.builder(REQUEST_DURATION)
             .publishPercentileHistogram()
             .minimumExpectedValue(LATENCY_MIN)
             .maximumExpectedValue(PIPELINE_LATENCY_MAX)
