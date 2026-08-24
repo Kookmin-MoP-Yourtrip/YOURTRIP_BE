@@ -478,6 +478,9 @@ class AiCoursePipelineTest {
                     .as("%s 단계가 기록되지 않았다", stage)
                     .isEqualTo(1);
             }
+            // 단계별 값을 더해도 이 값이 되지 않는다 — 별도로 기록된다.
+            assertThat(registry.get(AiCourseMetrics.REQUEST_DURATION).timer().count())
+                .isEqualTo(1);
         }
 
         @Test
@@ -494,6 +497,9 @@ class AiCoursePipelineTest {
             // 도달하지 못한 단계는 0으로 남는다.
             assertThat(registry.get(AiCourseMetrics.PIPELINE_DURATION)
                 .tag("stage", "url_enrich").timer().count()).isZero();
+            // hard fail로 끝나도 그 시간만큼 예산을 썼다는 사실은 다르지 않다.
+            assertThat(registry.get(AiCourseMetrics.REQUEST_DURATION).timer().count())
+                .isEqualTo(1);
         }
 
         @Test

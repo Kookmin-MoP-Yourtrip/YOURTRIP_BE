@@ -106,6 +106,18 @@ public class AiCoursePipeline {
      *                           {@code AI_COURSE_TIMEOUT}(그 원인이 예산 소진일 때)
      */
     public AiCourseDraft generate(CourseBrief brief) {
+        // 단계별 p95 를 더해도 요청 전체 p95 가 되지 않는다(AiCourseMetrics.REQUEST_DURATION
+        // javadoc). 11-2 의 202 Accepted 전환 판단이 이 값에 걸려 있어 별도로 잰다. 실패한
+        // 요청도 그 시간만큼 예산을 썼으므로 finally 에서 기록한다.
+        long startNanos = System.nanoTime();
+        try {
+            return doGenerate(brief);
+        } finally {
+            metrics.requestDuration(System.nanoTime() - startNanos);
+        }
+    }
+
+    private AiCourseDraft doGenerate(CourseBrief brief) {
         // 요청당 한 번. 이후 모든 스테이지가 이 하나를 나눠 쓴다 - 스테이지마다 새로 만들면
         // 각자 예산을 다 쓸 수 있게 되어 전체 상한이 사라진다.
         CourseDeadline deadline = CourseDeadline.startingNow(budget);

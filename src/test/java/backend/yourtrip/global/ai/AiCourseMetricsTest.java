@@ -68,6 +68,17 @@ class AiCourseMetricsTest {
             assertThat(scrape).contains("ai_course_pipeline_duration_seconds_bucket");
             assertThat(scrape).contains("le=\"+Inf\"");
         }
+
+        @Test
+        @DisplayName("요청 전체 지연에도 태그 없는 le 버킷이 실린다 — 단계별 p95 의 합이 아니다")
+        void requestDurationHasBuckets() {
+            metrics.requestDuration(TimeUnit.SECONDS.toNanos(11));
+
+            assertThat(registry.scrape())
+                .as("11-2 의 202 전환 판단은 이 값(요청 전체 p95)에 걸려 있다 — "
+                    + "단계별 값을 더한 값이 아니다")
+                .contains("ai_course_request_duration_seconds_bucket");
+        }
     }
 
     @Nested
@@ -83,6 +94,12 @@ class AiCourseMetricsTest {
             assertThat(scrape).contains("result=\"curator\"");
             assertThat(scrape).contains("result=\"fallback\"");
             assertThat(scrape).contains("result=\"unfilled\"");
+        }
+
+        @Test
+        @DisplayName("요청이 한 번도 없어도 전체 지연 시계열이 존재한다 — 태그 조합이 아니라 단일 값이라 미리 등록해도 비용이 없다")
+        void requestDurationIsRegistered() {
+            assertThat(registry.scrape()).contains("ai_course_request_duration_seconds_count 0");
         }
     }
 }
