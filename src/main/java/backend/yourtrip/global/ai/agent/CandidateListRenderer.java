@@ -17,10 +17,15 @@ import java.util.StringJoiner;
 /**
  * Curator 프롬프트에 실을 <b>슬롯 구성과 후보 목록</b>을 만든다 (ROADMAP 6-4).
  *
- * <h2>목록의 순서 자체가 신호다</h2>
- * LLM은 목록 앞쪽을 더 자주 고르는 위치 편향이 있다. <b>이걸 억누르지 않고 이용한다</b> —
- * {@code CandidateOrdering}이 이미 "시드 → 스타일 일치 → 거리" 사전식으로 줄을 세워 뒀으므로,
- * 그 순서를 그대로 실으면 점수 계산 없이도 인기도가 선별에 반영된다. 여기서 다시 정렬하지 않는다.
+ * <h2>판단 근거는 순서가 아니라 각 줄에 싣는다</h2>
+ * 설계는 "LLM은 앞쪽을 더 자주 고르니 그 편향을 이용한다"고 적었지만 <b>그 전제는 이 저장소에서
+ * 확인된 적이 없다</b> — 순서만 섞어 두 번 물어본 실험이 미판정 구간에 들었다(6단계 판정 12).
+ * 그래서 "앞에 뒀으니 알아서 보겠지"에 기대지 않고, <b>인기 순위·질의 범위·거리를 전부 줄 안의
+ * 텍스트로 적는다.</b> 모델이 확실히 읽는 자리는 거기뿐이다.
+ *
+ * <p><b>그래도 여기서 다시 정렬하지는 않는다.</b> 순서는 {@code CandidateOrdering}이 cap 경계와
+ * 재현성을 근거로 이미 정했고, 렌더러가 한 번 더 손대면 {@code listIndex}가 가리키는 대상이 달라져
+ * 6-7의 위조 검증이 무력화된다 — 아래 "번호는 0부터다"와 같은 이유다.
  *
  * <h2>번호는 0부터다</h2>
  * {@code CandidateSlot.at(listIndex)}가 리스트 인덱스를 그대로 쓰기 때문이다. 5단계가
@@ -130,11 +135,31 @@ public final class CandidateListRenderer {
      * 출처 표식. <b>{@code seedRank}를 점수가 아니라 표식으로만 쓴다</b> — 쿼리 하나 안에서의 상대
      * 순위일 뿐이라 스타일 쿼리의 3위와 기본 쿼리의 3위는 같은 등급이 아니다. 숫자를 보여주되
      * 계산에 넣지 않는 것이 그 거친 신호를 다루는 안전한 방식이다.
+     *
+     * <h3>그 경고에는 축이 하나 더 있다 (이슈 #113)</h3>
+     * 지명 캐스케이드(이슈 #110)가 생기면서 순위는 <b>지리적 범위</b>로도 갈렸다. {@code location}
+     * 단계에서 온 후보의 1위는 <b>도시 전역의 1위</b>이고, 그 후보의 거리 중앙값은 6.34km로 권역
+     * 질의(1.20km)의 다섯 배다. 그런데 모델은 질의가 무엇이었는지 모르므로 {@code [seed 1위]}를
+     * <b>"이 권역 인기 1위"로 읽고</b>, 프롬프트의 선별 기준 2가 그 잘못된 근거로 발동한다.
+     *
+     * <p>그래서 그 후보만 <b>순위 숫자를 빼고 범위를 밝힌다</b>({@code [seed·광역]}).
+     * <ul>
+     *   <li><b>표식 자체를 없애지는 않는다</b> — {@code seed}가 사라지면 모델이 {@code source}를
+     *       {@code SUGGESTED}로 적을 근거가 생겨 6-7의 {@code unknown_source} 강등을 부른다</li>
+     *   <li><b>{@code anchor} 단계는 그대로 둔다</b> — 추가분 거리 중앙값이 1.07km로 권역 질의와
+     *       다르지 않아 등급을 나눌 근거가 없다</li>
+     *   <li><b>여기서 순서를 바꾸지는 않는다</b> — 목록 순서가 선택을 얼마나 좌우하는지는 아직
+     *       측정된 바 없고, {@code CandidateOrdering} 수정은 그 실측 뒤의 일이다</li>
+     * </ul>
      */
     private static String marker(PlaceCandidate candidate) {
         StringJoiner marks = new StringJoiner("·");
         if (candidate.seeded()) {
-            marks.add("seed %d위".formatted(candidate.seedRank()));
+            // 순위는 그 질의 안에서만 뜻이 있다. 도시 전역 질의의 순위를 그대로 실으면
+            // "이 권역 인기 n위"라는 없는 사실을 주장하게 된다.
+            marks.add(candidate.fromCityWideQuery()
+                ? "seed·광역"
+                : "seed %d위".formatted(candidate.seedRank()));
         }
         if (candidate.official()) {
             marks.add("관광");

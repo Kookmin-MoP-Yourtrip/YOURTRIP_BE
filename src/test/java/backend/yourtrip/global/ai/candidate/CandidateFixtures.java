@@ -34,6 +34,19 @@ final class CandidateFixtures {
             latitude, longitude, SlotType.ATTRACTION, styleTags, null, null, distanceKm, "A02010700");
     }
 
+    /**
+     * 지명 단계만 바꿔 복사한다 (이슈 #113).
+     *
+     * <p>위 픽스처들은 위임 생성자를 타 {@link SeedScope#AREA}가 되므로, 캐스케이드에서 온 후보를
+     * 흉내 내려면 이 helper 가 필요하다.
+     */
+    static PlaceCandidate withScope(PlaceCandidate candidate, SeedScope scope) {
+        return new PlaceCandidate(candidate.source(), candidate.name(), candidate.address(),
+            candidate.latitude(), candidate.longitude(), candidate.slotType(),
+            candidate.styleTags(), candidate.seedRank(), scope, candidate.matchedModifier(),
+            candidate.distanceKm(), candidate.rawCategory());
+    }
+
     static PlaceCandidate cafe(String name, String address, Integer seedRank, StyleTag modifier) {
         return new PlaceCandidate(CandidateSourceType.SEEDED, name, address,
             CHEONMACHONG_LAT, CHEONMACHONG_LON, SlotType.CAFE, Set.of(), seedRank, modifier, null,

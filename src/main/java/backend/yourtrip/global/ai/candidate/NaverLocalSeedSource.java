@@ -10,7 +10,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -42,13 +41,19 @@ public class NaverLocalSeedSource {
      *                       1(0건일 때만) — <b>근거는 실측이다.</b> anchor 로 채운 후보는 거리
      *                       중앙값 1.07km 로 1단계(1.20km)와 다르지 않은데, location 으로 채우면
      *                       6.34km 로 다섯 배가 되어 day 를 권역으로 나눈 의미가 사라진다
+     * @param scope          이 단계에서 얻은 후보에 새길 지명 단계(이슈 #113). <b>여기서 실어 주지
+     *                       않으면 도시 전역 질의의 1위가 권역 안 1위와 구별되지 않는다</b>
      */
-    public record Fallback(String area, int minCandidates) {
+    public record Fallback(String area, int minCandidates, SeedScope scope) {
 
         public Fallback {
             if (minCandidates < 1) {
                 throw new IllegalArgumentException(
                     "minCandidates는 1 이상이어야 한다(1이면 0건일 때만): " + minCandidates);
+            }
+            if (scope == null) {
+                throw new IllegalArgumentException(
+                    "scope는 필수다 — 이 단계에서 온 후보를 나중에 구별할 유일한 통로다");
             }
         }
     }
@@ -66,9 +71,14 @@ public class NaverLocalSeedSource {
      * 0건일 때만 탄다({@link Fallback#minCandidates()}). 넓은 지명일수록 데려오는 후보가 멀어지기
      * 때문이다 — anchor 추가분 1.07km 대 location 추가분 6.34km.
      *
+     * <p><b>어느 단계에서 왔는지는 후보에 새겨 나간다</b>({@link SeedScope}, 이슈 #113). 단계마다
+     * 자기 응답 안에서 {@code seedRank}를 새로 낳으므로, 이 값이 없으면 도시 전역 질의의 1위가
+     * 권역 안 1위와 같은 얼굴로 Curator 목록에 실린다.
+     *
      * <p><b>겹치는 장소는 {@link CandidateMerger#dedupeWithinSource}가 합친다.</b> 앞 단계를 먼저
-     * 넣으므로 <b>{@code seedRank}는 좁은 지명의 것이 남고</b> {@code styleTags}는 합집합이 된다 —
-     * "먼저 만난 쪽이 이긴다"가 곧 "가까운 질의의 순위가 남는다"가 되게 하는 순서다.
+     * 넣으므로 <b>{@code seedRank}와 {@code seedScope}는 좁은 지명의 것이 남고</b>
+     * {@code styleTags}는 합집합이 된다 — "먼저 만난 쪽이 이긴다"가 곧 "가까운 질의의 순위가
+     * 남는다"가 되게 하는 순서다.
      *
      * @param fallbacks 0건이거나 모자랄 때 차례로 시도할 단계. <b>{@code anchor} → {@code location}
      *                  순서</b>로 넣는다. 이미 물어본 지명은 건너뛴다(관측 30쌍 중 18쌍이 정규화
@@ -84,8 +94,8 @@ public class NaverLocalSeedSource {
         String primary = AreaQueryNormalizer.toSearchTerm(area);
         markAsked(asked, primary);
 
-        CandidateBatch batch =
-            searchOnce(primary, slotType, modifier, anchorLatitude, anchorLongitude);
+        CandidateBatch batch = searchOnce(primary, slotType, modifier, SeedScope.AREA,
+            anchorLatitude, anchorLongitude);
         if (modifier != null || batch.outcome() == CandidateOutcome.FAILED
             || fallbacks == null || fallbacks.isEmpty()) {
             // FAILED 는 "물어보지 못했다"라 재질의 대상이 아니다 — "물어봤는데 없더라"와 다른
@@ -106,8 +116,8 @@ public class NaverLocalSeedSource {
             log.debug("권역 '{}' 의 {} 후보가 {}건뿐이라 '{}' 로 더 모은다",
                 area, slotType, merged.size(), term);
 
-            CandidateBatch next =
-                searchOnce(term, slotType, modifier, anchorLatitude, anchorLongitude);
+            CandidateBatch next = searchOnce(term, slotType, modifier, fallback.scope(),
+                anchorLatitude, anchorLongitude);
             if (next.outcome() == CandidateOutcome.FAILED) {
                 // 여기까지 모은 것은 살린다. 실패를 돌려주면 앞 단계의 성과까지 버리게 된다.
                 log.debug("'{}' 재질의가 실패했다 — 지금까지 모은 {}건으로 진행한다", term, merged.size());
@@ -140,13 +150,13 @@ public class NaverLocalSeedSource {
     }
 
     private CandidateBatch searchOnce(String area, SlotType slotType, StyleTag modifier,
-        Double anchorLatitude, Double anchorLongitude) {
+        SeedScope scope, Double anchorLatitude, Double anchorLongitude) {
         String query = buildQuery(area, slotType, modifier);
         NaverLocalResult result = naverLocalClient.search(query, NaverLocalClient.MAX_DISPLAY);
 
         return switch (result) {
-            case NaverLocalResult.Found found -> CandidateBatch.of(
-                toCandidates(found.places(), slotType, modifier, anchorLatitude, anchorLongitude));
+            case NaverLocalResult.Found found -> CandidateBatch.of(toCandidates(found.places(),
+                slotType, modifier, scope, anchorLatitude, anchorLongitude));
             case NaverLocalResult.Empty ignored -> CandidateBatch.empty();
             case NaverLocalResult.Failed failed -> CandidateBatch.failed(failed.cause());
         };
@@ -175,7 +185,7 @@ public class NaverLocalSeedSource {
     }
 
     private static List<PlaceCandidate> toCandidates(List<NaverPlace> places, SlotType slotType,
-        StyleTag modifier, Double anchorLatitude, Double anchorLongitude) {
+        StyleTag modifier, SeedScope scope, Double anchorLatitude, Double anchorLongitude) {
         List<PlaceCandidate> candidates = new ArrayList<>(places.size());
         int withoutCoordinates = 0;
         int categoryMismatched = 0;
@@ -204,6 +214,8 @@ public class NaverLocalSeedSource {
                 // 속성이 아니다. 그 검증을 맡을 자리였던 4층은 V1에서 빠졌다.
                 modifier == null ? Set.of() : Set.of(modifier),
                 place.seedRank(),
+                // 순위와 한 쌍이다 — 어느 질의의 순위인지를 여기서 새겨야 뒤에서 구별된다.
+                scope,
                 modifier,
                 distanceKm(place, anchorLatitude, anchorLongitude),
                 place.category()));

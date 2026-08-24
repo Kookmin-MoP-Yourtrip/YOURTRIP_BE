@@ -184,10 +184,12 @@ public class CandidateRetrievalStage {
         String location) {
         List<NaverLocalSeedSource.Fallback> fallbacks = new ArrayList<>(2);
         if (day.anchor() != null && !day.anchor().isBlank()) {
-            fallbacks.add(new NaverLocalSeedSource.Fallback(day.anchor(), ANCHOR_FILL_THRESHOLD));
+            fallbacks.add(new NaverLocalSeedSource.Fallback(day.anchor(), ANCHOR_FILL_THRESHOLD,
+                SeedScope.ANCHOR));
         }
         if (location != null && !location.isBlank()) {
-            fallbacks.add(new NaverLocalSeedSource.Fallback(location, LOCATION_FILL_THRESHOLD));
+            fallbacks.add(new NaverLocalSeedSource.Fallback(location, LOCATION_FILL_THRESHOLD,
+                SeedScope.LOCATION));
         }
         return List.copyOf(fallbacks);
     }

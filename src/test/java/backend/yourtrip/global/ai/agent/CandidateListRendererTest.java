@@ -6,6 +6,7 @@ import backend.yourtrip.global.ai.candidate.CandidatePool;
 import backend.yourtrip.global.ai.candidate.CandidateSlot;
 import backend.yourtrip.global.ai.candidate.CandidateSourceType;
 import backend.yourtrip.global.ai.candidate.PlaceCandidate;
+import backend.yourtrip.global.ai.candidate.SeedScope;
 import backend.yourtrip.global.ai.candidate.StyleTag;
 import backend.yourtrip.global.ai.pipeline.PlannerDayPlan;
 import backend.yourtrip.global.ai.route.SlotType;
@@ -62,6 +63,46 @@ class CandidateListRendererTest {
                 pool(SlotType.ATTRACTION, merged));
 
             assertThat(rendered).contains("0. [seed 1위·관광] 대릉원 · 역사 · 0.4km");
+        }
+
+        @Test
+        @DisplayName("도시 전역에서 데려온 후보는 순위 대신 광역이라고 적는다 (이슈 #113)")
+        void marksCityWideSeedWithoutRank() {
+            PlaceCandidate cityWide = new PlaceCandidate(CandidateSourceType.SEEDED, "공주 맛집",
+                "충남 공주시", LAT, LON, SlotType.MEAL, Set.of(), 1, SeedScope.LOCATION, null, 8.4,
+                "음식점");
+
+            String rendered = CandidateListRenderer.renderCandidates(day(SlotType.MEAL),
+                pool(SlotType.MEAL, cityWide));
+
+            // 순위 숫자가 사라져야 선별 기준 2가 "이 권역 인기 1위"로 오독하지 않는다.
+            assertThat(rendered).contains("0. [seed·광역] 공주 맛집 · 8.4km");
+            assertThat(rendered).doesNotContain("1위");
+        }
+
+        @Test
+        @DisplayName("seed 표식 자체는 남긴다 — 사라지면 모델이 SUGGESTED 로 적을 근거가 생긴다")
+        void keepsSeedMarkerForCityWide() {
+            PlaceCandidate cityWide = new PlaceCandidate(CandidateSourceType.LISTED, "공주 명소",
+                "충남 공주시", LAT, LON, SlotType.ATTRACTION, Set.of(), 2, SeedScope.LOCATION, null,
+                7.1, "A02");
+
+            String rendered = CandidateListRenderer.renderCandidates(day(SlotType.ATTRACTION),
+                pool(SlotType.ATTRACTION, cityWide));
+
+            assertThat(rendered).contains("[seed·광역·관광]");
+        }
+
+        @Test
+        @DisplayName("anchor 단계 후보는 순위를 그대로 쓴다 — 거리가 권역 질의와 다르지 않다")
+        void keepsRankForAnchorRung() {
+            PlaceCandidate fromAnchor = new PlaceCandidate(CandidateSourceType.SEEDED, "카페 C",
+                "경주시", LAT, LON, SlotType.CAFE, Set.of(), 2, SeedScope.ANCHOR, null, 1.1, "카페");
+
+            String rendered = CandidateListRenderer.renderCandidates(day(SlotType.CAFE),
+                pool(SlotType.CAFE, fromAnchor));
+
+            assertThat(rendered).contains("0. [seed 2위] 카페 C · 1.1km");
         }
 
         @Test
