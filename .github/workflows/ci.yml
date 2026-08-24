@@ -50,3 +50,21 @@ jobs:
       # 실제 GEMINI_API_KEY를 요구해서 CI의 "빠르고 결정적" 조건을 둘 다 깬다.
       - name: Build
         run: ./gradlew build
+
+      # 실패했을 때만 Gradle이 만든 HTML 테스트 리포트를 아티팩트로 남긴다. 이게 없으면
+      # 러너가 사라지면서 리포트도 함께 없어져, 어떤 테스트가 어떤 값으로 깨졌는지 보려면
+      # Actions 로그를 펼쳐 스크롤해야 한다.
+      #
+      # if: failure()라 정상 빌드에서는 아무 일도 하지 않는다 — 초록불일 때 굳이 리포트를
+      # 남겨봐야 아무도 열어보지 않고 스토리지만 쓴다.
+      #
+      # 컴파일 단계에서 실패하면 리포트 자체가 생기지 않아 "파일 없음" 경고가 뜨는데,
+      # 그것도 "테스트까지 가지 못했다"는 정보라 굳이 억누르지 않는다.
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: build/reports/tests/test/
+          # 실패 리포트는 고쳐서 다시 돌리면 쓸모가 없어진다. 기본값(90일)은 과하다.
+          retention-days: 7
