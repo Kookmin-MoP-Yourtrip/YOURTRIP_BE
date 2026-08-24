@@ -27,10 +27,13 @@ class LlmPortIsolationTest {
 
     private static final Path AI_PACKAGE = Path.of("src/main/java/backend/yourtrip/global/ai");
 
-    /** 벤더 SDK로 취급하는 패키지. 하나라도 포트 쪽에 나타나면 추상화가 새고 있는 것이다. */
+    /**
+     * 벤더 SDK로 취급하는 패키지. 하나라도 포트 쪽에 나타나면 추상화가 새고 있는 것이다.
+     * (Gemini SDK({@code com.google.genai})는 8-4에서 의존성째 삭제돼 목록에서 뺐다 —
+     * 클래스패스에 없어 import 자체가 컴파일 오류라 검사가 필요 없다.)
+     */
     private static final List<String> VENDOR_PACKAGES = List.of(
         "org.springframework.ai",  // Spring AI (현재 어댑터의 전송 계층)
-        "com.google.genai",        // Gemini SDK (8단계에서 삭제 예정)
         "com.openai"               // OpenAI 공식 SDK (0단계 폴백 후보였다)
     );
 

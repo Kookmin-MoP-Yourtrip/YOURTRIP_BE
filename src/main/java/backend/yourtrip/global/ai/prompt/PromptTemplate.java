@@ -14,7 +14,7 @@ import lombok.RequiredArgsConstructor;
  *
  * <p><b>프롬프트를 자바 텍스트블록이 아니라 파일로 빼는 근거</b>는 설계 문서(프롬프트 전략)에 있다.
  * 요지만 옮기면 셋이다 — ① 프롬프트에 JSON이 들어가는 한 {@code \"} 이스케이프 지옥이 계속된다
- * (현재 {@code GeminiService}가 그 상태다) ② 프롬프트 diff가 자바 로직 diff와 섞이지 않아
+ * (구 {@code GeminiService}가 그 상태였다) ② 프롬프트 diff가 자바 로직 diff와 섞이지 않아
  * {@code git blame}이 유의미해진다(프롬프트 튜닝은 로직 변경보다 훨씬 잦다) ③ 텍스트블록의 유일한
  * 실질 장점인 컴파일타임 안전성은 {@link PromptLoader}의 eager 로드가 대신 확보한다.
  *

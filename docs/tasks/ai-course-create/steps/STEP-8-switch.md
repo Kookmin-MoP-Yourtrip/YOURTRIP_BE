@@ -75,19 +75,22 @@
 
 ### 삭제 커밋 체크리스트 (8-4)
 
-- [ ] `GeminiService.buildPrompt` + `GeminiCourseDto` → `src/test/.../benchmark/`로 이관
-  (`LegacyGeminiPrompt`, `LegacyGeminiCourseDto`), 하네스 import 교체
-- [ ] `global/gemini` 3파일 삭제, `build.gradle`의 `google-genai` 제거
-- [ ] `application.yml`의 `gemini:` 블록, `.env.example`의 Gemini 블록 제거
-- [ ] `MyCourseErrorCode.JSON_TRANSFORMATION_FAILED` 삭제 — 스위치 후 호출자 0
+- [x] `GeminiService.buildPrompt` + `GeminiCourseDto` → `src/test/.../benchmark/`로 이관
+  (`LegacyGeminiPrompt`, `LegacyGeminiCourseDto`), 하네스 import 교체. **이관 전 일회성
+  동일성 테스트로 프롬프트가 원본과 바이트 단위로 같음을 확인했다**(원본 삭제와 함께 테스트도 삭제)
+- [x] `global/gemini` 3파일 삭제, `build.gradle`의 `google-genai` 제거
+- [x] `application.yml`의 `gemini:` 블록, `.env.example`의 Gemini 블록 제거
+- [x] `MyCourseErrorCode.JSON_TRANSFORMATION_FAILED` 삭제 — 스위치 후 호출자 0
   (7-2의 "발화하지 않는 상수를 두지 않는다" 원칙)
-- [ ] `LlmPortIsolationTest`의 `"com.google.genai"` 항목 제거(주석이 예고한 대로)
-- [ ] terraform 3곳: `variables.tf`의 `gemini_api_key` 변수, `ec2_app.tf`의 전달,
+- [x] `LlmPortIsolationTest`의 `"com.google.genai"` 항목 제거 — 의존성이 클래스패스에서
+  사라져 import가 컴파일 오류라 검사 자체가 무의미해졌다
+- [x] terraform 3곳: `variables.tf`의 `gemini_api_key` 변수, `ec2_app.tf`의 전달,
   `templates/app-user-data.sh.tpl`의 주입 라인 — **로드맵 체크리스트에 없던 참조**
-- [ ] **gitignore 파일 수동 갱신**: `terraform.tfvars`의 GEMINI 라인을 이 worktree와 메인
-  워킹트리 사본 **양쪽에서** 제거(worktree 규칙 — 훅은 단방향이고 덮어쓰지 않는다). `.env`의
-  `GEMINI_API_KEY`도 같은 방식. **커밋 diff에 안 잡히므로 이 체크리스트가 유일한 방어선이다**
-- [ ] 검증: `src/main`에서 gemini 참조 grep 0건 + `GEMINI_API_KEY` 없이 기동 성공
+- [x] **gitignore 파일 수동 갱신 완료**: `terraform.tfvars`·`.env`의 GEMINI 라인을 이 worktree와
+  메인 워킹트리 사본 **양쪽에서** 제거했다(worktree 규칙 — 훅은 단방향이고 덮어쓰지 않는다)
+- [x] `CLAUDE.md`의 저장소 구조·기술 스택에서 gemini를 지우고 `global/ai`를 등재했다
+- [x] 검증: `src/main`에서 gemini 참조 grep 0건(남은 것은 javadoc의 근거 기록뿐, 현재형
+  서술 세 곳은 과거형으로 정정) + 전체 테스트 green + **`GEMINI_API_KEY` 없이 기동 성공**
 
 ### 측정 (8-6)
 

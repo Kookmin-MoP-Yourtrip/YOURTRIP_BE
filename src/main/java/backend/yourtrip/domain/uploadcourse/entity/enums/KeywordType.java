@@ -100,11 +100,10 @@ public enum KeywordType {
             return objectMapper.writerWithDefaultPrettyPrinter()
                 .writeValueAsString(result);
         } catch (JsonProcessingException e) {
-            // BusinessException(JSON_TRANSFORMATION_FAILED)을 던지지 않는 이유 (ROADMAP 7-2).
-            // 그 코드는 "AI 코스 생성에 실패했습니다" 503이라, 업로드 코스 도메인인 이곳에서
-            // 터지면 사용자가 본 적 없는 기능의 실패를 보게 된다. 더구나 result는 Map<String,
-            // List<String>>라 직렬화가 실패할 현실적인 경로가 없다 — 도달 불가능한 자리에
-            // 사용자 대면 ErrorCode를 남겨 두면, 만에 하나 터졌을 때 거짓 메시지를 낸다.
+            // 사용자 대면 BusinessException을 던지지 않는 이유 (ROADMAP 7-2): result는
+            // Map<String, List<String>>라 직렬화가 실패할 현실적인 경로가 없다 — 도달 불가능한
+            // 자리에 사용자 대면 ErrorCode를 두면, 만에 하나 터졌을 때 거짓 메시지를 낸다.
+            // (과거의 JSON_TRANSFORMATION_FAILED(503)는 8-4에서 호출자 0이 되어 삭제됐다.)
             throw new IllegalStateException("keywords JSON 변환에 실패했다: " + result, e);
         }
     }
