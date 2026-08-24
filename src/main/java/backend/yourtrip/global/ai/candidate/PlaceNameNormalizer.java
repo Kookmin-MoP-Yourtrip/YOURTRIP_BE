@@ -63,4 +63,32 @@ public final class PlaceNameNormalizer {
         }
         return a.contains(b) || b.contains(a);
     }
+
+    /**
+     * 한쪽 이름이 다른 쪽을 <b>진부분으로</b> 포함하는지 판정한다 (이슈 #106).
+     * {@link #similar}에서 <b>완전 일치를 뺀 것</b>이다.
+     *
+     * <p><b>완전 일치를 빼는 것이 이 함수의 존재 이유다.</b> 부속 POI는 본체 이름을 그대로
+     * 품으면서 수식이 붙어 <b>더 길다</b>("영주댐전망대" ⊊ "영주댐전망대주차장1"). 반면 이름이
+     * 정확히 같은 두 후보는 <b>같은 상호의 다른 지점</b>일 수 있고, 그건 합치면 안 된다 —
+     * 300m 안에 같은 프랜차이즈 두 곳이 있는 일은 실제로 있다.
+     *
+     * <p>그 경우를 {@link #similar}는 구별하지 못한다({@code a.contains(b)}가 완전 일치에도
+     * 참이다). 그래서 <b>같은 규칙을 고쳐 쓰지 않고 나란히 둔다</b> — 소스 간 병합은 정반대를
+     * 요구하기 때문이다. TourAPI {@code 경주 동궁과 월지}와 네이버 {@code 동궁과월지}는 정규화하면
+     * 완전 일치하고, 그건 반드시 합쳐야 한다.
+     *
+     * <p><b>느슨한 규칙이라 단독으로 쓰지 않는다.</b> "왕릉" ⊊ "경주 내물왕릉"도 진포함이므로,
+     * {@link CandidateMatcher#isSubordinate}가 거리 조건과 AND로 묶는다.
+     *
+     * @return 두 이름이 정규화 후 같으면 {@code false}. 비교할 이름이 없어도 {@code false}
+     */
+    public static boolean properlyContains(String left, String right) {
+        String a = normalize(left);
+        String b = normalize(right);
+        if (a.isEmpty() || b.isEmpty() || a.equals(b)) {
+            return false;
+        }
+        return a.contains(b) || b.contains(a);
+    }
 }

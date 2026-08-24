@@ -85,6 +85,33 @@ public final class CandidateMatcher {
     }
 
     /**
+     * 한쪽이 다른 쪽의 <b>부속</b>인지 판정한다 (이슈 #106).
+     * {@code 영주댐전망대주차장1}·{@code 공주 갑사 철당간}처럼 <b>본체와 함께 목록에 실리는</b>
+     * 근접 POI를 잡는다.
+     *
+     * <h3>{@link #isSamePlace}와 무엇이 같고 무엇이 다른가</h3>
+     * <b>거리 조건은 그대로 공유한다</b> — {@link #PROXIMITY_THRESHOLD_KM}을 따로 두지 않는 이유는
+     * 5-9 판정 10이 유효 구간을 (196m, 440m)로 좁히며 쓴 표본이 <b>바로 갑사 철당간(196m)</b>
+     * 이어서다. 상수를 나누면 같은 근거가 두 곳으로 갈라진다.
+     *
+     * <p><b>이름 조건은 더 엄격하다</b> — {@link PlaceNameNormalizer#properlyContains}로
+     * <b>완전 일치를 뺀다.</b> 소스 간 병합은 표기만 다른 같은 장소를 합치는 일이라 완전 일치가
+     * 정상 입력이지만, 여기서 완전 일치는 <b>같은 상호의 다른 지점</b>일 수 있다.
+     *
+     * <p><b>이 판정만으로 후보를 지우지 않는다.</b> 어느 쪽이 본체인지는 호출자
+     * ({@link CandidateMerger#collapseSubordinates})가 정하고, 버리는 쪽의 정보는 흡수된다.
+     *
+     * @return 진포함 <b>이고</b> 거리 ≤ {@link #PROXIMITY_THRESHOLD_KM}일 때만 {@code true}
+     */
+    public static boolean isSubordinate(String nameA, double latitudeA, double longitudeA,
+        String nameB, double latitudeB, double longitudeB) {
+        if (!PlaceNameNormalizer.properlyContains(nameA, nameB)) {
+            return false;
+        }
+        return distanceKm(latitudeA, longitudeA, latitudeB, longitudeB) <= PROXIMITY_THRESHOLD_KM;
+    }
+
+    /**
      * 두 후보 사이의 거리(km).
      *
      * <p>{@code GeoUtils}를 재사용한다 — 3-2에서 <b>route 타입을 모르는 원시 함수</b>로 만들어 둔
