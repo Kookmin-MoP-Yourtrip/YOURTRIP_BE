@@ -7,6 +7,7 @@ import backend.yourtrip.domain.user.dto.response.UserSignupResponse;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.mapper.UserMapper;
 import backend.yourtrip.domain.user.repository.UserRepository;
+import backend.yourtrip.domain.user.store.EmailVerificationStore;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UserErrorCode;
@@ -23,9 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.time.LocalDateTime;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Random;
 
 @RequiredArgsConstructor
 @Service
@@ -39,12 +38,9 @@ public class UserServiceImpl implements UserService {
     private final S3Service s3Service;
     private final CloudFrontService cloudFrontService;
 
-    private final Map<String, String> verificationCodes = new ConcurrentHashMap<>();
-    private final Map<String, LocalDateTime> codeExpiry = new ConcurrentHashMap<>();
-    private final Set<String> verifiedEmails = Collections.synchronizedSet(new HashSet<>());
-    private final Map<String, String> tempPasswords = new ConcurrentHashMap<>();
-
-    private static final int CODE_EXPIRY_MINUTES = 5;
+    // 인증코드·인증완료·임시비밀번호 상태는 전부 이 저장소(Redis + TTL)가 관리한다.
+    // 재기동 생존과 다중 인스턴스(ALB) 안전성을 위해 인스턴스 로컬 상태를 두지 않는다(#117).
+    private final EmailVerificationStore emailVerificationStore;
 
     @Override
     public void sendVerificationCode(String email) {
@@ -53,8 +49,9 @@ public class UserServiceImpl implements UserService {
         }
 
         String code = String.format("%06d", new Random().nextInt(1_000_000));
-        verificationCodes.put(email, code);
-        codeExpiry.put(email, LocalDateTime.now().plusMinutes(CODE_EXPIRY_MINUTES));
+        // 저장 성공 후에만 발송한다 — 저장 실패(503) 시 메일이 나가면
+        // 검증이 영원히 불가능한 코드가 사용자에게 전달되는 고아 메일이 된다.
+        emailVerificationStore.saveCode(email, code);
 
         mailService.sendVerificationMail(email, code);
 
@@ -63,28 +60,21 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void verifyCode(String email, String code) {
-        String stored = verificationCodes.get(email);
-        LocalDateTime expiry = codeExpiry.get(email);
+        // TTL 만료로 사라진 코드는 미발급과 구분되지 않는다 — 둘 다 INVALID_VERIFICATION_CODE.
+        String stored = emailVerificationStore.findCode(email)
+            .orElseThrow(() -> new BusinessException(UserErrorCode.INVALID_VERIFICATION_CODE));
 
-        if (stored == null || expiry == null) {
-            throw new BusinessException(UserErrorCode.INVALID_VERIFICATION_CODE);
-        }
-        if (LocalDateTime.now().isAfter(expiry)) {
-            verificationCodes.remove(email);
-            codeExpiry.remove(email);
-            throw new BusinessException(UserErrorCode.VERIFICATION_CODE_EXPIRED);
-        }
         if (!stored.equals(code)) {
             throw new BusinessException(UserErrorCode.INVALID_VERIFICATION_CODE);
         }
 
-        verifiedEmails.add(email);
+        emailVerificationStore.markVerified(email);
         System.out.println("[이메일 인증 완료] " + email);
     }
 
     @Override
     public void setPassword(String email, String password) {
-        if (!verifiedEmails.contains(email)) {
+        if (!emailVerificationStore.isVerified(email)) {
             throw new BusinessException(UserErrorCode.EMAIL_NOT_VERIFIED);
         }
         if (password == null || password.isBlank() || password.length() < 8) {
@@ -92,7 +82,7 @@ public class UserServiceImpl implements UserService {
         }
 
         String encoded = passwordEncoder.encode(password);
-        tempPasswords.put(email, encoded);
+        emailVerificationStore.saveTempPassword(email, encoded);
     }
 
     @Transactional
@@ -101,13 +91,11 @@ public class UserServiceImpl implements UserService {
         MultipartFile profileImage) {
         String email = request.email();
 
-        if (!verifiedEmails.contains(email)) {
+        if (!emailVerificationStore.isVerified(email)) {
             throw new BusinessException(UserErrorCode.EMAIL_NOT_VERIFIED);
         }
-        String encodedPw = tempPasswords.get(email);
-        if (encodedPw == null) {
-            throw new BusinessException(UserErrorCode.INVALID_REQUEST_FIELD);
-        }
+        String encodedPw = emailVerificationStore.findTempPassword(email)
+            .orElseThrow(() -> new BusinessException(UserErrorCode.INVALID_REQUEST_FIELD));
         if (userRepository.findByEmail(email).isPresent()) {
             throw new BusinessException(UserErrorCode.EMAIL_ALREADY_EXIST);
         }
@@ -135,10 +123,7 @@ public class UserServiceImpl implements UserService {
 
         user = userRepository.save(user);
 
-        verifiedEmails.remove(email);
-        tempPasswords.remove(email);
-        verificationCodes.remove(email);
-        codeExpiry.remove(email);
+        emailVerificationStore.clear(email);
 
         String profileUrl = cloudFrontService.getPublicUrl(user.getProfileImageS3Key());
 
@@ -246,36 +231,28 @@ public class UserServiceImpl implements UserService {
             .orElseThrow(() -> new BusinessException(UserErrorCode.EMAIL_NOT_FOUND));
 
         String code = String.format("%06d", new Random().nextInt(1_000_000));
-        verificationCodes.put(email, code);
-        codeExpiry.put(email, LocalDateTime.now().plusMinutes(CODE_EXPIRY_MINUTES));
+        // sendVerificationCode와 동일하게 저장 성공 후에만 발송한다.
+        emailVerificationStore.saveCode(email, code);
 
         mailService.sendVerificationMail(email, code);
     }
 
     @Override
     public void findPasswordVerify(String email, String code) {
-        String stored = verificationCodes.get(email);
-        LocalDateTime expiry = codeExpiry.get(email);
+        String stored = emailVerificationStore.findCode(email)
+            .orElseThrow(() -> new BusinessException(UserErrorCode.INVALID_VERIFICATION_CODE));
 
-        if (stored == null || expiry == null) {
-            throw new BusinessException(UserErrorCode.INVALID_VERIFICATION_CODE);
-        }
-        if (LocalDateTime.now().isAfter(expiry)) {
-            verificationCodes.remove(email);
-            codeExpiry.remove(email);
-            throw new BusinessException(UserErrorCode.VERIFICATION_CODE_EXPIRED);
-        }
         if (!stored.equals(code)) {
             throw new BusinessException(UserErrorCode.INVALID_VERIFICATION_CODE);
         }
 
-        verifiedEmails.add(email);
+        emailVerificationStore.markVerified(email);
     }
 
     @Override
     public void resetPassword(String email, String newPassword) {
 
-        if (!verifiedEmails.contains(email)) {
+        if (!emailVerificationStore.isVerified(email)) {
             throw new BusinessException(UserErrorCode.EMAIL_NOT_VERIFIED);
         }
 
@@ -290,8 +267,6 @@ public class UserServiceImpl implements UserService {
         user = user.withPassword(encoded);
         userRepository.save(user);
 
-        verificationCodes.remove(email);
-        codeExpiry.remove(email);
-        verifiedEmails.remove(email);
+        emailVerificationStore.clear(email);
     }
 }
