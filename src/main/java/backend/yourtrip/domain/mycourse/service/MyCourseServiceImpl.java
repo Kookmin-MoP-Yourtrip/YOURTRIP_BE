@@ -1,7 +1,5 @@
 package backend.yourtrip.domain.mycourse.service;
 
-import backend.yourtrip.domain.mycourse.dto.ai.ResolvedDay;
-import backend.yourtrip.domain.mycourse.dto.ai.ResolvedPlace;
 import backend.yourtrip.domain.mycourse.dto.request.AICourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.PlaceCreateRequest;
@@ -25,6 +23,7 @@ import backend.yourtrip.domain.mycourse.entity.place.PlaceImage;
 import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
 import backend.yourtrip.domain.mycourse.entity.travelCourse.enums.TravelCourseType;
 import backend.yourtrip.domain.mycourse.event.MyCourseImagesCleanupEvent;
+import backend.yourtrip.domain.mycourse.mapper.AiCourseDraftMapper;
 import backend.yourtrip.domain.mycourse.mapper.DayScheduleMapper;
 import backend.yourtrip.domain.mycourse.mapper.PlaceMapper;
 import backend.yourtrip.domain.mycourse.mapper.TravelCourseMapper;
@@ -36,20 +35,16 @@ import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
+import backend.yourtrip.global.ai.pipeline.AiCourseDraft;
+import backend.yourtrip.global.ai.pipeline.AiCoursePipeline;
+import backend.yourtrip.global.ai.pipeline.CourseBrief;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService.CourseSignature;
-import backend.yourtrip.global.gemini.dto.GeminiCourseDto;
-import backend.yourtrip.global.gemini.dto.GeminiCourseDto.PlaceDto;
-import backend.yourtrip.global.gemini.service.GeminiService;
-import backend.yourtrip.global.kakao.KakaoLocalClient;
-import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
 import backend.yourtrip.global.s3.service.S3Service;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
@@ -73,16 +68,13 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final UserService userService;
     private final S3Service s3Service;
     private final CloudFrontService cloudFrontService;
-    private final GeminiService geminiService;
-
-    private final ObjectMapper objectMapper;
+    private final AiCoursePipeline aiCoursePipeline;
 
     private final TravelCourseRepository travelCourseRepository;
     private final DayScheduleRepository dayScheduleRepository;
     private final PlaceRepository placeRepository;
     private final PlaceImageRepository placeImageRepository;
     private final UploadCourseRepository uploadCourseRepository;
-    private final KakaoLocalClient kakaoLocalClient;
     private final MyCourseDetailReader myCourseDetailReader;
     private final AiCoursePersister aiCoursePersister;
     private final ApplicationEventPublisher eventPublisher;
@@ -515,96 +507,32 @@ public class MyCourseServiceImpl implements MyCourseService {
     }
 
     /**
-     * <b>이 메서드에는 {@code @Transactional}이 없다.</b> LLM 호출 1회와 카카오 호출 N회를
-     * 트랜잭션 밖에서 끝낸 뒤, 저장만 {@link AiCoursePersister}의 짧은 트랜잭션에 맡긴다.
-     * 예전에는 메서드 전체가 트랜잭션이라 외부 I/O가 끝날 때까지 HikariCP 커넥션이 묶였다.
+     * <b>이 메서드에는 {@code @Transactional}이 없다.</b> LLM·장소 API 호출을 전부
+     * 트랜잭션 밖({@link AiCoursePipeline})에서 끝낸 뒤, 저장만 {@link AiCoursePersister}의
+     * 짧은 트랜잭션에 맡긴다. 예전에는 메서드 전체가 트랜잭션이라 외부 I/O가 끝날 때까지
+     * HikariCP 커넥션이 묶였다.
+     *
+     * <p>실패는 파이프라인이 판정한다 — 전 day 장소 0개일 때만 hard fail이고
+     * ({@code AI_GROUNDING_FAILED} 503 / 예산 소진이면 {@code AI_COURSE_TIMEOUT} 504),
+     * 나머지는 파이프라인 내부에서 degrade로 흡수된다.
      */
     @Override
     public AICourseCreateResponse createAICourse(AICourseCreateRequest request) {
         // SecurityContextHolder는 요청 스레드의 ThreadLocal이므로 여기서 먼저 확보해 둔다.
+        // 파이프라인 하위 스테이지가 다른 스레드에서 돌아 거기서는 읽을 수 없다.
         Long userId = userService.getCurrentUserId();
 
         int days =
             (int) ChronoUnit.DAYS.between(request.startDate(), request.endDate()) + 1;
 
-        //gemini 호출해서 json 문자열 받기
-        String json = geminiService.generateAICourse(request.location(), days, request.keywords());
-        log.info(json);
+        //파이프라인 실행 (외부 I/O — 여기까지가 트랜잭션 밖이다)
+        AiCourseDraft draft = aiCoursePipeline.generate(
+            CourseBrief.of(request.location(), days, request.keywords()));
 
-        //json -> dto 바인딩
-        GeminiCourseDto courseDto;
-        try {
-            courseDto = objectMapper.readValue(json, GeminiCourseDto.class);
-        } catch (JsonProcessingException e) {
-            log.error("Gemini에서 받은 JSON 파싱 실패", e);
-            throw new BusinessException(MyCourseErrorCode.JSON_TRANSFORMATION_FAILED);
-        }
-
-        //카카오 장소 검증 (외부 I/O — 여기까지가 트랜잭션 밖이다)
-        List<ResolvedDay> resolvedDays = resolveDays(request, courseDto);
-
-        //저장 (짧은 트랜잭션)
-        Long courseId = aiCoursePersister.save(request, courseDto.title(), resolvedDays, userId);
+        //저장 (짧은 트랜잭션) — 리스트 순서가 곧 동선 순서이므로 변환기가 순서를 보존한다
+        Long courseId = aiCoursePersister.save(request, draft.title(),
+            AiCourseDraftMapper.toResolvedDays(draft), userId);
 
         return new AICourseCreateResponse(courseId);
-    }
-
-    private List<ResolvedDay> resolveDays(AICourseCreateRequest request,
-        GeminiCourseDto courseDto) {
-
-        List<ResolvedDay> resolvedDays = new ArrayList<>();
-
-        for (GeminiCourseDto.DayScheduleDto dayScheduleDto : courseDto.daySchedules()) {
-            List<ResolvedPlace> resolvedPlaces = new ArrayList<>();
-
-            for (GeminiCourseDto.PlaceDto placeDto : dayScheduleDto.places()) {
-                resolvedPlaces.add(resolvePlace(request, placeDto));
-            }
-            resolvedDays.add(new ResolvedDay(dayScheduleDto.day(), resolvedPlaces));
-        }
-        return resolvedDays;
-    }
-
-    /**
-     * AI가 준 장소 하나를 카카오로 검증한다. 검증에 실패하면 좌표를 비운 채 이름만 남긴다 —
-     * 예전처럼 0.0/0.0을 저장해 성공을 위장하지 않는다.
-     */
-    private ResolvedPlace resolvePlace(AICourseCreateRequest request, PlaceDto placeDto) {
-        Document doc = kakaoLocalClient.findBestPlace(placeDto.placeName(),
-            request.location());
-
-        if (doc == null) { //적절한 장소가 카카오맵에 검색되지 않음
-            return ResolvedPlace.unverified(placeDto.placeName(), placeDto.startTime());
-        }
-
-        Double latitude = parseCoordinate(doc.y());
-        Double longitude = parseCoordinate(doc.x());
-
-        if (latitude == null || longitude == null) {
-            //좌표를 못 읽으면 매칭 실패와 동일하게 다룬다. 이름까지 카카오 것으로 바꾸면
-            //검증되지 않은 정보를 검증된 것처럼 보이게 하므로 AI 원안을 남긴다.
-            log.warn("카카오 응답의 좌표를 해석하지 못했다: place={}, x={}, y={}",
-                doc.place_name(), doc.x(), doc.y());
-            return ResolvedPlace.unverified(placeDto.placeName(), placeDto.startTime());
-        }
-
-        String placeLocation = doc.road_address_name() != null && !doc.road_address_name().isBlank()
-            ? doc.road_address_name()
-            : doc.address_name();
-
-        return new ResolvedPlace(doc.place_name(), placeDto.startTime(),
-            latitude, longitude, doc.place_url(), placeLocation);
-    }
-
-    /** 카카오의 x/y는 문자열이라 파싱이 필요하다. null·형식 오류는 500이 아니라 미검증으로 다룬다. */
-    private Double parseCoordinate(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        try {
-            return Double.parseDouble(value);
-        } catch (NumberFormatException e) {
-            return null;
-        }
     }
 }
