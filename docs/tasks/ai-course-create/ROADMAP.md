@@ -6,7 +6,7 @@
 >
 > **설계는 착수 후 네 번 개정됐다**(후보 공급 층 추가 → PlaceSignal 제외 → 카카오를 후보 소스에서 제외 → ATTRACTION 소스로 TourAPI 채택). 각 개정의 근거와 파급은 **설계 문서의 "설계 변경 이력" 표**가 소유한다. 이 로드맵은 그 결과만 반영한다.
 >
-> **진행 상황: 6단계 완료.** 2단계에서 복합 환각률 25.6% → **7.5%**(모델 교체 효과)를 확인했고 Curator 모델은 `gpt-5.6-luna`로 확정됐다. 6단계 실호출 프로브에서 **위조 강등 0건**을 확인했고, 같은 프로브가 드러낸 **자연어 `area`가 네이버 시더를 죽이는 결함**은 이슈 #110에서 해소했다 — 권역명 정규화 + 지명 캐스케이드(`area` → `anchor` → `location`)로 `SUGGESTED` 비율이 **40%/50% → 0%/3.3%** 가 됐다([STEP-6](steps/STEP-6-agents.md) 판정 9). **다음은 7단계(파이프라인 오케스트레이터).**
+> **진행 상황: 7단계 완료.** 2단계에서 복합 환각률 25.6% → **7.5%**(모델 교체 효과)를 확인했고 Curator 모델은 `gpt-5.6-luna`로 확정됐다. 6단계 실호출 프로브에서 **위조 강등 0건**을 확인했고, 같은 프로브가 드러낸 **자연어 `area`가 네이버 시더를 죽이는 결함**은 이슈 #110에서 해소했다([STEP-6](steps/STEP-6-agents.md) 판정 9). 7단계에서 여섯 조각이 하나의 요청으로 이어졌고, **설계가 지정한 ErrorCode 다섯 중 셋이 같은 설계의 degrade 정책에 막혀 발화할 수 없다는 것**을 확인해 둘만 만들었다([STEP-7](steps/STEP-7-pipeline.md) 판정 1). **다음은 8단계(경로 교체 — 유일한 스위치).**
 
 ## 목표
 
@@ -173,14 +173,14 @@
 
 동작 변화 없음(컨트롤러 미연결).
 
-> 상세 실행 계획은 [STEP-7-pipeline.md](steps/STEP-7-pipeline.md) 참고. (미작성)
+> 상세 실행 기록은 [STEP-7-pipeline.md](steps/STEP-7-pipeline.md) 참고 — 설계가 지정한 ErrorCode 다섯 중 셋이 발화할 수 없다는 것과, 폴백 경로에서만 터지는 NPE를 테스트가 잡은 사건.
 
-- [ ] 7-1. `AiCoursePipeline` — Planner → **CandidateRetrieval** → Curator → Grounding(SUGGESTED만) → RouteOptimizer → **PlaceUrlEnricher** 조립. LLM 호출 `1 + days`회, PlaceSignal 없음
-- [ ] 7-2. `AiCourseErrorCode` 신설 — `AI_PLAN_FAILED`·`AI_RESPONSE_INVALID`·`AI_GROUNDING_FAILED`(503) / `AI_COURSE_TIMEOUT`(504, 5-5 데드라인) / `AI_COURSE_BUSY`(429, 세마포어 포화). `ErrorCode` 인터페이스 구현이라 `GlobalExceptionHandler`는 수정하지 않는다 + `JSON_TRANSFORMATION_FAILED` 오용 정리 — 지금은 방향이 정반대인 두 실패(응답 역직렬화 / 키워드 직렬화)가 같은 코드를 공유한다
-- [ ] 7-3. **degrade, don't fail** 폴백 전량 구현 — Planner 실패 시 결정론적 기본 플랜, **후보 공급 실패 시 빈 목록으로 진행(초안 구조로 degrade)**, Curator 실패 시 **후보 목록에서 결정론적 채움**(정렬된 목록 상위 3 → 목록이 없으면 카카오 카테고리 검색 폴백), 후보 개별 탈락, 네이버 fail-open, 슬롯 전멸 시 보충
-- [ ] 7-4. **hard fail은 카카오 전면 장애 하나뿐**(`AI_GROUNDING_FAILED` 503). 좌표 없는 코스는 이 기능의 핵심 가치를 잃는다 — **지금 코드가 `0.0/0.0`으로 저장해 성공을 위장하는 것이 정확히 그 실수다**
-- [ ] 7-5. `ai.course.pipeline.duration{stage}` 메트릭 (202 전환 판단의 근거가 된다)
-- [ ] 7-6. 폴백 경로별 테스트
+- [x] 7-1. `AiCoursePipeline` — Planner → **CandidateRetrieval** → Curator → Grounding(SUGGESTED만) → RouteOptimizer → **PlaceUrlEnricher** 조립. LLM 호출 `1 + days`회, PlaceSignal 없음. 입력은 `CourseBrief`, 출력은 `AiCourseDraft`(파이프라인은 `domain`을 모른다 — `ResolvedDay` 변환은 8-1이 한다). 요청 전체 예산은 **새 `ai.course.budget-ms`(기본 30초)**이고 `llm.timeout-ms`와 같은 곳에 두지 않는다(재는 대상이 호출 1건 대 요청 전체로 다르다). **로드맵에 없던 결함을 하나 닫았다** — 사용자가 고른 `WALK`/`CAR` 키워드가 `TravelMode`로 옮겨지는 자리가 없어 뚜벅이 여행도 시속 15km로 계산되고 있었다([STEP-7](steps/STEP-7-pipeline.md) 판정 8)
+- [x] 7-2. `AiCourseErrorCode` 신설 — **다섯이 아니라 둘이다.** `AI_GROUNDING_FAILED`(503) / `AI_COURSE_TIMEOUT`(504, 5-5 데드라인)만 만들었다. `AI_PLAN_FAILED`·`AI_RESPONSE_INVALID`는 7-3의 degrade가 흡수해 도달 경로가 없고, `AI_COURSE_BUSY`는 세마포어 포화가 다른 전송 실패와 **같은 `LlmTransportException` 타입**이라 구분 자체가 안 되며 구분해도 같은 degrade에 먹힌다. **발화하지 않는 상수를 두면 이 enum이 동작의 기록이 아니라 설계 의도의 기록이 된다.** `ErrorCode` 구현이라 `GlobalExceptionHandler`는 수정하지 않았다 + `JSON_TRANSFORMATION_FAILED` 오용 정리는 **키워드 직렬화 쪽만** 했다(`IllegalStateException`으로 강등) — 응답 역직렬화 쪽은 8-4가 경로째로 지운다
+- [x] 7-3. **degrade, don't fail** 폴백 — Planner 실패 시 결정론적 기본 플랜(`DefaultPlannerPlans`), **후보 공급 실패 시 빈 목록으로 진행(초안 구조로 degrade)**, Curator가 비운 자리는 **후보 목록 상위 3으로 결정론적 채움**(`DeterministicCuration`). 후보 개별 탈락·네이버 fail-open은 이미 스테이지가 소유한다. ~~목록이 없으면 카카오 카테고리 검색 폴백~~·~~슬롯 전멸 시 보충~~ → **보류했다** — 5-9 실측에서 빈 슬롯이 0%라 같은 성격의 폴백이 이미 조건 미발동으로 기각된 선례가 있고, 이 폴백은 **장애 상황에서 외부 호출을 늘리는 방향**이다(채택한 폴백은 `SEEDED`/`LISTED`라 카카오를 한 번도 부르지 않는다). 근거는 [STEP-7](steps/STEP-7-pipeline.md) 판정 3
+- [x] 7-4. **hard fail은 전 day 장소 0개 하나뿐**(`AI_GROUNDING_FAILED` 503). 좌표 없는 코스는 이 기능의 핵심 가치를 잃는다 — **지금 코드가 `0.0/0.0`으로 저장해 성공을 위장하는 것이 정확히 그 실수다**. **`AI_COURSE_TIMEOUT`(504)은 같은 지점에서 갈린다** — 장소가 0개인 원인이 예산 소진이면 이쪽이다. 만료를 앞에서 따로 검사하지 않는 이유는 스테이지들이 이미 만료를 degrade로 흡수해, **만료가 실제로 해가 된 경우에만** 판정하는 것이 정확하기 때문이다. day 하나만 비는 부분 실패는 통과시킨다
+- [x] 7-5. `ai.course.pipeline.duration{stage}` 메트릭 (202 전환 판단의 근거가 된다) + **`ai.candidate.adopted{source, modifier}`** — 5-8이 여기로 넘긴 것이다(배치 확정 시점이 7단계에서 처음 생긴다). **설계의 4축을 2축으로 줄였다** — 카카오가 후보 공급에서 빠지면서 `seeded`·`official`이 `source`의 재표현이 됐다. 8-7 삭제 로그와 태그 축이 같아야 출처별 삭제율이 계산된다. **관측 두 건을 더 붙였다**: ① 두 Timer(`pipeline.duration`·`ai.llm.call`)에 **히스토그램 버킷** — 기본값은 count·sum·max뿐이라 11-2가 요구하는 p95를 낼 수 없었고, 배치 측정이라 롤링 윈도우 기반 `publishPercentiles`는 값이 감쇠한다 ② **`ai.curation.slot{result=curator|fallback|unfilled}`** — 7-3 폴백은 응답을 200으로 유지해 Curator가 전 day 죽어도 어떤 지표에도 안 잡히는데, 폴백이 채운 장소는 환각률이 구조적으로 0에 가까워 **8-6 측정을 조용히 오염시킨다**. 근거는 [STEP-7](steps/STEP-7-pipeline.md) 판정 12·13
+- [x] 7-6. 폴백 경로별 테스트 (708 → **754개**, 46개 추가). 목 기반 `AiCoursePipelineTest`(분기)와 WireMock 기반 `AiCourseStagesStubIntegrationTest$FullPipeline`(실제 응답)을 둘 다 갖는다. **"Planner 실패 → 기본 플랜"을 재현한 것이 폴백 경로에서만 터지는 NPE를 잡았다** — `Stream.findFirst()`는 첫 원소가 `null`이면 예외를 던지는데 기본 플랜의 `dayStartTime`이 `null`이다([STEP-7](steps/STEP-7-pipeline.md) 판정 10)
 
 ### 8. AI 코스 생성 경로 교체 (스위치)
 
