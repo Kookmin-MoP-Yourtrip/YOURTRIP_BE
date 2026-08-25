@@ -112,10 +112,6 @@ public class ProfileServiceImpl implements ProfileService {
         Long userId = userService.getCurrentUserId();
         User user = userService.getUser(userId);
 
-        if (user.isDeleted()) {
-            throw new BusinessException(MypageErrorCode.ALREADY_DELETED_USER);
-        }
-
         user.softDelete();
     }
 
