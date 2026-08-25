@@ -98,7 +98,8 @@ class UserSoftDeleteRestrictionTest {
     /** 운영 코드의 탈퇴 경로({@code ProfileServiceImpl.deleteUser})와 같은 방식으로 삭제한다. */
     private void softDelete(Long userId) {
         User user = userRepository.findById(userId).orElseThrow();
-        userRepository.save(user.withDeleted());
+        // 영속 인스턴스를 직접 바꾼다 - save()는 필요 없고, 있으면 안 된다(#136).
+        user.softDelete();
 
         flushAndClear();
     }

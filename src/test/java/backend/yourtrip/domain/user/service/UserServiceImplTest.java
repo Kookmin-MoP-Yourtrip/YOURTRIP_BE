@@ -29,6 +29,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import java.lang.reflect.Method;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.InjectMocks;
@@ -36,7 +37,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * logout()이 SecurityContext의 인증 사용자를 식별해 저장된 Refresh Token을
@@ -95,16 +98,15 @@ class UserServiceImplTest {
         authenticateAs(user);
 
         given(userRepository.findById(userId)).willReturn(Optional.of(user));
-        given(userRepository.save(org.mockito.ArgumentMatchers.any(User.class)))
-            .willAnswer(invocation -> invocation.getArgument(0));
 
         // when
         userService.logout();
 
         // then
-        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(captor.capture());
-        assertThat(captor.getValue().getRefreshToken()).isNull();
+        // 검증 대상이 "save()에 무엇을 넘겼는가"에서 "영속 인스턴스를 어떻게 바꿨는가"로 옮겨졌다(#136).
+        // save()를 부르지 않는다는 단언 자체가 회귀 방지선이다 - detached merge로 되돌아가면 여기서 걸린다.
+        assertThat(user.getRefreshToken()).isNull();
+        verify(userRepository, never()).save(any(User.class));
     }
 
     @Test
@@ -286,10 +288,22 @@ class UserServiceImplTest {
 
         userService.resetPassword(email, "NewPass123!");
 
-        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(captor.capture());
-        assertThat(captor.getValue().getPassword()).isEqualTo("encoded-new");
+        assertThat(user.getPassword()).isEqualTo("encoded-new");
+        verify(userRepository, never()).save(any(User.class));
         verify(emailVerificationStore).clear(email);
+    }
+
+    @Test
+    @DisplayName("resetPassword() - 트랜잭션 없이 실행되면 조용히 no-op이 되므로 @Transactional을 계약으로 고정한다")
+    void resetPassword_mustBeTransactional() throws Exception {
+        // save() 없이 dirty checking으로 비밀번호를 바꾸므로, @Transactional이 빠지면
+        // findByEmail 결과가 즉시 detached가 되어 UPDATE가 아예 나가지 않는다.
+        // 예외도 로그도 남지 않는 실패라 값싼 리플렉션 단언으로 못을 박는다(#136).
+        Method method = UserServiceImpl.class.getMethod("resetPassword", String.class, String.class);
+
+        assertThat(AnnotatedElementUtils.findMergedAnnotation(method, Transactional.class))
+            .as("resetPassword()에 @Transactional이 없으면 비밀번호 변경이 조용히 사라진다")
+            .isNotNull();
     }
 
     private void authenticateAs(User user) {
