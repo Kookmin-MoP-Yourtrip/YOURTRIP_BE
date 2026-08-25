@@ -77,10 +77,13 @@ import org.junit.jupiter.api.Test;
  * <p><b>판정용이지 회귀 테스트가 아니다.</b> 단언을 걸지 않고 콘솔 표와 CSV로 덤프해 사람이 읽는다
  * ({@code CandidateRetrievalProbeTest}가 세운 형태).
  *
- * <p><b>이 프로브는 필터가 들어가기 <em>전에</em> 돈다.</b> 그래서 사고 3건의 "폴백 켠" 판이 보여주는
- * 것은 <b>지금의 고장난 동작</b>이다 — 먼 후보 5건이 정원을 채워 {@code anchor} 단계가 발동하지 않는다.
- * 필터를 넣었을 때 어떻게 되는지는 표 C의 시뮬레이션이 예측하고, 실제 확인은 필터 도입 후 이 프로브를
- * 다시 돌려서 한다.
+ * <p><b>{@link SeedDistanceLimit}이 들어간 뒤로는 이 프로브가 필터를 통과한 뒤의 세상을 잰다.</b>
+ * 도입 전 측정값(2026-08-25)은 문서에 남아 있고, 표 C의 "정상탈락 0 / 사고차단 0"은 필터가 이미
+ * 일했다는 뜻이지 잴 것이 없다는 뜻이 아니다.
+ *
+ * <p>상한을 다시 정하려면 {@code SeedDistanceLimit.MAX_ANCHOR_DISTANCE_KM}을 크게 올리거나
+ * {@code CAP_SWEEP}을 그 위로 넓혀 <b>필터 없는 분포를 복원</b>해야 한다 — 지금 그대로 돌리면
+ * 이미 걸러진 표본 위에서 상한을 고르게 되어 순환 논증이 된다.
  *
  * <p>호출 규모: 네이버 250~350회(일일 25,000의 1.4% 미만) · 카카오 ~40회 · <b>LLM 0회</b>.
  *
@@ -310,8 +313,8 @@ class SeedDistanceCapProbeTest {
      * 사고 질의가 실제로 무엇을 돌려주는지 전수로 본다.
      *
      * <p>뒤이어 <b>폴백을 켠 판</b>을 한 번 더 돌린다. 공주 사건의 핵심은 "먼 후보 5건이 정원을 채워
-     * {@code anchor} 단계가 발동하지 않았다"이므로, <b>지금 폴백이 안 도는 것</b>을 값으로 남겨야
-     * 필터 도입 후의 변화가 대조군을 갖는다.
+     * {@code anchor} 단계가 발동하지 않았다"였으므로, 이 판이 <b>필터가 그 정원을 비워 폴백을
+     * 되살렸는지</b>를 값으로 보여준다.
      */
     private static void printIncidents(List<Row> rows, NaverLocalSeedSource seedSource,
         AreaGeocoder geocoder) {
@@ -328,7 +331,7 @@ class SeedDistanceCapProbeTest {
                 row.distanceKm(), row.location(), row.rung(), truncate(row.query(), 22),
                 truncate(row.placeName(), 26), row.placeAddress()));
 
-        System.out.printf("%n--- 폴백을 켠 실제 경로 (필터 도입 전 = 현재 동작) ---%n");
+        System.out.printf("%n--- 폴백을 켠 실제 경로 (SeedDistanceLimit 적용 결과) ---%n");
         System.out.printf("%n%-7s %-9s %6s %8s  %s%n", "지역", "슬롯", "건수", "최대km", "장소");
         System.out.println("-".repeat(96));
         for (Case incident : INCIDENTS) {
