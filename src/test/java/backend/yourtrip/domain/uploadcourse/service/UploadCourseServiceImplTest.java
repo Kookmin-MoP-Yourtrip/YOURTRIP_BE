@@ -626,6 +626,62 @@ class UploadCourseServiceImplTest {
             .containsExactly(5L);
     }
 
+    @Test
+    @DisplayName("락 획득에 실패해도 재시도 중 승자가 캐시를 채우면 DB를 읽지 않고 그 값을 쓴다")
+    void getPopularCourses_LockNotAcquired_CacheFilledDuringRetry_UsesCachedValue() {
+        // given — 락은 다른 요청이 보유 중이고, 재시도 2회째에 승자가 캐시를 채운 상황
+        Cache popularCoursesCache = mock(Cache.class);
+        given(cacheManager.getCache("popularCourses")).willReturn(popularCoursesCache);
+        given(popularCoursesCache.get(eq("ALL"), eq(List.class)))
+            .willReturn(null)             // 최초 조회 — 미스라서 락 경로로 들어간다
+            .willReturn(null)             // 재시도 1회차 — 아직 승자가 채우기 전
+            .willReturn(List.of(5L));     // 재시도 2회차 — 승자가 채움
+        givenLockAcquisitionReturns(false);
+        givenItemCacheReturns(serialize(cacheItem(5L, "코스5", null)));
+
+        // when
+        UploadCourseListResponse response = uploadCourseService.getPopularCourses(null);
+
+        // then — 이 재시도가 존재하는 이유 자체가 "패자들이 각자 DB로 직행하는 것"을 막기 위해서다.
+        // 여기서 Reader가 불리면 콜드 스타트 스탬피드 방지가 무의미해진다.
+        verifyNoInteractions(uploadCoursePopularReader);
+        // 승자가 이미 채워둔 값이므로 패자가 다시 쓸 이유가 없다
+        verify(popularCoursesCache, never()).put(ArgumentMatchers.any(), ArgumentMatchers.any());
+        // 락을 잡지 못했으면 남의 락을 해제해서는 안 된다
+        verify(redisDistributedLock, never()).release(ArgumentMatchers.anyString(),
+            ArgumentMatchers.anyString());
+        // 최초 1회 + 재시도 2회 = 3회. 값을 얻은 즉시 빠져나와 남은 8회를 낭비하지 않는다
+        verify(popularCoursesCache, times(3)).get(eq("ALL"), eq(List.class));
+        assertThat(response.uploadCourses())
+            .extracting(item -> item.uploadCourseId())
+            .containsExactly(5L);
+    }
+
+    @Test
+    @DisplayName("락 획득에 실패하고 재시도를 모두 소진하면 DB로 폴백하되 캐시에는 저장하지 않는다")
+    void getPopularCourses_LockNotAcquired_RetriesExhausted_FallsBackWithoutCaching() {
+        // given — 승자가 죽었거나 예상보다 오래 걸려 재시도 예산(10 * 100ms) 안에 캐시가 안 채워진 상황
+        Cache popularCoursesCache = givenRankingCacheHit("ALL", null);
+        givenLockAcquisitionReturns(false);
+        given(uploadCoursePopularReader.readPopularCourseIds(null)).willReturn(List.of(6L));
+        givenItemCacheReturns(serialize(cacheItem(6L, "코스6", null)));
+
+        // when
+        UploadCourseListResponse response = uploadCourseService.getPopularCourses(null);
+
+        // then — 최초 1회 + 재시도 10회 = 11회. 타이밍에 기대지 않고 호출 횟수로 루프 완주를 증명한다
+        verify(popularCoursesCache, times(11)).get(eq("ALL"), eq(List.class));
+        // 응답은 정상적으로 나와야 한다(fail-open) — 기다리다 실패했다고 사용자에게 에러를 줄 순 없다
+        verify(uploadCoursePopularReader, times(1)).readPopularCourseIds(null);
+        assertThat(response.uploadCourses())
+            .extracting(item -> item.uploadCourseId())
+            .containsExactly(6L);
+        // 락을 못 잡은 쪽이 캐시를 쓰면 승자의 결과를 덮어쓸 수 있으므로 저장하지 않는다
+        verify(popularCoursesCache, never()).put(ArgumentMatchers.any(), ArgumentMatchers.any());
+        verify(redisDistributedLock, never()).release(ArgumentMatchers.anyString(),
+            ArgumentMatchers.anyString());
+    }
+
     /**
      * 랭킹 캐시가 주어진 값을 반환하도록 stub한다. cachedIds가 null이면 캐시 미스다.
      */
