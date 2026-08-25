@@ -22,7 +22,19 @@
 | `manual-verification-20260812-153453.csv` | 27행 | **사람이 내린 판정 104건.** 지어냄률·세탁 통과율 전부가 여기서 나온다 |
 | `manual-verification-20260812-184600.csv` | 40행 | / |
 
-`merged3-*`은 배치 3개를 [merge3.py](merge3.py)로 병합한 최종본이다(우선순위: 최신 배치가 그 `requestId`의 canonical). 배치별 원본은 이 병합본이 대체하므로 승격하지 않았다.
+`merged3-*`은 배치 3개를 [merge3.py](merge3.py)로 병합한 최종본이다(우선순위: 최신 배치가 그 `requestId`의 canonical).
+
+### 배치별 요청 지표 — `batches/`
+
+| 파일 | 근거가 되는 것 |
+|---|---|
+| `hallucination-baseline-20260811-174326-requests.csv` | batch1 — **파싱 실패율 28.6%(4/14)의 유일한 근거** |
+| `hallucination-baseline-20260812-153453-requests.csv` | batch2 — 0.0%(0/4) |
+| `hallucination-baseline-20260812-184600-requests.csv` | batch3 — 7.7%(1/13) |
+
+**`merged3-requests.csv`만으로는 배치별 분해가 안 된다.** 병합이 `requestId`당 승자 배치만 남기므로 패자 배치의 행이 사라지기 때문이다(`merged3`의 배치 분포는 batch1 14 · batch2 3 · batch3 13). 그래서 [BASELINE-ARTIFACT-ANALYSIS.md](../BASELINE-ARTIFACT-ANALYSIS.md) 판정 3의 *"28.6%는 호출이 14건만 성공한 초기 배치의 값이고 전체 기준은 16.7%"* 를 검산하려면 이 셋이 필요하다.
+
+배치별 **장소별** CSV는 승격하지 않았다 — 파싱 실패는 요청 단위 지표라 `-requests.csv`만으로 재현되고, 장소 데이터는 `merged3-places.csv`가 `sourceBatch` 컬럼과 함께 보존한다.
 
 ### 재채점 (2026-08-25) — 시간이 지나면 재현 불가
 
