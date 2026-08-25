@@ -7,3 +7,9 @@ scripts/loadtest/*.sh text eol=lf
 # deploy/는 운영 리눅스 서버로 그대로 복사되는 파일들이다(systemd 유닛, EnvironmentFile).
 # CRLF가 섞이면 systemd가 값 끝의 CR까지 값으로 읽어 기동이 깨진다 — scripts/loadtest와 같은 이유로 LF 고정.
 deploy/** text eol=lf
+
+# terraform의 user-data 템플릿은 EC2 부팅 시 cloud-init이 셸 스크립트로 실행한다.
+# CRLF로 체크아웃되면 셔뱅이 "#!/bin/bash\r"이 되어 커널이 인터프리터를 찾지 못하고 기동 자체가
+# 실패한다 — 위 두 항목과 정확히 같은 이유다. 이 규칙이 없어서 실제로 loadtest 템플릿이
+# CRLF로 체크아웃돼 있었다(core.autocrlf=true인 Windows 환경).
+terraform/**/templates/*.tpl text eol=lf
