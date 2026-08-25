@@ -8,9 +8,12 @@ group = 'backend'
 version = '0.0.1-SNAPSHOT'
 description = 'yourtrip'
 
-// 지금까지 빌드 스크립트에 자바 버전 선언이 없어서, 실제 컴파일 타깃이 빌드하는 사람의 로컬 JDK에
-// 좌우됐다(.idea/misc.xml과 EC2 배포 스크립트만 21을 가리키고 있었다). toolchain으로 고정해
-// 로컬/CI/배포가 같은 버전으로 컴파일되게 한다.
+// ci(#116): 자바 버전을 빌드 스크립트가 직접 선언한다. 종전에는 toolchain도
+// sourceCompatibility도 없어서 Gradle을 실행한 JDK가 무엇이든 그대로 컴파일됐다 —
+// "Java 21"이 IntelliJ 프로젝트 설정과 배포 스크립트(Corretto 21)에만 암묵적으로 존재했고,
+// 다른 버전으로 빌드해도 아무도 눈치채지 못하는 상태였다.
+// CI 러너의 setup-java 지정만으로는 부족하다. 그건 러너 환경의 약속일 뿐이라 로컬·IDE에는
+// 닿지 않으므로, 빌드 스크립트가 스스로 요구해야 어디서 빌드하든 같은 바이트코드가 나온다.
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
@@ -156,6 +159,25 @@ tasks.named('test') {
     // 아래 `benchmarkTest` 태스크(`./gradlew benchmarkTest`)로만 명시적으로 돌린다.
     useJUnitPlatform {
         excludeTags 'benchmark'
+    }
+}
+
+// tasks/tomcat-thread-sizing(#97): 컨텍스트 스위칭 1회 비용을 측정 대상과 같은 EC2에서 재기
+// 위한 독립 실행 jar. App EC2에는 headless JRE만 깔려 있어(javac 없음) 거기서 컴파일할 수 없고,
+// 스레드 수마다 JVM을 새로 띄워야 해서(JIT 프로파일 오염 방지) JUnit 태스크로는 돌릴 수 없다.
+// 그래서 benchmarkTest와 달리 클래스 하나만 담은 jar를 로컬에서 만들어 scp한다.
+// 의존성이 전혀 없는 순수 java.base 코드라 fat jar가 필요 없다.
+tasks.register('contextSwitchBenchmarkJar', Jar) {
+    description = '컨텍스트 스위칭 비용 벤치마크를 독립 실행 jar로 묶는다 (tasks/tomcat-thread-sizing)'
+    group = 'verification'
+    dependsOn 'testClasses'
+    archiveFileName = 'context-switch-benchmark.jar'
+    destinationDirectory = layout.buildDirectory.dir('benchmark')
+    from(sourceSets.test.output) {
+        include 'backend/yourtrip/global/benchmark/ContextSwitchCostBenchmark*.class'
+    }
+    manifest {
+        attributes 'Main-Class': 'backend.yourtrip.global.benchmark.ContextSwitchCostBenchmark'
     }
 }
 

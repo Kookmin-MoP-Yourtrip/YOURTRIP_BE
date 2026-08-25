@@ -1,0 +1,36 @@
+# 운영 서버 systemd 유닛.
+#
+# 부하테스트 환경(terraform/loadtest/templates/app-user-data.sh.tpl)에서 실측으로 검증된
+# 구조를 그대로 옮긴 것이다. 운영 서버가 이미 다른 유닛으로 돌고 있다면 통째로 바꿀 필요
+# 없이 아래 두 줄만 맞추면 된다 — 그 둘이 JVM 옵션이 실제로 전달되는 경로다.
+#
+#   EnvironmentFile=/opt/app/jvm-opts.env
+#   ExecStart=/usr/bin/java $JVM_OPTS -jar /opt/app/app.jar
+#
+# EnvironmentFile은 여러 줄 쓸 수 있고 위에서부터 읽힌다. 비밀값(.env)과 JVM 옵션을
+# 나눠 둔 이유는 전자가 git 밖에 있어야 하고 후자는 레포가 근거와 함께 들고 있어야 하기
+# 때문이다. 앞의 파일이 없으면 기동이 실패하지만, "-"를 붙이면 없어도 넘어간다.
+#
+# $JVM_OPTS는 중괄호 없이 쓴다. systemd는 중괄호 없는 참조만 공백으로 단어 분리하므로,
+# ${JVM_OPTS}로 쓰면 "-Xmx768m -Xss512k" 전체가 인자 하나로 뭉쳐 기동이 깨진다.
+
+[Unit]
+Description=YOURTRIP Spring Boot App
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/app
+
+# 비밀값·DB 접속 정보 등. git 밖에서 관리한다(.env.example이 필요한 키의 정본).
+EnvironmentFile=/opt/app/.env
+# JVM 기동 옵션. 이 레포의 deploy/prod/jvm-opts.env를 복사한 것이다.
+EnvironmentFile=/opt/app/jvm-opts.env
+
+ExecStart=/usr/bin/java $JVM_OPTS -jar /opt/app/app.jar
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

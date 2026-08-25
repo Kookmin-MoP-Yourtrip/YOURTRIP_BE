@@ -18,10 +18,7 @@ public enum MypageErrorCode implements ErrorCode {
 
     // 비밀번호
     PASSWORD_INCORRECT("기존 비밀번호가 일치하지 않습니다.", HttpStatus.BAD_REQUEST),
-    NEW_PASSWORD_INVALID("새 비밀번호 형식이 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
-
-    // 탈퇴
-    ALREADY_DELETED_USER("이미 탈퇴된 사용자입니다.", HttpStatus.BAD_REQUEST);
+    NEW_PASSWORD_INVALID("새 비밀번호 형식이 올바르지 않습니다.", HttpStatus.BAD_REQUEST);
 
     private final String message;
     private final HttpStatus status;

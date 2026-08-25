@@ -11,7 +11,7 @@
 | 리소스 | 스펙 | 역할 |
 |---|---|---|
 | VPC (전용) | `10.42.0.0/16`, 단일 AZ(`ap-northeast-2a`) 배치 | 계정 기본 VPC에 의존하지 않는 격리된 네트워크. 모든 컴퓨트 리소스를 한 AZ에 몰아 네트워크 변수를 최소화 |
-| App EC2 | `t3.micro` | 실제 배포 타겟과 동일 스펙. Spring Boot 앱(JVM)만 단독 실행 — Redis/모니터링과 분리해 "1GB로 버티는가"를 순수하게 검증 |
+| App EC2 | `t3.small` (vCPU 2 = **물리 코어 1개 x 하이퍼스레드 2**, 2GB) | 실제 배포 타겟과 동일 스펙. Spring Boot 앱(JVM)만 단독 실행 — Redis/모니터링과 분리해 순수하게 검증. 두 vCPU가 물리 코어 하나를 공유하므로 **L1d 32KB·L2 1MB도 공유**한다(`aws ec2 describe-instances`의 `CpuOptions`로 확인). 스레드 경합 측정에서 이 사실이 결정적이라 명시해 둔다 |
 | k6 EC2 | `t3.micro` | 부하생성기 전용. 앱/DB와 물리적으로 분리해 부하생성기 자신이 CPU 경합을 일으키던 로컬 환경의 문제를 재현하지 않는다 |
 | RDS PostgreSQL | `db.t3.micro`, 단일 AZ | 로컬 시드 규모(course 6,000행, place 30,000행, place_image 60,000행)에 충분. `publicly_accessible=false`라 로컬에서 직접 접속은 안 되지만, SSM Session Manager 포트포워딩으로 App EC2를 경유해 터널링한다(§3) — App EC2엔 아무것도 설치하지 않는다 |
 | ElastiCache Redis | `cache.t3.micro`, 단일 노드 | 로컬 `docker-compose.yml`의 Redis(`maxmemory 256mb`, `allkeys-lru`)에 대응하는 관리형 대체 |
@@ -129,6 +129,62 @@ k6 run -e BASE_URL=http://<App EC2 공인 IP>:8080 -e DOMAIN=mycourse   -e MODE=
 - `MODE=pool`: course_id를 2~3000 범위에서 무작위 선택 — 캐시가 고르게 데워지는 실제 트래픽에 가까운 패턴
 - 두 도메인을 동시에 돌리지 않는다 — 로컬 벤치마크와 동일하게 순차 실행해야 지표가 섞이지 않는다
 - 실행 중에는 §4에서 열어둔 Grafana 대시보드를 "Last 15 minutes" + 5초 auto-refresh로 관찰한다
+
+### 5-1. 측정 하네스 — `scripts/loadtest/`
+
+Grafana로 눈으로 보는 것과 별개로, **run 단위 수치(구간 평균 Redis 지연·TPS·p95·런큐 대기 비율)를 남기려면** [scripts/loadtest/](../../scripts/loadtest/)를 쓴다. Tomcat `maxThreads` 축소 측정([tasks/tomcat-thread-sizing](../tasks/tomcat-thread-sizing/README.md))에서 만들었고, 그 이전 측정들이 scratchpad에만 두던 폴러·집계기를 정착시킨 것이다.
+
+| 스크립트 | 실행 위치 | 역할 |
+|---|---|---|
+| `poll-metrics.sh <base-url> <out>` | k6 EC2 | 1초 간격으로 `/actuator/prometheus`를 **전량** 저장(`# ts=` 구분자). 화이트리스트를 두지 않는다 — 15개 지표만 걸러 담다가 처음부터 노출되던 `lettuce_command_*`를 놓친 전례 때문 |
+| `sample-host.sh <out> [sec] [service\|pid]` | App EC2 | `/proc/loadavg`·`procs_running`·`/proc/stat` cpu 행(steal 포함)에 더해 **`ctxt`(시스템 전역 전환 총량)** 와 JVM 프로세스의 **`utime`/`stime`**·`minflt`·**`RSS`/`vsize`**, 그리고 `/proc/meminfo`의 **`MemTotal`/`MemFree`/`MemAvailable`**을 1초 간격으로 기록. 3번째 인자로 PID를 직접 줄 수 있다(systemd 서비스가 아닌 벤치마크 프로세스를 재기 위해). RSS는 Actuator가 노출하지 않는 힙 밖 네이티브를 역산하는 데 쓴다 |
+| `sample-schedstat.sh [sec] [service\|pid] [url]` | App EC2 | JVM 스레드 그룹(lettuce / http-nio / **gc** / **jit** / 기타)별 CPU 실행 vs **런큐 대기** 시간에 더해, **전환 횟수(schedstat의 pcount)** 와 **자발/비자발 분해**(`/proc/<pid>/task/*/status`)를 낸다. 창 양 끝에서 요청 수도 함께 찍어 **요청당 전환**으로 정규화한다 |
+| `run-switch-benchmark.sh [out]` | App EC2 (앱 정지 상태) | 컨텍스트 스위칭 1회 비용을 (스레드 수 N) x (워킹셋 S)로 스윕해 **직접(커널 경로)과 간접(캐시 재적재)을 분리**한다. jar은 로컬에서 `./gradlew contextSwitchBenchmarkJar`로 만들어 scp한다(App EC2에는 javac가 없다) |
+| `switch-thread-arm.sh <max\|default> [snc]` | App EC2 (`sudo`) | `/opt/app/.env`의 측정용 키를 치환(append 금지 — spring-dotenv 중복 키 사고) → 재기동 → health·`tomcat_threads_config_max_threads`·활성 프로필 검증 |
+| `switch-heap-arm.sh set <heap\|default>` / `verify <heap>` | App EC2 (`sudo`) | `/opt/app/.env`의 `JVM_OPTS`를 치환하고 systemd **드롭인**으로 `ExecStart`가 그 값을 읽게 만든다. 힙 플래그는 원래 user_data가 쓴 유닛에 하드코딩돼 있는데, 템플릿을 고쳐 apply하면 `user_data_replace_on_change = true` 때문에 인스턴스가 교체된다 — 드롭인은 형상이 아니라 실행 상태만 바꾸는 조작이라 drift가 없다. **재기동은 하지 않는다**(`switch-thread-arm.sh`가 한다). `verify`는 `/proc/<pid>/cmdline`과 `jvm_memory_max_bytes{area="heap"}` 두 갈래로 확인한다 |
+| `run-batch.sh` | 로컬 | 위를 ssh로 엮는 드라이버. IP·키는 환경변수(`APP_IP`/`K6_IP`/`APP_PRIVATE`/`SSH_KEY`)로만 받는다. `SCENARIO=mixed`·`FLUSH_REDIS=1`로 혼합 부하(arm마다 `FLUSHALL`)도 돌린다. arm 표기는 `T<max>[H<heapMB>][+snc]`이고(예: `T32`, `T32H1024`, `T200+snc`), `H` 토큰이 없으면 힙을 건드리지 않는다 |
+| `aggregate.py`, `summarize-batch.py` | 로컬 | run 창(`.window`의 t0/t1)의 첫/끝 스냅샷 Δ로 카운터를 집계(Δsum ÷ Δcount), 게이지는 창 평균/최대. k6 summary JSON의 p95/p99를 합쳐 마크다운 표로 |
+
+**요청당 지표 읽는 법.** arm마다 TPS가 다르므로(T200 2,517 vs T32 2,921) 초당 값을 그대로 비교하면 안 된다. 집계기가 내는 요청당 열은 아래와 같다.
+
+| 열 | 뜻 | 왜 보는가 |
+|---|---|---|
+| `요청당 CPU(vCPU-ms)` | `process_cpu_usage × vCPU ÷ TPS × 1000` | **이 하네스의 핵심 지표.** #88에서 200 → 32로 0.747 → 0.555(-26%)가 나온 그 값이다. vCPU 수는 하드코딩하지 않고 `/proc/stat` cpu 행 jiffies에서 역산한다 |
+| `요청당 user(ms)` / `요청당 sys(ms)` | `/proc/<pid>/stat`의 utime·stime Δ ÷ 요청 수 | 요청당 유저 모드 **명령어 수는 arm과 무관하게 같으므로**, 유저 시간의 차이는 "일이 늘어난 것"이 아니라 "같은 일이 느려진 것"(캐시/TLB)이다. 전환 경로·시스템콜은 커널 시간에 잡힌다 |
+| `CPU 교차검증%` | 위 둘의 합 대 `요청당 CPU`의 편차 | ±5%를 넘으면 창 정렬이나 PID가 어긋난 것이므로 그 run을 의심한다 |
+| `요청당 전환` | `/proc/stat` `ctxt` Δ ÷ 요청 수 | 요청 경로의 블로킹 지점 수가 상한을 정한다. arm 간 차이가 작으면 "전환 횟수"로는 CPU 차이를 설명할 수 없다 |
+| `요청당 GC(ms)`, `요청당 할당(KB)` | `jvm_gc_pause_seconds_sum`·`jvm_gc_memory_allocated_bytes_total` Δ | 유저 시간 증가가 캐시가 아니라 GC일 가능성을 차감한다(스레드 200개 = TLAB 200개) |
+| `GC` | `jvm_gc_pause_seconds`의 `gc` 라벨 | `-XX` 플래그가 하나도 없어 GC를 ergonomics가 정한다. `G1 Young Generation`이면 G1, `Copy`면 Serial |
+| `PID 변경` | 창 안에서 JVM PID가 바뀌었는가 | true면 `/proc` 누적 카운터가 리셋된 것이라 JVM 파생값을 버린다 |
+
+**메모리 열 읽는 법.** `-Xmx`를 박스 크기에 맞춰 재산정하려면 "힙 밖에 얼마나 쓰는가"를 알아야 한다([tasks/jvm-heap-sizing](../tasks/jvm-heap-sizing/README.md)).
+
+| 열 | 뜻 | 왜 보는가 |
+|---|---|---|
+| `힙 상한(MB)` | `jvm_memory_max_bytes{area="heap"}`의 **양수** 합 | 힙 arm이 실제로 적용됐는지 검증하는 열이다(`config_max_threads`가 Tomcat arm을 검증하는 것과 같은 역할). G1은 Eden/Survivor의 max를 `-1`로 내보내므로 양수만 더한다 |
+| `힙 사용 최대(MB)` / `힙 committed(MB)` | `jvm_memory_used/committed_bytes{area="heap"}` | G1은 `-Xmx`까지 무조건 자라지 않는다. **committed가 상한을 훨씬 밑돌면 힙 상한이 제약이 아니었다는 뜻**이다 |
+| `논힙 committed(MB)` | `area="nonheap"` 합에서 **Compressed Class Space를 뺀 값** | CCS는 Metaspace 풀에 **포함**돼 있어 그냥 더하면 이중계상이다(약 18MB). 이 레포 실측에서 논힙은 스레드 수와 무관하게 190~194MB로 거의 일정하다 |
+| `RSS 최대(MB)` | `/proc/<pid>/stat`의 rss | JVM이 실제로 만진 물리 메모리 총량. Actuator만으로는 알 수 없다 |
+| `힙 밖 잔여(MB)` | `RSS − (힙 committed + 논힙 + direct)` | **스레드 스택 실주거·GC 자료구조·컴파일러 아레나·심볼·malloc 아레나.** NMT 없이 얻는 근사치이고, NMT 프로파일 run으로 교차검증한다 |
+| `MemAvail 최소(MB)` | `/proc/meminfo`의 `MemAvailable` 창 안 **최소** | 힙을 키웠을 때의 안전 조건. 최대가 아니라 최소를 본다 — 가장 빠듯했던 순간이 판정 기준이다 |
+
+이 지표들이 **실제로 그 이름으로 노출되는지**는 [`LoadtestMetricsExposureTest`](../../src/test/java/backend/yourtrip/global/config/LoadtestMetricsExposureTest.java)가 잠근다 — 지표가 있는데 하네스가 못 받아 병목 규명이 늦어진 전례가 있어(`lettuce_command_*`) EC2 비용을 쓰기 전에 걸러낸다.
+
+```bash
+# 사전 배포 (한 번)
+scp -i $KEY scripts/loadtest/{switch-thread-arm,switch-heap-arm,sample-host,sample-schedstat}.sh ec2-user@<App>:/tmp/lt/
+scp -i $KEY scripts/loadtest/poll-metrics.sh ec2-user@<k6>:/tmp/lt/
+# k6 EC2의 /opt/app/scripts/k6/에 쓰려는 스크립트가 있는지 확인(checkout이 오래됐으면 scp)
+
+# 배치 실행
+APP_IP=<App 공인> K6_IP=<k6 공인> APP_PRIVATE=<App 사설> SSH_KEY=terraform/loadtest/yourtrip-loadtest-ssh \
+ARMS="T200 T32" REPS=2 LEVELS="5 20 50 200" LEVEL_SEC=90 OUT=./results/b1 bash scripts/loadtest/run-batch.sh
+
+# 집계
+python scripts/loadtest/summarize-batch.py ./results/b1 --md ./results/b1/summary.md
+```
+
+주의할 점 네 가지. **① 재기동마다 `DB_DDL_AUTO=create`면 시드가 날아가고 워머가 빈 랭킹을 30분 TTL로 캐시한다** — 측정 세션 동안은 `.env`를 `validate`로 내리고, 끝나면 `create`로 되돌린다(템플릿과의 divergence 방지). **② 폴러의 stdout을 ssh에 물려두면 세션이 안 닫힌다** — 드라이버는 `>/dev/null`로 떼어 둔다. **③ 결과 원본(`.prom` 수십 MB)은 커밋하지 않는다** — 문서에는 `summarize-batch.py` 출력만 옮긴다. **④ 재기동 직후 첫 고부하 run은 버린다** — JIT 예열이 덜 된 상태라 같은 설정인데도 TPS가 20% 이상 낮게 나온다(실측: 예열 30s 뒤 바로 VU 200을 걸었을 때 2,253 → 두 번째 run 2,976). 드라이버가 VU를 5→20→50→200으로 올리는 것이 예열을 겸한다. **⑤ `sample-schedstat.sh`의 순회는 더 이상 arm에 따라 느려지지 않는다** — 스레드마다 `cat`/`grep`을 띄우던 것을 없애 스냅샷 1회가 740ms → 37ms(137스레드 기준)로 줄었다. 이전 측정의 "(실행+대기)÷벽시계" 열에 있던 arm 의존 편향(최대 15%p)이 여기서 왔다.
 
 ## 6. 병목 지점 확인 방법
 

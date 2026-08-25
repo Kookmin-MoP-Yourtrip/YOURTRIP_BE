@@ -55,8 +55,7 @@ public class ProfileServiceImpl implements ProfileService {
         try {
             String key = s3Service.uploadFile(file).key();
 
-            user = user.withProfileImage(key);
-            userRepository.save(user);
+            user.updateProfileImage(key);
 
             String publicUrl = cloudFrontService.getPublicUrl(key);
             return new ProfileImageResponse(publicUrl);
@@ -86,8 +85,7 @@ public class ProfileServiceImpl implements ProfileService {
             throw new BusinessException(MypageErrorCode.NICKNAME_DUPLICATED);
         }
 
-        user = user.withNickname(nickname);
-        userRepository.save(user);
+        user.updateNickname(nickname);
     }
 
     @Override
@@ -104,8 +102,7 @@ public class ProfileServiceImpl implements ProfileService {
             throw new BusinessException(MypageErrorCode.NEW_PASSWORD_INVALID);
         }
 
-        user = user.withPassword(passwordEncoder.encode(request.newPassword()));
-        userRepository.save(user);
+        user.changePassword(passwordEncoder.encode(request.newPassword()));
     }
 
     @Override
@@ -115,12 +112,7 @@ public class ProfileServiceImpl implements ProfileService {
         Long userId = userService.getCurrentUserId();
         User user = userService.getUser(userId);
 
-        if (user.isDeleted()) {
-            throw new BusinessException(MypageErrorCode.ALREADY_DELETED_USER);
-        }
-
-        user = user.withDeleted();
-        userRepository.save(user);
+        user.softDelete();
     }
 
     @Override

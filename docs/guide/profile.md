@@ -249,7 +249,25 @@ sudo tr '\0' '\n' < /proc/$(pgrep -f 'app.jar')/environ | grep SPRING
 SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
 ```
 
-### 4-5. 신규 서버를 프로비저닝할 때
+### 4-5. JVM 기동 옵션
+
+`-Xmx`·`-Xss`는 **`java` 프로세스의 명령줄 인자**라 `application-prod.yml`에 담을 수 없다. JVM이 이미 그 값으로 뜬 뒤에야 Spring이 yml을 읽기 때문이다. 그래서 별도의 자리를 둔다 — [deploy/prod/](../../deploy/prod/README.md)가 그곳이고, 값과 산정 근거가 함께 버전관리된다.
+
+```
+JVM_OPTS=-Xmx768m -Xss512k
+```
+
+systemd 유닛이 `EnvironmentFile=/opt/app/jvm-opts.env`로 읽고 `ExecStart`에서 `$JVM_OPTS`로 전개한다. 비밀값이 든 `/opt/app/.env`와 파일을 나눈 이유는 그쪽이 git 밖에 있어야 하고, JVM 옵션은 반대로 근거와 함께 저장소가 들고 있어야 하기 때문이다.
+
+> ⚠️ **`-Xmx768m`은 t3.small(2GB) 전용값이다.** 더 작은 스펙에 그대로 넣으면 OOM이 나고, 메모리가 1,792MB 아래로 내려가면 GC까지 SerialGC로 바뀌어 산정 근거 자체가 무효가 된다. 적용 절차·확인 방법·재산정 기준은 [deploy/prod/README.md](../../deploy/prod/README.md)에 있다.
+
+**적용 확인은 4-2와 같은 원칙으로 반드시 한다.** `JVM_OPTS`가 비면 `$JVM_OPTS`가 빈 문자열로 사라져 JVM이 조용히 기본값(t3.small에서 480MB)으로 뜨는데, 768m과 눈으로 구분되지 않는다.
+
+```bash
+tr '\0' ' ' < /proc/$(systemctl show -p MainPID --value yourtrip-app)/cmdline; echo
+```
+
+### 4-6. 신규 서버를 프로비저닝할 때
 
 부하테스트 환경은 [terraform/loadtest/templates/app-user-data.sh.tpl](../../terraform/loadtest/templates/app-user-data.sh.tpl)의
 `.env` 생성 블록에 `SPRING_PROFILES_ACTIVE=prod`가 포함돼 있다. **`terraform apply`로 새로 만든

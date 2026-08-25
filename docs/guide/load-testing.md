@@ -179,6 +179,8 @@ export const options = {
 
 실전 예시는 [`scripts/k6/detail-ramping.js`](../../scripts/k6/detail-ramping.js) 참고. 실행 중에는 Grafana의 **Presign CPU Bottleneck** 대시보드(§4 참고)를 "Last 15 minutes" + 5초 auto-refresh로 열어두고, k6가 보고하는 처리량 저하 시점과 `process_cpu_usage`/`hikaricp_connections_pending`이 한계에 닿는 시점을 나란히 관찰한다.
 
+눈으로 보는 것과 별개로 **run 단위 수치를 남기려면**(구간 평균 Redis 지연·TPS·p95·스레드 런큐 대기 비율) EC2 분리 환경용 하네스 [`scripts/loadtest/`](../../scripts/loadtest/)를 쓴다 — 사용법은 [ec2-rds-loadtest.md §5-1](ec2-rds-loadtest.md#5-1-측정-하네스--scriptsloadtest)에 있다.
+
 ## 7. JFR(Java Flight Recorder) CPU 프로파일링
 
 end-to-end TPS/latency만으로는 "무엇이 CPU를 쓰고 있는지"까지는 알 수 없다. JDK 내장 JFR로 실행 중인 애플리케이션의 CPU 샘플을 직접 뜬다(별도 프로파일러 설치 불필요).
