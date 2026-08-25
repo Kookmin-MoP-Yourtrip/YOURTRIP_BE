@@ -44,7 +44,7 @@
 | [tasks/ai-course-create/멀티-에이전트-파이프라인.md](tasks/ai-course-create/멀티-에이전트-파이프라인.md) | **멀티 에이전트 파이프라인 설계 (허브)** — 배경·설계 원칙·전체 구조·도입 순서. 상세는 `design/`·`decisions/`로 나뉜다 |
 | [tasks/ai-course-create/ROADMAP.md](tasks/ai-course-create/ROADMAP.md) | 위 설계의 실행 로드맵 — 단계별 체크리스트와 완료 판정 기준 |
 | [tasks/ai-course-create/steps/](tasks/ai-course-create/steps/) | 단계별 실행 기록과 그 과정에서 뒤집힌 판단 |
-| [tasks/ai-course-create/hallucination/](tasks/ai-course-create/hallucination/) | 코스 생성 환각률 측정 — baseline(Gemini 25.6%)과 OpenAI 재측정(7.5%) |
+| [tasks/ai-course-create/hallucination/](tasks/ai-course-create/hallucination/) | 코스 생성 환각률 측정 — Gemini baseline(지어냄률 9.6%)과 산출물 재분석·지표 재정립 경위 |
 
 ## `api-changes/` — FE 대상 API 변경 고지
 
