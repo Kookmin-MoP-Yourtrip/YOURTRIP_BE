@@ -200,7 +200,7 @@ LlmClient (interface, 우리 도메인 타입만 다룸)          ← 유지
 | 코드블록/필드추가/null/큰따옴표 금지 | ~6 | **구조화 출력이 디코딩 레벨에서 강제 (소멸)** |
 | startTime 오름차순·겹침 금지·09~20시 | ~5 | **RouteOptimizer가 계산 (소멸)** |
 | 동선 역주행 금지 | ~2 | **RouteOptimizer가 계산 (소멸)** |
-| day당 식사 1회 | ~2 | **Planner 출력 검증에서 강제 (소멸)** |
+| day당 식사 2회 | ~2 | **Planner 출력 검증에서 강제 (소멸)** |
 | 실존 상호명만 / 괄호·설명 금지 | ~5 | Curator system instruction |
 | 키워드 JSON 해석 규칙 | ~15 | Planner + Curator 공통 system instruction |
 | 동행유형·분위기·예산별 톤 조정 | ~15 | Curator system instruction |
