@@ -1158,6 +1158,12 @@ class AiHallucinationBaselineTest {
     }
 
     private static void writeUtf8Bom(Path path, String content) throws IOException {
+        // 출력 디렉터리를 먼저 만든다. results/ 는 .gitignore 대상이라 clone 직후나 정리 후에는
+        // 존재하지 않는데, 없으면 여기서 NoSuchFileException 이 나고 그때는 이미 LLM 호출을
+        // 다 끝낸 뒤라 측정 비용만 날린다. raw-* 쪽은 이미 createDirectories 를 부르지만
+        // CSV 세 종은 이 메서드가 유일한 통로라 여기 한 곳이면 전부 덮인다.
+        Files.createDirectories(path.getParent());
+
         // Excel(Windows)이 UTF-8 CSV의 한글을 깨뜨리지 않도록 BOM을 붙인다 — 수동 검증 워크시트를
         // 사람이 스프레드시트로 열기 때문이다.
         Files.writeString(path, "﻿" + content, StandardCharsets.UTF_8);
