@@ -218,7 +218,7 @@ class AiCourseDayShapeProbeTest {
         return new AiCoursePipeline(
             new PlannerAgent(llmClient, promptLoader, Runnable::run),
             new CandidateRetrievalStage(new AreaGeocoder(kakaoClient),
-                new NaverLocalSeedSource(naverClient), new TourApiSource(tourClient), metrics,
+                new NaverLocalSeedSource(naverClient, metrics), new TourApiSource(tourClient), metrics,
                 Runnable::run),
             new CuratorAgent(llmClient, promptLoader, metrics, Runnable::run),
             new GroundingStage(kakaoClient, metrics, Runnable::run),

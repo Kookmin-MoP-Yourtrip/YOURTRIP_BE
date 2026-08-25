@@ -167,7 +167,7 @@ class AreaQueryStrategyProbeTest {
         AreaGeocoder geocoder = new AreaGeocoder(kakaoClient);
         NaverLocalSeedSource seedSource = new NaverLocalSeedSource(new NaverLocalClient(
             NaverConfig.buildNaverWebClient("https://naverapihub.apigw.ntruss.com", naverId,
-                naverSecret)));
+                naverSecret)), new AiCourseMetrics(new SimpleMeterRegistry()));
         PlannerAgent planner = planner(openAiKey);
 
         List<Row> rows = new ArrayList<>();
@@ -323,7 +323,7 @@ class AreaQueryStrategyProbeTest {
         AreaGeocoder geocoder = new AreaGeocoder(kakaoClient);
         NaverLocalSeedSource seedSource = new NaverLocalSeedSource(new NaverLocalClient(
             NaverConfig.buildNaverWebClient("https://naverapihub.apigw.ntruss.com", naverId,
-                naverSecret)));
+                naverSecret)), new AiCourseMetrics(new SimpleMeterRegistry()));
 
         Map<String, List<PlaceCandidate>> cache = new HashMap<>();
         List<int[]> counts = new ArrayList<>();
