@@ -1,0 +1,20 @@
+{
+  "title": "삼척 친구들과 즐기는 프리미엄 액티비티 미식 여행",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "해변정",
+          "startTime": "11:30"
+        },
+        {
+          "placeName": "삼척해변",
+          "startTime": "13:00"
+        },
+        {
+          "placeName": "삼척해상케이블카",
+          "startTime": "14:30"
+        },
+        {
+          "placeName

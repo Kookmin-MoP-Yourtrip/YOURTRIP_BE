@@ -1,0 +1,9 @@
+﻿requestId,location,regionTier,keywordSet,parseSuccess,parseError,dayCount,placesPerDay,totalPlaces,duplicatePlaceCount,startTimeViolationCount
+15,강릉,FAMOUS,C,true,,3,6/6/5,17,1,0
+16,순천,MINOR,A,true,,3,6/5/4,15,0,0
+17,순천,MINOR,B,true,,3,5/5/4,14,0,0
+18,순천,MINOR,C,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-…",0,,0,0,0
+19,영주,MINOR,A,true,,3,5/5/4,14,0,0
+20,영주,MINOR,B,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-…",0,,0,0,0
+21,영주,MINOR,C,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-…",0,,0,0,0
+22,공주,MINOR,A,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-…",0,,0,0,0

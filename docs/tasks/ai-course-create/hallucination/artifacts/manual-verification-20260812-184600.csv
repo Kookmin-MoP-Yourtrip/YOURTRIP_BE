@@ -1,0 +1,46 @@
+﻿# verdict 를 채워주세요: CORRECT | FABRICATED | WRONG_MATCH | UNVERIFIABLE
+#   CORRECT       AI 원안이 실존하고 카카오 매칭도 그 장소가 맞음
+#   FABRICATED     AI 원안이 그 지역에 실존하지 않는데 무관한 장소로 매칭됨 (세탁된 환각)
+#   WRONG_MATCH   AI 원안은 실존하는데 카카오가 엉뚱한 것을 매칭
+#   UNVERIFIABLE  판단 불가
+scoreBand,bestScore,requestId,day,location,aiPlaceName,matchedPlaceName,matchedAddress,matchedPlaceUrl,verdict,note
+NO_RESULT,-1,20,3,영주,카페 그날,,,,FABRICATED,검색결과없음 실존여부 확인불가
+NO_RESULT,-1,18,2,순천,순천만갈대밭한정식,,,,FABRICATED,실제 상호명 순천만갈대밭식당 확인. 존재하지 않는 한정식 을 지어내 붙임 -> 환각 확정
+NO_RESULT,-1,18,2,순천,낙안읍성전통식당,,,,FABRICATED,낙안읍성 인근 전통식당은 다수 존재하나 특정업체 특정불가
+NO_RESULT,-1,21,2,영주,카페 그랜드,,,,FABRICATED,검색결과없음 실존여부 확인불가
+NO_RESULT,-1,23,1,공주,무령왕릉과 송산리고분군,,,,CORRECT,무령왕릉과 왕릉원(옛 송산리고분군)으로 실존하는 유적지
+NO_RESULT,-1,29,2,삼척,동굴신비관 식당,,,,FABRICATED,동굴신비관은 실존하나 전시관이며 식당이 아님
+NO_RESULT,-1,19,3,영주,영주호 출렁다리,,,,CORRECT,영주호 용마루공원 출렁다리(용미교 용두교)로 실존
+NO_RESULT,-1,21,3,영주,영주 레일바이크,,,,FABRICATED,영주 레일바이크 사업은 추진단계로 완공여부 불확실
+NO_RESULT,-1,18,1,순천,펍 앤 펍스,,,,FABRICATED,재검색해도 순천에서 이 이름의 실존 업체 확인 안됨. NO_RESULT 기준상 환각으로 확정
+NO_RESULT,-1,24,3,공주,공주역사영상관,,,,CORRECT,구 공주읍사무소 건물의 실존 전시관
+S1_4,3,27,2,통영,통영 케이블카,통영케이블카,경남 통영시 발개로 205,http://place.map.kakao.com/11657791,CORRECT,통영케이블카와 동일장소
+S1_4,3,24,2,공주,송산리고분군,공주 무령왕릉과 왕릉원,충남 공주시 금성동 산 5-19,http://place.map.kakao.com/2056894818,CORRECT,송산리고분군의 현재 공식명칭이 무령왕릉과 왕릉원임
+S1_4,3,26,1,통영,미륵산 케이블카,통영케이블카,경남 통영시 발개로 205,http://place.map.kakao.com/11657791,CORRECT,미륵산 소재 통영케이블카와 동일장소
+S1_4,3,22,3,공주,계룡산 동학사,대한불교조계종 동학사,충남 공주시 반포면 동학사1로 462,http://place.map.kakao.com/11096991,CORRECT,계룡산 동학사와 대한불교조계종 동학사 동일사찰
+S1_4,3,24,2,공주,공주풀꽃문학관,나태주풀꽃문학관,충남 공주시 봉황로 85-12,http://place.map.kakao.com/27150684,CORRECT,나태주풀꽃문학관이 공주풀꽃문학관과 동일장소
+S1_4,3,24,1,공주,공주 한옥마을,공주한옥마을,충남 공주시 관광단지길 12,http://place.map.kakao.com/21490830,CORRECT,표기차이만 있는 동일장소
+S1_4,3,18,2,순천,순천 드라마 촬영장,순천드라마촬영장,전남광주통합특별시 순천시 비례골길 24,http://place.map.kakao.com/27195962,CORRECT,표기차이만 있는 동일장소
+S1_4,3,26,2,통영,동피랑 벽화마을,동피랑벽화마을,경남 통영시 동피랑1길 6-18,http://place.map.kakao.com/10290301,CORRECT,표기차이만 있는 동일장소
+S1_4,3,27,1,통영,동피랑 벽화마을,동피랑벽화마을,경남 통영시 동피랑1길 6-18,http://place.map.kakao.com/10290301,CORRECT,표기차이만 있는 동일장소
+S1_4,3,25,1,통영,동피랑 벽화마을,동피랑벽화마을,경남 통영시 동피랑1길 6-18,http://place.map.kakao.com/10290301,CORRECT,표기차이만 있는 동일장소
+S5_7,7,25,1,통영,해물가,통영해물가 창원본점,경남 창원시 성산구 용지로 233,http://place.map.kakao.com/1816577803,FABRICATED,"통영 해물가"가 그대로 상호명 서울 창원에 위치
+S5_7,5,18,3,순천,순천 문화의 거리,순천문화의거리,전남광주통합특별시 순천시 행동 65-58,http://place.map.kakao.com/18905860,CORRECT,표기차이만 있는 동일장소
+S5_7,5,28,1,삼척,해변횟집,은혜횟집,강원특별자치도 삼척시 새천년도로 515,http://place.map.kakao.com/8810957,FABRICATED,"재검색해도 삼척 새천년도로 일대에서 이 이름의 실존 업체 확인 안됨(삼척횟집,삼일횟집만 확인). 환각으로 확정"
+S5_7,5,28,1,삼척,부명칼국수,부명손칼국수,강원특별자치도 삼척시 사대길 43,http://place.map.kakao.com/16854493,CORRECT,부명손칼국수와 동일업체로 추정되는 표기차이
+S5_7,5,20,1,영주,영주한우프라자,영주축협한우프라자 본점,경북 영주시 한정로 10,http://place.map.kakao.com/786617789,CORRECT,영주축협한우프라자와 동일업체로 추정되는 표기차이
+S5_7,5,25,3,통영,카페 울라봉,카페울라봉,경남 통영시 동문로 51,http://place.map.kakao.com/25037933,CORRECT,표기차이만 있는 동일장소
+S5_7,5,29,1,삼척,삼척항회센터,활어회센터식당,강원특별자치도 삼척시 이사부길 38,http://place.map.kakao.com/341269153,CORRECT,삼척항활어회센터로 주소일치 확인됨
+S5_7,5,22,1,공주,고마나루돌쌈밥,고마나루1999,충남 공주시 백미고을길 5-8,http://place.map.kakao.com/8684887,FABRICATED,고마나루1999만 실존함
+S5_7,5,24,3,공주,루치아의뜰,루치아의 뜰,충남 공주시 웅진로 145-8,http://place.map.kakao.com/21626744,CORRECT,띄어쓰기차이만 있는 동일장소
+S5_7,5,23,2,공주,고마나루 돌쌈밥,고마나루1999,충남 공주시 백미고을길 5-8,http://place.map.kakao.com/8684887,FABRICATED,고마나루1999만 실존함
+S8_10,8,25,2,통영,이순신공원,이순신공원,경남 통영시 정량동 628,http://place.map.kakao.com/11807745,CORRECT,동일장소
+S8_10,8,21,1,영주,부석사,부석사,경북 영주시 부석면 부석사로 345,http://place.map.kakao.com/7909668,CORRECT,동일장소
+S8_10,10,20,3,영주,랜떡,영주랜떡,경북 영주시 중앙로83번길 26-2,http://place.map.kakao.com/2015360199,CORRECT,영주랜떡과 동일장소로 추정
+S8_10,8,18,3,순천,순천향교,순천향교,전남광주통합특별시 순천시 향교길 60,http://place.map.kakao.com/9843529,CORRECT,동일장소
+S8_10,8,20,2,영주,희방사,희방사,경북 영주시 풍기읍 죽령로1720번길 278,http://place.map.kakao.com/8174684,CORRECT,동일장소
+S8_10,10,19,1,영주,선비촌,선비촌종가집,경북 영주시 순흥면 소백로 2796,http://place.map.kakao.com/10490979,WRONG_MATCH,선비촌(민속촌)과 선비촌종가집(식당)은 별개 실존시설
+S8_10,8,20,1,영주,부석사,부석사,경북 영주시 부석면 부석사로 345,http://place.map.kakao.com/7909668,CORRECT,동일장소
+S8_10,8,22,2,공주,무령왕릉과 왕릉원,공주 무령왕릉과 왕릉원,충남 공주시 금성동 산 5-19,http://place.map.kakao.com/2056894818,CORRECT,동일장소
+S8_10,10,20,2,영주,무섬식당,무섬식당,경북 영주시 문수면 무섬로 238-3,http://place.map.kakao.com/471703179,CORRECT,동일장소
+S8_10,8,25,3,통영,통영전통공예관,통영전통공예관,경남 통영시 도남로 281,http://place.map.kakao.com/8108621,CORRECT,동일장소

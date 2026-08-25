@@ -1,0 +1,84 @@
+{
+  "title": "통영, 낭만 가득한 감성 힐링 뚜벅이 여행",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "통영 중앙시장",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "오미사꿀빵 본점",
+          "startTime": "12:00"
+        },
+        {
+          "placeName": "동피랑 벽화마을",
+          "startTime": "13:30"
+        },
+        {
+          "placeName": "서피랑 공원",
+          "startTime": "16:00"
+        },
+        {
+          "placeName": "해물가",
+          "startTime": "18:30"
+        },
+        {
+          "placeName": "강구안",
+          "startTime": "20:00"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "한려수도 조망 케이블카",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "미륵산회식당",
+          "startTime": "12:00"
+        },
+        {
+          "placeName": "이순신공원",
+          "startTime": "13:30"
+        },
+        {
+          "placeName": "통영 해저터널",
+          "startTime": "16:00"
+        },
+        {
+          "placeName": "뚱보할매김밥집",
+          "startTime": "18:00"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "남망산 조각공원",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "통영전통공예관",
+          "startTime": "11:30"
+        },
+        {
+          "placeName": "한일김밥",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "카페 울라봉",
+          "startTime": "14:00"
+        },
+        {
+          "placeName": "통영 여객선터미널",
+          "startTime": "16:00"
+        }
+      ]
+    }
+  ]
+}

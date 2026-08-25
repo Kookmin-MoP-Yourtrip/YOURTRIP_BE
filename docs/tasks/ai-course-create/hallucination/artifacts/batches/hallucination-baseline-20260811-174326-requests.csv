@@ -1,0 +1,67 @@
+﻿requestId,location,regionTier,keywordSet,parseSuccess,parseError,dayCount,placesPerDay,totalPlaces,duplicatePlaceCount,startTimeViolationCount
+1,경주,FAMOUS,A,false,"JSON_PARSE_FAILED: Unexpected end-of-input within/between Object entries
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 21, column: 1] (through reference chain: backend.yourtrip.global.gemini.dto.GeminiCourseDto[""daySchedules""]->java.util.ArrayList[0]->backend.yourtrip.global.gemini.dto.GeminiCourseDto$DayScheduleDto[""places""]->java.util.ArrayList[3])",0,,0,0,0
+2,경주,FAMOUS,B,true,,3,6/7/6,19,0,0
+3,경주,FAMOUS,C,false,"JSON_PARSE_FAILED: Unexpected end-of-input within/between Object entries
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 21, column: 23] (through reference chain: backend.yourtrip.global.gemini.dto.GeminiCourseDto[""daySchedules""]->java.util.ArrayList[0]->backend.yourtrip.global.gemini.dto.GeminiCourseDto$DayScheduleDto[""places""]->java.util.ArrayList[3])",0,,0,0,0
+4,부산,FAMOUS,A,true,,3,6/6/6,18,1,0
+5,부산,FAMOUS,B,true,,3,5/5/4,14,0,0
+6,부산,FAMOUS,C,true,,3,6/5/6,17,0,0
+7,제주,FAMOUS,A,true,,3,5/5/5,15,0,0
+8,제주,FAMOUS,B,true,,3,5/5/6,16,0,0
+9,제주,FAMOUS,C,true,,3,4/5/4,13,0,0
+10,서울,FAMOUS,A,false,"JSON_PARSE_FAILED: Unexpected end-of-input: was expecting closing quote for a string value
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 20, column: 27] (through reference chain: backend.yourtrip.global.gemini.dto.GeminiCourseDto[""daySchedules""]->java.util.ArrayList[0]->backend.yourtrip.global.gemini.dto.GeminiCourseDto$DayScheduleDto[""places""]->java.util.ArrayList[3]->backend.yourtrip.global.gemini.dto.GeminiCourseDto$PlaceDto[""placeName""])",0,,0,0,0
+11,서울,FAMOUS,B,true,,3,5/5/5,15,0,0
+12,서울,FAMOUS,C,false,"JSON_PARSE_FAILED: Unexpected end-of-input: expected close marker for Object (start marker at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 19, column: 9])
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 20, column: 1] (through reference chain: backend.yourtrip.global.gemini.dto.GeminiCourseDto[""daySchedules""]->java.util.ArrayList[0]->backend.yourtrip.global.gemini.dto.GeminiCourseDto$DayScheduleDto[""places""]->java.util.ArrayList[3])",0,,0,0,0
+13,강릉,FAMOUS,A,true,,3,5/6/4,15,0,0
+14,강릉,FAMOUS,B,true,,3,5/6/5,16,0,0
+15,강릉,FAMOUS,C,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 52.00918951s.",0,,0,0,0
+16,순천,MINOR,A,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 36.196503293s.",0,,0,0,0
+17,순천,MINOR,B,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 53.468951422s.",0,,0,0,0
+18,순천,MINOR,C,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 12.983354463s.",0,,0,0,0
+19,영주,MINOR,A,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 33.137285141s.",0,,0,0,0
+20,영주,MINOR,B,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 57.544963317s.",0,,0,0,0
+21,영주,MINOR,C,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 36.387941507s.",0,,0,0,0
+22,공주,MINOR,A,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 8.85121319s.",0,,0,0,0
+23,공주,MINOR,B,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 19.100474551s.",0,,0,0,0
+24,공주,MINOR,C,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 28.85125406s.",0,,0,0,0
+25,통영,MINOR,A,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 58.331795262s.",0,,0,0,0
+26,통영,MINOR,B,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 411.809888ms.",0,,0,0,0
+27,통영,MINOR,C,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 21.873595172s.",0,,0,0,0
+28,삼척,MINOR,A,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 52.87411821s.",0,,0,0,0
+29,삼척,MINOR,B,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 32.558241432s.",0,,0,0,0
+30,삼척,MINOR,C,false,"GEMINI_CALL_FAILED: com.google.genai.errors.ClientException: 429 . You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 52.074314803s.",0,,0,0,0

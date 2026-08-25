@@ -1,0 +1,80 @@
+{
+  "title": "삼척 자연 속 가족 힐링 드라이브",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "삼척해상케이블카",
+          "startTime": "10:30"
+        },
+        {
+          "placeName": "삼척항회센터",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "이사부사자공원",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "새천년해안도로",
+          "startTime": "16:30"
+        },
+        {
+          "placeName": "바다횟집",
+          "startTime": "18:30"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "환선굴",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "동굴신비관 식당",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "장호항",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "수로부인헌화공원",
+          "startTime": "16:30"
+        },
+        {
+          "placeName": "부일막국수",
+          "startTime": "18:30"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "추암 촛대바위",
+          "startTime": "07:00"
+        },
+        {
+          "placeName": "추암해변",
+          "startTime": "09:00"
+        },
+        {
+          "placeName": "죽서루",
+          "startTime": "10:30"
+        },
+        {
+          "placeName": "성원닭갈비",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "삼척중앙시장",
+          "startTime": "14:00"
+        }
+      ]
+    }
+  ]
+}

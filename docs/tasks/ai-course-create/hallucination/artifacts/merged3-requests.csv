@@ -1,0 +1,35 @@
+﻿requestId,location,regionTier,keywordSet,parseSuccess,parseError,dayCount,placesPerDay,totalPlaces,duplicatePlaceCount,startTimeViolationCount,sourceBatch
+1,경주,FAMOUS,A,false,"JSON_PARSE_FAILED: Unexpected end-of-input within/between Object entries
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 21, column: 1] (through reference chain: backend.yourtrip.global.gemini.dto.GeminiCourseDto[""daySchedules""]->java.util.ArrayList[0]->backend.yourtrip.global.gemini.dto.GeminiCourseDto$DayScheduleDto[""places""]->java.util.ArrayList[3])",0,,0,0,0,batch1
+2,경주,FAMOUS,B,true,,3,6/7/6,19,0,0,batch1
+3,경주,FAMOUS,C,false,"JSON_PARSE_FAILED: Unexpected end-of-input within/between Object entries
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 21, column: 23] (through reference chain: backend.yourtrip.global.gemini.dto.GeminiCourseDto[""daySchedules""]->java.util.ArrayList[0]->backend.yourtrip.global.gemini.dto.GeminiCourseDto$DayScheduleDto[""places""]->java.util.ArrayList[3])",0,,0,0,0,batch1
+4,부산,FAMOUS,A,true,,3,6/6/6,18,1,0,batch1
+5,부산,FAMOUS,B,true,,3,5/5/4,14,0,0,batch1
+6,부산,FAMOUS,C,true,,3,6/5/6,17,0,0,batch1
+7,제주,FAMOUS,A,true,,3,5/5/5,15,0,0,batch1
+8,제주,FAMOUS,B,true,,3,5/5/6,16,0,0,batch1
+9,제주,FAMOUS,C,true,,3,4/5/4,13,0,0,batch1
+10,서울,FAMOUS,A,false,"JSON_PARSE_FAILED: Unexpected end-of-input: was expecting closing quote for a string value
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 20, column: 27] (through reference chain: backend.yourtrip.global.gemini.dto.GeminiCourseDto[""daySchedules""]->java.util.ArrayList[0]->backend.yourtrip.global.gemini.dto.GeminiCourseDto$DayScheduleDto[""places""]->java.util.ArrayList[3]->backend.yourtrip.global.gemini.dto.GeminiCourseDto$PlaceDto[""placeName""])",0,,0,0,0,batch1
+11,서울,FAMOUS,B,true,,3,5/5/5,15,0,0,batch1
+12,서울,FAMOUS,C,false,"JSON_PARSE_FAILED: Unexpected end-of-input: expected close marker for Object (start marker at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 19, column: 9])
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 20, column: 1] (through reference chain: backend.yourtrip.global.gemini.dto.GeminiCourseDto[""daySchedules""]->java.util.ArrayList[0]->backend.yourtrip.global.gemini.dto.GeminiCourseDto$DayScheduleDto[""places""]->java.util.ArrayList[3])",0,,0,0,0,batch1
+13,강릉,FAMOUS,A,true,,3,5/6/4,15,0,0,batch1
+14,강릉,FAMOUS,B,true,,3,5/6/5,16,0,0,batch1
+15,강릉,FAMOUS,C,true,,3,6/6/5,17,1,0,batch2
+16,순천,MINOR,A,true,,3,6/5/4,15,0,0,batch2
+17,순천,MINOR,B,true,,3,5/5/4,14,0,0,batch2
+18,순천,MINOR,C,true,,3,5/5/6,16,0,0,batch3
+19,영주,MINOR,A,true,,3,6/5/4,15,0,0,batch3
+20,영주,MINOR,B,true,,3,6/6/5,17,0,0,batch3
+21,영주,MINOR,C,true,,3,5/5/4,14,0,0,batch3
+22,공주,MINOR,A,true,,3,5/6/4,15,0,0,batch3
+23,공주,MINOR,B,true,,3,5/6/4,15,0,0,batch3
+24,공주,MINOR,C,true,,3,5/6/5,16,0,0,batch3
+25,통영,MINOR,A,true,,3,6/5/5,16,0,0,batch3
+26,통영,MINOR,B,true,,3,6/5/5,16,0,0,batch3
+27,통영,MINOR,C,true,,3,5/5/5,15,0,0,batch3
+28,삼척,MINOR,A,true,,3,5/6/4,15,0,0,batch3
+29,삼척,MINOR,B,true,,3,5/5/5,15,0,0,batch3
+30,삼척,MINOR,C,false,"JSON_PARSE_FAILED: Unexpected end-of-input in field name at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 20, column: 21] (through reference chain: backend.yourtrip.global.gemini.dto.GeminiCourseDto[""daySchedules""]->java.util.ArrayList[0]->backend.yourtrip.global…",0,,0,0,0,batch3

@@ -1,0 +1,80 @@
+{
+  "title": "순천 낭만 가득, 힐링 감성 뚜벅이 여행",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "순천만국가정원",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "순천만국가정원 푸드코트",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "스카이큐브",
+          "startTime": "14:00"
+        },
+        {
+          "placeName": "순천만습지",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "순천만습지 용산전망대",
+          "startTime": "17:30"
+        },
+        {
+          "placeName": "순천만가든",
+          "startTime": "19:30"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "순천 드라마 촬영장",
+          "startTime": "10:00"
+        },
+        {
+          "placeName": "건봉국밥",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "순천 문화의 거리",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "동천",
+          "startTime": "16:00"
+        },
+        {
+          "placeName": "청춘창고",
+          "startTime": "18:00"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "낙안읍성",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "낙안읍성 초가집식당",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "카페 듀플렉스",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "순천역",
+          "startTime": "16:00"
+        }
+      ]
+    }
+  ]
+}
