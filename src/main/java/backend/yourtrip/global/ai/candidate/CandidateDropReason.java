@@ -32,5 +32,17 @@ public enum CandidateDropReason {
      * 골라지면 "카페 자리에 주유소"가 된다. <b>매핑에 없는 분류는 통과시키므로</b> 이 값은
      * "매핑이 아는데 어긋난" 건수만 센다.
      */
-    CATEGORY_MISMATCH
+    CATEGORY_MISMATCH,
+
+    /**
+     * 권역 앵커에서 {@link SeedDistanceLimit#MAX_ANCHOR_DISTANCE_KM}km 넘게 떨어졌다 (이슈 #134).
+     *
+     * <p><b>이 값이 오르면 {@code ai.candidate.retrieval}의 {@code empty}도 함께 오른다</b> — 먼
+     * 후보 5건으로 채워지던 슬롯이 빈 슬롯이 되기 때문이다. 그 상승은 <b>악화가 아니라 개선</b>이고,
+     * 두 지표의 대응 관계를 모르면 정반대로 읽힌다.
+     *
+     * <p>앵커 좌표를 못 얻어 거리를 잴 수 없었던 후보는 <b>여기 오지 않는다</b> — 모르는 것을
+     * 이탈로 판정하지 않는 것이 {@code SeedDistanceLimit}의 계약이다.
+     */
+    OUT_OF_REGION
 }

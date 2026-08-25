@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import backend.yourtrip.global.ai.AiCourseMetrics;
+import backend.yourtrip.global.ai.route.GeoUtils;
 import backend.yourtrip.global.ai.route.SlotType;
 import backend.yourtrip.global.common.ApiFailureCause;
 import backend.yourtrip.global.naver.NaverLocalClient;
@@ -62,6 +63,39 @@ class NaverLocalSeedSourceTest {
         return new NaverPlace(name, "음식점>카페,디저트", "경북 경주시 포석로 1080", "경북 경주시 황남동",
             "", latitude, longitude, seedRank);
     }
+
+    /**
+     * MEAL 슬롯용 픽스처 — 기존 {@link #place}는 카테고리가 카페 고정이라 MEAL 로 물으면
+     * <b>분류 불일치로 먼저 죽어</b> 거리 판정에 도달하지 못한다.
+     */
+    private static NaverPlace restaurant(String name, Double latitude, Double longitude,
+        int seedRank) {
+        return new NaverPlace(name, "음식점>한식", "충남 공주시 봉황산1길 1-2", "충남 공주시 봉황동",
+            "", latitude, longitude, seedRank);
+    }
+
+    // ── 거리 픽스처 — 위도만 움직여 손으로 검산할 수 있게 한다 (위도 1도 = 111.19km) ──
+
+    /** 천마총에서 약 5.6km. 전형적인 권역 안 후보. */
+    private static final double NEAR_LAT = ANCHOR_LAT + 0.05;
+
+    /**
+     * 천마총에서 약 27.8km. <b>실측된 정상 후보 최대(제주 35.76km)보다는 가깝다</b> —
+     * 상한을 정상 분포 아래로 조이면 이 후보가 먼저 죽는다.
+     */
+    private static final double WIDE_LAT = ANCHOR_LAT + 0.25;
+
+    /** 천마총에서 약 111.2km. <b>순천 사고(102km)보다 멀다.</b> 반드시 탈락해야 한다. */
+    private static final double FAR_LAT = ANCHOR_LAT + 1.0;
+
+    // ── 공주 사고 재현용 좌표 (이슈 #134) ──
+
+    private static final double GONGJU_LAT = 36.4667;    // 무령왕릉
+    private static final double GONGJU_LON = 127.1181;
+    private static final double GOMGOL_LAT = 36.4530;    // 곰골식당 — 무령왕릉에서 약 1.6km
+    private static final double GOMGOL_LON = 127.1240;
+    private static final double CHILGOK_LAT = 35.9954;   // 동명주말농장식당 — 약 127km
+    private static final double CHILGOK_LON = 128.4014;
 
     @Nested
     @DisplayName("검색어 조립 — 4-3 실측 표기를 따른다")
@@ -219,6 +253,67 @@ class NaverLocalSeedSourceTest {
 
             assertThat(source.fetch("황리단길", List.of(), SlotType.CAFE, null, null, null)
                 .candidates().get(0).distanceKm()).isNull();
+        }
+
+        @Test
+        @DisplayName("권역에서 상한을 넘게 떨어진 후보는 탈락한다 (이슈 #134)")
+        void dropsPlacesTooFarFromAnchor() {
+            when(naverLocalClient.search(anyString(), anyInt())).thenReturn(
+                new NaverLocalResult.Found(List.of(
+                    place("목포 어딘가", FAR_LAT, ANCHOR_LON, 1),
+                    place("커피플레이스", NEAR_LAT, ANCHOR_LON, 2))));
+
+            CandidateBatch batch =
+                source.fetch("황리단길", List.of(), SlotType.CAFE, null, ANCHOR_LAT, ANCHOR_LON);
+
+            assertThat(batch.candidates()).extracting(PlaceCandidate::name)
+                .containsExactly("커피플레이스");
+        }
+
+        @Test
+        @DisplayName("전부 권역 밖이면 EMPTY 다 — 실패가 아니다")
+        void allTooFarBecomesEmpty() {
+            when(naverLocalClient.search(anyString(), anyInt())).thenReturn(
+                new NaverLocalResult.Found(List.of(place("목포 어딘가", FAR_LAT, ANCHOR_LON, 1))));
+
+            assertThat(source
+                .fetch("황리단길", List.of(), SlotType.CAFE, null, ANCHOR_LAT, ANCHOR_LON)
+                .outcome()).isEqualTo(CandidateOutcome.EMPTY);
+        }
+
+        @Test
+        @DisplayName("넓은 권역의 정상 후보는 자르지 않는다 — 제주 실측 35.76km 가 살아야 한다")
+        void keepsWideRegionCandidate() {
+            when(naverLocalClient.search(anyString(), anyInt())).thenReturn(
+                new NaverLocalResult.Found(List.of(place("먼 카페", WIDE_LAT, ANCHOR_LON, 1))));
+
+            assertThat(source
+                .fetch("황리단길", List.of(), SlotType.CAFE, null, ANCHOR_LAT, ANCHOR_LON)
+                .candidates()).extracting(PlaceCandidate::name).containsExactly("먼 카페");
+        }
+
+        @Test
+        @DisplayName("anchor 좌표가 없으면 먼 후보도 살린다 — 모르는 것을 이탈로 판정하지 않는다")
+        void keepsFarPlaceWhenAnchorUnknown() {
+            when(naverLocalClient.search(anyString(), anyInt())).thenReturn(
+                new NaverLocalResult.Found(List.of(place("목포 어딘가", FAR_LAT, ANCHOR_LON, 1))));
+
+            assertThat(source.fetch("황리단길", List.of(), SlotType.CAFE, null, null, null)
+                .candidates()).hasSize(1);
+        }
+
+        /**
+         * <b>픽스처 가드다.</b> 상한을 111km 위나 27km 아래로 옮기면 위 테스트들이 조용히
+         * 무의미해지는 대신 여기서 먼저 죽는다.
+         */
+        @Test
+        @DisplayName("거리 픽스처가 상한을 사이에 두고 갈라져 있다")
+        void distanceFixturesStraddleTheLimit() {
+            double wide = GeoUtils.haversineKm(ANCHOR_LAT, ANCHOR_LON, WIDE_LAT, ANCHOR_LON);
+            double far = GeoUtils.haversineKm(ANCHOR_LAT, ANCHOR_LON, FAR_LAT, ANCHOR_LON);
+
+            assertThat(wide).isLessThan(SeedDistanceLimit.MAX_ANCHOR_DISTANCE_KM);
+            assertThat(far).isGreaterThan(SeedDistanceLimit.MAX_ANCHOR_DISTANCE_KM);
         }
     }
 
@@ -460,6 +555,90 @@ class NaverLocalSeedSourceTest {
             source.fetch("공주 일대", List.of(anchorRung("무령왕릉"), cityRung("공주")), SlotType.CAFE, null, null, null);
 
             verify(naverLocalClient).search(eq("공주 카페"), anyInt());
+        }
+
+        /**
+         * <b>이슈 #134 공주 사건의 회귀 테스트다.</b>
+         *
+         * <p>실측에서 {@code "주말농장 맛집"}은 12건을 돌려줬는데 <b>전부 공주 밖</b>이었고(최소
+         * 48km), 그 5건이 정원을 채워 {@code anchor} 단계가 아예 발동하지 않았다. 그렇게 들어온
+         * 칠곡 식당이 day 하나를 무너뜨렸다 — 두 식사 사이 이동 9시간 25분.
+         *
+         * <p>거리 필터를 {@code toCandidates} 안에 두면 <b>재질의 조건이 자동으로 "권역 안 후보
+         * 수"를 세게 되어</b> 이 사건이 풀린다. 그 인과를 증명하는 유일한 테스트다 —
+         * {@code retriesWhenEveryPlaceIsFilteredOut}이 분류 불일치로 같은 메커니즘을 이미 고정하고
+         * 있고, 여기서는 거리 축으로 성립하는지를 본다.
+         */
+        @Test
+        @DisplayName("후보가 전부 권역 밖이면 anchor 로 다시 묻는다 — 이슈 #134 공주 사건")
+        void retriesWhenEveryCandidateIsOutOfRegion() {
+            when(naverLocalClient.search(eq("주말농장 맛집"), anyInt())).thenReturn(
+                new NaverLocalResult.Found(List.of(
+                    restaurant("동명주말농장식당", CHILGOK_LAT, CHILGOK_LON, 1))));
+            when(naverLocalClient.search(eq("무령왕릉 맛집"), anyInt())).thenReturn(
+                new NaverLocalResult.Found(List.of(
+                    restaurant("곰골식당", GOMGOL_LAT, GOMGOL_LON, 1))));
+
+            CandidateBatch batch = source.fetch("주말농장 일대",
+                List.of(anchorRung("무령왕릉"), cityRung("공주")), SlotType.MEAL, null,
+                GONGJU_LAT, GONGJU_LON);
+
+            assertThat(batch.candidates()).extracting(PlaceCandidate::name)
+                .containsExactly("곰골식당");
+            verify(naverLocalClient).search(eq("무령왕릉 맛집"), anyInt());
+        }
+
+        @Test
+        @DisplayName("권역 안 후보가 충분하면 anchor 를 부르지 않는다 — 필터 과발동 대조군")
+        void doesNotRetryWhenNearCandidatesAreEnough() {
+            when(naverLocalClient.search(eq("황리단길 카페"), anyInt())).thenReturn(
+                new NaverLocalResult.Found(List.of(
+                    place("카페 A", NEAR_LAT, ANCHOR_LON, 1),
+                    place("카페 B", NEAR_LAT, ANCHOR_LON, 2),
+                    place("카페 C", WIDE_LAT, ANCHOR_LON, 3))));
+
+            source.fetch("황리단길·대릉원 일대", List.of(anchorRung("대릉원"), cityRung("경주")),
+                SlotType.CAFE, null, ANCHOR_LAT, ANCHOR_LON);
+
+            verify(naverLocalClient, times(1)).search(anyString(), anyInt());
+        }
+    }
+
+    @Nested
+    @DisplayName("탈락 사유를 메트릭으로 올린다 (이슈 #134)")
+    class Observability {
+
+        @Test
+        @DisplayName("권역 이탈 건수를 사유별로 센다")
+        void countsOutOfRegionDropsAsMetric() {
+            // 폴백 없는 단일 질의 경로에서만 단언한다 — 폴백이 도는 판에서는 단계마다
+            // 발화하므로 호출 횟수 단언이 취약해진다.
+            when(naverLocalClient.search(anyString(), anyInt())).thenReturn(
+                new NaverLocalResult.Found(List.of(
+                    place("멀리 1", FAR_LAT, ANCHOR_LON, 1),
+                    place("멀리 2", FAR_LAT, ANCHOR_LON, 2),
+                    place("커피플레이스", NEAR_LAT, ANCHOR_LON, 3))));
+
+            source.fetch("황리단길", List.of(), SlotType.CAFE, null, ANCHOR_LAT, ANCHOR_LON);
+
+            verify(metrics).candidateDropped(AiCourseMetrics.SOURCE_NAVER_LOCAL,
+                CandidateDropReason.OUT_OF_REGION, 2);
+        }
+
+        @Test
+        @DisplayName("기존 두 사유도 함께 센다 — 셋 중 하나만 관측 가능한 비대칭을 만들지 않는다")
+        void countsExistingDropReasonsToo() {
+            when(naverLocalClient.search(anyString(), anyInt())).thenReturn(
+                new NaverLocalResult.Found(List.of(
+                    place("좌표없음", null, null, 1),
+                    restaurant("카페 자리에 한식집", ANCHOR_LAT, ANCHOR_LON, 2))));
+
+            source.fetch("황리단길", List.of(), SlotType.CAFE, null, ANCHOR_LAT, ANCHOR_LON);
+
+            verify(metrics).candidateDropped(AiCourseMetrics.SOURCE_NAVER_LOCAL,
+                CandidateDropReason.NO_COORDINATES, 1);
+            verify(metrics).candidateDropped(AiCourseMetrics.SOURCE_NAVER_LOCAL,
+                CandidateDropReason.CATEGORY_MISMATCH, 1);
         }
     }
 }

@@ -88,6 +88,16 @@ public class NaverLocalSeedSource {
      * {@code styleTags}는 합집합이 된다 — "먼저 만난 쪽이 이긴다"가 곧 "가까운 질의의 순위가
      * 남는다"가 되게 하는 순서다.
      *
+     * <h2>여기서 세는 것은 <b>권역 안</b> 후보 수다 (이슈 #134)</h2>
+     * {@link SeedDistanceLimit}의 판정이 {@code toCandidates}에서 이미 끝나므로, 아래 재질의 조건
+     * ({@code merged.size() >= minCandidates})이 자동으로 <b>거리 상한을 통과한 후보만</b> 센다.
+     * 별도의 거리 분기가 없는 것은 빠뜨린 것이 아니라 이 순서의 결과다.
+     *
+     * <p><b>이것이 이슈 #134의 사고를 푸는 지점이다.</b> 공주 {@code 주말농장} 질의는 12건을
+     * 돌려줬는데 전부 공주 밖(최소 48km)이었고, 그 5건이 정원을 채워 {@code anchor} 단계가 아예
+     * 발동하지 않았다. 필터가 앞에 있으면 그 12건이 0건이 되어 {@code 무령왕릉} 질의로 넘어가는데,
+     * 실측에서 그쪽 후보는 <b>전부 1.53km 이내</b>였다.
+     *
      * @param fallbacks 0건이거나 모자랄 때 차례로 시도할 단계. <b>{@code anchor} → {@code location}
      *                  순서</b>로 넣는다. 이미 물어본 지명은 건너뛴다(관측 30쌍 중 18쌍이 정규화
      *                  결과와 {@code anchor}가 같아, 그대로 두면 같은 질의를 두 번 던진다).
@@ -197,6 +207,7 @@ public class NaverLocalSeedSource {
         List<PlaceCandidate> candidates = new ArrayList<>(places.size());
         int withoutCoordinates = 0;
         int categoryMismatched = 0;
+        int outOfRegion = 0;
         for (NaverPlace place : places) {
             // 좌표 없는 후보는 풀에 넣어봐야 RouteOptimizer 에 못 들어간다. 거르는 책임이
             // 소스에 있다는 것이 PlaceCandidate 의 계약이다.
@@ -209,6 +220,14 @@ public class NaverLocalSeedSource {
             // 하드 드롭은 매핑이 아는 것에만 건다(4-4).
             if (!NaverCategoryMapper.isCompatibleWith(place.category(), slotType)) {
                 categoryMismatched++;
+                continue;
+            }
+            // 권역에서 상한을 넘게 떨어진 후보(이슈 #134). 시더는 텍스트 검색이라 질의가 지역
+            // 한정자를 잃으면 전국이 딸려 온다. 판정을 맨 뒤에 두는 것이 의도다 — 그래야 이
+            // 집계가 "그 밖에는 멀쩡했는데 순전히 멀어서 떨어진 후보"를 뜻한다.
+            Double distanceKm = distanceKm(place, anchorLatitude, anchorLongitude);
+            if (SeedDistanceLimit.isOutOfRegion(distanceKm)) {
+                outOfRegion++;
                 continue;
             }
             candidates.add(new PlaceCandidate(
@@ -225,19 +244,21 @@ public class NaverLocalSeedSource {
                 // 순위와 한 쌍이다 — 어느 질의의 순위인지를 여기서 새겨야 뒤에서 구별된다.
                 scope,
                 modifier,
-                distanceKm(place, anchorLatitude, anchorLongitude),
+                distanceKm,
                 place.category()));
         }
         // 로그는 로컬 디버깅용으로 남기되 메트릭을 함께 올린다 — 운영 프로필은 INFO 라
         // 이 로그가 나오지 않아, 로그만으로는 운영에서 관측이 0이다(이슈 #134).
-        if (withoutCoordinates > 0 || categoryMismatched > 0) {
-            log.debug("네이버 후보 제외: slot={}, 좌표없음={}건, 분류불일치={}건",
-                slotType, withoutCoordinates, categoryMismatched);
+        if (withoutCoordinates > 0 || categoryMismatched > 0 || outOfRegion > 0) {
+            log.debug("네이버 후보 제외: slot={}, 좌표없음={}건, 분류불일치={}건, 권역이탈={}건",
+                slotType, withoutCoordinates, categoryMismatched, outOfRegion);
         }
         metrics.candidateDropped(AiCourseMetrics.SOURCE_NAVER_LOCAL,
             CandidateDropReason.NO_COORDINATES, withoutCoordinates);
         metrics.candidateDropped(AiCourseMetrics.SOURCE_NAVER_LOCAL,
             CandidateDropReason.CATEGORY_MISMATCH, categoryMismatched);
+        metrics.candidateDropped(AiCourseMetrics.SOURCE_NAVER_LOCAL,
+            CandidateDropReason.OUT_OF_REGION, outOfRegion);
         return candidates;
     }
 
