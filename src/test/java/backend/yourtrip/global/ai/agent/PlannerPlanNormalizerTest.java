@@ -27,9 +27,9 @@ class PlannerPlanNormalizerTest {
             PlannerPlan plan = PlannerPlanNormalizer.normalize(new PlannerResponse(
                 "천년의 밤", "느긋한 경주",
                 List.of(day(1, "황리단길 일대", "대릉원", "한옥 골목", "10:00",
-                        List.of("ATTRACTION", "MEAL", "CAFE")),
+                        List.of("ATTRACTION", "MEAL", "CAFE", "VIEWPOINT", "MEAL")),
                     day(2, "보문단지", "보문호", "호수 산책", "09:00",
-                        List.of("STROLL", "MEAL", "CAFE")))), LOCATION, 2);
+                        List.of("STROLL", "MEAL", "CAFE", "ATTRACTION", "MEAL")))), LOCATION, 2);
 
             assertThat(plan.title()).isEqualTo("천년의 밤");
             assertThat(plan.concept()).isEqualTo("느긋한 경주");
@@ -39,7 +39,8 @@ class PlannerPlanNormalizerTest {
                     PlannerDayPlan::theme, PlannerDayPlan::dayStartTime)
                 .containsExactly(1, "황리단길 일대", "대릉원", "한옥 골목", LocalTime.of(10, 0));
             assertThat(plan.days().getFirst().slots())
-                .containsExactly(SlotType.ATTRACTION, SlotType.MEAL, SlotType.CAFE);
+                .containsExactly(SlotType.ATTRACTION, SlotType.MEAL, SlotType.CAFE,
+                    SlotType.VIEWPOINT, SlotType.MEAL);
         }
     }
 
@@ -98,33 +99,41 @@ class PlannerPlanNormalizerTest {
         @Test
         @DisplayName("알 수 없는 값은 그 항목만 뺀다 — 응답 전체를 버리지 않는다")
         void dropsUnknownSlotType() {
-            PlannerPlan plan = normalizeSlots("ATTRACTION", "맛집", "MEAL", "CAFE");
+            // 남은 값이 하한·식사 보정에 걸리지 않게 다섯 개·식사 둘로 맞췄다. 그래야 이
+            // 테스트가 "알 수 없는 값만 빠졌다"는 것 하나만 본다.
+            PlannerPlan plan = normalizeSlots(
+                "ATTRACTION", "맛집", "MEAL", "CAFE", "MEAL", "STROLL");
 
             assertThat(plan.days().getFirst().slots())
-                .containsExactly(SlotType.ATTRACTION, SlotType.MEAL, SlotType.CAFE);
+                .containsExactly(SlotType.ATTRACTION, SlotType.MEAL, SlotType.CAFE,
+                    SlotType.MEAL, SlotType.STROLL);
         }
 
         @Test
         @DisplayName("대소문자와 공백은 관용한다")
         void acceptsLooseCasing() {
-            PlannerPlan plan = normalizeSlots(" attraction ", "Meal", "cafe");
+            PlannerPlan plan = normalizeSlots(
+                " attraction ", "Meal", "cafe", "  MEAL", "Stroll");
 
             assertThat(plan.days().getFirst().slots())
-                .containsExactly(SlotType.ATTRACTION, SlotType.MEAL, SlotType.CAFE);
+                .containsExactly(SlotType.ATTRACTION, SlotType.MEAL, SlotType.CAFE,
+                    SlotType.MEAL, SlotType.STROLL);
         }
 
         @Test
-        @DisplayName("3개 미만이면 기본 구성으로 채운다")
+        @DisplayName("하한 미만이면 기본 구성으로 채우고, 그래도 식사가 모자라면 더 채운다")
         void fillsBelowMinimum() {
+            // DEFAULT_SLOTS(관광·식사·카페·관광·식사)를 순환해 다섯을 채우면 식사가 하나뿐이라,
+            // 식사 보정이 하나를 더 붙여 여섯이 된다. 하한은 <b>최소치이지 목표치가 아니다.</b>
             PlannerPlan plan = normalizeSlots("VIEWPOINT");
 
             assertThat(plan.days().getFirst().slots())
-                .hasSize(PlannerPlanNormalizer.MIN_SLOTS)
-                .startsWith(SlotType.VIEWPOINT);
+                .containsExactly(SlotType.VIEWPOINT, SlotType.ATTRACTION, SlotType.MEAL,
+                    SlotType.CAFE, SlotType.ATTRACTION, SlotType.MEAL);
         }
 
         @Test
-        @DisplayName("6개를 넘으면 자른다 — 상한의 근거는 RouteOptimizer 완전탐색 벤치마크다")
+        @DisplayName("7개를 넘으면 자른다 — 상한의 근거는 RouteOptimizer 완전탐색 벤치마크다")
         void trimsAboveMaximum() {
             PlannerPlan plan = normalizeSlots("ATTRACTION", "MEAL", "CAFE", "STROLL", "VIEWPOINT",
                 "SHOPPING", "EXPERIENCE", "ATTRACTION");
@@ -133,22 +142,30 @@ class PlannerPlanNormalizerTest {
         }
 
         @Test
-        @DisplayName("MEAL 이 없으면 코드가 채운다 — 프롬프트 규칙이 아니라 불변식이다")
-        void guaranteesMeal() {
-            PlannerPlan plan = normalizeSlots("ATTRACTION", "CAFE", "STROLL");
+        @DisplayName("MEAL 이 둘 미만이면 코드가 채운다 — 프롬프트 규칙이 아니라 불변식이다")
+        void guaranteesMeals() {
+            // 하한은 이미 채운 다섯 개라 채움 경로가 끼어들지 않는다 — 식사 보정만 본다.
+            PlannerPlan plan = normalizeSlots(
+                "ATTRACTION", "CAFE", "STROLL", "VIEWPOINT", "SHOPPING");
 
-            assertThat(plan.days().getFirst().slots()).contains(SlotType.MEAL).hasSize(4);
+            assertThat(plan.days().getFirst().slots())
+                .as("자리가 남으므로 덮지 않고 뒤에 붙인다")
+                .containsExactly(SlotType.ATTRACTION, SlotType.CAFE, SlotType.STROLL,
+                    SlotType.VIEWPOINT, SlotType.SHOPPING, SlotType.MEAL, SlotType.MEAL);
         }
 
         @Test
-        @DisplayName("자리가 꽉 찬 채로 MEAL 이 없으면 마지막 자리를 바꾼다")
-        void replacesLastSlotWhenFull() {
+        @DisplayName("자리가 꽉 찬 채로 MEAL 이 없으면 뒤에서부터 두 자리를 바꾼다")
+        void replacesTrailingSlotsWhenFull() {
+            // <b>같은 자리를 두 번 덮으면 식사가 영영 하나에 머문다.</b> "마지막 자리"가 아니라
+            // "뒤에서부터 식사가 아닌 자리"여야 하는 이유가 이 케이스다.
             PlannerPlan plan = normalizeSlots("ATTRACTION", "CAFE", "STROLL", "VIEWPOINT",
-                "SHOPPING", "EXPERIENCE");
+                "SHOPPING", "EXPERIENCE", "ATTRACTION");
 
             assertThat(plan.days().getFirst().slots())
                 .hasSize(PlannerPlanNormalizer.MAX_SLOTS)
-                .endsWith(SlotType.MEAL);
+                .containsExactly(SlotType.ATTRACTION, SlotType.CAFE, SlotType.STROLL,
+                    SlotType.VIEWPOINT, SlotType.SHOPPING, SlotType.MEAL, SlotType.MEAL);
         }
     }
 

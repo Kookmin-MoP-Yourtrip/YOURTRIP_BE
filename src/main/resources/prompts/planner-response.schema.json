@@ -37,7 +37,7 @@
           },
           "slots": {
             "type": "array",
-            "description": "채울 자리의 종류를 순서대로 3~6개. MEAL을 최소 하나 포함한다",
+            "description": "채울 자리의 종류를 순서대로 5~7개. MEAL을 최소 두 개(점심·저녁) 포함한다",
             "items": {
               "type": "string",
               "enum": [

@@ -43,9 +43,11 @@ public class RouteOptimizer {
     /**
      * 완전탐색을 시도하는 최대 장소 수.
      *
-     * <p>{@code 7! = 5,040} 순열이고 순열당 계산이 상수 시간이라 1ms 미만이다. 이보다 많으면
+     * <p>{@code 7! = 5,040} 순열이고 순열당 계산이 상수 시간이라 1일 1.3ms·3일 4.0ms 다. 이보다 많으면
      * <b>입력 순서를 그대로 둔다</b> — 근사 알고리즘(nearest-neighbor + 2-opt)을 붙이지 않은
-     * 것은 Planner 가 슬롯을 3~6개로 제한하므로 현재 이 경로에 도달할 방법이 없기 때문이다.
+     * 것은 Planner 가 슬롯을 5~7개로 제한하므로 현재 이 경로에 도달할 방법이 없기 때문이다.
+     * <b>상한과 이 임계값은 같은 값이어야 한다</b> — 상한이 더 크면 완전탐색이 꺼진 채로
+     * 입력 순서가 그대로 나가는 day 가 생긴다.
      * 도달하지 않는 코드를 만들어 두면 검증되지 않은 채 썩는다. 임계값의 근거는
      * {@code RouteOptimizerBenchmarkTest}의 실측이다.
      */
@@ -142,11 +144,13 @@ public class RouteOptimizer {
         boolean shrunk = false;
 
         while (true) {
-            Context context = Context.of(request, places, stayMinutes);
+            // 체류를 이미 줄인 판에서는 탄력 체류를 끈다 — 줄인 체류를 상한까지 되늘리면
+            // "한 번 줄이면 되돌리지 않는다"는 축소의 단조성이 깨져 루프를 설명할 수 없게 된다.
+            Context context = Context.of(request, places, stayMinutes, !shrunk);
             Schedule best = search(context, bruteForce);
 
             if (best.endMinutes() <= context.endMinutes()) {
-                return toRoutedDay(request, places, best, stayMinutes, dropped);
+                return toRoutedDay(request, places, best, dropped);
             }
 
             // ① 체류시간을 한 번 줄여본다.
@@ -158,7 +162,7 @@ public class RouteOptimizer {
 
             // ② 그래도 넘치면 후순위 장소를 하나 뺀다. ③ 세 개 아래로는 빼지 않는다.
             if (places.size() <= MIN_PLACES_PER_DAY) {
-                return toRoutedDay(request, places, best, stayMinutes, dropped);
+                return toRoutedDay(request, places, best, dropped);
             }
 
             int victim = dropIndex(places);
@@ -253,29 +257,36 @@ public class RouteOptimizer {
      * <p>배열을 그대로 들고 다니는 것은 순열 하나를 평가할 때마다 접근하는 값들이라 박싱이나
      * 인덱싱 우회를 넣고 싶지 않기 때문이다.
      *
-     * @param slotTypes    장소별 슬롯 종류. 식사 시간창 판정에 쓴다
-     * @param stayMinutes  장소별 체류시간. 하루 초과 시 축소되므로 슬롯 기본값과 다를 수 있다
-     * @param distances    장소 간 거리(km) 대칭 행렬
-     * @param startMinutes 하루 시작(자정 기준 분)
-     * @param endMinutes   하루 종료(자정 기준 분)
+     * @param slotTypes       장소별 슬롯 종류. 식사 시간창 판정에 쓴다
+     * @param stayMinutes     장소별 체류시간. 하루 초과 시 축소되므로 슬롯 기본값과 다를 수 있다
+     * @param maxStayMinutes  장소별 체류 상한. 탄력 체류가 늘릴 수 있는 한계다
+     * @param distances       장소 간 거리(km) 대칭 행렬
+     * @param startMinutes    하루 시작(자정 기준 분)
+     * @param endMinutes      하루 종료(자정 기준 분)
+     * @param stretchEnabled  탄력 체류를 켤지. 체류를 이미 축소한 판에서는 꺼진다
      */
     private record Context(
         SlotType[] slotTypes,
         int[] stayMinutes,
+        int[] maxStayMinutes,
         double[][] distances,
         int startMinutes,
         int endMinutes,
-        TravelMode travelMode
+        TravelMode travelMode,
+        boolean stretchEnabled
     ) {
 
-        static Context of(RouteRequest request, List<RoutePlace> places, int[] stayMinutes) {
+        static Context of(RouteRequest request, List<RoutePlace> places, int[] stayMinutes,
+            boolean stretchEnabled) {
             return new Context(
                 slotTypesOf(places),
                 stayMinutes,
+                maxStayMinutesOf(places),
                 distanceMatrix(places),
                 toMinutes(request.dayStartTime()),
                 toMinutes(request.dayEndTime()),
-                request.travelMode());
+                request.travelMode(),
+                stretchEnabled);
         }
 
         int size() {
@@ -288,9 +299,11 @@ public class RouteOptimizer {
      *
      * @param order          방문 순서. {@code places} 인덱스의 배열이다
      * @param arrivalMinutes {@code order} 순서대로의 도착 시각(자정 기준 분)
+     * @param stayMinutes    {@code order} 순서대로의 <b>유효 체류시간</b>. 탄력 체류가 늘리면
+     *                       입력 체류와 달라지므로, 출력은 입력 배열이 아니라 이것을 읽어야 한다
      * @param endMinutes     마지막 장소에서 나오는 시각
      */
-    private record Schedule(int[] order, int[] arrivalMinutes, int endMinutes) {
+    private record Schedule(int[] order, int[] arrivalMinutes, int[] stayMinutes, int endMinutes) {
     }
 
     /**
@@ -366,18 +379,150 @@ public class RouteOptimizer {
      */
     private Schedule buildSchedule(int[] order, Context context) {
         int[] arrivals = new int[order.length];
+        int[] stays = new int[order.length];
         int t = context.startMinutes();
 
         for (int i = 0; i < order.length; i++) {
             arrivals[i] = t;
-            t += context.stayMinutes()[order[i]];
+            stays[i] = context.stayMinutes()[order[i]];
+            t += stays[i];
             if (i < order.length - 1) {
                 t += travelMinutes(
                     context.distances()[order[i]][order[i + 1]], context.travelMode());
             }
         }
 
-        return new Schedule(order, arrivals, t);
+        Schedule schedule = new Schedule(order, arrivals, stays, t);
+        return context.stretchEnabled() ? stretch(schedule, context) : schedule;
+    }
+
+    /**
+     * 식사가 시간창보다 이르게 도착하면 그 격차만큼 <b>앞 슬롯들의 체류를 늘려</b> 뒤로 민다
+     * (이슈 #135).
+     *
+     * <h2>왜 대기가 아니라 체류인가</h2>
+     * 시간 모델 {@code t += 체류 + 이동}에는 시간을 뒤로 미는 장치가 없어서, 슬롯이 다섯인 날은
+     * 체류 합이 6시간대에 그쳐 <b>저녁 식사가 15시에 도착한다.</b> 최적화기는 순서를 바꿀 수만
+     * 있지 시간을 밀 수는 없으므로 벌점을 아무리 매겨도 이 위반은 고쳐지지 않는다.
+     *
+     * <p>대기(빈 시간)를 넣는 안도 있었으나 버렸다 — 타임라인에 구멍이 생기면 FE 가 "빈 시간"과
+     * "긴 체류"를 구분해 렌더링해야 하고, 하루 초과 대응도 {@code 대기 축소 → 체류 축소 → 드롭}
+     * 으로 재설계해야 한다. 체류를 늘리면 <b>구멍이 없으므로 둘 다 필요 없다.</b>
+     *
+     * <h2>초과를 새로 만들지 않는다</h2>
+     * 늘리는 대상이 전부 저녁보다 앞이라 <b>1분 늘리면 종료도 정확히 1분 밀린다.</b> 그래서 총량을
+     * {@code dayEnd - 종료}로 캡하는 것만으로 {@code 종료 <= dayEnd}가 보장되고,
+     * {@link #optimize}의 축소·드롭 루프는 전제가 그대로 성립한다. 초과 중인 순열은 슬랙이
+     * 0이라 애초에 한 분도 늘지 않는다.
+     *
+     * <h2>배정은 늘리기 전 도착으로 정한다</h2>
+     * stretch 는 도착을 <b>창 시작 방향으로만</b> 옮기므로 배정을 강화할 뿐 뒤집지 않는다.
+     * 늘린 뒤 다시 배정하면 배정과 이동이 서로를 참조해 수렴을 따져야 한다.
+     */
+    private Schedule stretch(Schedule schedule, Context context) {
+        int[] mealPositions = mealPositionsOf(schedule, context);
+        if (mealPositions.length == 0) {
+            return schedule;
+        }
+
+        int[] mealArrivals = new int[mealPositions.length];
+        for (int i = 0; i < mealPositions.length; i++) {
+            mealArrivals[i] = schedule.arrivalMinutes()[mealPositions[i]];
+        }
+        MealWindowAssignment assignment = assignMealWindows(mealArrivals);
+
+        int[] arrivals = schedule.arrivalMinutes().clone();
+        int[] stays = schedule.stayMinutes().clone();
+        int[] caps = new int[stays.length];
+        for (int i = 0; i < stays.length; i++) {
+            caps[i] = context.maxStayMinutes()[schedule.order()[i]] - stays[i];
+        }
+        int slack = Math.max(0, context.endMinutes() - schedule.endMinutes());
+
+        // ① 점심 — 앞 슬롯 전부가 대상이다.
+        int lunchPosition = -1;
+        if (assignment.lunchIndex() >= 0) {
+            lunchPosition = mealPositions[assignment.lunchIndex()];
+            int gap = Math.max(0, LUNCH_WINDOW.startMinutes() - arrivals[lunchPosition]);
+            slack -= absorb(gap, 0, lunchPosition, slack, arrivals, stays, caps);
+        }
+
+        // ② 저녁 — 점심 이후 구간이 1순위, 점심 앞 구간이 2순위다. 2순위를 늘리면 점심 도착이
+        // 뒤로 밀리므로, 점심이 창을 벗어나지 않는 만큼(13:30 까지)만 쓴다.
+        if (assignment.dinnerIndex() >= 0) {
+            int dinnerPosition = mealPositions[assignment.dinnerIndex()];
+            int gap = Math.max(0, DINNER_WINDOW.startMinutes() - arrivals[dinnerPosition]);
+            int from = Math.max(0, lunchPosition);
+            int used = absorb(gap, from, dinnerPosition, slack, arrivals, stays, caps);
+            slack -= used;
+
+            if (used < gap && lunchPosition > 0) {
+                int lunchRoom = LUNCH_WINDOW.endMinutes() - arrivals[lunchPosition];
+                absorb(Math.min(gap - used, lunchRoom), 0, lunchPosition, slack,
+                    arrivals, stays, caps);
+            }
+        }
+
+        int end = arrivals[arrivals.length - 1] + stays[stays.length - 1];
+        return new Schedule(schedule.order(), arrivals, stays, end);
+    }
+
+    /**
+     * {@code [from, to)} 구간의 체류를 늘려 {@code to} 이후의 도착을 뒤로 민다. 실제로 늘린
+     * 분을 반환한다.
+     *
+     * <p>여력에 <b>비례</b> 배분한다 — 한 슬롯을 상한까지 몰아 늘리면 "관광 150분, 카페 60분"
+     * 처럼 한쪽만 부자연스럽게 길어진다. 나머지 분은 방문 순서가 이른 슬롯부터 1분씩 준다.
+     * 부동소수점을 쓰지 않아 <b>같은 입력이면 언제나 같은 분배</b>다.
+     */
+    private static int absorb(int gap, int from, int to, int slack,
+        int[] arrivals, int[] stays, int[] caps) {
+
+        int totalCap = 0;
+        for (int i = from; i < to; i++) {
+            totalCap += caps[i];
+        }
+        int budget = Math.min(Math.min(gap, totalCap), Math.max(0, slack));
+        if (budget <= 0) {
+            return 0;
+        }
+
+        int[] shares = new int[to];
+        int distributed = 0;
+        for (int i = from; i < to; i++) {
+            shares[i] = (int) ((long) budget * caps[i] / totalCap);
+            distributed += shares[i];
+        }
+        for (int i = from; i < to && distributed < budget; i++) {
+            if (shares[i] < caps[i]) {
+                shares[i]++;
+                distributed++;
+            }
+        }
+
+        int shifted = 0;
+        for (int i = from; i < to; i++) {
+            stays[i] += shares[i];
+            caps[i] -= shares[i];
+            shifted += shares[i];
+            arrivals[i + 1] += shifted;
+        }
+        for (int i = to + 1; i < arrivals.length; i++) {
+            arrivals[i] += distributed;
+        }
+        return distributed;
+    }
+
+    /** 식사 슬롯이 놓인 <b>방문 위치</b>(순서상 인덱스). 오름차순이다. */
+    private static int[] mealPositionsOf(Schedule schedule, Context context) {
+        int[] positions = new int[schedule.order().length];
+        int count = 0;
+        for (int i = 0; i < schedule.order().length; i++) {
+            if (context.slotTypes()[schedule.order()[i]] == SlotType.MEAL) {
+                positions[count++] = i;
+            }
+        }
+        return Arrays.copyOf(positions, count);
     }
 
     /**
@@ -436,39 +581,79 @@ public class RouteOptimizer {
      * @param mealArrivals 식사 슬롯의 도착 시각(자정 기준 분). 순서는 무관하다
      */
     static int mealViolationMinutes(int[] mealArrivals) {
+        return violationWith(assignMealWindows(mealArrivals), mealArrivals);
+    }
+
+    /**
+     * 식사 인덱스별 창 배정. 값은 {@code mealArrivals} 배열의 인덱스이고, 배정이 없으면
+     * {@code -1}이다. 배정에서 빠진 끼니는 가까운 창까지의 거리로 위반을 문다.
+     */
+    record MealWindowAssignment(int lunchIndex, int dinnerIndex) {
+
+        static final MealWindowAssignment NONE = new MealWindowAssignment(-1, -1);
+    }
+
+    /**
+     * 어느 끼니가 점심·저녁 창을 차지할지 정한다. <b>위반 합이 최소인 배정</b>이다.
+     *
+     * <p>배정과 위반 합산을 나눠 둔 이유 — 탄력 체류(stretch)가 "어느 식사를 어느 창으로
+     * 당길지"를 알아야 하는데, 그 판단이 비용 계산과 다른 기준을 쓰면 stretch 가 A 창으로
+     * 당긴 식사를 비용은 B 창 기준으로 재는 어긋남이 생긴다. 배정을 한 곳에서 확정하고
+     * 둘 다 그것을 읽는다.
+     *
+     * <p>끼니가 둘이면 후보가 둘뿐이고, 셋 이상이어도 k(k-1) 가지라 비용이 무시할 만하다.
+     * 도착이 이른 쪽을 점심에 묶는 것이 항상 최적이라는 것은 증명된다 — 두 윈도우가
+     * 시간축에서 분리돼 있고 위반 함수가 각각에 대해 볼록하므로 교환 논증이 성립한다.
+     * 그럼에도 전부 따지는 쪽을 택한 것은, 끼니가 셋 이상일 때 "이른 두 개"를 기계적으로
+     * 고르면 잘 벌어진 아침·점심·저녁이 몰아넣은 배열보다 비싸지는 역전이 생기기 때문이다.
+     *
+     * <p>동점이면 루프 순서가 앞선 배정(인덱스 사전순)이 이긴다 — 순열 동점 처리와 같은
+     * 원칙이라 결과가 재현된다.
+     */
+    static MealWindowAssignment assignMealWindows(int[] mealArrivals) {
         if (mealArrivals.length == 0) {
-            return 0;
+            return MealWindowAssignment.NONE;
         }
         if (mealArrivals.length == 1) {
-            return nearestWindowViolation(mealArrivals[0]);
+            // 가까운 창을 고른다. 동점이면 점심 — "이른 쪽을 점심에"와 원칙이 같다.
+            return LUNCH_WINDOW.violationMinutes(mealArrivals[0])
+                <= DINNER_WINDOW.violationMinutes(mealArrivals[0])
+                ? new MealWindowAssignment(0, -1)
+                : new MealWindowAssignment(-1, 0);
         }
 
-        // 어느 두 끼가 점심·저녁을 차지할지 전부 따져 최소를 고른다. 끼니가 둘이면 후보가
-        // 둘뿐이고, 셋 이상이어도 k(k-1) 가지라 비용이 무시할 만하다.
-        //
-        // 도착이 이른 쪽을 점심에 묶는 것이 항상 최적이라는 것은 증명된다 — 두 윈도우가
-        // 시간축에서 분리돼 있고 위반 함수가 각각에 대해 볼록하므로 교환 논증이 성립한다.
-        // 그럼에도 전부 따지는 쪽을 택한 것은, 끼니가 셋 이상일 때 "이른 두 개"를 기계적으로
-        // 고르면 잘 벌어진 아침·점심·저녁이 몰아넣은 배열보다 비싸지는 역전이 생기기 때문이다.
-        int best = Integer.MAX_VALUE;
+        int bestCost = Integer.MAX_VALUE;
+        MealWindowAssignment best = MealWindowAssignment.NONE;
 
         for (int lunchIndex = 0; lunchIndex < mealArrivals.length; lunchIndex++) {
             for (int dinnerIndex = 0; dinnerIndex < mealArrivals.length; dinnerIndex++) {
                 if (lunchIndex == dinnerIndex) {
                     continue;
                 }
-                int total = LUNCH_WINDOW.violationMinutes(mealArrivals[lunchIndex])
-                    + DINNER_WINDOW.violationMinutes(mealArrivals[dinnerIndex]);
-
-                for (int i = 0; i < mealArrivals.length; i++) {
-                    if (i != lunchIndex && i != dinnerIndex) {
-                        total += nearestWindowViolation(mealArrivals[i]);
-                    }
+                MealWindowAssignment candidate = new MealWindowAssignment(lunchIndex, dinnerIndex);
+                int total = violationWith(candidate, mealArrivals);
+                if (total < bestCost) {
+                    bestCost = total;
+                    best = candidate;
                 }
-                best = Math.min(best, total);
             }
         }
         return best;
+    }
+
+    /** 주어진 배정 아래에서의 시간창 위반 합(분). */
+    private static int violationWith(MealWindowAssignment assignment, int[] mealArrivals) {
+        int total = 0;
+        for (int i = 0; i < mealArrivals.length; i++) {
+            if (i == assignment.lunchIndex()) {
+                total += LUNCH_WINDOW.violationMinutes(mealArrivals[i]);
+            } else if (i == assignment.dinnerIndex()) {
+                total += DINNER_WINDOW.violationMinutes(mealArrivals[i]);
+            } else {
+                total += nearestWindowViolation(mealArrivals[i]);
+            }
+        }
+        return total;
     }
 
     private static int nearestWindowViolation(int arrivalMinutes) {
@@ -501,7 +686,7 @@ public class RouteOptimizer {
     }
 
     private RoutedDay toRoutedDay(RouteRequest request, List<RoutePlace> places,
-        Schedule schedule, int[] stayMinutes, List<RoutePlace> dropped) {
+        Schedule schedule, List<RoutePlace> dropped) {
 
         List<RoutedPlace> routed = new ArrayList<>(schedule.order().length);
         for (int i = 0; i < schedule.order().length; i++) {
@@ -509,7 +694,7 @@ public class RouteOptimizer {
             routed.add(new RoutedPlace(
                 places.get(placeIndex),
                 toDisplayTime(schedule.arrivalMinutes()[i]),
-                stayMinutes[placeIndex]));
+                schedule.stayMinutes()[i]));
         }
 
         return new RoutedDay(
@@ -570,6 +755,14 @@ public class RouteOptimizer {
             stayMinutes[i] = places.get(i).slotType().getDefaultStayMinutes();
         }
         return stayMinutes;
+    }
+
+    private static int[] maxStayMinutesOf(List<RoutePlace> places) {
+        int[] maxStayMinutes = new int[places.size()];
+        for (int i = 0; i < places.size(); i++) {
+            maxStayMinutes[i] = places.get(i).slotType().getMaxStayMinutes();
+        }
+        return maxStayMinutes;
     }
 
     private static SlotType[] slotTypesOf(List<RoutePlace> places) {

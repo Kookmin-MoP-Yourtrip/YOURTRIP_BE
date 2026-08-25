@@ -108,7 +108,7 @@ class PlannerAgentTest {
         void normalizesResponse() {
             givenResponse(new PlannerResponse("천년의 밤", "느긋한 경주", List.of(
                 new PlannerResponse.Day(9, "황리단길", "대릉원", "한옥 골목", "10:00",
-                    List.of("ATTRACTION", "MEAL", "CAFE")))));
+                    List.of("ATTRACTION", "MEAL", "CAFE", "VIEWPOINT", "MEAL")))));
 
             PlannerPlan plan = agent.plan("경주", 1, List.of(), CourseDeadline.unbounded());
 
@@ -117,7 +117,8 @@ class PlannerAgentTest {
             assertThat(plan.days().getFirst().day()).isEqualTo(1);
             assertThat(plan.days().getFirst().dayStartTime()).isEqualTo(LocalTime.of(10, 0));
             assertThat(plan.days().getFirst().slots())
-                .containsExactly(SlotType.ATTRACTION, SlotType.MEAL, SlotType.CAFE);
+                .containsExactly(SlotType.ATTRACTION, SlotType.MEAL, SlotType.CAFE,
+                    SlotType.VIEWPOINT, SlotType.MEAL);
         }
 
         @Test

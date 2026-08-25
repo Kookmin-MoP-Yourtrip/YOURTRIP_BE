@@ -27,7 +27,7 @@ public final class DefaultPlannerPlans {
      * 기본 슬롯 구성. <b>관광 2 · 식사 2 · 카페 1</b>이고 설계 문서의 예시와 같다.
      *
      * <p>다섯 개인 이유는 {@code RouteOptimizer}의 완전탐색 임계값이다 — 3-6 벤치마크에서
-     * {@code n=7}은 3일 1.77ms 인데 {@code n=8}은 15ms 로 지연 예산({@code <10ms})을 이미 넘는다.
+     * {@code n=7}은 3일 4.0ms 인데 {@code n=8}은 29ms 로 지연 예산({@code <10ms})을 이미 넘는다.
      * 다섯이면 여유가 크고, 하루에 다섯 곳은 사용자 입장에서도 무리가 없다.
      */
     public static final List<SlotType> DEFAULT_SLOTS = List.of(
