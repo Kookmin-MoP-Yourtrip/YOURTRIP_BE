@@ -106,7 +106,7 @@ H2 PostgreSQL 모드가 이를 받아준다는 보장이 없다.
 
 ## 4. 배포
 
-> ⚠️ **이 절은 아직 미완성이다.** 운영 서버(`yourtrip.site`)의 실제 구성(환경변수 파일 경로,
+> ⚠️ **이 절은 아직 미완성이다.** 운영 서버(`yourtrip.cloud`)의 실제 구성(환경변수 파일 경로,
 > 서비스명, 재기동 방식)이 이 저장소에 기록돼 있지 않아, 해당 부분을 `<TODO: 확인 필요>`로
 > 남겨뒀다. 각 단계에는 **실측으로 검증된 부하테스트 환경([ec2-rds-loadtest.md](ec2-rds-loadtest.md))의
 > 값을 참고 예시로 함께 적어뒀다** — 운영 서버가 같은 레이아웃이면 그대로 쓰고, 다르면
@@ -193,7 +193,7 @@ sudo journalctl -u yourtrip-app -n 200 --no-pager | grep -i profile
 애플리케이션 자체가 살아 있는지도 함께 확인한다.
 
 ```bash
-curl -sf https://yourtrip.site/actuator/health
+curl -sf https://yourtrip.cloud/actuator/health
 ```
 
 `{"status":"UP", ...}`가 나와야 한다.

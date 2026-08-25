@@ -10,7 +10,7 @@
 
 - 전체 프로젝트 소개(팀 구성, 화면 구성, FE 포함 전체 아키텍처): `C:\YOURTRIP\README.md`
 - Android FE 레포: https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_FE
-- Swagger 문서(배포): https://yourtrip.site/swagger-ui/index.html
+- Swagger 문서(배포): https://yourtrip.cloud/swagger-ui/index.html
 
 ## 레포/모듈 구조
 
