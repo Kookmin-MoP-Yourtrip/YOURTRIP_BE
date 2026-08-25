@@ -20,7 +20,7 @@ availability_zone_secondary  = "ap-northeast-2c"
 # 생성한 키페어 중 공개키(.pub) 경로를 지정한다. 개인키는 .gitignore로 이미 보호된다.
 ssh_public_key_path = "./yourtrip-loadtest-ssh.pub"
 
-app_instance_type         = "t3.micro" # 실제 배포 타겟과 동일 스펙 — 임의로 올리지 말 것
+app_instance_type         = "t3.small" # 실제 배포 타겟과 동일 스펙(vCPU 2, 2GB) — 임의로 바꾸지 말 것
 k6_instance_type          = "t3.micro" # CPU 포화 관측되면 t3.small로 올리는 걸 대안으로 검토
 enable_detailed_monitoring = true
 

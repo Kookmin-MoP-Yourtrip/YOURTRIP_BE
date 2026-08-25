@@ -1,0 +1,84 @@
+{
+  "title": "통영, 가족과 함께하는 자연 속 힐링 여정",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "미륵산 케이블카",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "통영맛집다정",
+          "startTime": "12:00"
+        },
+        {
+          "placeName": "통영 루지",
+          "startTime": "13:30"
+        },
+        {
+          "placeName": "이순신공원",
+          "startTime": "16:00"
+        },
+        {
+          "placeName": "통영 중앙시장",
+          "startTime": "18:30"
+        },
+        {
+          "placeName": "해원횟집",
+          "startTime": "19:30"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "동피랑 벽화마을",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "서피랑 공원",
+          "startTime": "11:30"
+        },
+        {
+          "placeName": "통영명가",
+          "startTime": "13:00"
+        },
+        {
+          "placeName": "달아공원",
+          "startTime": "15:00"
+        },
+        {
+          "placeName": "통영굴마을",
+          "startTime": "18:00"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "통영 해저터널",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "통영 수산과학관",
+          "startTime": "11:00"
+        },
+        {
+          "placeName": "훈이네해물뚝배기",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "강구안",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "오미사꿀빵 본점",
+          "startTime": "16:00"
+        }
+      ]
+    }
+  ]
+}

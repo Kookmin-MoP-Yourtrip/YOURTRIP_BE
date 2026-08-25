@@ -101,5 +101,19 @@ class AiCourseMetricsTest {
         void requestDurationIsRegistered() {
             assertThat(registry.scrape()).contains("ai_course_request_duration_seconds_count 0");
         }
+
+        @Test
+        @DisplayName("탈락이 없어도 사유별 시계열이 소스 두 축으로 존재한다 (이슈 #134)")
+        void candidateDroppedIsRegistered() {
+            // 0 등록이 없으면 "탈락이 없었다"와 "그 조합을 한 번도 안 만들었다"가 구분되지 않는다.
+            // 이 지표는 필터 도입 전후를 비교하는 데 쓰이므로 기준선이 0으로 찍혀 있어야 한다.
+            String scrape = registry.scrape();
+
+            assertThat(scrape).contains("ai_candidate_dropped_total");
+            assertThat(scrape).contains("reason=\"no_coordinates\"");
+            assertThat(scrape).contains("reason=\"category_mismatch\"");
+            assertThat(scrape).contains("source=\"naver_local\"");
+            assertThat(scrape).contains("source=\"tour_api\"");
+        }
     }
 }

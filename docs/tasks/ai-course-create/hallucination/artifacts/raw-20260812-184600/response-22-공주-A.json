@@ -1,0 +1,80 @@
+{
+  "title": "공주, 금강 따라 걷는 연인의 감성 산책",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "공산성",
+          "startTime": "11:00"
+        },
+        {
+          "placeName": "고마나루돌쌈밥",
+          "startTime": "13:00"
+        },
+        {
+          "placeName": "제민천",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "루치아의뜰",
+          "startTime": "16:00"
+        },
+        {
+          "placeName": "밤마을",
+          "startTime": "18:30"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "무령왕릉과 왕릉원",
+          "startTime": "10:00"
+        },
+        {
+          "placeName": "국립공주박물관",
+          "startTime": "12:00"
+        },
+        {
+          "placeName": "명성불고기",
+          "startTime": "13:30"
+        },
+        {
+          "placeName": "공주 한옥마을",
+          "startTime": "15:00"
+        },
+        {
+          "placeName": "한옥카페 고담",
+          "startTime": "16:30"
+        },
+        {
+          "placeName": "공주칼국수",
+          "startTime": "18:30"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "계룡산 동학사",
+          "startTime": "10:00"
+        },
+        {
+          "placeName": "동학사원조파전",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "미르섬",
+          "startTime": "14:00"
+        },
+        {
+          "placeName": "공주산성시장",
+          "startTime": "16:00"
+        }
+      ]
+    }
+  ]
+}

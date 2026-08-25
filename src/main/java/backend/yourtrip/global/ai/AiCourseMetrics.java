@@ -1,6 +1,7 @@
 package backend.yourtrip.global.ai;
 
 import backend.yourtrip.global.ai.agent.DemotionReason;
+import backend.yourtrip.global.ai.candidate.CandidateDropReason;
 import backend.yourtrip.global.ai.candidate.CandidateOutcome;
 import backend.yourtrip.global.ai.candidate.CandidateSourceType;
 import backend.yourtrip.global.ai.candidate.GeocodeOutcome;
@@ -48,6 +49,20 @@ public class AiCourseMetrics {
 
     /** 후보 공급이 실제로 목록을 채우는지. {@code empty}가 잦은 지역이 곧 외부 데이터도 얇은 지역이다. */
     public static final String CANDIDATE_RETRIEVAL = "ai.candidate.retrieval";
+
+    /**
+     * <b>소스가 받은 응답 안에서 몇 건을 왜 버렸는지</b> (이슈 #134).
+     *
+     * <p>{@link #CANDIDATE_RETRIEVAL}과 짝으로 봐야 뜻이 산다 — 후보 5건이 전부 탈락하면 그쪽은
+     * {@code empty}가 되는데, 그것만 보면 "그 지역의 외부 데이터가 얇다"로 읽힌다. 이 값이 함께
+     * 오르면 <b>데이터는 왔는데 우리가 버린 것</b>이다. 두 지표가 갈라 주지 않으면 필터를 넣은 뒤
+     * {@code empty} 상승이 개선인지 악화인지 판정할 수 없다.
+     *
+     * <p><b>발화 지점이 스테이지가 아니라 소스인 것이 의도다.</b> 탈락은 응답을 후보로 바꾸는
+     * 그 자리에서만 보이고, 스테이지까지 값을 실어 나르면 데드라인에 잘린 호출의 탈락이
+     * 구조적으로 누락된다({@code collectDone}이 끝난 것만 거둔다).
+     */
+    public static final String CANDIDATE_DROPPED = "ai.candidate.dropped";
 
     /** {@code anchor} 지오코딩이 어느 단계에서 맞았는지. {@code fallback_*}이 잦으면 Planner의 anchor 문제다. */
     public static final String GEOCODE = "ai.geocode";
@@ -161,7 +176,7 @@ public class AiCourseMetrics {
     public static final String SOURCE_TOUR_API = "tour_api";
 
     /**
-     * 지연 히스토그램의 하한. {@code ROUTE}는 3-6 벤치마크에서 3일 1.77ms라 이보다 아래는 재도 의미가 없다.
+     * 지연 히스토그램의 하한. {@code ROUTE}는 3-6 벤치마크에서 3일 4.0ms라 이보다 아래는 재도 의미가 없다.
      */
     private static final Duration LATENCY_MIN = Duration.ofMillis(1);
 
@@ -196,6 +211,9 @@ public class AiCourseMetrics {
             for (CandidateOutcome outcome : CandidateOutcome.values()) {
                 retrievalCounter(source, outcome);
             }
+            for (CandidateDropReason reason : CandidateDropReason.values()) {
+                droppedCounter(source, reason);
+            }
         }
         for (GeocodeOutcome outcome : GeocodeOutcome.values()) {
             geocodeCounter(outcome);
@@ -227,6 +245,18 @@ public class AiCourseMetrics {
 
     public void candidateRetrieval(String source, CandidateOutcome outcome) {
         retrievalCounter(source, outcome).increment();
+    }
+
+    /**
+     * 소스가 버린 후보를 사유별로 올린다 (이슈 #134).
+     *
+     * <p>{@code candidateRetrieval}이 스테이지에서 발화하는 것과 달리 이쪽은 <b>소스가 직접</b>
+     * 부른다 — 이유는 {@link #CANDIDATE_DROPPED} 참고.
+     */
+    public void candidateDropped(String source, CandidateDropReason reason, int count) {
+        if (count > 0) {
+            droppedCounter(source, reason).increment(count);
+        }
     }
 
     public void geocode(GeocodeOutcome outcome) {
@@ -353,6 +383,13 @@ public class AiCourseMetrics {
         return Counter.builder(CANDIDATE_RETRIEVAL)
             .tag("source", source)
             .tag("result", tag(outcome.name()))
+            .register(registry);
+    }
+
+    private Counter droppedCounter(String source, CandidateDropReason reason) {
+        return Counter.builder(CANDIDATE_DROPPED)
+            .tag("source", source)
+            .tag("reason", tag(reason.name()))
             .register(registry);
     }
 

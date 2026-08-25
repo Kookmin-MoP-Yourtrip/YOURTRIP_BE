@@ -63,9 +63,9 @@ variable "ssh_public_key_path" {
 }
 
 variable "app_instance_type" {
-  description = "App EC2 인스턴스 타입. 실제 배포 타겟(PRESIGN-BOTTLENECK.md 확인)과 동일한 t3.micro가 기본값 — '운영 스펙이 이 부하를 버티는가'를 그대로 검증하기 위함."
+  description = "App EC2 인스턴스 타입. '운영 스펙이 이 부하를 버티는가'를 그대로 검증하기 위해 실제 배포 타겟과 동일하게 맞춘다. 초기값은 t3.micro였으나 1GB에서 부하테스트가 메모리 부족으로 중단되는 문제 때문에 t3.small로 올렸고(docs/tasks/connection-pool-bottleneck/stage0/production/callerruns-verification.md), 배포 타겟도 t3.small로 정해져 '스펙 일치' 원칙이 회복됐다. 임의로 바꾸지 말 것."
   type        = string
-  default     = "t3.micro"
+  default     = "t3.small"
 }
 
 variable "k6_instance_type" {

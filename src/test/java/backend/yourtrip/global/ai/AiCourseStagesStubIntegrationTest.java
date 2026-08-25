@@ -109,7 +109,7 @@ class AiCourseStagesStubIntegrationTest {
         metrics = new AiCourseMetrics(meterRegistry);
         llmClient = new StubLlmClient();
         retrievalStage = new CandidateRetrievalStage(new AreaGeocoder(kakaoClient),
-            new NaverLocalSeedSource(naverClient), new TourApiSource(tourClient), metrics,
+            new NaverLocalSeedSource(naverClient, metrics), new TourApiSource(tourClient), metrics,
             Runnable::run);
         groundingStage = new GroundingStage(kakaoClient, metrics, Runnable::run);
         urlEnricher = new PlaceUrlEnricher(kakaoClient, metrics, Runnable::run);

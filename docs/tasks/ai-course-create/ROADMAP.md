@@ -6,13 +6,13 @@
 >
 > **설계는 착수 후 네 번 개정됐다**(후보 공급 층 추가 → PlaceSignal 제외 → 카카오를 후보 소스에서 제외 → ATTRACTION 소스로 TourAPI 채택). 각 개정의 근거와 파급은 **설계 문서의 "설계 변경 이력" 표**가 소유한다. 이 로드맵은 그 결과만 반영한다.
 >
-> **진행 상황: 7단계 완료.** 2단계에서 복합 환각률 25.6% → **7.5%**(모델 교체 효과)를 확인했고 Curator 모델은 `gpt-5.6-luna`로 확정됐다. 6단계 실호출 프로브에서 **위조 강등 0건**을 확인했고, 같은 프로브가 드러낸 **자연어 `area`가 네이버 시더를 죽이는 결함**은 이슈 #110에서 해소했다([STEP-6](steps/STEP-6-agents.md) 판정 9). 7단계에서 여섯 조각이 하나의 요청으로 이어졌고, **설계가 지정한 ErrorCode 다섯 중 셋이 같은 설계의 degrade 정책에 막혀 발화할 수 없다는 것**을 확인해 둘만 만들었다([STEP-7](steps/STEP-7-pipeline.md) 판정 1). **다음은 8단계(경로 교체 — 유일한 스위치).**
+> **진행 상황: 7단계 완료.** 2단계에서 모델 교체만으로 환각이 크게 주는 것을 확인했고(당시 복합 지표 25.6% → 7.5% — 이후 지표 체계가 재정립돼 현행 1차 지표는 **지어냄률 10.1%**, 성공 기준 참고) Curator 모델은 `gpt-5.6-luna`로 확정됐다. 6단계 실호출 프로브에서 **위조 강등 0건**을 확인했고, 같은 프로브가 드러낸 **자연어 `area`가 네이버 시더를 죽이는 결함**은 이슈 #110에서 해소했다([STEP-6](steps/STEP-6-agents.md) 판정 9). 7단계에서 여섯 조각이 하나의 요청으로 이어졌고, **설계가 지정한 ErrorCode 다섯 중 셋이 같은 설계의 degrade 정책에 막혀 발화할 수 없다는 것**을 확인해 둘만 만들었다([STEP-7](steps/STEP-7-pipeline.md) 판정 1). **다음은 8단계(경로 교체 — 유일한 스위치).**
 
 ## 목표
 
 1. **JSON 파싱 실패로 요청이 통째로 실패하는 것을 없앤다.** Gemini 단일 호출의 실측 파싱 실패율은 **16.7%**(5/30) — 사용자가 AI 코스 생성을 여섯 번 시도하면 한 번은 503을 받는다는 뜻이다. **2-6에서 0.0%로 달성됐다.** 다만 **무엇이 이걸 해결했는지는 착수 시점의 추정과 다르다** — 실패 5건이 전부 응답 **절단**이었고 절단은 스키마로 막히지 않으므로, 해결한 것은 구조화 출력이 아니라 **모델 교체**다. 구조화 출력이 실제로 준 것은 출력 바이트 −48%와 스키마 밖 필드 차단이다(2-6).
 
-2. **환각 장소가 사용자 코스에 실리는 비율을 낮춘다.** 현재 실측 환각률은 **25.6%**([AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)) — 코스 하나를 받으면 평균 4곳 중 1곳이 존재하지 않는 장소다. 후보를 3배로 늘리고 카카오 매칭에 **이름 일치를 필수 조건**으로 걸어, 검증을 통과하지 못한 장소는 파이프라인에 아예 존재하지 않게 만든다. **처방은 1-2에서 바뀌었다** — 원래 계획한 점수 하한선은 실측에서 역효과였다.
+2. **환각 장소가 사용자 코스에 실리는 비율을 낮춘다.** 실측 지어냄률은 **10.1%**, 장소 미확보율은 **21.1%**([AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)) — 코스 하나를 받으면 평균 10곳 중 1곳이 존재하지 않는 장소이고, 다섯에 하나는 검증을 못 넘겨 코스에 실을 수 없다. 후보를 3배로 늘리고 카카오 매칭에 **이름 일치를 필수 조건**으로 걸어, 검증을 통과하지 못한 장소는 파이프라인에 아예 존재하지 않게 만든다. **처방은 1-2에서 바뀌었다** — 원래 계획한 점수 하한선은 실측에서 역효과였다.
 
 3. **동선·시간 배치를 LLM 추측에서 실좌표 계산으로 옮긴다.** 좌표를 확보한 뒤 완전탐색으로 최적 순열을 고르므로, "시간 겹침 없음"·"day당 식사 1회"·"동선 역주행 없음"이 프롬프트 규칙이 아니라 **알고리즘 불변식**이 된다.
 
@@ -23,7 +23,7 @@
 ## 배경 — 현재 구조의 문제
 
 **① 환각을 걸러내는 게 아니라 세탁하고 있다.**
-[KakaoLocalClient.java](../../../src/main/java/backend/yourtrip/global/kakao/KakaoLocalClient.java)의 `score()`는 이름 일치 +5 / 주소 일치 +3 / 카테고리 +2로 최대 10점을 매기지만 **하한선이 없다.** `max()`로 최고점을 뽑으므로 0점 후보도 그대로 반환된다. LLM이 지어낸 상호명으로 검색하면 카카오가 그 지역의 무관한 POI를 돌려주고, 그게 사용자 코스에 저장된다. BASELINE 측정이 이 경로를 `LAUNDERED`(진짜 환각)로 분류했다. **1-2에서 해소했다** — 다만 처방은 하한선이 아니라 이름 일치 게이트였다(하한선은 실측에서 역효과).
+[KakaoLocalClient.java](../../../src/main/java/backend/yourtrip/global/kakao/KakaoLocalClient.java)의 `score()`는 이름 일치 +5 / 주소 일치 +3 / 카테고리 +2로 최대 10점을 매기지만 **하한선이 없다.** `max()`로 최고점을 뽑으므로 0점 후보도 그대로 반환된다. LLM이 지어낸 상호명으로 검색하면 카카오가 그 지역의 무관한 POI를 돌려주고, 그게 사용자 코스에 저장된다. BASELINE 측정이 이 경로를 세탁(지어낸 이름 `FABRICATED`가 검증을 통과)으로 분류했다. **1-2에서 해소했다** — 다만 처방은 하한선이 아니라 이름 일치 게이트였다(하한선은 실측에서 역효과).
 
 **② LLM이 지리를 모르는 채로 동선을 짠다.**
 [GeminiService.java](../../../src/main/java/backend/yourtrip/global/gemini/service/GeminiService.java)의 95줄 프롬프트 하나가 컨셉 설계 + 장소 선정 + 시간 배치 + 동선 최적화 + 제목 작명을 동시에 요구한다. 좌표 없이 텍스트로만 최적화하니 지그재그 동선이 나오고, 다섯 가지 일을 한 번에 시켜 각각이 다 얕다.
@@ -42,7 +42,7 @@
 | 모델 배치 | Gemini 기준 `thinking-budget` | **Planner·Curator = `gpt-5.6-luna`, PlaceProfile = `gpt-5-nano`**(9단계 조건부라 V1에서는 호출되지 않는다) (약 $0.0030/요청). **2-6 실측으로 Curator=luna 확정** — nano는 환각률이 7배라 후보에서 탈락했다. `thinking-budget`의 OpenAI 대응물은 `reasoning-effort`로 확인돼 agent별 설정에 들어갔다 |
 | 네이버 API 키 | "착수 전 확인 필요"(남는 한계) | **발급 완료**(0-2). API HUB 이관으로 발급처·엔드포인트·인증 헤더가 바뀌었고 요금은 무료 그대로 |
 | **TourAPI 키** | 후보 공급 "ATTRACTION 계열 슬롯" | **개발계정만 쓴다 — 자동승인이라 블로커가 아니다.** 공공데이터포털 상세페이지의 심의유형이 "개발단계: 자동승인"이라 신청 즉시 발급되고, 포털↔한국관광공사 동기화(10~30분) 뒤 호출된다. **운영계정 전환은 계획하지 않는다**(아래) |
-| before/after 비교 | 환각률 25.6%(Gemini 단일 호출) | **OpenAI 단일 호출 baseline을 2단계에서 재측정**해 3점 비교 |
+| before/after 비교 | 환각률 25.6%(Gemini 단일 호출, 당시 복합 지표 — 이후 지어냄률 10.1%로 재정의) | **OpenAI 단일 호출 baseline을 2단계에서 재측정**해 3점 비교 |
 | V1 범위 | Critic·Refiner 제외(지연 예산) | **Critic·Refiner에 더해 `PlaceSignalStage`(3·4층)도 제외**했다. 도입 순서의 11단계 전부가 이 로드맵의 범위이며, 9단계는 조건부다 |
 
 **세 결정의 근거는 설계 문서가 소유한다** — 포트는 유지하되 어댑터는 OpenAI 하나만 만드는 것, Spring AI를 `OpenAiLlmClient` 내부 전송 계층에만 가두는 것, agent별로 모델과 `reasoning-effort`를 나누는 것. 상세는 [LLM 연동](design/LLM-연동.md)에 있다. 한 가지만 여기 적어둔다: **agent별 온도 차등은 계획했으나 실행할 수 없다** — 두 모델 모두 커스텀 `temperature`를 거부해 기본값 1로 고정된다([STEP-2](steps/STEP-2-llm-port.md) 판정 6).
@@ -126,7 +126,7 @@
 
 > 설계 근거는 [지식 신호 층과 후보 공급](design/지식-신호와-후보-공급.md). 상세 실행 계획은 [STEP-4-candidate-sources.md](steps/STEP-4-candidate-sources.md) (착수 시 작성).
 
-- [x] 4-10. **지역 티어별 환각률 소급 집계** — **Gemini 아티팩트**(389장소)를 유명/무인지로 다시 집계했다. OpenAI 산출물은 소실돼 대상을 바꿨고, 가설 검증이 목적이라 before 데이터로 결론은 같다. **가설 성립** — 복합 환각률 FAMOUS 13.9% vs MINOR 35.4%(2.5배, p ≈ 0.0002). 결과는 [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)의 "지역 티어별 소급 집계"
+- [x] 4-10. **지역 티어별 환각률 소급 집계** — **Gemini 아티팩트**(389장소)를 유명/무인지로 다시 집계했다. OpenAI 산출물은 소실돼 대상을 바꿨고, 가설 검증이 목적이라 before 데이터로 결론은 같다. **가설 성립** — 현행 기준 지어냄률 FAMOUS 4.4% vs MINOR 16.0%(3.6배), 장소 미확보율 14.3% vs 26.6%(p ≈ 0.003). 결과는 [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)의 "지역 티어별 소급 집계"
 - [x] 4-2. **네이버 실호출 확정** — **경로는 `/search/v1/local`**(레거시 `/v1/search/local.json`은 404). **설계를 가르는 둘은 통과** — `mapx`/`mapy`는 WGS84 × 10⁷(정밀도 7자리), 서술어 매칭이 작동해 **스타일 modifier를 채택**한다(9단계 조건 미발동). 어긋난 셋은 4-1·4-4·9-2에 반영했다
 - [x] 4-1. **`NaverLocalClient`** (지역검색 시더, 전 슬롯) — `"{area} {searchHint}"` + `sort=comment` + `display=5`. **V1의 네이버 의존은 이 클라이언트 하나다.** 상호명(`<b>` 태그 스트립)·`roadAddress`·`category`·`mapx`/`mapy`를 **모두** 취한다 — 좌표를 SEEDED의 실좌표로 쓰므로 "상호명만 쓰고 카카오로 공식화"는 철회됐다. 반환은 예외가 아니라 `Found`/`Empty`/`Failed` — **`Empty`와 `Failed`를 가르는 것이 핵심**이고, `start`·`sort`는 노출하지 않는다. **쿼리 접두사는 `area` 원문이 아니라 `AreaQueryNormalizer`가 줄인 지명이다**(이슈 #110) — Planner가 내는 권역 라벨(`황리단길·대릉원 일대`)로는 검색이 0건이라 소스가 시더뿐인 슬롯의 목록이 통째로 빈다. **후보가 모자라면 지명을 넓혀 가며 더 모은다** — `anchor`는 3건에 못 미치면, `location`은 0건일 때만(기본 쿼리에서만, `Failed`에는 발동하지 않는다). 단계마다 하한선이 다른 근거는 거리다 — `anchor` 추가분은 1.07km로 1단계(1.20km)와 다르지 않은데 `location`은 6.34km다
 - [x] 4-3. **키워드→스타일 modifier 사전** (순수 함수) — 사용자 키워드를 traits 닫힌 태그 집합의 가점 태그 상위 1~2개로. **여기에 LLM을 쓰지 않는다.** 4층이 V1에서 빠져도 이 사전은 살아 있다. **어휘는 4-9와 합쳐 `StyleTag` 31개 하나로 뒀고**(설계의 두 표가 어긋나 있었다), `KeywordType` 20개 중 13개를 채웠다 — duration·`NORMAL`·`FOOD`·`SHOPPING`은 비우는 것이 결정이다 **검색어 표기는 26개 전량 실호출로 확정했다**(3라운드·122회) — 21개 유지, `도보`→`역근처`·`한적한`→`숨은`·`고급`→`프리미엄` 교체, `통창`·`시끌벅적`·`아늑한`은 비웠다
@@ -240,15 +240,15 @@
 
 ## 성공 기준
 
-**1차 지표는 환각률이다.** 다만 이번에 LLM 벤더가 Gemini에서 OpenAI로 바뀌므로, before/after를 그대로 비교하면 **"모델 교체"와 "파이프라인 도입" 두 변수가 섞여** 개선폭을 어느 쪽에도 귀속시킬 수 없다. 그래서 측정점을 3개로 나눈다.
+**1차 지표는 지어냄률이다** — LLM이 실존하지 않는 장소를 지어내는 비율(카카오 커버리지·게이트 거짓 양성이 섞이지 않는다). 이번에 LLM 벤더가 Gemini에서 OpenAI로 바뀌므로, before/after를 그대로 비교하면 **"모델 교체"와 "파이프라인 도입" 두 변수가 섞여** 개선폭을 어느 쪽에도 귀속시킬 수 없다. 그래서 측정점을 3개로 나눈다.
 
-| 측정점 | 시점 | 분리되는 변수 | 값 |
+| 측정점 | 시점 | 분리되는 변수 | 지어냄률 (1차 지표) |
 |---|---|---|---|
-| Gemini 단일 호출 | 완료 | — | **25.6%** (자동 프록시 19.8% + 세탁 5.7%) |
-| **OpenAI 단일 호출** | 2단계 직후 | 모델 교체 효과 | **7.5%** (자동 프록시 6.4% + 세탁 1.08%) |
+| Gemini 단일 호출 | 완료 | — | **10.1%** (장소 미확보율 21.1%) |
+| OpenAI 단일 호출 | 2단계 직후 | 모델 교체 효과 | **(참고) 1.08%** — 산출물 미보존, 옛 기준 측정 |
 | OpenAI 파이프라인 | 8단계 직후 | 파이프라인 구조 효과 | 미측정 |
 
-**모델 교체만으로 25.6% → 7.5%, −18.1%p(71% 감소).** `UNVERIFIABLE`을 전부 환각으로 보는 상한도 9.3%로 before의 절반에 못 미친다. 모델 선택의 대가는 크다 — 같은 조건에서 `gpt-5-nano`는 **89.4%**(진짜 환각률 41.7%)로 Gemini보다도 나쁘다. 상세는 [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md)
+**OpenAI 측정점은 참고값으로 강등한다.** 원본 산출물이 소실돼 현행 기준으로 재채점할 수 없기 때문이다 — 다만 수동 검증의 판정 기준 자체는 현행 `FABRICATED`와 같아(STEP-2가 "`NO_RESULT`도 원안 미실존이면 환각"으로 판정했다) 지어냄률 1.08%는 방향 비교에는 쓸 수 있다. 모델 교체 효과가 크다는 결론(당시 복합 지표 25.6% → 7.5%)과 `gpt-5-nano` 탈락(지어냄률 41.7%, luna의 **38.6배**)은 유지된다. 상세는 [STEP-2](steps/STEP-2-llm-port.md) 판정 7~10 (원 측정 문서는 산출물 소실로 삭제됐다)
 
 **2-6은 4조합 120요청으로 쟀다**(`BASELINE_MODEL` × `BASELINE_SCHEMA_MODE`). 이 표가 Curator 모델을 확정한 근거다.
 
@@ -261,23 +261,27 @@
 
 **측정이 전제 두 개를 뒤집었다.** ① `gpt-5-nano`는 환각률이 **7배 이상**이라 비용을 아끼려고 Curator를 내리면 1차 목표를 정면으로 훼손한다. ② **구조화 출력은 환각률을 낮추지 않았고 낮출 수도 없다** — 스키마는 형식을 강제하지 내용을 강제하지 않는다. JSON 실패를 없앤 것은 모델 교체이고, 구조화 출력의 실익은 **출력 바이트 −48%**와 **스키마 밖 필드 차단**이었다.
 
-해석의 상세(밴드별 세탁 분석, 자동 프록시가 과대평가인 이유, 온도·추론 강도가 "모델 교체" 축에 딸려 들어가는 문제)는 [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md)와 [STEP-2](steps/STEP-2-llm-port.md) 판정 7~9에 있다.
+해석의 상세(밴드별 세탁 분석, 자동 프록시가 과대평가인 이유, 온도·추론 강도가 "모델 교체" 축에 딸려 들어가는 문제)는 [STEP-2](steps/STEP-2-llm-port.md) 판정 7~10에 있다(원 측정 문서는 산출물 소실로 삭제됐다).
 - 하네스는 기존 것을 그대로 쓴다: `src/test/java/backend/yourtrip/global/benchmark/AiHallucinationBaselineTest.java`
   ```bash
   ./gradlew benchmarkTest --tests '*AiHallucinationBaselineTest*' --rerun
   ```
-- **동일 입력 세트(지역 10곳 × 스타일 3조합 = 30요청, 여행 일수 3일 고정)와 동일한 `score()` 로직을 유지해야** 세 측정점이 비교 가능하다. 1-2에서 매칭 로직을 바꾸므로, 하네스의 판정 로직은 변경 전 기준을 그대로 쓰도록 고정한다
-- **환각률의 산출 정의를 고정한다** — 아래 절차를 그대로 따라야 세 측정점이 같은 것을 재게 된다. 근거와 한계는 [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)의 "25.6%의 정의"에 있다
+- **동일 입력 세트(지역 10곳 × 스타일 3조합 = 30요청, 여행 일수 3일 고정)를 유지해야** 측정점이 비교 가능하다. 카카오 검증은 **프로덕션 `lookupBestPlace()` 호출**이므로 프로덕션과 함께 움직인다 — 검증 로직을 바꾸면 `BASELINE_RESCORE_FROM` 재채점 모드로 before 값을 같은 기준으로 다시 만들 수 있다
+- **지표의 산출 정의를 고정한다** — 아래 절차를 그대로 따라야 측정점이 같은 것을 재게 된다. 근거·한계·재현 조건은 [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)의 "지표의 정의"와 "재측정 재현 조건"에 있다. **8-6 착수 전에 그 두 절을 먼저 읽는다**
 
   ```
-  환각률 = 자동 프록시(매칭 실패율) + 세탁된 환각률
-    자동 프록시   = (NO_RESULT + S0 + S1_4) / 전체 장소 수
-    세탁된 환각률 = Σ_전체밴드 (밴드별 LAUNDERED 비율 × 밴드별 전체 비중)
+  지어냄률(1차)  = Σ_전체층 (층별 FABRICATED 비율 × 층별 전체 비중)
+  세탁 통과율    = 위 식을 Found 층(S0~S8_10)에만 적용
+  자동 프록시    = NO_RESULT / 전체       ← 판정자 없이 코드가 계산
+  이름 불일치율  = NAME_MISMATCH / 전체
+  장소 미확보율  = 둘의 합                 ← 운영 ai.grounding.match 와 같은 축
   ```
 
-  전제: ① 밴드 경계는 1-2 변경 전 `score()` 기준(`-1`/`0`/`1~4`/`5~7`/`8~10`) ② `UNVERIFIABLE`은 정답으로 간주 ③ `WRONG_MATCH`는 환각에 포함하지 않는다 ④ 수동 검증은 밴드별 층화 추출(밴드당 최대 10건, 시드 42)
+  전제: ① 검증은 프로덕션 `lookupBestPlace()` — 층은 결과값 + `Found` 점수 구간(`0`/`1~4`/`5~7`/`8~10`) ② `UNVERIFIABLE`은 정답으로 간주 ③ `WRONG_MATCH`는 환각에 포함하지 않는다 ④ 수동 검증은 층별 층화 추출(층당 최대 10건, 시드 42), 판정자가 누구인지(사람/AI 세션) 기록
 
-  > **[정정]** 이 정의는 **매칭에 실패한 장소를 전부 환각으로 취급**하며, `NO_RESULT`를 두 번 세는 구성이다. "LLM이 실제로 지어낸 이름"만 직접 추정하면 **5.7%**(범위 4~10%)로 훨씬 낮다. 그럼에도 **25.6%를 유지**하기로 했다 — 값을 고치면 세 측정점을 모두 같은 정의로 다시 계산해야 하는데, 비교 가능성이 정확성보다 이 지표의 목적에 부합하기 때문이다. 상세는 [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 판정 4
+  > **[개정 이력]** 최초 정의(복합 환각률 25.6% = 옛 프록시 19.8% + 세탁 5.7%)는 `NO_RESULT` 이중 계산과 표기 차이 거짓 음성을 안고 있었고, 수동 검증 재판정·검증 로직 재정립과 함께 폐기됐다. 경위는 [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) 판정 4·5
+  >
+  > **8-6 주의**: 현행 하네스는 단일 호출 전용이라(`AGENT_NAME = "baseline"`) **파이프라인 경로를 그대로 잴 수 없다** — 8-6 착수 시 파이프라인 진입점을 하네스에 잇는 작업이 선행돼야 한다
 - BASELINE 문서가 명시한 한계를 그대로 승계한다 — **LLM 응답은 비결정적이라 수 %p 차이는 반복 측정이 필요하고**, 카카오에 미등록된 실존 업소는 원리적으로 환각과 구분할 수 없다
 
 **부가 지표**
@@ -326,8 +330,7 @@
   - [운영 관심사](design/운영-관심사.md) — 트랜잭션 경계, 부분 실패 전략, 지연 예산, 비용, 관측
   - [기각한 대안](decisions/기각한-대안.md) — 기각한 대안
   - [보류와 미해결 과제](decisions/보류와-미해결-과제.md) — CriticAgent 설계 Critic, CandidateRefiner 설계 Refiner, 남는 한계
-- [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md) — 환각률 baseline 실측 (before 값 25.6%)
-- [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md) — **OpenAI 재측정 (중간 측정점 7.5%)**. luna/nano 비교로 Curator 모델을 확정한 근거
+- [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md) — 환각률 baseline 실측 (before 지어냄률 10.1% · 장소 미확보율 21.1%)
 - [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) — 위 측정의 원본 산출물 재분석. **1-2 설계의 근거**(점수 밴드 분포, 밴드×verdict 교차표, 파싱 실패 원인)
 - [TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/PRESIGN-BOTTLENECK.md) — 커넥션 풀 병목 실측. 목표 4의 근거
 - [TASK-PRESIGN-BOTTLENECK-FIX.md](../connection-pool-bottleneck/PRESIGN-BOTTLENECK-FIX.md) — 트랜잭션 경계 분리 선례

@@ -38,6 +38,7 @@ import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.config.RedisConfig;
+import backend.yourtrip.global.redis.RedisDistributedLock;
 import backend.yourtrip.global.s3.service.S3Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
@@ -61,7 +62,6 @@ import org.springframework.cache.CacheManager;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.data.redis.core.types.Expiration;
 import org.springframework.data.redis.connection.RedisStringCommands.SetOption;
 import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
@@ -95,16 +95,6 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private static final int RANKING_LOCK_RETRY_COUNT = 10;
     private static final long RANKING_LOCK_RETRY_INTERVAL_MS = 100;
 
-    // 락 소유자만 자기 락을 지울 수 있도록 SET/DEL을 원자적으로 비교-삭제하는 스크립트.
-    // 단순 DEL이면 TTL 만료 후 다른 요청이 이미 잡은 락을 실수로 지울 위험이 있다.
-    private static final RedisScript<Long> UNLOCK_SCRIPT = RedisScript.of("""
-        if redis.call('get', KEYS[1]) == ARGV[1] then
-            return redis.call('del', KEYS[1])
-        else
-            return 0
-        end
-        """, Long.class);
-
     private final UploadCourseRepository uploadCourseRepository;
     private final MyCourseService myCourseService;
     private final UploadCourseDetailReader uploadCourseDetailReader;
@@ -113,7 +103,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
     private final S3Service s3Service;
     private final CloudFrontService cloudFrontService;
     private final CacheManager cacheManager;
-    private final RedisTemplate<String, String> redisTemplate;
+    private final RedisDistributedLock redisDistributedLock;
     private final RedisTemplate<String, Object> cacheValueRedisTemplate;
     private final ObjectMapper objectMapper;
     private final UploadCourseViewCountService uploadCourseViewCountService;
@@ -310,7 +300,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
         String lockKey = RANKING_LOCK_KEY_PREFIX + cacheKey;
         String lockToken = UUID.randomUUID().toString();
 
-        Boolean locked = tryAcquireRankingLock(lockKey, lockToken);
+        Boolean locked = redisDistributedLock.tryAcquire(lockKey, lockToken, RANKING_LOCK_TTL);
 
         if (locked == null) {
             // Redis 자체가 예외를 던진 경우 — 락 재시도 없이 바로 DB 직접 조회로 폴백(fail-open)
@@ -323,7 +313,7 @@ public class UploadCourseServiceImpl implements UploadCourseService {
                 writeRankingCache(cacheKey, ids);
                 return ids;
             } finally {
-                releaseRankingLock(lockKey, lockToken);
+                redisDistributedLock.release(lockKey, lockToken);
             }
         }
 
@@ -338,27 +328,6 @@ public class UploadCourseServiceImpl implements UploadCourseService {
 
         // 재시도로도 채워지지 않으면 캐싱 없이 DB 직접 조회로 최종 폴백
         return uploadCoursePopularReader.readPopularCourseIds(theme);
-    }
-
-    /**
-     * @return true(락 획득 성공), false(다른 요청이 이미 보유 중), null(Redis 예외 — fail-open 대상)
-     */
-    private Boolean tryAcquireRankingLock(String lockKey, String lockToken) {
-        try {
-            return redisTemplate.opsForValue().setIfAbsent(lockKey, lockToken, RANKING_LOCK_TTL);
-        } catch (Exception e) {
-            log.warn("랭킹 캐시 분산 락 획득 시도 실패, DB로 폴백합니다. lockKey={}", lockKey, e);
-            return null;
-        }
-    }
-
-    private void releaseRankingLock(String lockKey, String lockToken) {
-        try {
-            redisTemplate.execute(UNLOCK_SCRIPT, List.of(lockKey), lockToken);
-        } catch (Exception e) {
-            // fail-open: 해제에 실패해도 TTL(5초)이 지나면 자동 만료되므로 서비스에는 영향 없다
-            log.warn("랭킹 캐시 분산 락 해제 실패(TTL로 자동 만료됨). lockKey={}", lockKey, e);
-        }
     }
 
     private void sleepQuietly(long millis) {

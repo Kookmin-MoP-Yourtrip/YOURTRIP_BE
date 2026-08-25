@@ -1,0 +1,80 @@
+{
+  "title": "통영 미식과 스릴, 친구와 함께하는 프리미엄 여정",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "동피랑 벽화마을",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "통영해물가",
+          "startTime": "12:00"
+        },
+        {
+          "placeName": "서피랑 공원",
+          "startTime": "14:00"
+        },
+        {
+          "placeName": "강구안",
+          "startTime": "16:00"
+        },
+        {
+          "placeName": "울산다찌",
+          "startTime": "18:30"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "통영 케이블카",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "스카이라인 루지 통영",
+          "startTime": "11:30"
+        },
+        {
+          "placeName": "대풍관",
+          "startTime": "13:00"
+        },
+        {
+          "placeName": "이순신공원",
+          "startTime": "15:00"
+        },
+        {
+          "placeName": "한일식당",
+          "startTime": "18:00"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "통영 중앙시장",
+          "startTime": "10:00"
+        },
+        {
+          "placeName": "오미사꿀빵 본점",
+          "startTime": "12:00"
+        },
+        {
+          "placeName": "통영 해원횟집",
+          "startTime": "13:00"
+        },
+        {
+          "placeName": "남망산 조각공원",
+          "startTime": "15:00"
+        },
+        {
+          "placeName": "어촌밥상",
+          "startTime": "18:00"
+        }
+      ]
+    }
+  ]
+}

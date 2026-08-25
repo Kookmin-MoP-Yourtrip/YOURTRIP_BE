@@ -12,9 +12,10 @@ import org.junit.jupiter.params.provider.EnumSource;
 /**
  * {@code SlotType} 단위 테스트 (ROADMAP 3-1).
  *
- * <p><b>이 테스트는 계산을 검증하지 않는다 — 값을 고정한다.</b> {@code SlotType}이 가진 네 필드는
- * 서로 다른 세 단계가 읽는다: 체류시간은 3단계 시간 모델이, {@code popularityWeight}는 4-5의
- * {@code rankScore}가, {@code allowedCategoryCodes}는 5-3의 카테고리 하드 제약이 쓴다.
+ * <p><b>이 테스트는 계산을 검증하지 않는다 — 값을 고정한다.</b> {@code SlotType}이 가진 다섯 필드는
+ * 서로 다른 세 단계가 읽는다: 체류시간(기본·최대)은 3단계 시간 모델과 탄력 체류가,
+ * {@code popularityWeight}는 4-5의 {@code rankScore}가, {@code allowedCategoryCodes}는 5-3의
+ * 카테고리 하드 제약이 쓴다.
  * 값 하나를 무심코 고치면 <b>세 곳의 동작이 조용히 함께 움직인다.</b> 여기서 전부 못박아 두면
  * 그 변경이 반드시 이 테스트를 깨뜨려 리뷰 대상이 된다.
  *
@@ -35,6 +36,15 @@ class SlotTypeTest {
             assertThat(slotType.getDefaultStayMinutes())
                 .as("%s 의 체류시간", slotType)
                 .isPositive();
+        }
+
+        @ParameterizedTest
+        @EnumSource(SlotType.class)
+        @DisplayName("최대 체류는 기본 체류 이상이다 — 뒤집히면 stretch 여력(max − 기본)이 음수가 된다")
+        void maxStayIsAtLeastDefaultStay(SlotType slotType) {
+            assertThat(slotType.getMaxStayMinutes())
+                .as("%s 의 최대 체류시간", slotType)
+                .isGreaterThanOrEqualTo(slotType.getDefaultStayMinutes());
         }
 
         @ParameterizedTest
@@ -87,6 +97,19 @@ class SlotTypeTest {
             assertThat(SlotType.SHOPPING.getDefaultStayMinutes()).isEqualTo(60);
             assertThat(SlotType.STROLL.getDefaultStayMinutes()).isEqualTo(60);
             assertThat(SlotType.VIEWPOINT.getDefaultStayMinutes()).isEqualTo(45);
+        }
+
+        @Test
+        @DisplayName("최대 체류시간은 이슈 #135 산정 그대로다 — 5슬롯 최악 격차 120분을 흡수하는 하한")
+        void maxStayMinutesMatchIssueCalculation() {
+            // 좁히면 이른 저녁이 잔여 위반으로 남고, 넓히면 "카페에 2시간" 같은 어색한 체류가 나온다.
+            assertThat(SlotType.EXPERIENCE.getMaxStayMinutes()).isEqualTo(180);
+            assertThat(SlotType.ATTRACTION.getMaxStayMinutes()).isEqualTo(150);
+            assertThat(SlotType.MEAL.getMaxStayMinutes()).isEqualTo(90);
+            assertThat(SlotType.CAFE.getMaxStayMinutes()).isEqualTo(90);
+            assertThat(SlotType.SHOPPING.getMaxStayMinutes()).isEqualTo(90);
+            assertThat(SlotType.STROLL.getMaxStayMinutes()).isEqualTo(90);
+            assertThat(SlotType.VIEWPOINT.getMaxStayMinutes()).isEqualTo(60);
         }
 
         @Test

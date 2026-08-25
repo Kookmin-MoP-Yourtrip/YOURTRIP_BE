@@ -1,0 +1,80 @@
+{
+  "title": "공주 백제와 금강, 가족 자연 여행",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "공산성",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "공주 산성시장",
+          "startTime": "12:00"
+        },
+        {
+          "placeName": "무령왕릉과 송산리고분군",
+          "startTime": "14:00"
+        },
+        {
+          "placeName": "국립공주박물관",
+          "startTime": "16:00"
+        },
+        {
+          "placeName": "공주밤꽃이야기",
+          "startTime": "18:30"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "공주한옥마을",
+          "startTime": "10:00"
+        },
+        {
+          "placeName": "공주역사영상관",
+          "startTime": "11:30"
+        },
+        {
+          "placeName": "고마나루 돌쌈밥",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "금강신관공원",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "미르섬",
+          "startTime": "16:30"
+        },
+        {
+          "placeName": "명성불고기",
+          "startTime": "18:30"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "마곡사",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "마곡사식당",
+          "startTime": "12:00"
+        },
+        {
+          "placeName": "계룡산국립공원 동학사지구",
+          "startTime": "14:00"
+        },
+        {
+          "placeName": "엔학고레",
+          "startTime": "17:00"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+﻿requestId,location,regionTier,keywordSet,parseSuccess,parseError,dayCount,placesPerDay,totalPlaces,duplicatePlaceCount,startTimeViolationCount
+18,순천,MINOR,C,true,,3,5/5/6,16,0,0
+19,영주,MINOR,A,true,,3,6/5/4,15,0,0
+20,영주,MINOR,B,true,,3,6/6/5,17,0,0
+21,영주,MINOR,C,true,,3,5/5/4,14,0,0
+22,공주,MINOR,A,true,,3,5/6/4,15,0,0
+23,공주,MINOR,B,true,,3,5/6/4,15,0,0
+24,공주,MINOR,C,true,,3,5/6/5,16,0,0
+25,통영,MINOR,A,true,,3,6/5/5,16,0,0
+26,통영,MINOR,B,true,,3,6/5/5,16,0,0
+27,통영,MINOR,C,true,,3,5/5/5,15,0,0
+28,삼척,MINOR,A,true,,3,5/6/4,15,0,0
+29,삼척,MINOR,B,true,,3,5/5/5,15,0,0
+30,삼척,MINOR,C,false,"JSON_PARSE_FAILED: Unexpected end-of-input in field name at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 20, column: 21] (through reference chain: backend.yourtrip.global.gemini.dto.GeminiCourseDto[""daySchedules""]->java.util.ArrayList[0]->backend.yourtrip.global…",0,,0,0,0

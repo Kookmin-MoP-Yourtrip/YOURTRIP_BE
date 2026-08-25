@@ -19,7 +19,7 @@ Gradle 모듈이 레포 루트에 바로 있다(`build.gradle`, `settings.gradle
 ```
 YOURTRIP_BE/
 ├── README.md                    # placeholder (실질적 내용 없음)
-├── .github/                     # 이슈/PR 템플릿만 존재, CI workflow 없음
+├── .github/                     # 이슈/PR 템플릿 + workflows/ci.yml (CI)
 ├── build.gradle
 ├── settings.gradle               # rootProject.name = 'yourtrip'
 ├── gradlew / gradlew.bat
@@ -92,11 +92,15 @@ docker compose up -d redis
 ./gradlew test
 ```
 
-테스트는 H2 인메모리 DB를 쓰므로 `.env`나 로컬 PostgreSQL/Redis 없이도 돈다(아래 "애플리케이션 프로필" 참고). 서명 비용 마이크로벤치마크(`@Tag("benchmark")`)는 느려서 **일반 빌드에서 제외**돼 있고, 별도 태스크로만 실행한다.
+테스트는 H2 인메모리 DB를 쓰고 나머지 설정도 `test` 프로필이 자급하므로 `.env`나 로컬 PostgreSQL/Redis 없이도 돈다(아래 "애플리케이션 프로필" 참고). **이 독립성은 CI가 서 있는 전제다** — 테스트에 새 환경변수가 필요해지면 `application-test.yml`에 더미값을 함께 넣어야 한다. 서명 비용 마이크로벤치마크(`@Tag("benchmark")`)는 느려서 **일반 빌드에서 제외**돼 있고, 별도 태스크로만 실행한다.
 
 ```bash
 ./gradlew benchmarkTest
 ```
+
+### CI
+
+`dev` 대상 PR과 `dev` push에서 GitHub Actions가 `./gradlew build`(테스트 + JAR 빌드)를 자동 검증한다([.github/workflows/ci.yml](.github/workflows/ci.yml)). 시크릿을 전혀 쓰지 않고 배포 환경과도 무관하게 돈다. 책임 범위와 한계는 [docs/guide/ci.md](docs/guide/ci.md)에 있다.
 
 ## 애플리케이션 프로필
 

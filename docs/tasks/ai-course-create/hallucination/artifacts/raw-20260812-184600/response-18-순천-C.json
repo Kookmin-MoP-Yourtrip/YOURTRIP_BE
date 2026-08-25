@@ -1,0 +1,84 @@
+{
+  "title": "순천 미식 탐험과 활동적인 친구 여행",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "순천만국가정원",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "순천만가든",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "순천만습지",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "순천 아랫장 야시장",
+          "startTime": "18:30"
+        },
+        {
+          "placeName": "펍 앤 펍스",
+          "startTime": "20:30"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "낙안읍성",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "낙안읍성전통식당",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "순천 드라마 촬영장",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "순천만갈대밭한정식",
+          "startTime": "18:30"
+        },
+        {
+          "placeName": "카페 101",
+          "startTime": "20:30"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "순천향교",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "순천 문화의 거리",
+          "startTime": "11:00"
+        },
+        {
+          "placeName": "순천만꼬막정식",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "청춘창고",
+          "startTime": "14:00"
+        },
+        {
+          "placeName": "브루웍스",
+          "startTime": "16:00"
+        },
+        {
+          "placeName": "순천역",
+          "startTime": "17:30"
+        }
+      ]
+    }
+  ]
+}

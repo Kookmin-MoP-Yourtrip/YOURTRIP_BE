@@ -20,9 +20,13 @@ import lombok.extern.slf4j.Slf4j;
  * 3~10초와 토큰을 쓰고도 같은 실수를 반복할 수 있는 반면, 여기서의 보정은 결정론적이고 즉시 끝난다.
  * 어댑터의 의미 재시도는 "JSON 자체가 깨진" 경우를 위한 것이지 "값이 어긋난" 경우를 위한 것이 아니다.
  *
- * <h2>day당 식사 1회가 여기서 불변식이 된다</h2>
+ * <h2>day당 식사 2회가 여기서 불변식이 된다</h2>
  * 기존 프롬프트의 규칙 14("각 day 마다 최소 1개 이상의 식사를 포함")는 <b>지켜졌는지 아무도 확인하지
  * 않는 지시문</b>이었다. 프롬프트에도 남기지만, 실제로 보장하는 것은 이 클래스다.
+ *
+ * <p>횟수가 하나에서 둘로 올라간 것은 <b>저녁 시간창을 발동시키기 위해서다</b>(이슈 #135).
+ * {@code RouteOptimizer}는 식사가 둘 이상일 때만 이른 쪽을 점심·늦은 쪽을 저녁 창에 배정하는데,
+ * 하나뿐이면 가까운 창(사실상 점심)만 보므로 하루가 오후에 끝난다.
  *
  * <h2>보정한 것은 로그로 남긴다</h2>
  * 무엇을 얼마나 고쳤는지가 곧 <b>모델이 스키마를 얼마나 지키는가</b>이고, 프롬프트를 손볼지
@@ -31,14 +35,38 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public final class PlannerPlanNormalizer {
 
-    /** day 당 슬롯 하한. 셋보다 적으면 코스라고 부르기 어렵다(3-5 의 드롭 중단선과 같은 값이다). */
-    static final int MIN_SLOTS = 3;
+    /**
+     * day 당 슬롯 하한. <b>{@code RouteOptimizer}의 드롭 중단선(3)과 다른 값이다</b> — 저쪽은
+     * "이보다 줄이면 코스가 아니다"라는 안전장치이고, 이쪽은 "이만큼은 있어야 하루가 저녁까지
+     * 이어진다"는 목표치다.
+     *
+     * <p>다섯인 근거는 탄력 체류다(이슈 #135). 식사 둘을 빼면 볼거리가 셋 남는데, 그 셋의
+     * 체류를 상한까지 늘려야 저녁 식사가 17:30 창에 닿는다. 넷이면 늘려도 닿지 못해
+     * 이른 저녁이 벌점으로 남는다.
+     */
+    static final int MIN_SLOTS = 5;
 
     /**
      * day 당 슬롯 상한. <b>취향이 아니라 3-6 벤치마크가 정한 값이다</b> — {@code RouteOptimizer}의
-     * 완전탐색이 {@code n=7}에서 3일 1.77ms 인데 {@code n=8}이면 15ms 로 지연 예산을 넘는다.
+     * 완전탐색이 {@code n=7}에서 3일 4.0ms 인데 {@code n=8}이면 29ms 로 지연 예산({@code <10ms})을 넘는다
+     * (탄력 체류 도입 후 재측정, 이슈 #135).
+     * 그래서 {@code RouteOptimizer.MAX_BRUTE_FORCE_PLACES}와 <b>같은 값이어야 한다</b> —
+     * 이보다 크면 완전탐색이 꺼진 채로 입력 순서가 그대로 나가는 day 가 생긴다.
+     *
+     * <p>하루 7곳은 도메인 관행과도 맞는다. 식사 둘을 포함해 5~7곳이 통상의 하루이고,
+     * 여덟 곳부터는 체류를 깎아 서두르는 강행군이 된다.
      */
-    static final int MAX_SLOTS = 6;
+    static final int MAX_SLOTS = 7;
+
+    /**
+     * day 당 보장하는 식사 횟수. <b>점심 하나로는 하루가 오후에 끝난다</b> — 저녁 시간창
+     * (17:30~19:30)은 식사 슬롯이 둘 이상일 때만 배정 대상이 되므로, 이 값이 1이면
+     * {@code RouteOptimizer}의 탄력 체류가 저녁을 향해 밀어 줄 대상 자체가 없다(이슈 #135).
+     *
+     * <p>셋(아침 포함)은 강제하지 않는다. Planner 가 내면 그대로 두되, 시간창이 둘뿐이라
+     * 세 번째 끼니는 가까운 창까지의 거리로만 벌점을 문다.
+     */
+    static final int REQUIRED_MEALS = 2;
 
     /** 시작 시각의 허용 구간. 밖으로 나가면 자르되 버리지는 않는다. */
     static final LocalTime EARLIEST_START = LocalTime.of(7, 0);
@@ -122,27 +150,46 @@ public final class PlannerPlanNormalizer {
         for (int i = 0; slots.size() < MIN_SLOTS; i++) {
             slots.add(DefaultPlannerPlans.DEFAULT_SLOTS.get(i % DefaultPlannerPlans.DEFAULT_SLOTS.size()));
         }
-        return requireMeal(slots, day);
+        return requireMeals(slots, day);
     }
 
     /**
-     * "day 당 식사 1회"를 보장한다.
+     * {@link #REQUIRED_MEALS}회의 식사를 보장한다.
      *
-     * <p>자리가 남으면 더하고, 꽉 찼으면 <b>마지막 자리를 바꾼다.</b> 자리 순서는 뒤에서
-     * {@code RouteOptimizer}가 동선 기준으로 다시 배열하므로 <b>어느 위치에 넣는지는 의미가 없다</b> —
-     * 여기서 정하는 것은 "몇 개를, 무슨 종류로"뿐이다.
+     * <p>자리가 남으면 더하고, 꽉 찼으면 <b>뒤에서부터 식사가 아닌 자리를 바꾼다.</b> 자리 순서는
+     * 뒤에서 {@code RouteOptimizer}가 동선 기준으로 다시 배열하므로 <b>어느 위치에 넣는지는
+     * 의미가 없다</b> — 여기서 정하는 것은 "몇 개를, 무슨 종류로"뿐이다.
+     *
+     * <p><b>"마지막 자리"가 아니라 "뒤에서부터 식사가 아닌 자리"인 것이 중요하다.</b> 두 번
+     * 채워야 할 때 같은 자리를 두 번 덮으면 영원히 하나에 머문다. 슬롯 수가 {@link #MIN_SLOTS}
+     * 이상이고 {@code REQUIRED_MEALS}가 그보다 작으므로 바꿀 자리는 항상 남아 있다.
      */
-    private static List<SlotType> requireMeal(List<SlotType> slots, int day) {
-        if (slots.contains(SlotType.MEAL)) {
+    private static List<SlotType> requireMeals(List<SlotType> slots, int day) {
+        int mealCount = (int) slots.stream().filter(SlotType.MEAL::equals).count();
+        if (mealCount >= REQUIRED_MEALS) {
             return List.copyOf(slots);
         }
-        log.warn("day {}: MEAL 슬롯이 없어 코드가 채운다", day);
-        if (slots.size() < MAX_SLOTS) {
-            slots.add(SlotType.MEAL);
-        } else {
-            slots.set(slots.size() - 1, SlotType.MEAL);
+        log.warn("day {}: MEAL 슬롯이 {}개뿐이라 코드가 {}개로 채운다", day, mealCount, REQUIRED_MEALS);
+
+        while (mealCount < REQUIRED_MEALS) {
+            if (slots.size() < MAX_SLOTS) {
+                slots.add(SlotType.MEAL);
+            } else {
+                slots.set(lastNonMealIndex(slots), SlotType.MEAL);
+            }
+            mealCount++;
         }
         return List.copyOf(slots);
+    }
+
+    /** 뒤에서부터 처음 만나는 식사 아닌 자리. 전부 식사면 마지막 자리를 준다(도달하지 않는다). */
+    private static int lastNonMealIndex(List<SlotType> slots) {
+        for (int i = slots.size() - 1; i >= 0; i--) {
+            if (slots.get(i) != SlotType.MEAL) {
+                return i;
+            }
+        }
+        return slots.size() - 1;
     }
 
     /** 대소문자·앞뒤 공백만 관용한다. 그 이상 추측하면 "비슷한 이름"을 잘못 매핑한다. */

@@ -63,13 +63,18 @@ class RouteOptimizerDeterminismTest {
         @DisplayName("입력 순서를 섞어도 같은 방문 순서를 고른다 — 최적해가 유일한 배치에서")
         void isIndependentOfInputOrderWhenCostsDiffer() {
             // 경로 비용은 뒤집어도 같으므로, 거리만으로는 정방향과 역방향이 항상 동점이다.
-            // 대칭을 깨는 것은 식사 시간창이다 — 식당을 한쪽 끝에 두면 역방향에서 09:30 점심이
-            // 되어 큰 벌점을 물고, 그 결과 최적해가 유일해진다.
+            // 대칭을 깨는 것은 식사 시간창이다 — 식당을 동쪽 끝에 두면 정방향에서는 앞선 네 곳의
+            // 체류가 쌓여 저녁 창 근처(16:03)에 닿아 탄력 체류로 17:30 정각을 맞추지만,
+            // 역방향에서는 식당이 09:30 첫 자리라 앞에 늘릴 슬롯이 없어 큰 벌점을 문다.
+            //
+            // 체험을 둘 쓰는 것이 핵심이다. 체류가 짧으면 식사가 점심 창(11:30~13:30) 안에
+            // 들어와 양방향 모두 위반 0이 되고, 그러면 최적해가 유일하지 않아 이 테스트의
+            // 전제가 무너진다.
             List<RoutePlace> places = new ArrayList<>(List.of(
-                eastOf("서쪽관광", SlotType.ATTRACTION, 0),
-                eastOf("전망", SlotType.VIEWPOINT, 1),
+                eastOf("서쪽체험", SlotType.EXPERIENCE, 0),
+                eastOf("동쪽체험", SlotType.EXPERIENCE, 1),
                 eastOf("카페", SlotType.CAFE, 2),
-                eastOf("동쪽관광", SlotType.ATTRACTION, 3),
+                eastOf("전망", SlotType.VIEWPOINT, 3),
                 eastOf("식당", SlotType.MEAL, 4)));
 
             List<String> expected = namesOf(optimizer.optimize(RouteRequest.of(1, places)));

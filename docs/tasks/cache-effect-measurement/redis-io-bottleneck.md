@@ -4,7 +4,7 @@
 >
 > **결론만 먼저**: 앱 밖이 아니라 **앱 안**이었다. 앱과 Redis를 잇는 TCP 연결이 1개라 모든 Redis I/O가 netty 이벤트루프 스레드 **하나**를 통과하는데, 그 스레드가 vCPU 2개를 놓고 Tomcat 워커 129개와 경합해 **런큐에서 90.8%를 대기**한다. CPU 사용량은 9.3%뿐이라 기존 지표 어디에도 귀속되지 않고, **Redis 명령 지연**의 형태로만 나타났다.
 >
-> 후속 개선은 [#87](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/87)(ElastiCache AZ 정렬)과 [#88](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/88)(Tomcat `maxThreads` 축소)로 등록했다.
+> 후속 개선은 [#87](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/87)(ElastiCache AZ 정렬 — 아래 "해소" 절)과 [#88](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/88)(Tomcat `maxThreads` 축소 — [tomcat-thread-sizing/](../tomcat-thread-sizing/README.md))로 등록했고 둘 다 실측을 마쳤다. #88 실측은 이 문서의 두 가지를 정정한다 — ① "런큐 대기 **비율**이 병목"이 아니다(비율은 포화 신호이고, 지연의 크기는 단일 채널 앞에 밀리는 in-flight 명령 수 ≤ 워커 수 × 2가 정한다). ② 워커를 줄여 얻은 것은 **Redis 대기 감소가 아니라 CPU 낭비 감소**다(요청당 CPU -26%) — Redis 명령 지연 하락은 대기 장소가 Tomcat 커넥션 큐로 옮겨간 부산물이다.
 
 ---
 

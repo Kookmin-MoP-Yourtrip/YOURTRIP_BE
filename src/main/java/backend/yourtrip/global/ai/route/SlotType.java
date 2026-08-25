@@ -44,18 +44,32 @@ import lombok.Getter;
  */
 public enum SlotType {
 
-    ATTRACTION(90, "관광명소", 0.2, Set.of("AT4", "CT1")),
-    MEAL(75, "맛집", 1.0, Set.of("FD6")),
-    CAFE(60, "카페", 1.0, Set.of("CE7")),
+    ATTRACTION(90, 150, "관광명소", 0.2, Set.of("AT4", "CT1")),
+    MEAL(75, 90, "맛집", 1.0, Set.of("FD6")),
+    CAFE(60, 90, "카페", 1.0, Set.of("CE7")),
     /** 이름이 {@code ACTIVITY}였으나 {@code KeywordType}·{@code StyleTag}의 "액티비티"와 충돌해 바꿨다. */
-    EXPERIENCE(120, "체험", 0.6, Set.of("AT4", "CT1")),
-    VIEWPOINT(45, "전망대", 0.2, Set.of("AT4")),
-    SHOPPING(60, "쇼핑", 0.6, Set.of("MT1", "CS2")),
+    EXPERIENCE(120, 180, "체험", 0.6, Set.of("AT4", "CT1")),
+    VIEWPOINT(45, 60, "전망대", 0.2, Set.of("AT4")),
+    SHOPPING(60, 90, "쇼핑", 0.6, Set.of("MT1", "CS2")),
     /** 이름이 {@code WALK}였으나 {@code KeywordType}·{@code TravelMode}의 "뚜벅이"와 충돌해 바꿨다. */
-    STROLL(60, "산책로", 0.2, Set.of("AT4"));
+    STROLL(60, 90, "산책로", 0.2, Set.of("AT4"));
 
     /** 이 종류의 장소에 보통 머무는 시간(분). 시간 모델 {@code t[i] = t[i-1] + 체류 + 이동}의 체류 항. */
     private final int defaultStayMinutes;
+
+    /**
+     * 이 종류의 장소에 머물 수 있다고 보는 상한(분). 체류를 점이 아니라 <b>구간
+     * {@code [기본, 최대]}</b>로 정의하는 값이다(이슈 #135).
+     *
+     * <p>{@code RouteOptimizer}의 탄력 체류(stretch)가 읽는다 — 식사가 시간창보다 이르게
+     * 도착하면 그 격차를 앞 슬롯들의 체류 확대로 흡수하는데, 어디까지 늘려도 어색하지 않은지를
+     * 이 값이 정한다. 산정 기준은 5슬롯(관광·식사·카페·관광·식사) 최악 케이스다: 동일 좌표
+     * 가정에서 저녁 도착이 15:30이라 격차가 120분인데, 저녁 앞 여력(식사 15 + 카페 30 +
+     * 관광 60)과 점심 앞 잔여 여력 35를 합치면 140분이라 <b>저녁 17:30 정각을 맞출 수 있다.</b>
+     * 상한을 이보다 좁히면 이른 저녁이 잔여 위반으로 남고, 넓히면 "카페에 2시간" 같은
+     * 어색한 체류가 나온다.
+     */
+    private final int maxStayMinutes;
 
     /**
      * 후보 공급 검색어. {@code "{area} {searchHint}"} 형태로 조합해 네이버 지역검색에 던지고
@@ -85,9 +99,10 @@ public enum SlotType {
      */
     private final Set<String> allowedCategoryCodes;
 
-    SlotType(int defaultStayMinutes, String searchHint, double popularityWeight,
-        Set<String> allowedCategoryCodes) {
+    SlotType(int defaultStayMinutes, int maxStayMinutes, String searchHint,
+        double popularityWeight, Set<String> allowedCategoryCodes) {
         this.defaultStayMinutes = defaultStayMinutes;
+        this.maxStayMinutes = maxStayMinutes;
         this.searchHint = searchHint;
         this.popularityWeight = popularityWeight;
         // enum 상수는 애플리케이션 전역에 하나뿐이라 여기서 새는 참조는 영구적으로 샌다.
