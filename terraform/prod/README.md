@@ -25,16 +25,23 @@
 
 `aws_ssm_parameter` **리소스로 만들면 안 된다** — 값이 tfstate에 평문으로 돌아와 지금 없애려는 문제 그 자체가 된다. 아래처럼 CLI로 1회 등록한다.
 
+경로를 두 갈래로 나눠 쓴다. **`env/` 하위만 일괄 조회해 `.env`를 만들기 때문에** 이 분리가 필요하다 — PEM을 같은 경로에 두면 여러 줄 개행이 `.env`를 깨뜨린다.
+
+| 경로 | 용도 |
+|---|---|
+| `/yourtrip/prod/env/<KEY>` | `.env`에 `KEY=VALUE` 한 줄로 들어갈 값 |
+| `/yourtrip/prod/cloudfront_private_key` | 파일(`/opt/app/cloudfront_private_key.pem`)로 떨어져야 하는 PEM |
+
 ```bash
 export AWS_PROFILE=terraform-admin
 
 for k in DB_PASSWORD JWT_SECRET MAIL_EMAIL MAIL_PASSWORD KAKAO_API_KEY \
          AWS_ACCESS_KEY AWS_SECRET_KEY GEMINI_API_KEY; do
   read -rsp "$k: " v && echo
-  aws ssm put-parameter --name "/yourtrip/prod/$k" --type SecureString --value "$v" --overwrite
+  aws ssm put-parameter --name "/yourtrip/prod/env/$k" --type SecureString --value "$v" --overwrite
 done
 
-# CloudFront 서명 개인키(PEM 파일 전체)
+# CloudFront 서명 개인키(PEM 파일 전체). file:// 로 넘겨야 개행이 보존된다.
 aws ssm put-parameter --name /yourtrip/prod/cloudfront_private_key \
   --type SecureString --value "file://../cloudfront_private_key.pem" --overwrite
 ```
@@ -42,8 +49,10 @@ aws ssm put-parameter --name /yourtrip/prod/cloudfront_private_key \
 등록 확인 (값은 출력하지 않는다):
 
 ```bash
-aws ssm get-parameters-by-path --path /yourtrip/prod --query 'Parameters[].Name' --output text
+aws ssm get-parameters-by-path --path /yourtrip/prod --recursive --query 'Parameters[].Name' --output text
 ```
+
+`env/` 아래 8개와 `cloudfront_private_key` 1개, 합쳐 9개가 나와야 한다.
 
 `S3_BUCKET`·`CLOUDFRONT_*` 같은 비밀 아닌 값은 SSM이 아니라 tfvars를 거쳐 user_data에 직접 렌더링된다 — 노출돼도 무해하고, terraform이 이미 아는 값이기 때문이다.
 

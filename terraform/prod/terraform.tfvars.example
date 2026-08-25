@@ -16,8 +16,31 @@ my_ip_cidr = ""   # 예: "203.0.113.10/32"
 # ------------------------------------------------------------
 # terraform/prod-permanent/의 출력값을 그대로 옮긴다
 #   terraform -chdir=../prod-permanent output -raw artifact_bucket_name
+#   terraform -chdir=../prod-permanent output -raw acm_certificate_arn
 # ------------------------------------------------------------
 artifact_bucket_name = ""
+acm_certificate_arn  = ""
+
+# ------------------------------------------------------------
+# 배포할 JAR의 S3 키. 커밋 SHA로 고정한다 — 가변 키를 쓰면 배포 중 스케일아웃이 일어났을 때
+# 새 인스턴스가 다른 바이트를 받아 혼종 fleet이 된다.
+#   ./gradlew clean bootJar
+#   SHA=$(git rev-parse --short HEAD)
+#   aws s3 cp build/libs/*.jar "s3://<artifact_bucket_name>/app/$SHA.jar"
+# ------------------------------------------------------------
+app_artifact_key = ""   # 예: "app/a4a4f9f.jar"
+
+# ------------------------------------------------------------
+# 기존 terraform/(영구 인프라)의 출력값을 그대로 옮긴다
+#   terraform -chdir=../ output -raw s3_bucket_name
+#   terraform -chdir=../ output -raw cloudfront_domain_name
+#   terraform -chdir=../ output -raw cloudfront_key_pair_id
+#   terraform -chdir=../ output -raw cloudfront_distribution_id
+# ------------------------------------------------------------
+s3_bucket                  = ""
+cloudfront_domain          = ""
+cloudfront_key_pair_id     = ""
+cloudfront_distribution_id = ""
 
 # ------------------------------------------------------------
 # 아래는 기본값이 있어 대개 그대로 둔다.
@@ -43,3 +66,23 @@ artifact_bucket_name = ""
 # rds_final_snapshot_suffix    = ""                     # destroy 시점에 -var로 넘기는 값
 #
 # elasticache_node_type        = "cache.t3.micro"
+#
+# app_instance_type            = "t3.small"             # 실측이 나온 스펙
+# app_ami_id                   = ""                     # 비우면 최신 AL2023, 고정하려면 직전 output
+# app_root_volume_size         = 10
+# db_ddl_auto                  = "update"
+#
+# alb_idle_timeout                  = 60                # keep-alive-timeout(65s)보다 작아야 한다
+# target_group_deregistration_delay = 30
+# health_check_path                 = "/actuator/health/liveness"
+#
+# asg_min_size                  = 1
+# asg_max_size                  = 2
+# asg_desired_capacity          = 1
+# asg_health_check_grace_period = 300
+# asg_instance_warmup           = 300
+# enable_detailed_monitoring    = true
+#
+# ⚠️ 분당 값이다(ALBRequestCountPerTarget은 60초 SUM). 30000 = 초당 500.
+#    데모용으로 낮춘다면 그 값과 이유를 docs/tasks/prod-infra-iac/verification.md에 기록한다.
+# scaleout_request_count_per_target_per_minute = 30000
