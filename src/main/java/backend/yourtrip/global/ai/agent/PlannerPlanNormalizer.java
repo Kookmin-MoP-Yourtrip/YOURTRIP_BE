@@ -48,7 +48,8 @@ public final class PlannerPlanNormalizer {
 
     /**
      * day 당 슬롯 상한. <b>취향이 아니라 3-6 벤치마크가 정한 값이다</b> — {@code RouteOptimizer}의
-     * 완전탐색이 {@code n=7}에서 3일 1.77ms 인데 {@code n=8}이면 15ms 로 지연 예산을 넘는다.
+     * 완전탐색이 {@code n=7}에서 3일 4.0ms 인데 {@code n=8}이면 29ms 로 지연 예산({@code <10ms})을 넘는다
+     * (탄력 체류 도입 후 재측정, 이슈 #135).
      * 그래서 {@code RouteOptimizer.MAX_BRUTE_FORCE_PLACES}와 <b>같은 값이어야 한다</b> —
      * 이보다 크면 완전탐색이 꺼진 채로 입력 순서가 그대로 나가는 day 가 생긴다.
      *

@@ -161,7 +161,7 @@ public class AiCourseMetrics {
     public static final String SOURCE_TOUR_API = "tour_api";
 
     /**
-     * 지연 히스토그램의 하한. {@code ROUTE}는 3-6 벤치마크에서 3일 1.77ms라 이보다 아래는 재도 의미가 없다.
+     * 지연 히스토그램의 하한. {@code ROUTE}는 3-6 벤치마크에서 3일 4.0ms라 이보다 아래는 재도 의미가 없다.
      */
     private static final Duration LATENCY_MIN = Duration.ofMillis(1);
 
