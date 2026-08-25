@@ -64,3 +64,6 @@ terraform/prod/terraform.tfstate.backup
 terraform/prod/terraform.tfvars
 terraform/prod/yourtrip-prod-ssh
 terraform/prod/yourtrip-prod-ssh.pub
+# SSM에 넣은 비밀값의 로컬 사본. SSM이 원본이라 없어도 인프라는 돌지만, worktree마다
+# SSM을 다시 조회하게 만들 이유가 없어 함께 복사한다.
+terraform/prod/secrets.local

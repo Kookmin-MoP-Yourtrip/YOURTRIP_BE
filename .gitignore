@@ -168,3 +168,7 @@ terraform/prod/.terraformrc
 terraform/prod/terraform.rc
 terraform/prod/*.log
 terraform/prod/*.output
+# SSM Parameter Store에 넣은 비밀값의 로컬 사본(RDS 마스터 비밀번호 등). 원본은 SSM이고
+# 앱·terraform 모두 거기서 직접 읽으므로 이 파일이 없어도 인프라는 동작한다 — SSM 터널로
+# psql에 붙을 때 매번 조회하지 않으려고 손이 닿는 곳에 두는 사본이라, 반드시 추적에서 뺀다.
+terraform/prod/secrets.local
