@@ -3,7 +3,7 @@ package backend.yourtrip.domain.user.entity;
 import backend.yourtrip.global.common.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.Where;
+import org.hibernate.annotations.SQLRestriction;
 
 @Getter
 @Builder(toBuilder = true)
@@ -11,7 +11,7 @@ import org.hibernate.annotations.Where;
 @AllArgsConstructor
 @Entity
 @Table(name = "users")
-@Where(clause = "deleted = false")
+@SQLRestriction("deleted = false")
 public class User extends BaseEntity {
 
     @Id
