@@ -110,9 +110,10 @@ class CandidateRetrievalProbeTest {
         TourApiClient tourClient = new TourApiClient(TourApiConfig.buildTourApiWebClient(
             "https://apis.data.go.kr/B551011/KorService2"), tourKey);
 
+        AiCourseMetrics metrics = new AiCourseMetrics(new SimpleMeterRegistry());
         stage = new CandidateRetrievalStage(new AreaGeocoder(kakaoClient),
-            new NaverLocalSeedSource(naverClient), new TourApiSource(tourClient),
-            new AiCourseMetrics(new SimpleMeterRegistry()), Runnable::run);
+            new NaverLocalSeedSource(naverClient, metrics), new TourApiSource(tourClient),
+            metrics, Runnable::run);
 
         ListAppender<ILoggingEvent> collapseLog = captureCollapseLog();
 
