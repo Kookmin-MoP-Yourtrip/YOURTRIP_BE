@@ -38,7 +38,6 @@ public class ProfileController {
 
             ### 예외상황 / 에러코드
             - `USER_NOT_FOUND(404)`: 존재하지 않는 사용자
-            - `ALREADY_DELETED_USER(400)`: 탈퇴한 사용자
 
             ### 테스트 방법
             1. Swagger에서 **GET /api/mypage/profile** 호출
@@ -197,7 +196,7 @@ public class ProfileController {
             - DB에서 실제 삭제되지 않고 deleted 플래그만 true 처리
 
             ### 예외상황 / 에러코드
-            - `ALREADY_DELETED_USER(400)`: 이미 탈퇴한 상태
+            - 이미 탈퇴한 계정의 토큰은 인증 단계에서 걸러져 `401`이 반환됩니다.
 
             ### 테스트 방법
             1. Swagger -> **DELETE /api/mypage/profile**
@@ -206,8 +205,7 @@ public class ProfileController {
             """
     )
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "탈퇴 성공"),
-        @ApiResponse(responseCode = "400", description = "이미 탈퇴한 계정")
+        @ApiResponse(responseCode = "200", description = "탈퇴 성공")
     })
     @DeleteMapping
     @ResponseStatus(HttpStatus.OK)

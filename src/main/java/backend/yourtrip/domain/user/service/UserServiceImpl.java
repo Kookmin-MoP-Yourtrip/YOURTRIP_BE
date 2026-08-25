@@ -143,8 +143,9 @@ public class UserServiceImpl implements UserService {
         String accessToken = jwtTokenProvider.createAccessToken(user.getId(), user.getEmail());
         String refreshToken = jwtTokenProvider.createRefreshToken(user.getId(), user.getEmail());
 
-        user = user.withRefreshToken(refreshToken);
-        userRepository.save(user);
+        // findByEmail이 돌려준 영속 인스턴스를 직접 바꾼다. 커밋 시점의 dirty checking이
+        // refresh_token 컬럼만 UPDATE하므로 created_at은 문장에 실리지 않는다(#136).
+        user.updateRefreshToken(refreshToken);
 
         String profileUrl = cloudFrontService.getPublicUrl(user.getProfileImageS3Key());
 
@@ -195,8 +196,7 @@ public class UserServiceImpl implements UserService {
         Long userId = getCurrentUserId();
         User user = getUser(userId);
 
-        user = user.withRefreshToken(null);
-        userRepository.save(user);
+        user.clearRefreshToken();
     }
 
     @Override
@@ -249,6 +249,9 @@ public class UserServiceImpl implements UserService {
         emailVerificationStore.markVerified(email);
     }
 
+    // @Transactional이 없으면 open-in-view: false 때문에 findByEmail 결과가 즉시 detached가
+    // 되어, changePassword() 호출이 아무 UPDATE도 만들지 않고 조용히 사라진다(#136).
+    @Transactional
     @Override
     public void resetPassword(String email, String newPassword) {
 
@@ -263,9 +266,7 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(UserErrorCode.INVALID_REQUEST_FIELD);
         }
 
-        String encoded = passwordEncoder.encode(newPassword);
-        user = user.withPassword(encoded);
-        userRepository.save(user);
+        user.changePassword(passwordEncoder.encode(newPassword));
 
         emailVerificationStore.clear(email);
     }
