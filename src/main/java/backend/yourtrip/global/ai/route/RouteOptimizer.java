@@ -146,7 +146,7 @@ public class RouteOptimizer {
             Schedule best = search(context, bruteForce);
 
             if (best.endMinutes() <= context.endMinutes()) {
-                return toRoutedDay(request, places, best, stayMinutes, dropped);
+                return toRoutedDay(request, places, best, dropped);
             }
 
             // ① 체류시간을 한 번 줄여본다.
@@ -158,7 +158,7 @@ public class RouteOptimizer {
 
             // ② 그래도 넘치면 후순위 장소를 하나 뺀다. ③ 세 개 아래로는 빼지 않는다.
             if (places.size() <= MIN_PLACES_PER_DAY) {
-                return toRoutedDay(request, places, best, stayMinutes, dropped);
+                return toRoutedDay(request, places, best, dropped);
             }
 
             int victim = dropIndex(places);
@@ -288,9 +288,11 @@ public class RouteOptimizer {
      *
      * @param order          방문 순서. {@code places} 인덱스의 배열이다
      * @param arrivalMinutes {@code order} 순서대로의 도착 시각(자정 기준 분)
+     * @param stayMinutes    {@code order} 순서대로의 <b>유효 체류시간</b>. 탄력 체류가 늘리면
+     *                       입력 체류와 달라지므로, 출력은 입력 배열이 아니라 이것을 읽어야 한다
      * @param endMinutes     마지막 장소에서 나오는 시각
      */
-    private record Schedule(int[] order, int[] arrivalMinutes, int endMinutes) {
+    private record Schedule(int[] order, int[] arrivalMinutes, int[] stayMinutes, int endMinutes) {
     }
 
     /**
@@ -366,18 +368,20 @@ public class RouteOptimizer {
      */
     private Schedule buildSchedule(int[] order, Context context) {
         int[] arrivals = new int[order.length];
+        int[] stays = new int[order.length];
         int t = context.startMinutes();
 
         for (int i = 0; i < order.length; i++) {
             arrivals[i] = t;
-            t += context.stayMinutes()[order[i]];
+            stays[i] = context.stayMinutes()[order[i]];
+            t += stays[i];
             if (i < order.length - 1) {
                 t += travelMinutes(
                     context.distances()[order[i]][order[i + 1]], context.travelMode());
             }
         }
 
-        return new Schedule(order, arrivals, t);
+        return new Schedule(order, arrivals, stays, t);
     }
 
     /**
@@ -436,39 +440,79 @@ public class RouteOptimizer {
      * @param mealArrivals 식사 슬롯의 도착 시각(자정 기준 분). 순서는 무관하다
      */
     static int mealViolationMinutes(int[] mealArrivals) {
+        return violationWith(assignMealWindows(mealArrivals), mealArrivals);
+    }
+
+    /**
+     * 식사 인덱스별 창 배정. 값은 {@code mealArrivals} 배열의 인덱스이고, 배정이 없으면
+     * {@code -1}이다. 배정에서 빠진 끼니는 가까운 창까지의 거리로 위반을 문다.
+     */
+    record MealWindowAssignment(int lunchIndex, int dinnerIndex) {
+
+        static final MealWindowAssignment NONE = new MealWindowAssignment(-1, -1);
+    }
+
+    /**
+     * 어느 끼니가 점심·저녁 창을 차지할지 정한다. <b>위반 합이 최소인 배정</b>이다.
+     *
+     * <p>배정과 위반 합산을 나눠 둔 이유 — 탄력 체류(stretch)가 "어느 식사를 어느 창으로
+     * 당길지"를 알아야 하는데, 그 판단이 비용 계산과 다른 기준을 쓰면 stretch 가 A 창으로
+     * 당긴 식사를 비용은 B 창 기준으로 재는 어긋남이 생긴다. 배정을 한 곳에서 확정하고
+     * 둘 다 그것을 읽는다.
+     *
+     * <p>끼니가 둘이면 후보가 둘뿐이고, 셋 이상이어도 k(k-1) 가지라 비용이 무시할 만하다.
+     * 도착이 이른 쪽을 점심에 묶는 것이 항상 최적이라는 것은 증명된다 — 두 윈도우가
+     * 시간축에서 분리돼 있고 위반 함수가 각각에 대해 볼록하므로 교환 논증이 성립한다.
+     * 그럼에도 전부 따지는 쪽을 택한 것은, 끼니가 셋 이상일 때 "이른 두 개"를 기계적으로
+     * 고르면 잘 벌어진 아침·점심·저녁이 몰아넣은 배열보다 비싸지는 역전이 생기기 때문이다.
+     *
+     * <p>동점이면 루프 순서가 앞선 배정(인덱스 사전순)이 이긴다 — 순열 동점 처리와 같은
+     * 원칙이라 결과가 재현된다.
+     */
+    static MealWindowAssignment assignMealWindows(int[] mealArrivals) {
         if (mealArrivals.length == 0) {
-            return 0;
+            return MealWindowAssignment.NONE;
         }
         if (mealArrivals.length == 1) {
-            return nearestWindowViolation(mealArrivals[0]);
+            // 가까운 창을 고른다. 동점이면 점심 — "이른 쪽을 점심에"와 원칙이 같다.
+            return LUNCH_WINDOW.violationMinutes(mealArrivals[0])
+                <= DINNER_WINDOW.violationMinutes(mealArrivals[0])
+                ? new MealWindowAssignment(0, -1)
+                : new MealWindowAssignment(-1, 0);
         }
 
-        // 어느 두 끼가 점심·저녁을 차지할지 전부 따져 최소를 고른다. 끼니가 둘이면 후보가
-        // 둘뿐이고, 셋 이상이어도 k(k-1) 가지라 비용이 무시할 만하다.
-        //
-        // 도착이 이른 쪽을 점심에 묶는 것이 항상 최적이라는 것은 증명된다 — 두 윈도우가
-        // 시간축에서 분리돼 있고 위반 함수가 각각에 대해 볼록하므로 교환 논증이 성립한다.
-        // 그럼에도 전부 따지는 쪽을 택한 것은, 끼니가 셋 이상일 때 "이른 두 개"를 기계적으로
-        // 고르면 잘 벌어진 아침·점심·저녁이 몰아넣은 배열보다 비싸지는 역전이 생기기 때문이다.
-        int best = Integer.MAX_VALUE;
+        int bestCost = Integer.MAX_VALUE;
+        MealWindowAssignment best = MealWindowAssignment.NONE;
 
         for (int lunchIndex = 0; lunchIndex < mealArrivals.length; lunchIndex++) {
             for (int dinnerIndex = 0; dinnerIndex < mealArrivals.length; dinnerIndex++) {
                 if (lunchIndex == dinnerIndex) {
                     continue;
                 }
-                int total = LUNCH_WINDOW.violationMinutes(mealArrivals[lunchIndex])
-                    + DINNER_WINDOW.violationMinutes(mealArrivals[dinnerIndex]);
-
-                for (int i = 0; i < mealArrivals.length; i++) {
-                    if (i != lunchIndex && i != dinnerIndex) {
-                        total += nearestWindowViolation(mealArrivals[i]);
-                    }
+                MealWindowAssignment candidate = new MealWindowAssignment(lunchIndex, dinnerIndex);
+                int total = violationWith(candidate, mealArrivals);
+                if (total < bestCost) {
+                    bestCost = total;
+                    best = candidate;
                 }
-                best = Math.min(best, total);
             }
         }
         return best;
+    }
+
+    /** 주어진 배정 아래에서의 시간창 위반 합(분). */
+    private static int violationWith(MealWindowAssignment assignment, int[] mealArrivals) {
+        int total = 0;
+        for (int i = 0; i < mealArrivals.length; i++) {
+            if (i == assignment.lunchIndex()) {
+                total += LUNCH_WINDOW.violationMinutes(mealArrivals[i]);
+            } else if (i == assignment.dinnerIndex()) {
+                total += DINNER_WINDOW.violationMinutes(mealArrivals[i]);
+            } else {
+                total += nearestWindowViolation(mealArrivals[i]);
+            }
+        }
+        return total;
     }
 
     private static int nearestWindowViolation(int arrivalMinutes) {
@@ -501,7 +545,7 @@ public class RouteOptimizer {
     }
 
     private RoutedDay toRoutedDay(RouteRequest request, List<RoutePlace> places,
-        Schedule schedule, int[] stayMinutes, List<RoutePlace> dropped) {
+        Schedule schedule, List<RoutePlace> dropped) {
 
         List<RoutedPlace> routed = new ArrayList<>(schedule.order().length);
         for (int i = 0; i < schedule.order().length; i++) {
@@ -509,7 +553,7 @@ public class RouteOptimizer {
             routed.add(new RoutedPlace(
                 places.get(placeIndex),
                 toDisplayTime(schedule.arrivalMinutes()[i]),
-                stayMinutes[placeIndex]));
+                schedule.stayMinutes()[i]));
         }
 
         return new RoutedDay(
