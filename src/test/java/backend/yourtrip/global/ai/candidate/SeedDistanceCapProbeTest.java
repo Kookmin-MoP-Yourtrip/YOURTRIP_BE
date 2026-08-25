@@ -2,11 +2,13 @@ package backend.yourtrip.global.ai.candidate;
 
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.route.SlotType;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
 import backend.yourtrip.global.kakao.config.KakaoConfig;
 import backend.yourtrip.global.naver.NaverLocalClient;
 import backend.yourtrip.global.naver.config.NaverConfig;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -204,7 +206,7 @@ class SeedDistanceCapProbeTest {
         AreaGeocoder geocoder = new AreaGeocoder(kakaoClient);
         NaverLocalSeedSource seedSource = new NaverLocalSeedSource(new NaverLocalClient(
             NaverConfig.buildNaverWebClient("https://naverapihub.apigw.ntruss.com", naverId,
-                naverSecret)));
+                naverSecret)), new AiCourseMetrics(new SimpleMeterRegistry()));
 
         Map<String, List<PlaceCandidate>> cache = new HashMap<>();
         List<Row> rows = new ArrayList<>();

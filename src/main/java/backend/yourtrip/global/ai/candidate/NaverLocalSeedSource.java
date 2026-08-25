@@ -1,5 +1,6 @@
 package backend.yourtrip.global.ai.candidate;
 
+import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.route.GeoUtils;
 import backend.yourtrip.global.ai.route.SlotType;
 import backend.yourtrip.global.naver.NaverLocalClient;
@@ -24,6 +25,12 @@ import org.springframework.stereotype.Component;
  * <p><b>카카오로 다시 묻지 않는다.</b> 지역검색 응답에 좌표·주소·카테고리가 이미 들어 있으므로
  * 그대로 그라운딩 데이터로 쓴다 — 상호명으로 카카오에 다시 사러 가는 것은 후보가 전부
  * 파라메트릭이라 좌표를 얻을 곳이 카카오뿐이던 시절의 잔재다(설계).
+ *
+ * <p><b>탈락 집계는 여기서 직접 올린다</b>(이슈 #134). 5-6이 세운 "순수 클래스는 집계를 값으로
+ * 돌려주고 레지스트리는 호출자가 만진다"는 관례는 {@code CuratedChoiceValidator} 같은 순수 함수에
+ * 대한 것이고, 이쪽은 {@code @Component}로 외부 클라이언트를 부르는 어댑터다. 스테이지까지 값을
+ * 실어 나르면 <b>데드라인에 잘린 호출의 탈락이 구조적으로 누락된다</b> —
+ * {@code CandidateRetrievalStage}는 끝난 호출만 거두기 때문이다.
  */
 @Component
 @RequiredArgsConstructor
@@ -31,6 +38,7 @@ import org.springframework.stereotype.Component;
 public class NaverLocalSeedSource {
 
     private final NaverLocalClient naverLocalClient;
+    private final AiCourseMetrics metrics;
 
     /**
      * 후보 하나의 검색 단계. <b>지명이 넓어질수록 쓰는 기준이 엄격해진다.</b>
@@ -184,7 +192,7 @@ public class NaverLocalSeedSource {
         return query.append(slotType.getSearchHint()).toString();
     }
 
-    private static List<PlaceCandidate> toCandidates(List<NaverPlace> places, SlotType slotType,
+    private List<PlaceCandidate> toCandidates(List<NaverPlace> places, SlotType slotType,
         StyleTag modifier, SeedScope scope, Double anchorLatitude, Double anchorLongitude) {
         List<PlaceCandidate> candidates = new ArrayList<>(places.size());
         int withoutCoordinates = 0;
@@ -220,10 +228,16 @@ public class NaverLocalSeedSource {
                 distanceKm(place, anchorLatitude, anchorLongitude),
                 place.category()));
         }
+        // 로그는 로컬 디버깅용으로 남기되 메트릭을 함께 올린다 — 운영 프로필은 INFO 라
+        // 이 로그가 나오지 않아, 로그만으로는 운영에서 관측이 0이다(이슈 #134).
         if (withoutCoordinates > 0 || categoryMismatched > 0) {
             log.debug("네이버 후보 제외: slot={}, 좌표없음={}건, 분류불일치={}건",
                 slotType, withoutCoordinates, categoryMismatched);
         }
+        metrics.candidateDropped(AiCourseMetrics.SOURCE_NAVER_LOCAL,
+            CandidateDropReason.NO_COORDINATES, withoutCoordinates);
+        metrics.candidateDropped(AiCourseMetrics.SOURCE_NAVER_LOCAL,
+            CandidateDropReason.CATEGORY_MISMATCH, categoryMismatched);
         return candidates;
     }
 

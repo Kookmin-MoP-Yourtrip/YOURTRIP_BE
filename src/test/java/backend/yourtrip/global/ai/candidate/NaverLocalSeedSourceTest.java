@@ -10,6 +10,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.route.SlotType;
 import backend.yourtrip.global.common.ApiFailureCause;
 import backend.yourtrip.global.naver.NaverLocalClient;
@@ -33,6 +34,10 @@ class NaverLocalSeedSourceTest {
 
     @Mock
     private NaverLocalClient naverLocalClient;
+
+    /** 탈락 집계를 소스가 직접 올린다(이슈 #134). 대부분의 테스트는 쓰지 않고 {@code Observability} 만 검증한다. */
+    @Mock
+    private AiCourseMetrics metrics;
 
     @InjectMocks
     private NaverLocalSeedSource source;
