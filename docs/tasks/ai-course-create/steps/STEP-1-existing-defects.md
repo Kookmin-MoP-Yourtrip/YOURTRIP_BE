@@ -12,7 +12,7 @@
 
 > `KakaoLocalClient.score()`에 점수 하한선 도입 — 미달 후보는 매칭 실패로 처리. **임계값은 BASELINE 측정의 점수 밴드 분포를 근거로 정한다**
 
-그 근거가 될 산출물(`results/*.csv`)은 `.gitignore` 대상이라 레포에 없었고, 다른 워크트리의 작업 디렉터리에서 찾아냈다. 집계 결과는 [BASELINE-ARTIFACT-ANALYSIS.md](../hallucination/BASELINE-ARTIFACT-ANALYSIS.md)에 문서로 고정했다.
+그 근거가 될 산출물(`results/*.csv`)은 `.gitignore` 대상이라 레포에 없었고, 다른 워크트리의 작업 디렉터리에서 찾아냈다. 집계 결과는 [BASELINE-ARTIFACT-ANALYSIS.md](../hallucination/BASELINE-ARTIFACT-ANALYSIS.md)에 문서로 고정했고, **원본도 이후 [hallucination/artifacts/](../hallucination/artifacts/)로 승격했다**(같은 위험이 OpenAI 재측정에서 실제 소실로 현실화됐다).
 
 **그 데이터가 처방을 반박했다.**
 

@@ -1,0 +1,80 @@
+{
+  "title": "영주, 선비의 고장에서 찾은 연인 감성 힐링 3일",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "소수서원",
+          "startTime": "10:30"
+        },
+        {
+          "placeName": "선비촌",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "정도너츠 본점",
+          "startTime": "14:00"
+        },
+        {
+          "placeName": "카페 소수",
+          "startTime": "14:40"
+        },
+        {
+          "placeName": "서천둔치",
+          "startTime": "18:00"
+        },
+        {
+          "placeName": "영주 랜떡",
+          "startTime": "19:30"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "부석사",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "부석사식당",
+          "startTime": "13:00"
+        },
+        {
+          "placeName": "무섬마을",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "영주365시장",
+          "startTime": "17:30"
+        },
+        {
+          "placeName": "콩이랑",
+          "startTime": "19:00"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "영주호 오토캠핑장",
+          "startTime": "10:00"
+        },
+        {
+          "placeName": "영주호 출렁다리",
+          "startTime": "12:00"
+        },
+        {
+          "placeName": "일월식당",
+          "startTime": "13:00"
+        },
+        {
+          "placeName": "카페 그루",
+          "startTime": "14:30"
+        }
+      ]
+    }
+  ]
+}

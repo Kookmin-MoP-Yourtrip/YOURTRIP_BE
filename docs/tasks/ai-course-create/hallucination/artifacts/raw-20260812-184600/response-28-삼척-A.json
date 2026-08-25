@@ -1,0 +1,80 @@
+{
+  "title": "삼척 해변 감성 로맨스 3일",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "죽서루",
+          "startTime": "10:30"
+        },
+        {
+          "placeName": "부명칼국수",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "삼척해변",
+          "startTime": "14:00"
+        },
+        {
+          "placeName": "카페 사계",
+          "startTime": "16:00"
+        },
+        {
+          "placeName": "해변횟집",
+          "startTime": "18:30"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "삼척해상케이블카",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "장호항",
+          "startTime": "11:00"
+        },
+        {
+          "placeName": "장호항회식당",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "용화해변",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "카페 바다",
+          "startTime": "16:00"
+        },
+        {
+          "placeName": "삼척항회센터",
+          "startTime": "18:30"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "추암촛대바위",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "추암해변",
+          "startTime": "11:00"
+        },
+        {
+          "placeName": "삼척중앙시장",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "카페 비치",
+          "startTime": "14:30"
+        }
+      ]
+    }
+  ]
+}

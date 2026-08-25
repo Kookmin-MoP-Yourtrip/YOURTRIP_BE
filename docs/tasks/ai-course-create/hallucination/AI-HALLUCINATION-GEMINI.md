@@ -198,7 +198,7 @@ LLM부터 다시 돌리려면 `./gradlew benchmarkTest --tests '*AiHallucination
 
 ## 원본 산출물 재분석
 
-이 측정이 남긴 `results/*.csv`는 [.gitignore](../../../../.gitignore)로 레포에 커밋되지 않는다. 밴드별 점수 분포, 밴드×verdict 교차표, 파싱 실패 원인 등 **이 문서에 요약되지 않은 집계는 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md)에 정리했다.**
+이 측정이 남긴 원본은 **[artifacts/](artifacts/)에 커밋돼 있다** — 389장소·30요청·판정 104건·LLM 원본 응답 17건. 밴드별 점수 분포, 밴드×verdict 교차표, 파싱 실패 원인 등 **이 문서에 요약되지 않은 집계는 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md)에 정리했다.**
 
 그 재분석에서 최초 발표값 25.6%의 결함 두 가지가 나왔고(① 옛 "환각 의심 구간" `S1_4`는 표본
 대부분이 표기 차이 거짓 음성 ② `NO_RESULT` 이중 계산), 처음에는 비교 가능성을 이유로 값을
@@ -208,7 +208,7 @@ LLM부터 다시 돌리려면 `./gradlew benchmarkTest --tests '*AiHallucination
 ## 지역 티어별 소급 집계 ★
 
 > ROADMAP 4-10으로 수행한 **소급 집계**다. 새 API 호출도 비용도 없이 이 측정의 원본 산출물
-> (`results/merged3-places.csv` 389장소 · `merged3-requests.csv` 30요청 · `manual-verification-*.csv` 104건)을
+> ([artifacts/](artifacts/)의 `merged3-places.csv` 389장소 · `merged3-requests.csv` 30요청 · `manual-verification-*.csv` 104건)을
 > `regionTier` 축으로 다시 자른 것이다. 목적은 4단계(네이버 시더 + TourAPI 후보 공급)의 출발
 > 가설 **"무인지 지역일수록 파라메트릭이 약하다"** 를 코드 한 줄 짜기 전에 확인하는 것이었다.
 >

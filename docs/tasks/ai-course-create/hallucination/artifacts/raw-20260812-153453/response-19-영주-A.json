@@ -1,0 +1,76 @@
+{
+  "title": "영주, 선비의 고향에서 만나는 감성 힐링 여정",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "영주365시장",
+          "startTime": "10:30"
+        },
+        {
+          "placeName": "영주 랜떡",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "후생시장",
+          "startTime": "14:00"
+        },
+        {
+          "placeName": "카페 그날의온도",
+          "startTime": "15:30"
+        },
+        {
+          "placeName": "순흥전통묵집",
+          "startTime": "18:30"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "부석사",
+          "startTime": "10:00"
+        },
+        {
+          "placeName": "부석사식당",
+          "startTime": "13:00"
+        },
+        {
+          "placeName": "소수서원",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "선비촌",
+          "startTime": "16:00"
+        },
+        {
+          "placeName": "서부냉면",
+          "startTime": "18:30"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "무섬마을",
+          "startTime": "10:30"
+        },
+        {
+          "placeName": "무섬식당",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "카페 무섬",
+          "startTime": "14:00"
+        },
+        {
+          "placeName": "카페 쉼표",
+          "startTime": "15:30"
+        }
+      ]
+    }
+  ]
+}
