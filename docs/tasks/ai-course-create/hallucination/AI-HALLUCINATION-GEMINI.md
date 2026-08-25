@@ -233,8 +233,9 @@ AI가 지어낸 이름은 대체로 검색 자체가 안 되고, 검색이 되�
 
 ### OpenAI 측정점과의 대조
 
-같은 축의 OpenAI 값은 [AI-HALLUCINATION-OPENAI.md](AI-HALLUCINATION-OPENAI.md)에 **자동 프록시 기준
-FAMOUS 5.1% / MINOR 7.8%** 로 기록돼 있다. 모델 교체로 두 티어가 모두 크게 내려갔지만 **MINOR가 더
+같은 축의 OpenAI 값은 [STEP-2](../steps/STEP-2-llm-port.md)에 **자동 프록시 기준
+FAMOUS 5.1% / MINOR 7.8%** 로 기록돼 있다(원 측정 문서 `AI-HALLUCINATION-OPENAI.md`는 아래
+[정정]의 산출물 소실을 이유로 삭제됐다). 모델 교체로 두 티어가 모두 크게 내려갔지만 **MINOR가 더
 나쁘다는 방향은 유지**된다 — 즉 이 격차는 Gemini 고유의 결함이 아니라 **파라메트릭 지식이라는 소스
 자체의 성질**이고, 그래서 모델을 더 좋은 것으로 바꾸는 것만으로는 없앨 수 없다. 외부 후보 공급이
 필요한 근거가 두 모델에서 동일하게 확인된 셈이다.

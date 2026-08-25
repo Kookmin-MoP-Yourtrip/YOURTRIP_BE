@@ -248,7 +248,7 @@
 | **OpenAI 단일 호출** | 2단계 직후 | 모델 교체 효과 | **7.5%** (자동 프록시 6.4% + 세탁 1.08%) |
 | OpenAI 파이프라인 | 8단계 직후 | 파이프라인 구조 효과 | 미측정 |
 
-**모델 교체만으로 25.6% → 7.5%, −18.1%p(71% 감소).** `UNVERIFIABLE`을 전부 환각으로 보는 상한도 9.3%로 before의 절반에 못 미친다. 모델 선택의 대가는 크다 — 같은 조건에서 `gpt-5-nano`는 **89.4%**(진짜 환각률 41.7%)로 Gemini보다도 나쁘다. 상세는 [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md)
+**모델 교체만으로 25.6% → 7.5%, −18.1%p(71% 감소).** `UNVERIFIABLE`을 전부 환각으로 보는 상한도 9.3%로 before의 절반에 못 미친다. 모델 선택의 대가는 크다 — 같은 조건에서 `gpt-5-nano`는 **89.4%**(진짜 환각률 41.7%)로 Gemini보다도 나쁘다. 상세는 [STEP-2](steps/STEP-2-llm-port.md) 판정 7~10 (원 측정 문서는 산출물 소실로 삭제됐다)
 
 **2-6은 4조합 120요청으로 쟀다**(`BASELINE_MODEL` × `BASELINE_SCHEMA_MODE`). 이 표가 Curator 모델을 확정한 근거다.
 
@@ -261,7 +261,7 @@
 
 **측정이 전제 두 개를 뒤집었다.** ① `gpt-5-nano`는 환각률이 **7배 이상**이라 비용을 아끼려고 Curator를 내리면 1차 목표를 정면으로 훼손한다. ② **구조화 출력은 환각률을 낮추지 않았고 낮출 수도 없다** — 스키마는 형식을 강제하지 내용을 강제하지 않는다. JSON 실패를 없앤 것은 모델 교체이고, 구조화 출력의 실익은 **출력 바이트 −48%**와 **스키마 밖 필드 차단**이었다.
 
-해석의 상세(밴드별 세탁 분석, 자동 프록시가 과대평가인 이유, 온도·추론 강도가 "모델 교체" 축에 딸려 들어가는 문제)는 [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md)와 [STEP-2](steps/STEP-2-llm-port.md) 판정 7~9에 있다.
+해석의 상세(밴드별 세탁 분석, 자동 프록시가 과대평가인 이유, 온도·추론 강도가 "모델 교체" 축에 딸려 들어가는 문제)는 [STEP-2](steps/STEP-2-llm-port.md) 판정 7~10에 있다(원 측정 문서는 산출물 소실로 삭제됐다).
 - 하네스는 기존 것을 그대로 쓴다: `src/test/java/backend/yourtrip/global/benchmark/AiHallucinationBaselineTest.java`
   ```bash
   ./gradlew benchmarkTest --tests '*AiHallucinationBaselineTest*' --rerun
@@ -327,7 +327,6 @@
   - [기각한 대안](decisions/기각한-대안.md) — 기각한 대안
   - [보류와 미해결 과제](decisions/보류와-미해결-과제.md) — CriticAgent 설계 Critic, CandidateRefiner 설계 Refiner, 남는 한계
 - [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md) — 환각률 baseline 실측 (before 값 25.6%)
-- [AI-HALLUCINATION-OPENAI.md](hallucination/AI-HALLUCINATION-OPENAI.md) — **OpenAI 재측정 (중간 측정점 7.5%)**. luna/nano 비교로 Curator 모델을 확정한 근거
 - [BASELINE-ARTIFACT-ANALYSIS.md](hallucination/BASELINE-ARTIFACT-ANALYSIS.md) — 위 측정의 원본 산출물 재분석. **1-2 설계의 근거**(점수 밴드 분포, 밴드×verdict 교차표, 파싱 실패 원인)
 - [TASK-PRESIGN-BOTTLENECK.md](../connection-pool-bottleneck/PRESIGN-BOTTLENECK.md) — 커넥션 풀 병목 실측. 목표 4의 근거
 - [TASK-PRESIGN-BOTTLENECK-FIX.md](../connection-pool-bottleneck/PRESIGN-BOTTLENECK-FIX.md) — 트랜잭션 경계 분리 선례

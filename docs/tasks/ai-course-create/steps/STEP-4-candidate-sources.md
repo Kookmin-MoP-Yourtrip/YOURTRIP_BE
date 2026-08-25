@@ -31,8 +31,9 @@
 
 ## 판정 1 — 4-10의 대상을 OpenAI에서 Gemini 아티팩트로 바꿔야 했다 ★
 
-로드맵 4-10은 *"기존 [AI-HALLUCINATION-OPENAI.md](../hallucination/AI-HALLUCINATION-OPENAI.md) 아티팩트를
+로드맵 4-10은 *"기존 OpenAI 재측정(`AI-HALLUCINATION-OPENAI.md`) 아티팩트를
 유명/무인지 그룹으로 다시 집계한다"* 였다. **그 아티팩트가 존재하지 않았다.**
+(그 문서 자체도 이후 산출물 미보존을 이유로 삭제됐다 — 남은 기록은 [STEP-2](STEP-2-llm-port.md)뿐이다.)
 
 STEP-2가 산출물로 기록한 `results/*-openai-{model}-{mode}-relow-*`를 다음 범위에서 찾았고 전부 0건이었다.
 
