@@ -16,8 +16,10 @@ resource "aws_db_subnet_group" "this" {
 # manage_master_user_password(Secrets Manager 위임)를 쓰지 않는 이유: destroy 시 시크릿이
 # 7일 복구 대기 상태로 들어가 같은 이름으로 재생성이 7일간 실패한다. 온디맨드로 apply/destroy를
 # 반복하는 이 환경에서는 두 번째 apply부터 막힌다.
+# 경로에 /env/가 끼는 이유: 앱의 .env로 들어갈 값들과 파일로 떨어져야 하는 PEM을 분리했다
+# (variables.tf의 ssm_parameter_path 설명 참고). user-data도 이 경로만 일괄 조회한다.
 data "aws_ssm_parameter" "db_password" {
-  name            = "${var.ssm_parameter_path}/DB_PASSWORD"
+  name            = "${var.ssm_parameter_path}/env/DB_PASSWORD"
   with_decryption = true
 }
 

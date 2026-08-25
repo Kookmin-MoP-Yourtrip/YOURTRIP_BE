@@ -9,8 +9,14 @@
 #      scp가 성립하지 않는다.
 #   3) systemd 유닛과 JVM 옵션을 여기 다시 쓰지 않고 deploy/prod/의 정본을 주입받는다.
 #
-# 템플릿 규약: 중괄호로 감싼 변수 참조는 전부 Terraform 치환 대상이다. 순수 bash 변수는
-# $$VAR(달러 두 개)로 써야 terraform이 건드리지 않는다.
+# 템플릿 규약: Terraform이 치환하는 것은 달러+중괄호 형태뿐이고, 이스케이프는 달러를 두 번
+# 겹친 뒤 중괄호를 붙인 형태에만 적용된다(이 주석에 그 표기를 그대로 쓰면 templatefile이
+# 보간으로 파싱해 apply가 깨지므로 말로 적는다 — 실제로 한 번 깨뜨렸다).
+#
+# ⚠️ 달러 두 개만 단독으로 쓰는 것은 이스케이프가 아니다. 그대로 렌더링되는데 bash에서 그건
+#    현재 셸의 PID다. 실제로 IFS와 값 참조에 그렇게 썼다가 IFS가 깨지고 값이 PID+문자열이
+#    되어, SSM에서 받은 시크릿이 .env에 한 줄도 들어가지 않았다(앱은 JWT_SECRET 누락으로
+#    기동 실패). 중괄호 없는 bash 변수는 $VAR 그대로 쓰면 된다.
 
 set -euo pipefail
 
@@ -56,8 +62,8 @@ aws ssm get-parameters-by-path \
   --with-decryption \
   --query 'Parameters[].[Name,Value]' \
   --output text \
-  | while IFS=$$'\t' read -r name value; do
-      printf '%s=%s\n' "$${name##*/}" "$$value"
+  | while IFS=$'\t' read -r name value; do
+      printf '%s=%s\n' "$${name##*/}" "$value"
     done >> /opt/app/.env
 
 # CloudFront Signed URL 서명용 개인키. 파일로 떨어져야 하고 앱이 위 .env의

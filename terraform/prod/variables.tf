@@ -97,6 +97,22 @@ variable "artifact_bucket_name" {
 }
 
 # ============================================================
+# 도메인 / DNS
+# ============================================================
+
+variable "domain_name" {
+  description = "운영 도메인(apex). terraform/prod-permanent/의 domain_name과 같아야 한다 — 그 모듈이 만든 호스티드존을 여기서 data로 읽어 alias 레코드를 넣는다."
+  type        = string
+  default     = "yourtrip.cloud"
+}
+
+variable "enable_dns_record" {
+  description = "도메인이 이 환경의 ALB를 가리키게 할지 여부. 기본은 끈다 — 검증을 마치기 전에 켜면 아직 확인되지 않은 환경으로 실트래픽이 넘어간다. 검증 배터리를 통과한 뒤 true로 바꿔 apply하는 것이 DNS 전환 절차 그 자체다."
+  type        = bool
+  default     = false
+}
+
+# ============================================================
 # ALB — TLS 종단과 진입점
 # ============================================================
 
