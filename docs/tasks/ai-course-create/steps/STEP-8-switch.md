@@ -97,6 +97,11 @@
 - 신설 `AiPipelineHallucinationBenchmarkTest`(`@Tag("benchmark")`) — 기존 980줄 하네스에 모드를
   덧대지 않고 새 클래스로. 공유 자산(입력 세트 지역 10 × 키워드 3, 카카오 검색 +
   `PlaceMatchScorer.score` 밴드 판정, CSV/report)은 헬퍼로 추출해 양쪽이 쓴다.
+  - **입력 세트 추출은 끝났다** — ROADMAP 3-7이 같은 30요청 세트를 필요로 해서 먼저 뗐다
+    (`BaselineInputSet`, 값 불변을 재채점 389행 동일로 확인). 남은 것은 판정·리포트 추출이다.
+  - **파이프라인 진입점을 하네스에 잇는 작업도 끝났다** — `AiCourseRouteInputProbeTest`가 30요청을
+    실제로 태워 `AiCourseDraft`까지 받아 온다. 8-6은 그 조립을 그대로 쓰고 출력 장소에 카카오
+    검색 + 밴드 판정을 얹으면 된다.
 - 조립은 `@SpringBootTest(classes = ...)` 부분 컨텍스트 우선(프로덕션 배선 공유 — 수동 조립은
   `AiConfig`가 바뀔 때 벤치마크만 조용히 구식이 된다). 무관 빈이 끌려오면 수동 조립으로 폴백.
 - **측정 정의 고정**: 파이프라인이 자체 그라운딩을 했더라도 출력 장소 전건에 baseline과 동일한
