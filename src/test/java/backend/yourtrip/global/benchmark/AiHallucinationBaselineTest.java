@@ -248,13 +248,19 @@ class AiHallucinationBaselineTest {
      * 그 값을 얻자고 검색을 두 번 부르면 판정과 기록이 서로 다른 응답을 볼 수 있다. 대신
      * {@code rejectedCandidateName}이 들어왔다: 이름 게이트가 무엇을 걸렀는지 봐야 거짓 양성
      * (같은 곳인데 표기가 다른 경우)을 사후에 가려낼 수 있다.
+     *
+     * <p><b>{@code matchedX}/{@code matchedY}/{@code matchedCategoryGroupCode}는 환각률 측정이
+     * 쓰지 않는다 — 그럼에도 남기는 이유.</b> 카카오 응답에 이미 들어 있는데 버리고 있었고,
+     * 버리고 나면 되찾는 방법이 389건 재호출뿐이다. 응답에 있는 것을 그대로 적는 비용은 0에
+     * 가깝고, {@code artifacts/README.md}가 기록한 "산출물 소실" 사고는 되돌릴 수 없다.
      */
     private record PlaceRow(
         int requestId, String location, RegionTier tier, String keywordSetId,
         int day, int placeIndex, String aiPlaceName,
         int bestScore, String scoreBand,
         String matchedPlaceName, String matchedCategory, String matchedAddress,
-        String matchedPlaceUrl, String rejectedCandidateName
+        String matchedPlaceUrl, String rejectedCandidateName,
+        String matchedX, String matchedY, String matchedCategoryGroupCode
     ) {}
 
     /**
@@ -527,7 +533,13 @@ class AiHallucinationBaselineTest {
             // 도로명 우선·지번 폴백도 프로덕션 순수 함수를 쓴다.
             doc == null ? "" : PlaceMatchScorer.bestAddressOf(doc),
             doc == null ? "" : nullToEmpty(doc.place_url()),
-            rejectedCandidateName);
+            rejectedCandidateName,
+            // 카카오는 x=경도·y=위도이고 값이 문자열이다. 여기서 double 로 바꾸지 않는 이유는
+            // 이 하네스가 좌표를 해석하지 않기 때문이다 — 파싱은 쓰는 쪽의 일이고, 중간에서
+            // 변환하면 응답 원문과 CSV 가 어긋날 수 있는 지점이 하나 늘어난다.
+            doc == null ? "" : nullToEmpty(doc.x()),
+            doc == null ? "" : nullToEmpty(doc.y()),
+            doc == null ? "" : nullToEmpty(doc.category_group_code()));
     }
 
     /**
@@ -676,9 +688,12 @@ class AiHallucinationBaselineTest {
 
     private void writePlaceCsv(String runTag, List<PlaceRow> rows) throws IOException {
         StringBuilder sb = new StringBuilder();
+        // 열은 뒤에만 붙인다. 읽는 쪽(재채점 모드)이 이름으로 찾으므로 순수 추가는 구 스키마
+        // CSV 와 호환되지만, 중간에 끼우면 사람이 옛 산출물과 눈으로 대조할 때 열이 밀려 보인다.
         sb.append("requestId,location,regionTier,keywordSet,day,placeIndex,aiPlaceName,")
             .append("bestScore,scoreBand,matchedPlaceName,matchedCategory,")
-            .append("matchedAddress,matchedPlaceUrl,rejectedCandidateName\n");
+            .append("matchedAddress,matchedPlaceUrl,rejectedCandidateName,")
+            .append("matchedX,matchedY,matchedCategoryGroupCode\n");
 
         for (PlaceRow r : rows) {
             sb.append(r.requestId()).append(',')
@@ -694,7 +709,10 @@ class AiHallucinationBaselineTest {
                 .append(csv(r.matchedCategory())).append(',')
                 .append(csv(r.matchedAddress())).append(',')
                 .append(csv(r.matchedPlaceUrl())).append(',')
-                .append(csv(r.rejectedCandidateName())).append('\n');
+                .append(csv(r.rejectedCandidateName())).append(',')
+                .append(csv(r.matchedX())).append(',')
+                .append(csv(r.matchedY())).append(',')
+                .append(csv(r.matchedCategoryGroupCode())).append('\n');
         }
         writeUtf8Bom(RESULTS_DIR.resolve("hallucination-baseline-" + runTag + ".csv"), sb.toString());
     }
