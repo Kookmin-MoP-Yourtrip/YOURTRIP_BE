@@ -74,8 +74,11 @@ data "aws_iam_policy_document" "github_actions_assume" {
 }
 
 resource "aws_iam_role" "github_actions" {
-  name               = "${var.name_prefix}-github-actions-role"
-  description        = "CD 워크플로 전용. 아티팩트 업로드 + 배포 대상 키 갱신 + instance refresh만 할 수 있다."
+  name = "${var.name_prefix}-github-actions-role"
+  # IAM의 description은 Latin-1( -~, ¡-ÿ)만 받는다. 한글을 넣으면
+  # CreateRole이 ValidationError로 거부되므로 영어로 쓴다 — iam.tf의 서비스 연결 역할도
+  # 같은 이유로 영어다. 한국어 설명은 이 파일 맨 위 주석에 있다.
+  description        = "CD workflow only. Uploads artifacts, updates the deploy pointer, and triggers instance refresh."
   assume_role_policy = data.aws_iam_policy_document.github_actions_assume.json
 
   # 배포 한 번에 필요한 시간(빌드 제외)보다 넉넉하되 기본 최대치를 늘리지 않는다.

@@ -53,6 +53,8 @@ aws ssm put-parameter --name /yourtrip/prod/artifact_key \
   --type String --value "app/<short-sha>.jar" --overwrite
 ```
 
+> **Windows Git Bash에서는 `MSYS_NO_PATHCONV=1`을 앞에 붙인다.** 그러지 않으면 `/yourtrip/prod/...`가 Windows 경로로 변환돼, "이름은 슬래시로 시작해야 한다"는 엉뚱한 `ValidationException`이 난다.
+
 등록 확인 (값은 출력하지 않는다):
 
 ```bash

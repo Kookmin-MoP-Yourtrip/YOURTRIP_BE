@@ -41,7 +41,7 @@
 | # | 항목 | 결과 | 근거 |
 |---|---|---|---|
 | C1 | OIDC 인증 성립 | *(미측정)* | |
-| C2 | 저장된 시크릿 0개 | *(미측정)* | |
+| C2 | 저장된 시크릿 0개 | **통과** | `gh secret list`가 빈 목록. 워크플로의 `secrets.` 참조 0건 |
 | C3 | 아티팩트 규약 | *(미측정)* | |
 | C4 | LT 불변 / drift 0 | *(미측정)* | |
 | C5 | 무중단 | *(미측정)* | |
@@ -224,7 +224,38 @@ aws ec2 describe-instances
 
 ## 마주친 문제
 
-*(측정 후 기록한다.)*
+### 1. IAM 역할 `description`에 한글을 넣어 apply가 깨졌다
+
+`aws_iam_role`을 만들 때 `CreateRole`이 거부했다.
+
+```
+ValidationError: Value at 'description' failed to satisfy constraint:
+Member must satisfy regular expression pattern: [	
+ -~¡-ÿ]*
+```
+
+허용 범위가 **Latin-1까지**라 한글(U+AC00~)이 들어갈 수 없다. 이 저장소는 주석·문서를 한국어로 쓰지만 **AWS 리소스의 `description` 필드는 예외**다 — 실은 `terraform/prod/iam.tf`의 서비스 연결 역할이 이미 영어로 돼 있었는데, 그게 관례인 줄 모르고 한글을 넣었다.
+
+설명은 영어로 바꾸고 한국어 근거는 코드 주석에 남겼다. 주석에는 인코딩 제약이 없다.
+
+**부분 적용된 상태로 멈춘다는 점도 함께 겪었다.** OIDC provider는 이미 생성됐고 역할에서 실패했는데, terraform은 성공한 것까지 state에 기록하므로 고친 뒤 다시 `plan`하면 `2 to add`(남은 것만)가 된다. 처음부터 다시 만들 필요가 없다.
+
+### 2. Git Bash가 SSM 경로를 Windows 경로로 바꿔 버린다
+
+Windows의 Git Bash(MSYS)에서 `/yourtrip/prod`처럼 슬래시로 시작하는 인자를 **경로로 오인해 변환**한다.
+
+```
+ValidationException: The parameter doesn't meet the parameter name requirements.
+The parameter name must begin with a forward slash "/".
+```
+
+"슬래시로 시작해야 한다"는 오류가 슬래시로 시작하는 값에 나오는 것이 혼란스러운데, AWS에 도착한 값이 이미 `C:/Program Files/Git/yourtrip/prod` 형태로 바뀌어 있어서다.
+
+```bash
+MSYS_NO_PATHCONV=1 aws ssm get-parameters-by-path --path /yourtrip/prod --recursive
+```
+
+리눅스 러너에서 도는 CD 워크플로는 이 문제를 타지 않는다. **사람이 로컬에서 절차를 밟을 때만** 걸린다.
 
 ## 한계
 
