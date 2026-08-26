@@ -137,6 +137,7 @@ repo:Kookmin-MoP-Yourtrip/YOURTRIP_BE:ref:refs/heads/dev
 | `s3:GetObject` | 롤백 전 존재 확인에는 `ListBucket` + prefix 조건이면 충분하다. 읽기까지 주면 CD가 과거 배포본을 통째로 내려받을 수 있다 |
 | `s3:DeleteObject` | 아티팩트는 롤백의 근거다. 파이프라인이 지울 수 있으면 안 된다 |
 | `ec2:*`, `autoscaling:UpdateAutoScalingGroup` | 형상 변경. **인프라의 모양은 terraform만 바꾼다**는 규칙을 IAM으로 강제한다 |
+| `autoscaling:CancelInstanceRefresh` | 처음에는 폴링 타임아웃의 뒷정리용으로 줬다가 **실측 후 회수했다.** 취소하면 ASG가 용량을 줄이면서 건강한 인스턴스를 종료할 수 있다([verification.md](verification.md)) |
 
 `ssm:PutParameter`는 `/yourtrip/prod/*`가 아니라 **`artifact_key` 하나로 한정**한다. 경로로 넓히면 CD가 `DB_PASSWORD`와 `JWT_SECRET`을 덮어쓸 수 있다.
 
