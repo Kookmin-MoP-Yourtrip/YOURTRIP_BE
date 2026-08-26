@@ -15,6 +15,7 @@ import backend.yourtrip.global.kakao.PlaceLookup;
 import backend.yourtrip.global.kakao.PlaceMatchScorer;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -50,6 +51,13 @@ import org.springframework.stereotype.Component;
  * <h2>실패는 후보 하나만 죽인다</h2>
  * 호출 실패·무결과·이름 불일치를 <b>전부 그 후보만 탈락</b>시키고 사유별로 남긴다. 예외를 올리면
  * 15건 중 하나가 429일 때 코스 전체가 죽는다. 탈락하면 Curator의 차순위가 자연히 올라온다.
+ *
+ * <h2>단 하나, 업종 불일치는 <b>보류</b>다 (이슈 #147)</h2>
+ * 업종이 슬롯과 어긋난 후보는 그 자리에서 죽이지 않고 세워 뒀다가 <b>슬롯이 전멸했을 때만</b>
+ * 꺼낸다. 이름 게이트를 통과한 이상 실존·좌표·URL이 모두 확보된 장소인데, 하드 드롭 탓에 제주
+ * day3의 저녁이 통째로 비는 일이 실측됐다 — <b>차순위가 없을 때는 "차순위가 올라온다"가 성립하지
+ * 않는다.</b> 무조건 완화가 아니라 최후 구제인 것이 요지이고, 몇 건이나 그렇게 살렸는지는
+ * {@code ai.grounding.relaxed} 가 따로 센다.
  */
 @Component
 @Slf4j
@@ -132,20 +140,36 @@ public class GroundingStage {
         // "경주 3일 내내 같은 카페" 를 막는 것은 프롬프트가 아니라 여기의 책임이다.
         Set<String> placed = new LinkedHashSet<>();
         Map<Tally, Integer> tally = new LinkedHashMap<>();
+        Map<GroundingRelaxation, Integer> relaxations = new EnumMap<>(GroundingRelaxation.class);
 
         List<GroundedDay> days = new ArrayList<>(curatedDays.size());
         for (CuratedDay day : curatedDays) {
             List<GroundedSlot> slots = new ArrayList<>(day.slots().size());
             for (CuratedSlot slot : day.slots()) {
                 List<GroundedPlace> survivors = new ArrayList<>(slot.choices().size());
+                // 업종이 어긋난 후보를 버리지 않고 세워 둔다 — 슬롯이 전멸했을 때만 꺼낸다.
+                List<GroundedPlace> rescuable = new ArrayList<>(slot.choices().size());
                 for (CuratedPlace choice : slot.choices()) {
                     Resolution resolution = resolve(pool, lookups, day.day(), slot, choice);
                     tally.merge(new Tally(resolution.outcome(), resolution.source()), 1,
                         Integer::sum);
+                    if (resolution.outcome() == GroundingOutcome.CATEGORY_MISMATCH) {
+                        // 중복 제거를 여기서 걸면 안 된다 — 쓰지도 않을 후보가 placed 를 선점해
+                        // 다른 day 의 같은 장소를 죽인다. 구제가 확정된 뒤에 건다.
+                        resolution.place().ifPresent(rescuable::add);
+                        continue;
+                    }
                     resolution.place()
                         .filter(place -> placed.add(
                             CandidateMatcher.dedupeKey(place.name(), place.address())))
                         .ifPresent(survivors::add);
+                }
+                if (survivors.isEmpty()) {
+                    rescue(rescuable, placed).ifPresent(place -> {
+                        survivors.add(place);
+                        relaxations.merge(GroundingRelaxation.CATEGORY_LAST_RESORT, 1,
+                            Integer::sum);
+                    });
                 }
                 slots.add(new GroundedSlot(slot.slotType(), survivors));
             }
@@ -155,8 +179,33 @@ public class GroundingStage {
         // source 태그로 나누면 "무인지 지역일수록 파라메트릭이 약하다"는 설계 원칙의 미실측
         // 가설을 운영 데이터로 검증할 수 있다(5-6).
         tally.forEach((key, count) -> metrics.groundingMatch(key.outcome(), key.source(), count));
-        log.debug("그라운딩 결과: {}", tally);
+        // 완화는 결말과 나란히 오른다 — 결말을 hit 으로 바꿔치기하면 5-3 의 업종 제약이 무엇을
+        // 걸렀는지 못 재고, 완화가 환각을 몇 건 들였는지도 되짚을 수 없다(이슈 #147).
+        relaxations.forEach(metrics::groundingRelaxed);
+        log.debug("그라운딩 결과: {} (완화 {})", tally, relaxations);
         return days;
+    }
+
+    /**
+     * 슬롯이 전멸했을 때만 부른다 — 업종이 어긋나 보류해 둔 후보 중 <b>선호 순서로 첫 하나</b>를
+     * 살린다 (이슈 #147).
+     *
+     * <p><b>슬롯당 하나면 충분하다.</b> {@code AiCoursePipeline} 이 {@code GroundedSlot.preferred()}
+     * 하나만 배치하므로 더 넣어도 쓰이지 않는다.
+     *
+     * <p>중복 제거는 <b>여기서</b> 건다. 이 자리에 오기 전까지 구제 후보는 {@code placed} 를 건드리지
+     * 않으므로, 앞 day 가 이미 쓴 장소면 구제하지 않고 다음 후보로 넘어간다.
+     */
+    private static Optional<GroundedPlace> rescue(List<GroundedPlace> rescuable,
+        Set<String> placed) {
+        for (GroundedPlace place : rescuable) {
+            if (placed.add(CandidateMatcher.dedupeKey(place.name(), place.address()))) {
+                log.debug("슬롯이 전멸해 업종 불일치 후보를 구제한다: place={}, slot={}",
+                    place.name(), place.slotType());
+                return Optional.of(place);
+            }
+        }
+        return Optional.empty();
     }
 
     private Resolution resolve(CandidatePool pool, Map<String, PlaceLookup> lookups, int day,
@@ -225,25 +274,31 @@ public class GroundingStage {
     /**
      * 카카오 응답을 장소로. <b>검증에 성공한 순간 {@code place_url}도 함께 승계한다</b> — 5-10이
      * 같은 장소를 다시 부르지 않게 하기 위해서다.
+     *
+     * <h2>업종 불일치는 <b>드롭이 아니라 보류</b>다 (이슈 #147)</h2>
+     * 슬롯별 카테고리 제약(5-3)은 그대로 서 있지만, 걸린 후보를 그 자리에서 버리지 않고 장소까지
+     * 만들어 돌려준다. <b>이름 게이트를 통과했으므로 실존·좌표·URL이 모두 확보된 장소</b>인데,
+     * 하드 드롭 탓에 제주 day3의 저녁이 통째로 비는 일이 실측됐다. 5-3이 술집을 드롭이 아니라
+     * 후순위로 민 것과 같은 판단이다 — <b>보조 신호를 필수 조건으로 승격시키지 않는다.</b>
+     * 실제로 쓸지는 슬롯을 다 훑은 {@code assemble} 이 정한다.
+     *
+     * <p>{@code score()} 자체는 여전히 건드리지 않는다 — 하네스가 밴드 경계를 그 함수 기준으로
+     * 고정해 뒀고 바꾸면 세 측정점의 비교 가능성이 깨진다.
+     *
+     * <h2>좌표를 업종보다 먼저 본다</h2>
+     * 순서가 뒤집힌 것은 <b>구제하려면 좌표가 있어야 하기 때문</b>이다. 좌표가 없으면 애초에 구제
+     * 대상이 아니므로, "업종도 어긋나고 좌표도 없는" 문서는 {@code CATEGORY_MISMATCH}가 아니라
+     * {@code NO_COORDINATE}로 간다 — 살릴 길이 없는 사건을 살릴 수 있는 칸에 세지 않는다.
      */
     private static Resolution fromDocument(Document document, CuratedSlot slot) {
-        // 슬롯별 카테고리 하드 제약(5-3). 기존에는 category_group_code 가 점수 +2 로만 쓰여
-        // "점심 슬롯에 술집" 같은 어긋남을 막지 못했다. 비용이 사실상 0인데 큰 오배정이 사라진다.
-        // score() 자체는 건드리지 않는다 — 하네스가 밴드 경계를 그 함수 기준으로 고정해 뒀고
-        // 바꾸면 세 측정점의 비교 가능성이 깨진다(1-2가 점수 하한선을 폐기할 때와 같은 판단).
-        if (!isCategoryAllowed(document, slot.slotType())) {
-            log.debug("업종 불일치로 탈락: place={}, group={}, slot={}",
-                document.place_name(), document.category_group_code(), slot.slotType());
-            return suggested(GroundingOutcome.CATEGORY_MISMATCH);
-        }
-
         Double longitude = parseCoordinate(document.x());
         Double latitude = parseCoordinate(document.y());
         if (latitude == null || longitude == null) {
             log.debug("카카오 응답에 좌표가 없어 탈락: place={}", document.place_name());
             return suggested(GroundingOutcome.NO_COORDINATE);
         }
-        return new Resolution(Optional.of(new GroundedPlace(
+
+        GroundedPlace place = new GroundedPlace(
             document.place_name(),
             slot.slotType(),
             latitude,
@@ -251,7 +306,16 @@ public class GroundingStage {
             PlaceMatchScorer.bestAddressOf(document),
             document.place_url(),
             CandidateSourceType.SUGGESTED,
-            null)), GroundingOutcome.HIT, CandidateSourceType.SUGGESTED);
+            null);
+
+        if (!isCategoryAllowed(document, slot.slotType())) {
+            log.debug("업종이 슬롯과 어긋난다 — 슬롯이 전멸할 때만 쓴다: place={}, group={}, slot={}",
+                document.place_name(), document.category_group_code(), slot.slotType());
+            return new Resolution(Optional.of(place), GroundingOutcome.CATEGORY_MISMATCH,
+                CandidateSourceType.SUGGESTED);
+        }
+        return new Resolution(Optional.of(place), GroundingOutcome.HIT,
+            CandidateSourceType.SUGGESTED);
     }
 
     /**
@@ -300,6 +364,12 @@ public class GroundingStage {
         return new Resolution(Optional.empty(), outcome, CandidateSourceType.SUGGESTED);
     }
 
+    /**
+     * 후보 하나의 검증 결말.
+     *
+     * <p>{@code place} 가 차 있는데 {@code outcome} 이 {@code HIT} 이 아닌 조합이 하나 있다 —
+     * {@code CATEGORY_MISMATCH} 다. 그것이 곧 <b>"구제 후보"</b> 라는 뜻이라 별도 플래그를 두지 않는다.
+     */
     private record Resolution(Optional<GroundedPlace> place, GroundingOutcome outcome,
                               CandidateSourceType source) {
     }
