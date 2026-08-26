@@ -103,6 +103,17 @@ docker compose up -d redis
 
 `dev` 대상 PR과 `dev` push에서 GitHub Actions가 `./gradlew build`(테스트 + JAR 빌드)를 자동 검증한다([.github/workflows/ci.yml](.github/workflows/ci.yml)). 시크릿을 전혀 쓰지 않고 배포 환경과도 무관하게 돈다. 책임 범위와 한계는 [docs/guide/ci.md](docs/guide/ci.md)에 있다.
 
+### CD
+
+`dev`에 머지하면 JAR이 빌드돼 S3에 올라가고, 운영 ASG가 떠 있으면 instance refresh로 무중단 교체된다([.github/workflows/deploy.yml](.github/workflows/deploy.yml)). 서버가 내려가 있는 평시에는 업로드까지만 하고 정상 종료한다.
+
+- **배포할 JAR은 SSM 파라미터 `/yourtrip/prod/artifact_key`가 가리킨다.** `terraform.tfvars`가 아니다 — 지금 무엇이 배포돼 있는지는 `terraform -chdir=terraform/prod output -raw current_artifact_key`로 본다.
+- **Launch Template은 배포로 바뀌지 않는다.** 그래서 CD가 terraform state를 만질 필요가 없고 drift도 생기지 않는다.
+- **롤백은 이전 SHA를 다시 배포하는 것이고, 반드시 `dev` 브랜치에서 워크플로를 수동 실행한다**(OIDC 신뢰 정책이 브랜치로 제한돼 있다).
+- **AWS 자격증명은 GitHub에 저장하지 않는다.** OIDC로 실행마다 임시 자격증명을 받는다.
+
+절차는 [docs/guide/cd.md](docs/guide/cd.md), 설계 근거는 [docs/tasks/cd-pipeline/](docs/tasks/cd-pipeline/README.md)에 있다.
+
 ## 애플리케이션 프로필
 
 설정은 **공통(`application.yml`) + 프로필별 파일**로 나뉜다. 프로필은 `local`(기본) / `prod`(배포) / `test`(테스트, H2 인메모리 DB) 셋이며, `local`·`prod`는 `src/main/resources/`, `test`는 `src/test/resources/`에 있다.
@@ -150,7 +161,7 @@ terraform 모듈은 **수명 기준으로 4개**이고 각각 별도 state를 �
 | 모듈 | 담는 것 | destroy 대상인가 |
 |---|---|---|
 | `terraform/` | S3 미디어 버킷, CloudFront, 앱용 IAM | **아니다** |
-| `terraform/prod-permanent/` | 도메인 호스티드존, ACM 인증서, 배포 아티팩트 버킷 | **아니다** — 지우면 네임서버 위임부터 다시 해야 한다 |
+| `terraform/prod-permanent/` | 도메인 호스티드존, ACM 인증서, 배포 아티팩트 버킷, GitHub Actions OIDC 역할 | **아니다** — 지우면 네임서버 위임부터 다시 해야 한다 |
 | `terraform/prod/` | ALB, ASG, RDS, ElastiCache, DNS 레코드 | **그렇다** — 데모·측정이 끝나면 내린다 |
 | `terraform/loadtest/` | 부하테스트용 EC2·RDS·ElastiCache | **그렇다** |
 

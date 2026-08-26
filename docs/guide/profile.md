@@ -106,9 +106,10 @@ H2 PostgreSQL 모드가 이를 받아준다는 보장이 없다.
 
 ## 4. 배포
 
-> **운영 서버는 이제 Terraform이 관리한다**([terraform/prod/](../../terraform/prod/README.md), #119).
-> 아래 수동 절차는 **이미 떠 있는 서버를 손으로 고쳐야 할 때만** 쓴다 — 정상 경로는
-> `terraform apply`이고, 프로필은 user-data가 `/opt/app/.env`에 넣으므로 별도 조치가 필요 없다.
+> **운영 서버는 이제 Terraform이 관리하고, 새 코드는 CD가 내보낸다**([terraform/prod/](../../terraform/prod/README.md) #119,
+> [cd.md](cd.md) #120). 아래 수동 절차는 **이미 떠 있는 서버를 손으로 고쳐야 할 때만** 쓴다 —
+> 인프라의 정상 경로는 `terraform apply`, 코드의 정상 경로는 `dev` 머지이고, 프로필은
+> user-data가 `/opt/app/.env`에 넣으므로 어느 쪽에서도 별도 조치가 필요 없다.
 
 배포 서버에는 **`SPRING_PROFILES_ACTIVE=prod`를 명시해야 한다.**
 
@@ -268,3 +269,7 @@ tr '\0' ' ' < /proc/$(systemctl show -p MainPID --value yourtrip-app)/cmdline; e
 
 앞으로 다른 배포 환경을 Terraform이나 스크립트로 추가한다면, 같은 방식으로 프로비저닝 단계에
 넣어 수동 절차를 없애는 쪽이 낫다. 사람이 매번 기억해야 하는 한 줄은 언젠가 빠진다.
+
+> **이 원칙이 배포에도 적용됐다**(#120). JAR을 올리고 교체하는 일도 사람 손을 떠나
+> [CD 워크플로](cd.md)가 한다. 남은 수동 절차는 서버를 처음 올리는 `terraform apply`와,
+> SSM 파라미터 최초 등록뿐이다.
