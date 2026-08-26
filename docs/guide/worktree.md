@@ -1,6 +1,6 @@
 # worktree 작업 가이드 — gitignore된 파일 다루기
 
-이 저장소는 `git worktree`로 작업 브랜치를 분리해서 쓴다. 그런데 실행에 꼭 필요한 파일 상당수(`.env`, terraform state·키, AI 지침 등)가 `.gitignore` 대상이라 **git으로는 worktree 간에 공유되지 않는다.** 이 공백을 [`.worktreeinclude`](../../.worktreeinclude) 목록과 `post-checkout` 훅이 메운다.
+이 저장소는 `git worktree`로 작업 브랜치를 분리해서 쓴다. 그런데 실행에 꼭 필요한 파일 상당수(`.env`, terraform 변수·키, AI 지침 등)가 `.gitignore` 대상이라 **git으로는 worktree 간에 공유되지 않는다.** 이 공백을 [`.worktreeinclude`](../../.worktreeinclude) 목록과 `post-checkout` 훅이 메운다.
 
 이 문서는 그 메커니즘의 동작 방식과, 그로 인해 실제로 겪은 함정들을 정리한다.
 
@@ -32,7 +32,7 @@ WT="$(git rev-parse --show-toplevel)"                        # 지금 있는 워
 
 즉 **실질적으로 "새 worktree를 만드는 순간 1회"만 동작한다.**
 
-2번이 중요한 이유: `post-checkout`은 이름 그대로 **모든 체크아웃에서 실행된다.** `git worktree add`뿐 아니라 worktree 안에서 `git checkout`/`git switch`로 브랜치를 옮길 때마다 돈다. 만약 덮어쓰기로 동작했다면, 작업 중 브랜치를 잠깐 옮기는 것만으로 수정해 둔 `.env`나 `terraform.tfstate`가 메인 것으로 덮여 날아간다. 이 가드는 **로컬 상태를 보호하는 장치**이지 불필요한 제약이 아니다.
+2번이 중요한 이유: `post-checkout`은 이름 그대로 **모든 체크아웃에서 실행된다.** `git worktree add`뿐 아니라 worktree 안에서 `git checkout`/`git switch`로 브랜치를 옮길 때마다 돈다. 만약 덮어쓰기로 동작했다면, 작업 중 브랜치를 잠깐 옮기는 것만으로 수정해 둔 `.env`나 `terraform.tfvars`가 메인 것으로 덮여 날아간다. 이 가드는 **로컬 상태를 보호하는 장치**이지 불필요한 제약이 아니다.
 
 그 대가로 "메인의 갱신이 기존 worktree에 전파되지 않는다"(함정 2)가 생기는데, 이건 덮어쓰기로 풀 문제가 아니라 아래 체크리스트로 사람이 확인할 문제다.
 
@@ -46,6 +46,22 @@ WT="$(git rev-parse --show-toplevel)"                        # 지금 있는 워
 > WORKTREE_INCLUDE="$TARGET_DIR/.worktreeinclude"
 > [ -f "$WORKTREE_INCLUDE" ] || WORKTREE_INCLUDE="$MAIN_DIR/.worktreeinclude"
 > ```
+
+## 훅이 끝난 뒤 — terraform은 `init`이 한 번 필요하다
+
+훅은 **파일 복사까지만** 한다. terraform은 그것만으로 동작하지 않는다.
+
+state가 S3 원격 backend로 갔고(#157) provider 캐시(`.terraform/`)는 복사 대상이 아니라서, **새 worktree에서 terraform을 쓰려면 쓸 모듈마다 `init`을 한 번 돌려야 한다.**
+
+```bash
+terraform -chdir=terraform/prod-permanent init
+```
+
+- **`init` 전에는 `plan`도 `state list`도 실패한다** — "Backend initialization required" 또는 "No state file was found!"가 뜬다. 이건 state가 없다는 뜻이 아니라 **아직 원격을 안 본다는 뜻**이다.
+- **AWS 자격증명이 있어야 한다.** state가 로컬 파일이던 시절에는 자격증명 없이도 `state list` 정도는 됐지만, 이제 backend 초기화 자체가 S3 접근을 요구한다.
+- **메인 워킹트리도 같다.** `backend.tf`가 처음 들어온 브랜치를 체크아웃한 뒤 첫 실행에서 한 번 필요하다.
+
+대신 **state 파일을 손으로 복사할 일이 없어졌다.** 기억해야 할 절차가 "state 8개 복사"에서 "`init` 한 번"으로 바뀐 셈이고, 복사를 빠뜨려 낡은 state로 apply하는 사고 자체가 성립하지 않는다. 근거와 실측은 [docs/tasks/tfstate-remote-backend/](../tasks/tfstate-remote-backend/README.md)에 있다.
 
 ## 반드시 알아야 할 함정 3가지
 
@@ -73,7 +89,7 @@ WT="$(git rev-parse --show-toplevel)"                        # 지금 있는 워
 
 `.worktreeinclude`에 **넣어야 하는 것**:
 
-- **재생성이 불가능한 것** — `terraform.tfstate`(이미 apply된 실제 인프라의 유일한 진실 공급원), SSH·CloudFront 키페어, `terraform.tfvars`(환경별 실제 값)
+- **재생성이 불가능한 것** — SSH·CloudFront 키페어, `terraform.tfvars`(환경별 실제 값)
 - **모든 worktree에서 동일해야 하지만 커밋할 수 없는 것** — `.env`(비밀값), `GEMINI.md`·`.gemini/`(개인 도구 지침). 공유 가치가 있으면서 비밀값이 없다면 이 목록이 아니라 git 추적으로 보내는 것이 먼저다(바로 아래 참고)
 
 **목록에 넣기 전에 "애초에 git으로 추적하면 되는 것 아닌가"를 먼저 따진다.** 이 목록은 `.gitignore` 때문에 git으로 공유할 수 없는 파일을 위한 우회로다. gitignore가 정당한 이유 없이 걸려 있다면, 목록에 추가하는 것보다 **gitignore에서 빼고 커밋하는 쪽이 낫다** — 훅 복사는 worktree 사이에서만 동작해서 저장소를 clone한 사람에게는 전달되지 않기 때문이다.
@@ -123,8 +139,10 @@ git status --ignored --short | grep '^!!' | sed 's/^!! //' | while IFS= read -r 
     */override.tf|*/override.tf.json|*/*_override.tf|*/*_override.tf.json) continue;;
     .terraformrc|terraform.rc|*/.terraformrc|*/terraform.rc) continue;;
     # state 백업 — terraform이 자동 생성하는 타임스탬프 백업과 손으로 뜬 백업.
-    # 목록에 있는 표준 terraform.tfstate.backup은 [0-9] 조건 덕분에 걸리지 않는다.
+    # state는 이제 S3에 있어 목록에 없다. 로컬에 남은 것은 전부 백업·잔재이므로 함께 거른다.
     *.tfstate.[0-9]*.backup|*/*.tfstate.[0-9]*.backup) continue;;
+    *.tfstate|*/*.tfstate|*.tfstate.backup|*/*.tfstate.backup) continue;;
+    *.migrated-to-s3|*/*.migrated-to-s3|*.pre-migrate-*|*/*.pre-migrate-*) continue;;
     *.pre-import-*|*/*.pre-import-*|*.bak-[0-9]*|*/*.bak-[0-9]*) continue;;
     # 로그·부하테스트 결과(k6 --summary-export 산출물)
     *.log|*.output|results/|*/results/) continue;;
@@ -159,7 +177,7 @@ done
 - **`results/`** — k6가 `--summary-export=results/...`로 남기는 부하테스트 결과. 로컬에서 k6를 한 번만 돌려도 생긴다
 - **`*.tfplan` / `tfplan*`** — `terraform plan -out=tfplan`의 산출물([terraform/loadtest/README.md](../../terraform/loadtest/README.md)의 표준 절차에 있다)
 - **`override.tf` 계열, `.terraformrc`** — terraform 로컬 오버라이드. 그 환경 전용이라 오히려 복사하면 안 된다
-- **state 백업** — terraform이 자동으로 만드는 `*.tfstate.<timestamp>.backup`과 손으로 뜬 `*.pre-import-*`. 목록에 있는 표준 `terraform.tfstate.backup`은 패턴의 `[0-9]` 조건 덕분에 걸러지지 않는다
+- **state와 그 백업 전부** — state는 S3 원격 backend로 갔으므로(#157) 로컬에 보이는 `*.tfstate`·`*.tfstate.backup`·`*.migrated-to-s3`·`*.pre-migrate-*`는 모두 옛 사본이거나 마이그레이션 잔재다. 복사 대상이 아니라 전부 거른다
 
 `.gitignore`에 새 항목이 추가됐는데 그게 산출물·캐시 성격이라면 이 필터에도 함께 넣는다. 그러지 않으면 매번 "검토 필요"로 떠서 진짜 신호를 가린다.
 
@@ -194,7 +212,6 @@ done
 
    | 파일 | 최신 | 이유 |
    |---|---|---|
-   | `terraform.tfstate` | worktree | 내가 `terraform import`로 고쳤다 |
    | `terraform.tfvars` | worktree | 내가 인스턴스 타입을 바꿨다 |
    | `.env` | **메인** | 다른 worktree가 `NAVER_CLIENT_ID` 등 3개를 추가했고, 내 worktree는 생성 당시 버전이었다 |
 

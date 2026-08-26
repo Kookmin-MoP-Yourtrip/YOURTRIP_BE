@@ -27,3 +27,8 @@ output "github_actions_role_arn" {
   description = "CD 워크플로가 assume할 역할. GitHub 저장소 변수 AWS_ROLE_ARN에 넣는다(비밀이 아니므로 secret이 아니라 variable이다)."
   value       = aws_iam_role.github_actions.arn
 }
+
+output "tfstate_bucket_name" {
+  description = "네 루트 모듈의 backend.tf에 하드코딩된 버킷 이름과 대조하는 용도. 두 값이 다르면 backend가 이 모듈이 만들지 않은 버킷을 가리키고 있다는 뜻이다."
+  value       = aws_s3_bucket.tfstate.bucket
+}

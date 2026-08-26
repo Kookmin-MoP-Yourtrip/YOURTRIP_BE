@@ -203,5 +203,5 @@ data 소스라 state에서 빼도 실제 파라미터에는 아무 영향이 없
 - **AZ가 셋 다 같아야 한다.** App EC2·RDS·ElastiCache를 `availability_zone_primary` 하나로 고정한다. 부하테스트 환경에서 ElastiCache만 다른 AZ에 떨어져 Redis 명령 지연 바닥값이 0.2~0.4ms에서 **1.2ms로 굳은 사고**가 있었다(`elasticache.tf` 주석, 커밋 `7cbef86`). 그 대가로 앱은 단일 AZ에 묶인다 — ALB만 2 AZ에 걸쳐 있다.
 - **`storage_encrypted`는 생성 후 바꿀 수 없다.** 최초 apply 전에 결정해야 하는 값이라 처음부터 `true`로 둔다.
 - **`enable_dev_direct_access`를 켜두지 않는다.** 개발자 IP에서 ALB를 우회해 8080으로 붙을 수 있게 되는데, 그 경로로는 `/actuator` 차단 리스너 규칙을 지나치므로 "차단이 걸려 있다"는 착각을 만든다. 디버깅이 끝나면 끈다.
-- **인프라 변경은 반드시 terraform을 거친다.** 원격 backend 없이 로컬 `terraform.tfstate`가 유일한 진실 공급원이라, 콘솔·CLI로 형상을 바꾸면 state에 기록되지 않아 drift가 된다. 실제 사고 사례와 복구 절차는 [../loadtest/README.md](../loadtest/README.md)의 "인프라 변경은 반드시 terraform을 거친다" 절에 있다. 인스턴스 start/stop처럼 **실행 상태만 바꾸는 조작**은 CLI로 해도 된다.
+- **인프라 변경은 반드시 terraform을 거친다.** state가 S3 원격 backend로 갔어도(#157) 이 규칙은 그대로다 — 콘솔·CLI로 형상을 바꾸면 어디에 있든 state에 기록되지 않아 drift가 된다. 실제 사고 사례와 복구 절차는 [../loadtest/README.md](../loadtest/README.md)의 "인프라 변경은 반드시 terraform을 거친다" 절에 있다. 인스턴스 start/stop처럼 **실행 상태만 바꾸는 조작**은 CLI로 해도 된다.
 - `terraform.tfstate`·`terraform.tfvars`·SSH 키페어는 `.gitignore` 대상이며, worktree에서 작업했다면 [CLAUDE.md](../../CLAUDE.md)의 worktree 규칙에 따라 메인 워킹트리 사본도 갱신해야 한다.

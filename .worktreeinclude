@@ -17,21 +17,20 @@ src/main/resources/data.sql
 # (plans/는 worktree 전용 맥락, worktrees/는 저장소 자기 중첩, settings.local.json은 개인 설정).
 
 # terraform/.terraform/(provider 플러그인 캐시)는 `terraform init`으로 즉시 재생성되므로
-# .gradle/build와 같은 이유로 제외한다. 아래는 재생성이 불가능한 실제 상태/설정/키 파일이다:
-#  - terraform.tfstate(.backup): 로컬 파일로만 관리되는 유일한 진실 공급원(terraform/README.md 참고).
-#    없으면 이미 적용된 리소스를 다시 import해야 한다.
-#  - terraform.tfvars: 버킷 이름 등 환경별 실제 값.
+# .gradle/build와 같은 이유로 제외한다.
+#
+# terraform.tfstate(.backup)은 이 목록에 없다 — 네 모듈의 state가 전부 S3 원격 backend로
+# 갔기 때문이다(#157). 새 worktree에서는 복사 대신 `terraform init`을 한 번 돌리면 되고,
+# 그래서 "복사를 빠뜨려 낡은 state로 apply한다"는 사고 자체가 성립하지 않는다.
+# 아래는 여전히 재생성이 불가능해 복사가 필요한 설정/키 파일이다:
+#  - terraform.tfvars: 버킷 이름 등 환경별 실제 값. state와 달리 원격에 있지 않다.
 #  - cloudfront_*.pem: Signed URL 서명용 키페어(개인키가 없으면 서명 URL 발급이 아예 안 됨).
-terraform/terraform.tfstate
-terraform/terraform.tfstate.backup
 terraform/terraform.tfvars
 terraform/cloudfront_private_key.pem
 terraform/cloudfront_public_key.pem
 
 # terraform/loadtest/ — EC2+RDS+ElastiCache 분리 부하테스트용 별도 루트 모듈(별도 state).
-# 위와 동일한 이유로 재생성 불가능한 상태/설정/키만 포함한다:
-#  - terraform.tfstate(.backup): 이미 apply된 실제 AWS 리소스(VPC/EC2/RDS/ElastiCache)의
-#    유일한 진실 공급원. 없으면 이미 적용된 리소스를 다시 import해야 한다.
+# 위와 동일하게 state는 S3에 있고(#157), 재생성 불가능한 설정/키만 남긴다:
 #  - terraform.tfvars: rds_password 등 환경별 실제 값.
 #  - yourtrip-loadtest-ssh(.pub): App/k6 EC2 SSH 접속 전용 키페어. .pub은 key_pair.tf가
 #    plan/apply 때마다 file()로 읽으므로 없으면 plan 자체가 실패한다.
@@ -40,27 +39,20 @@ terraform/cloudfront_public_key.pem
 # 때문이다(루트 모듈의 terraform/.terraform.lock.hcl과 동일한 취급). provider 버전 고정은
 # worktree뿐 아니라 팀원·CI에도 동일하게 적용돼야 하는데, 훅 복사로는 이 저장소를 clone한
 # 사람에게 전달되지 않는다.
-terraform/loadtest/terraform.tfstate
-terraform/loadtest/terraform.tfstate.backup
 terraform/loadtest/terraform.tfvars
 terraform/loadtest/yourtrip-loadtest-ssh
 terraform/loadtest/yourtrip-loadtest-ssh.pub
 
-# terraform/prod-permanent/ — 운영 도메인·ACM 인증서·배포 아티팩트 버킷(별도 state).
-# 이 모듈은 destroy하지 않으므로 state를 잃으면 이미 만들어진 호스티드존·인증서를 import해야
-# 하고, 그 과정에서 네임서버 위임을 건드리면 도메인이 조회되지 않는다. tfvars에는 도메인 이름과
-# 버킷 이름이 들어 있어 재입력이 가능하지만, state는 재생성이 불가능하다.
-terraform/prod-permanent/terraform.tfstate
-terraform/prod-permanent/terraform.tfstate.backup
+# terraform/prod-permanent/ — 운영 도메인·ACM 인증서·배포 아티팩트 버킷 + state 버킷 자체.
+# state는 S3에 있고 버저닝이 켜져 있어(#157), 로컬 사본을 잃어도 잃을 것이 없다. tfvars는
+# 도메인 이름과 버킷 이름이라 재입력이 가능하지만, 매번 다시 채우게 만들 이유가 없어 복사한다.
 terraform/prod-permanent/terraform.tfvars
 
 # terraform/prod/ — ALB·ASG·RDS·ElastiCache(별도 state, 온디맨드 apply/destroy).
-#  - terraform.tfstate(.backup): 살아 있는 리소스의 유일한 진실 공급원. 서버가 떠 있는 상태에서
-#    state를 잃으면 destroy로 회수되지 않아 과금이 계속되는 고아가 된다.
+# state는 S3에 있다(#157) — 이 모듈이야말로 복사 누락의 대가가 가장 컸다. 살아 있는 리소스의
+# state를 잃으면 destroy로 회수되지 않아 과금이 계속되는 고아가 되기 때문이다.
 #  - yourtrip-prod-ssh(.pub): break-glass용 SSH 키페어. .pub은 key_pair.tf가 plan/apply 때마다
 #    file()로 읽으므로 없으면 plan 자체가 실패한다(loadtest와 동일한 이유).
-terraform/prod/terraform.tfstate
-terraform/prod/terraform.tfstate.backup
 terraform/prod/terraform.tfvars
 terraform/prod/yourtrip-prod-ssh
 terraform/prod/yourtrip-prod-ssh.pub
