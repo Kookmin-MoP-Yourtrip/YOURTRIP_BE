@@ -220,6 +220,6 @@ docker compose up -d redis
 
 #### 🎥 피그잼 링크: (https://www.figma.com/board/TjRf47J8qvnVRsg2dXcSy9/)
 
-#### 🎥 Swagger 링크: (https://yourtrip.site/swagger-ui/index.html)
+#### 🎥 Swagger 링크: (https://yourtrip.cloud/swagger-ui/index.html)
 
 #### 🎥 ERD 링크: (https://www.erdcloud.com/d/FvCG4hazXKR4vL8aq)

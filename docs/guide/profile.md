@@ -106,11 +106,9 @@ H2 PostgreSQL 모드가 이를 받아준다는 보장이 없다.
 
 ## 4. 배포
 
-> ⚠️ **이 절은 아직 미완성이다.** 운영 서버(`yourtrip.site`)의 실제 구성(환경변수 파일 경로,
-> 서비스명, 재기동 방식)이 이 저장소에 기록돼 있지 않아, 해당 부분을 `<TODO: 확인 필요>`로
-> 남겨뒀다. 각 단계에는 **실측으로 검증된 부하테스트 환경([ec2-rds-loadtest.md](ec2-rds-loadtest.md))의
-> 값을 참고 예시로 함께 적어뒀다** — 운영 서버가 같은 레이아웃이면 그대로 쓰고, 다르면
-> `<TODO>` 자리만 실제 값으로 채운 뒤 이 경고 문구를 지운다.
+> **운영 서버는 이제 Terraform이 관리한다**([terraform/prod/](../../terraform/prod/README.md), #119).
+> 아래 수동 절차는 **이미 떠 있는 서버를 손으로 고쳐야 할 때만** 쓴다 — 정상 경로는
+> `terraform apply`이고, 프로필은 user-data가 `/opt/app/.env`에 넣으므로 별도 조치가 필요 없다.
 
 배포 서버에는 **`SPRING_PROFILES_ACTIVE=prod`를 명시해야 한다.**
 
@@ -125,12 +123,8 @@ H2 PostgreSQL 모드가 이를 받아준다는 보장이 없다.
 
 앱 프로세스에 `SPRING_PROFILES_ACTIVE=prod` 환경변수를 주입하고 재기동한다.
 
-```
-<TODO: 확인 필요> — 운영 서버의 환경변수 파일 경로
-```
-
-**참고 (부하테스트 환경 기준)**: systemd 유닛이 `EnvironmentFile=/opt/app/.env`를 읽는 구조라,
-그 파일에 한 줄 추가하면 된다.
+운영·부하테스트 환경 모두 systemd 유닛이 `EnvironmentFile=/opt/app/.env`를 읽는 구조라,
+그 파일에 한 줄 추가하고 재기동하면 된다.
 
 ```bash
 echo 'SPRING_PROFILES_ACTIVE=prod' | sudo tee -a /opt/app/.env
@@ -140,9 +134,11 @@ echo 'SPRING_PROFILES_ACTIVE=prod' | sudo tee -a /opt/app/.env
 sudo systemctl restart yourtrip-app
 ```
 
-> 부하테스트 환경은 [app-user-data.sh.tpl](../../terraform/loadtest/templates/app-user-data.sh.tpl)에
-> 이미 반영돼 있어 **새로 프로비저닝하면 자동으로 들어간다.** 위 수동 절차는 운영 서버처럼
-> Terraform 관리 밖에 있는 서버에만 필요하다.
+> **정상 경로에서는 이 절차가 필요 없다.** 운영([app-user-data.sh.tpl](../../terraform/prod/templates/app-user-data.sh.tpl))과
+> 부하테스트([app-user-data.sh.tpl](../../terraform/loadtest/templates/app-user-data.sh.tpl)) 모두
+> user-data가 `.env`를 만들 때 이 값을 넣으므로, `terraform apply`로 뜬 인스턴스는 별도 조치가
+> 필요 없다. 위 절차는 **이미 떠 있는 인스턴스를 손으로 고칠 때만** 쓴다 — 다음 인스턴스 교체
+> 때 사라지는 변경이므로, 항구적으로 바꾸려면 템플릿을 고쳐 apply해야 한다.
 
 ### 4-2. 적용 확인 (필수)
 
@@ -155,11 +151,8 @@ sudo systemctl restart yourtrip-app
 The following 1 profile is active: "prod"
 ```
 
-```
-<TODO: 확인 필요> — 운영 서버의 로그 확인 명령
-```
-
-**참고 (부하테스트 환경 기준)**:
+운영·부하테스트 환경 모두 systemd로 돌므로 `journalctl`로 확인한다. SSH 대신
+SSM Session Manager로 붙어도 된다(`aws ssm start-session --target <instance-id>`).
 
 ```bash
 sudo journalctl -u yourtrip-app -n 200 --no-pager | grep -i profile
@@ -193,7 +186,7 @@ sudo journalctl -u yourtrip-app -n 200 --no-pager | grep -i profile
 애플리케이션 자체가 살아 있는지도 함께 확인한다.
 
 ```bash
-curl -sf https://yourtrip.site/actuator/health
+curl -sf https://yourtrip.cloud/actuator/health
 ```
 
 `{"status":"UP", ...}`가 나와야 한다.

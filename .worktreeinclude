@@ -45,3 +45,25 @@ terraform/loadtest/terraform.tfstate.backup
 terraform/loadtest/terraform.tfvars
 terraform/loadtest/yourtrip-loadtest-ssh
 terraform/loadtest/yourtrip-loadtest-ssh.pub
+
+# terraform/prod-permanent/ — 운영 도메인·ACM 인증서·배포 아티팩트 버킷(별도 state).
+# 이 모듈은 destroy하지 않으므로 state를 잃으면 이미 만들어진 호스티드존·인증서를 import해야
+# 하고, 그 과정에서 네임서버 위임을 건드리면 도메인이 조회되지 않는다. tfvars에는 도메인 이름과
+# 버킷 이름이 들어 있어 재입력이 가능하지만, state는 재생성이 불가능하다.
+terraform/prod-permanent/terraform.tfstate
+terraform/prod-permanent/terraform.tfstate.backup
+terraform/prod-permanent/terraform.tfvars
+
+# terraform/prod/ — ALB·ASG·RDS·ElastiCache(별도 state, 온디맨드 apply/destroy).
+#  - terraform.tfstate(.backup): 살아 있는 리소스의 유일한 진실 공급원. 서버가 떠 있는 상태에서
+#    state를 잃으면 destroy로 회수되지 않아 과금이 계속되는 고아가 된다.
+#  - yourtrip-prod-ssh(.pub): break-glass용 SSH 키페어. .pub은 key_pair.tf가 plan/apply 때마다
+#    file()로 읽으므로 없으면 plan 자체가 실패한다(loadtest와 동일한 이유).
+terraform/prod/terraform.tfstate
+terraform/prod/terraform.tfstate.backup
+terraform/prod/terraform.tfvars
+terraform/prod/yourtrip-prod-ssh
+terraform/prod/yourtrip-prod-ssh.pub
+# SSM에 넣은 비밀값의 로컬 사본. SSM이 원본이라 없어도 인프라는 돌지만, worktree마다
+# SSM을 다시 조회하게 만들 이유가 없어 함께 복사한다.
+terraform/prod/secrets.local

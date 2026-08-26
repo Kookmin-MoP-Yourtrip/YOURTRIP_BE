@@ -1,0 +1,88 @@
+# 이 파일을 terraform.tfvars로 복사한 뒤 값을 채운다.
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# terraform.tfvars는 .gitignore 대상이다. 이 example 파일만 git이 추적한다.
+#
+# ⚠️ 앱 시크릿(DB 비밀번호·JWT·API 키)은 여기 넣지 않는다. SSM Parameter Store에
+#    SecureString으로 넣고 인스턴스가 부팅 시 직접 받아간다 — 이유는 README의
+#    "시크릿은 어디에 있는가" 절 참고. tfvars에 넣으면 tfstate에 평문으로 남는다.
+
+# ------------------------------------------------------------
+# 개발자 IP — SSH(break-glass) 접근을 제한하는 데 쓰인다
+#   curl -s ifconfig.me
+# ------------------------------------------------------------
+my_ip_cidr = ""   # 예: "203.0.113.10/32"
+
+# ------------------------------------------------------------
+# terraform/prod-permanent/의 출력값을 그대로 옮긴다
+#   terraform -chdir=../prod-permanent output -raw artifact_bucket_name
+#   terraform -chdir=../prod-permanent output -raw acm_certificate_arn
+# ------------------------------------------------------------
+artifact_bucket_name = ""
+acm_certificate_arn  = ""
+
+# ------------------------------------------------------------
+# 배포할 JAR의 S3 키. 커밋 SHA로 고정한다 — 가변 키를 쓰면 배포 중 스케일아웃이 일어났을 때
+# 새 인스턴스가 다른 바이트를 받아 혼종 fleet이 된다.
+#   ./gradlew clean bootJar
+#   SHA=$(git rev-parse --short HEAD)
+#   aws s3 cp build/libs/*.jar "s3://<artifact_bucket_name>/app/$SHA.jar"
+# ------------------------------------------------------------
+app_artifact_key = ""   # 예: "app/a4a4f9f.jar"
+
+# ------------------------------------------------------------
+# 기존 terraform/(영구 인프라)의 출력값을 그대로 옮긴다
+#   terraform -chdir=../ output -raw s3_bucket_name
+#   terraform -chdir=../ output -raw cloudfront_domain_name
+#   terraform -chdir=../ output -raw cloudfront_key_pair_id
+#   terraform -chdir=../ output -raw cloudfront_distribution_id
+# ------------------------------------------------------------
+s3_bucket                  = ""
+cloudfront_domain          = ""
+cloudfront_key_pair_id     = ""
+cloudfront_distribution_id = ""
+
+# ------------------------------------------------------------
+# 아래는 기본값이 있어 대개 그대로 둔다.
+# ------------------------------------------------------------
+# aws_region                   = "ap-northeast-2"       # prod-permanent의 ACM과 반드시 일치
+# name_prefix                  = "yourtrip-prod"
+# ssh_public_key_path          = "./yourtrip-prod-ssh.pub"
+# ssm_parameter_path           = "/yourtrip/prod"
+# enable_dev_direct_access     = false                  # ALB 우회 8080 직접 접근(디버깅 전용)
+#
+# vpc_cidr                     = "10.43.0.0/16"
+# public_subnet_primary_cidr   = "10.43.1.0/24"
+# public_subnet_secondary_cidr = "10.43.2.0/24"
+# availability_zone_primary    = "ap-northeast-2a"      # App·RDS·Redis가 모두 여기
+# availability_zone_secondary  = "ap-northeast-2c"      # ALB의 두 번째 다리
+#
+# rds_instance_class           = "db.t3.micro"
+# rds_engine_version           = "16"
+# rds_allocated_storage        = 20
+# rds_db_name                  = "yourtrip"
+# rds_username                 = "postgres"
+# rds_deletion_protection      = false
+# rds_final_snapshot_suffix    = ""                     # destroy 시점에 -var로 넘기는 값
+#
+# elasticache_node_type        = "cache.t3.micro"
+#
+# app_instance_type            = "t3.small"             # 실측이 나온 스펙
+# app_ami_id                   = ""                     # 비우면 최신 AL2023, 고정하려면 직전 output
+# app_root_volume_size         = 10
+# db_ddl_auto                  = "update"
+#
+# alb_idle_timeout                  = 60                # keep-alive-timeout(65s)보다 작아야 한다
+# target_group_deregistration_delay = 30
+# health_check_path                 = "/actuator/health/liveness"
+#
+# asg_min_size                  = 1
+# asg_max_size                  = 2
+# asg_desired_capacity          = 1
+# asg_health_check_grace_period = 300
+# asg_instance_warmup           = 300
+# enable_detailed_monitoring    = true
+#
+# ⚠️ 분당 값이다(ALBRequestCountPerTarget은 60초 SUM). 30000 = 초당 500.
+#    데모용으로 낮춘다면 그 값과 이유를 docs/tasks/prod-infra-iac/verification.md에 기록한다.
+# scaleout_request_count_per_target_per_minute = 30000
