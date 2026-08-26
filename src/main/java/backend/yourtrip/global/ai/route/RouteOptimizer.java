@@ -71,6 +71,10 @@ public class RouteOptimizer {
      * <p>30분 늦은 점심이 15km 우회와 맞먹는다는 뜻이다. 한국 도심 하루 코스의 총 이동거리가
      * 통상 5~15km 이므로, 이 값이면 <b>제시간 식사를 위해 동선을 재배열하는 일이 실제로
      * 일어난다.</b> 반대로 5분 위반(2.5km)은 동선을 크게 망치면서까지 고치지 않는다.
+     *
+     * <p><b>이 값은 기본값이지 고정값이 아니다.</b> 위 설명은 손으로 어림잡은 환산이라, 실제
+     * 코스에서 거리와 식사 시각이 어떤 비율로 맞바뀌는지는 따로 재야 한다.
+     * {@link #optimize(RouteRequest, int, double)}가 그 측정을 위한 이음매다(ROADMAP 3-8).
      */
     private static final double MEAL_PENALTY_PER_MIN = 2.0;
 
@@ -117,7 +121,7 @@ public class RouteOptimizer {
      * {@code 1 + 1 + (n-3)}으로 {@code n=7}이면 여섯 번, 6ms 미만이다.
      */
     public RoutedDay optimize(RouteRequest request) {
-        return optimize(request, MAX_BRUTE_FORCE_PLACES);
+        return optimize(request, MAX_BRUTE_FORCE_PLACES, MEAL_PENALTY_PER_MIN);
     }
 
     /**
@@ -129,6 +133,29 @@ public class RouteOptimizer {
      * 이미 둘 있다({@code LlmRetryExecutor.Sleeper}, {@code OpenAiLlmClient}의 테스트 생성자).
      */
     RoutedDay optimize(RouteRequest request, int maxBruteForcePlaces) {
+        return optimize(request, maxBruteForcePlaces, MEAL_PENALTY_PER_MIN);
+    }
+
+    /**
+     * 식사 벌점 계수까지 지정할 수 있는 형태. <b>측정 전용 이음매다.</b>
+     *
+     * <p>{@link #MEAL_PENALTY_PER_MIN}이 적정한지는 계수를 실제로 움직여 보기 전에는 답할 수
+     * 없다. 동선 개선 실측(3-7)은 계수를 고정한 채 탐색만 껐다 켰고, 그래서 "식사 2개짜리
+     * day 의 양보율 15.7%가 비싼지 싼지"를 끝내 답하지 못했다.
+     *
+     * <p><b>계수를 인스턴스 필드로 두지 않고 {@link Context}에 싣는 이유.</b> 필드로 두면
+     * 생성자가 둘이 되고 {@code @Component}가 그 선택에 걸린다 — 2단계에서 테스트용 생성자에
+     * {@code @Autowired}를 빠뜨려 컨텍스트가 통째로 깨진 전례가 정확히 이 종류다.
+     * {@code Context}는 이미 "탐색 한 판에 필요한 입력 전부"를 담는 자리라, 여기 실으면
+     * <b>빈은 여전히 무상태로 남고</b> 생성자도 하나 그대로다.
+     *
+     * <p>그래서 이 오버로드는 {@link #optimize(RouteRequest, int)}와 같은 계층의 이음매이고,
+     * 공개 진입점은 무엇도 알지 못한 채 상수를 넘길 뿐이다 — <b>프로덕션 동작은 완전히 같다.</b>
+     *
+     * @param mealPenaltyPerMin 식사 시간창을 1분 벗어날 때의 벌점. {@code 0}이면 비용이 사실상
+     *                          거리만 남아, 식사 시각을 전혀 고려하지 않는 최단거리 경로가 된다
+     */
+    RoutedDay optimize(RouteRequest request, int maxBruteForcePlaces, double mealPenaltyPerMin) {
         if (request.places().isEmpty()) {
             return RoutedDay.empty(request.day(), request.dayStartTime());
         }
@@ -146,7 +173,8 @@ public class RouteOptimizer {
         while (true) {
             // 체류를 이미 줄인 판에서는 탄력 체류를 끈다 — 줄인 체류를 상한까지 되늘리면
             // "한 번 줄이면 되돌리지 않는다"는 축소의 단조성이 깨져 루프를 설명할 수 없게 된다.
-            Context context = Context.of(request, places, stayMinutes, !shrunk);
+            Context context =
+                Context.of(request, places, stayMinutes, !shrunk, mealPenaltyPerMin);
             Schedule best = search(context, bruteForce);
 
             if (best.endMinutes() <= context.endMinutes()) {
@@ -264,6 +292,10 @@ public class RouteOptimizer {
      * @param startMinutes    하루 시작(자정 기준 분)
      * @param endMinutes      하루 종료(자정 기준 분)
      * @param stretchEnabled  탄력 체류를 켤지. 체류를 이미 축소한 판에서는 꺼진다
+     * @param mealPenaltyPerMin 식사 시간창 위반 1분의 벌점. 공개 진입점은 항상
+     *                          {@link #MEAL_PENALTY_PER_MIN}을 실어 보낸다 — 여기 둔 것은 측정이
+     *                          값을 바꿔 돌릴 수 있게 하기 위해서이지 요청마다 달라지기 때문이
+     *                          아니다
      */
     private record Context(
         SlotType[] slotTypes,
@@ -273,11 +305,12 @@ public class RouteOptimizer {
         int startMinutes,
         int endMinutes,
         TravelMode travelMode,
-        boolean stretchEnabled
+        boolean stretchEnabled,
+        double mealPenaltyPerMin
     ) {
 
         static Context of(RouteRequest request, List<RoutePlace> places, int[] stayMinutes,
-            boolean stretchEnabled) {
+            boolean stretchEnabled, double mealPenaltyPerMin) {
             return new Context(
                 slotTypesOf(places),
                 stayMinutes,
@@ -286,7 +319,8 @@ public class RouteOptimizer {
                 toMinutes(request.dayStartTime()),
                 toMinutes(request.dayEndTime()),
                 request.travelMode(),
-                stretchEnabled);
+                stretchEnabled,
+                mealPenaltyPerMin);
         }
 
         int size() {
@@ -549,7 +583,8 @@ public class RouteOptimizer {
         int overrunMinutes = Math.max(0, schedule.endMinutes() - context.endMinutes());
 
         return totalDistanceKm * DISTANCE_WEIGHT
-            + mealViolationMinutes(mealArrivalsOf(schedule, context)) * MEAL_PENALTY_PER_MIN
+            + mealViolationMinutes(mealArrivalsOf(schedule, context))
+                * context.mealPenaltyPerMin()
             + overrunMinutes * OVERRUN_PENALTY_PER_MIN;
     }
 
