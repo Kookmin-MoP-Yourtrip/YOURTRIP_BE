@@ -66,6 +66,11 @@ class GroundingStageTest {
             .tags("result", result, "source", source).counter().count();
     }
 
+    private double relaxed(String reason) {
+        return meterRegistry.get(AiCourseMetrics.GROUNDING_RELAXED)
+            .tags("reason", reason).counter().count();
+    }
+
     private static PlaceCandidate seededCafe(String name, String address) {
         return new PlaceCandidate(CandidateSourceType.SEEDED, name, address, LAT, LON,
             SlotType.CAFE, Set.of(StyleTag.ROOFTOP), 1, StyleTag.ROOFTOP, 0.4,
@@ -79,6 +84,10 @@ class GroundingStageTest {
 
     private static CuratedDay curated(CuratedPlace... choices) {
         return new CuratedDay(1, List.of(new CuratedSlot(SlotType.CAFE, List.of(choices))));
+    }
+
+    private static CuratedDay curated(int day, SlotType slotType, CuratedPlace... choices) {
+        return new CuratedDay(day, List.of(new CuratedSlot(slotType, List.of(choices))));
     }
 
     private static CuratedPlace fromList(int listIndex, String name) {
@@ -253,12 +262,32 @@ class GroundingStageTest {
     }
 
     @Nested
-    @DisplayName("슬롯별 업종 하드 제약 (ROADMAP 5-3)")
+    @DisplayName("슬롯별 업종 제약 (ROADMAP 5-3) — 드롭이 아니라 슬롯 전멸 시 최후 구제다 (이슈 #147)")
     class CategoryConstraint {
 
         @Test
-        @DisplayName("카페 자리에 온 음식점은 탈락한다 — 가점 +2 로는 막지 못하던 어긋남이다")
-        void rejectsWrongCategoryGroup() {
+        @DisplayName("쓸 만한 동료 후보가 있으면 업종이 어긋난 쪽은 쓰지 않는다 — 무조건 완화가 아니다")
+        void prefersMatchingCategoryWhenSlotSurvives() {
+            when(kakaoLocalClient.lookupBestPlace(eq("황남국밥"), anyString()))
+                .thenReturn(new PlaceLookup.Found(
+                    document("황남국밥", "129.21", "35.83", "FD6")));
+            when(kakaoLocalClient.lookupBestPlace(eq("커피플레이스"), anyString()))
+                .thenReturn(new PlaceLookup.Found(
+                    document("커피플레이스", "129.21", "35.83", "CE7")));
+
+            List<GroundedDay> days = stage.ground("경주",
+                List.of(curated(suggested("황남국밥"), suggested("커피플레이스"))),
+                CandidatePool.empty(), CourseDeadline.unbounded());
+
+            assertThat(days.get(0).slots().get(0).survivors())
+                .extracting(GroundedPlace::name).containsExactly("커피플레이스");
+            assertThat(counted("category_mismatch", "suggested")).isEqualTo(1);
+            assertThat(relaxed("category_last_resort")).isZero();
+        }
+
+        @Test
+        @DisplayName("슬롯이 전멸하면 업종 불일치 후보를 구제한다 — 이름 게이트를 통과해 실존하는 장소다")
+        void rescuesWhenSlotWouldBeEmpty() {
             when(kakaoLocalClient.lookupBestPlace(anyString(), anyString()))
                 .thenReturn(new PlaceLookup.Found(
                     document("황남국밥", "129.21", "35.83", "FD6")));
@@ -266,7 +295,61 @@ class GroundingStageTest {
             List<GroundedDay> days = stage.ground("경주", List.of(curated(suggested("황남국밥"))),
                 CandidatePool.empty(), CourseDeadline.unbounded());
 
+            assertThat(days.get(0).slots().get(0).preferred().orElseThrow().name())
+                .isEqualTo("황남국밥");
+            // 결말은 그대로 category_mismatch 다 — 게이트가 발동한 것은 구제 여부와 무관한 사실이고,
+            // hit 으로 바꾸면 5-3 의 제약이 무엇을 걸렀는지를 영영 못 재게 된다.
+            assertThat(counted("category_mismatch", "suggested")).isEqualTo(1);
+            assertThat(counted("hit", "suggested")).isZero();
+            assertThat(relaxed("category_last_resort")).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("앞 day 가 이미 쓴 장소는 구제하지 않는다 — 중복 제거가 구제보다 세다")
+        void doesNotRescueDuplicateOfEarlierDay() {
+            when(kakaoLocalClient.lookupBestPlace(anyString(), anyString()))
+                .thenReturn(new PlaceLookup.Found(
+                    document("황남국밥", "129.21", "35.83", "FD6")));
+
+            List<GroundedDay> days = stage.ground("경주",
+                List.of(curated(1, SlotType.CAFE, suggested("황남국밥")),
+                    curated(2, SlotType.CAFE, suggested("황남국밥"))),
+                CandidatePool.empty(), CourseDeadline.unbounded());
+
+            assertThat(days.get(0).slots().get(0).survivors()).hasSize(1);
+            assertThat(days.get(1).slots().get(0).isEmpty()).isTrue();
+            assertThat(relaxed("category_last_resort")).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("좌표가 없으면 구제 대상이 아니라 no_coordinate 로 간다")
+        void classifiesAsNoCoordinateWhenBothBroken() {
+            when(kakaoLocalClient.lookupBestPlace(anyString(), anyString()))
+                .thenReturn(new PlaceLookup.Found(document("황남국밥", "", null, "FD6")));
+
+            List<GroundedDay> days = stage.ground("경주", List.of(curated(suggested("황남국밥"))),
+                CandidatePool.empty(), CourseDeadline.unbounded());
+
             assertThat(days.get(0).slots().get(0).isEmpty()).isTrue();
+            assertThat(counted("no_coordinate", "suggested")).isEqualTo(1);
+            assertThat(counted("category_mismatch", "suggested")).isZero();
+            assertThat(relaxed("category_last_resort")).isZero();
+        }
+
+        @Test
+        @DisplayName("회귀 — 제주 흑돼지거리(AT4)가 MEAL 슬롯에서 살아남는다")
+        void rescuesHeukdwaejiStreet() {
+            when(kakaoLocalClient.lookupBestPlace(anyString(), anyString()))
+                .thenReturn(new PlaceLookup.Found(
+                    document("흑돼지거리", "126.52", "33.51", "AT4")));
+
+            List<GroundedDay> days = stage.ground("제주",
+                List.of(curated(3, SlotType.MEAL, suggested("흑돼지거리"))),
+                CandidatePool.empty(), CourseDeadline.unbounded());
+
+            assertThat(days.get(0).slots().get(0).preferred().orElseThrow().name())
+                .isEqualTo("흑돼지거리");
+            assertThat(relaxed("category_last_resort")).isEqualTo(1);
         }
 
         @Test

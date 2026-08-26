@@ -15,7 +15,7 @@ import lombok.Getter;
  * 카카오 {@code category_name}으로 사후 보정하면 충분하다고 보고 2차 개선으로 미뤘다.
  *
  * <p><b>이 값들을 읽는 곳</b> — 3단계(체류시간), 로드맵 4-1·5-8(후보 공급 검색어), 로드맵 5-3
- * (카테고리 하드 제약). 인기도 가중치만은 <b>V1에서 읽는 곳이 없다</b>(아래). 값 하나를 바꾸면
+ * (카테고리 제약). 인기도 가중치만은 <b>V1에서 읽는 곳이 없다</b>(아래). 값 하나를 바꾸면
  * 여러 곳의 동작이 함께 움직이므로 {@code SlotTypeTest}가 전부 고정해 변경이 리뷰를 거치게 한다.
  *
  * <p>{@link #WALK}(산책로)는 뒤에 추가될 {@code TravelMode.WALK}(뚜벅이)와 이름이 겹치지만 다른
@@ -94,8 +94,10 @@ public enum SlotType {
     /**
      * 이 슬롯에 들어올 수 있는 카카오 {@code category_group_code}.
      *
-     * <p>현재 {@code KakaoLocalClient.score()}는 이 코드를 가점 +2로만 쓰는데, 로드맵 5-3에서
-     * 하드 제약으로 승격한다. 비용이 사실상 0인데 "점심에 호프집"이 구조적으로 사라진다.
+     * <p>{@code PlaceMatchScorer.score()}는 이 코드를 가점 +2로만 쓰므로 "점심에 호프집"을 막지
+     * 못했다. 5-3이 {@code GroundingStage}에 제약으로 올렸고, 이슈 #147이 그것을 <b>하드 드롭에서
+     * 슬롯 전멸 시 최후 구제로</b> 낮췄다 — 어긋난 후보를 버리면 그 슬롯에 다른 후보가 없을 때
+     * 저녁이 통째로 비기 때문이다. 제약은 그대로 서 있고 <b>차순위가 있을 때만</b> 걸러 낸다.
      */
     private final Set<String> allowedCategoryCodes;
 

@@ -6,6 +6,7 @@ import backend.yourtrip.global.ai.candidate.CandidateOutcome;
 import backend.yourtrip.global.ai.candidate.CandidateSourceType;
 import backend.yourtrip.global.ai.candidate.GeocodeOutcome;
 import backend.yourtrip.global.ai.grounding.GroundingOutcome;
+import backend.yourtrip.global.ai.grounding.GroundingRelaxation;
 import backend.yourtrip.global.ai.grounding.PlaceUrlOutcome;
 import backend.yourtrip.global.ai.pipeline.PipelineStage;
 import backend.yourtrip.global.ai.pipeline.SlotFillOutcome;
@@ -73,6 +74,16 @@ public class AiCourseMetrics {
      * 3점 비교가 오염된다.
      */
     public static final String GROUNDING_MATCH = "ai.grounding.match";
+
+    /**
+     * <b>검증의 결말을 우리가 뒤집은 횟수</b> (이슈 #147). {@link #GROUNDING_MATCH}와 짝으로 본다.
+     *
+     * <p>저쪽이 "검증이 무엇이라고 답했는가"라면 이쪽은 "그 답을 우리가 몇 번 뒤집었는가"다.
+     * 실존이 확인된 장소를 업종 때문에 잃지 않으려고 문턱을 낮췄으므로, <b>그 대가로
+     * "이 완화가 환각을 몇 건 들였는가"를 되짚을 수 있어야 한다.</b> 결말 태그에 섞어 넣으면
+     * 5-3의 업종 제약이 실제로 무엇을 걸렀는지도 함께 못 재게 된다.
+     */
+    public static final String GROUNDING_RELAXED = "ai.grounding.relaxed";
 
     /**
      * <b>Curator 가 목록 참조를 위조한 빈도</b> (ROADMAP 6-7). {@code SEEDED}·{@code LISTED} 가
@@ -223,6 +234,9 @@ public class AiCourseMetrics {
                 groundingCounter(outcome, source);
             }
         }
+        for (GroundingRelaxation reason : GroundingRelaxation.values()) {
+            groundingRelaxedCounter(reason);
+        }
         for (PlaceUrlOutcome outcome : PlaceUrlOutcome.values()) {
             placeUrlCounter(outcome);
         }
@@ -266,6 +280,19 @@ public class AiCourseMetrics {
     public void groundingMatch(GroundingOutcome outcome, CandidateSourceType source, int count) {
         if (count > 0) {
             groundingCounter(outcome, source).increment(count);
+        }
+    }
+
+    /**
+     * 완화·구제로 살아난 건수를 사유별로 올린다 (이슈 #147).
+     *
+     * <p>{@link #groundingMatch}와 <b>같이 오른다</b> — 구제된 장소도 검증에서는
+     * {@code category_mismatch}였고, 게이트가 몇 번 발동했는지는 구제 여부와 무관한 사실이다.
+     * 결말 값을 {@code hit}으로 바꿔치기하면 5-3의 제약이 무엇을 걸렀는지 측정할 수 없게 된다.
+     */
+    public void groundingRelaxed(GroundingRelaxation reason, int count) {
+        if (count > 0) {
+            groundingRelaxedCounter(reason).increment(count);
         }
     }
 
@@ -403,6 +430,12 @@ public class AiCourseMetrics {
         return Counter.builder(GROUNDING_MATCH)
             .tag("result", tag(outcome.name()))
             .tag("source", tag(source.name()))
+            .register(registry);
+    }
+
+    private Counter groundingRelaxedCounter(GroundingRelaxation reason) {
+        return Counter.builder(GROUNDING_RELAXED)
+            .tag("reason", tag(reason.name()))
             .register(registry);
     }
 

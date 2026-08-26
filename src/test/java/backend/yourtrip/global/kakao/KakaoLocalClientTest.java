@@ -5,11 +5,8 @@ import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import backend.yourtrip.global.common.ApiFailureCause;
-import backend.yourtrip.global.exception.BusinessException;
-import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.kakao.config.KakaoConfig;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -62,12 +59,11 @@ class KakaoLocalClientTest {
         void acceptsNamesDifferingOnlyBySpacingAndPunctuation() {
             stubDocuments(document("동궁과월지", "경북 경주시 원화로 102", "AT4"));
 
-            Document best = kakaoLocalClient.findBestPlace("동궁과 월지", "경주");
-
             // 실측에서 이 유형(주소는 맞고 이름만 표기가 다른 경우)의 표본 18건이 전부
             // 정답이었다. 정규화 전에는 contains가 거짓 음성을 내 3점에 머물렀다.
-            assertThat(best).isNotNull();
-            assertThat(best.place_name()).isEqualTo("동궁과월지");
+            assertThat(kakaoLocalClient.lookupBestPlace("동궁과 월지", "경주"))
+                .isInstanceOfSatisfying(PlaceLookup.Found.class, found ->
+                    assertThat(found.document().place_name()).isEqualTo("동궁과월지"));
         }
 
         @Test
@@ -77,9 +73,10 @@ class KakaoLocalClientTest {
             // 하한선만 있고 이름 게이트가 없으면 이 후보가 그대로 저장됐다.
             stubDocuments(document("개미집 국제시장본점직영점", "부산 해운대구 구남로 34", "FD6"));
 
-            Document best = kakaoLocalClient.findBestPlace("해운대 시장", "부산");
-
-            assertThat(best).isNull();
+            // NameMismatch 로 받는 것이 요지다 — "우리가 걸렀다"와 "카카오에 없다"는 다른 사건이고,
+            // 옛 계약의 null 은 그 둘을 같은 값으로 뭉갰다.
+            assertThat(kakaoLocalClient.lookupBestPlace("해운대 시장", "부산"))
+                .isInstanceOf(PlaceLookup.NameMismatch.class);
         }
 
         @Test
@@ -91,62 +88,20 @@ class KakaoLocalClientTest {
                 document("전혀다른가게", "경북 경주시 첨성로 1", "FD6"),
                 document("황리단길커피", "경북 경주시 포석로 2", null));
 
-            Document best = kakaoLocalClient.findBestPlace("황리단길커피", "경주");
-
-            assertThat(best).isNotNull();
-            assertThat(best.place_name()).isEqualTo("황리단길커피");
+            assertThat(kakaoLocalClient.lookupBestPlace("황리단길커피", "경주"))
+                .isInstanceOfSatisfying(PlaceLookup.Found.class, found ->
+                    assertThat(found.document().place_name()).isEqualTo("황리단길커피"));
         }
 
         @Test
-        @DisplayName("검색 결과가 없으면 null을 반환한다")
-        void returnsNullWhenNoDocuments() {
-            stubDocuments();
-
-            assertThat(kakaoLocalClient.findBestPlace("있을리없는가게이름", "경주")).isNull();
-        }
-
-        @Test
-        @DisplayName("AI가 준 장소명이 비어 있으면 매칭하지 않는다")
+        @DisplayName("AI가 준 장소명이 비어 있으면 어떤 후보도 통과시키지 않는다")
         void rejectsBlankPlaceName() {
             stubDocuments(document("아무가게", "경북 경주시 원화로 102", "FD6"));
 
-            assertThat(kakaoLocalClient.findBestPlace("  ", "경주")).isNull();
-        }
-    }
-
-    @Nested
-    @DisplayName("장애 처리")
-    class FailureHandling {
-
-        @Test
-        @DisplayName("응답이 지연되면 원시 예외가 아니라 KAKAO_API_FAILED로 변환된다")
-        void convertsTimeoutToBusinessException() {
-            // KakaoConfig의 responseTimeout(3초)을 넘기도록 지연시킨다.
-            // 예전에는 .block(20초)이 IllegalStateException을 던져
-            // WebClientResponseException catch를 빠져나가 원시 500이 됐다.
-            wireMock.stubFor(get(urlPathEqualTo(SEARCH_PATH))
-                .willReturn(aResponse()
-                    .withStatus(200)
-                    .withHeader("Content-Type", "application/json")
-                    .withFixedDelay(6_000)
-                    .withBody("{\"documents\":[],\"meta\":{\"total_count\":0}}")));
-
-            assertThatThrownBy(() -> kakaoLocalClient.findBestPlace("불국사", "경주"))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(MyCourseErrorCode.KAKAO_API_FAILED);
-        }
-
-        @Test
-        @DisplayName("카카오가 5xx를 주면 KAKAO_API_FAILED로 변환된다")
-        void convertsServerErrorToBusinessException() {
-            wireMock.stubFor(get(urlPathEqualTo(SEARCH_PATH))
-                .willReturn(aResponse().withStatus(500)));
-
-            assertThatThrownBy(() -> kakaoLocalClient.findBestPlace("불국사", "경주"))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(MyCourseErrorCode.KAKAO_API_FAILED);
+            // 지역 접두사가 붙어 키워드 자체는 비지 않으므로 호출은 나가고, 이름 게이트가
+            // 전멸시킨다 — 빈 이름은 정규화하면 빈 문자열이라 무엇과도 같지 않다.
+            assertThat(kakaoLocalClient.lookupBestPlace("  ", "경주"))
+                .isInstanceOf(PlaceLookup.NameMismatch.class);
         }
     }
 
@@ -187,6 +142,35 @@ class KakaoLocalClientTest {
         }
 
         @Test
+        @DisplayName("응답이 지연되면 원시 예외가 아니라 Failed(TRANSPORT_ERROR)가 값으로 온다")
+        void classifiesTimeoutAsTransportError() {
+            // KakaoConfig의 responseTimeout(3초)을 넘기도록 지연시킨다.
+            // 예전에는 .block(20초)이 IllegalStateException을 던져
+            // WebClientResponseException catch를 빠져나가 원시 500이 됐다.
+            wireMock.stubFor(get(urlPathEqualTo(SEARCH_PATH))
+                .willReturn(aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withFixedDelay(6_000)
+                    .withBody("{\"documents\":[],\"meta\":{\"total_count\":0}}")));
+
+            assertThat(kakaoLocalClient.lookupBestPlace("불국사", "경주"))
+                .isInstanceOfSatisfying(PlaceLookup.Failed.class, failed ->
+                    assertThat(failed.cause()).isEqualTo(ApiFailureCause.TRANSPORT_ERROR));
+        }
+
+        @Test
+        @DisplayName("카카오가 5xx를 주면 Failed(HTTP_ERROR)다")
+        void classifiesServerErrorAsHttpError() {
+            wireMock.stubFor(get(urlPathEqualTo(SEARCH_PATH))
+                .willReturn(aResponse().withStatus(500)));
+
+            assertThat(kakaoLocalClient.lookupBestPlace("불국사", "경주"))
+                .isInstanceOfSatisfying(PlaceLookup.Failed.class, failed ->
+                    assertThat(failed.cause()).isEqualTo(ApiFailureCause.HTTP_ERROR));
+        }
+
+        @Test
         @DisplayName("429는 QUOTA_EXCEEDED로 갈라 둔다 — 시간이 지나야 풀리는 유일한 실패다")
         void classifiesQuotaExceeded() {
             wireMock.stubFor(get(urlPathEqualTo(SEARCH_PATH))
@@ -220,11 +204,6 @@ class KakaoLocalClientTest {
             assertThat(kakaoLocalClient.lookupBestPlace("불국사", "경주"))
                 .isInstanceOfSatisfying(PlaceLookup.Failed.class, failed ->
                     assertThat(failed.cause()).isEqualTo(ApiFailureCause.MALFORMED));
-            assertThatThrownBy(() -> kakaoLocalClient.findBestPlace("불국사", "경주"))
-                .as("기존 경로는 세 실패를 모두 같은 계약으로 다룬다")
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(MyCourseErrorCode.KAKAO_API_FAILED);
         }
 
         @Test

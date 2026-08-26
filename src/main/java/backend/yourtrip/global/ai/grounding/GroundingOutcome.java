@@ -37,6 +37,11 @@ public enum GroundingOutcome {
      * <p>{@link #NAME_MISMATCH}와 다른 사건이다 — 저쪽은 "다른 장소를 가져왔다"이고 이쪽은
      * "그 장소가 맞는데 카페 자리에 주유소"다. 뭉치면 5-3의 제약이 실제로 무엇을 걸렀는지
      * 측정할 수 없고, 환각률 프록시({@code name_mismatch})가 업종 불일치만큼 부풀어 오른다.
+     *
+     * <p><b>이 값은 "탈락했다"는 뜻이 아니다</b>(이슈 #147). 슬롯이 전멸하면 최후 구제로 실릴 수
+     * 있고, 그때도 결말은 여기로 센다 — <b>게이트가 발동했다는 사실은 구제 여부와 무관</b>하기
+     * 때문이다. 실제로 실린 건수는 {@code ai.grounding.relaxed{reason=category_last_resort}} 가
+     * 따로 세므로, 둘을 나누면 "걸린 것 중 몇 건을 되살렸는가"가 그대로 나온다.
      */
     CATEGORY_MISMATCH,
 

@@ -103,6 +103,15 @@ class AiCourseMetricsTest {
         }
 
         @Test
+        @DisplayName("구제가 없어도 사유별 시계열이 존재한다 — 0 과 '측정한 적 없음'을 갈라야 한다 (이슈 #147)")
+        void registersGroundingRelaxedSeries() {
+            String scrape = registry.scrape();
+
+            assertThat(scrape).contains("ai_grounding_relaxed_total");
+            assertThat(scrape).contains("reason=\"category_last_resort\"");
+        }
+
+        @Test
         @DisplayName("탈락이 없어도 사유별 시계열이 소스 두 축으로 존재한다 (이슈 #134)")
         void candidateDroppedIsRegistered() {
             // 0 등록이 없으면 "탈락이 없었다"와 "그 조합을 한 번도 안 만들었다"가 구분되지 않는다.

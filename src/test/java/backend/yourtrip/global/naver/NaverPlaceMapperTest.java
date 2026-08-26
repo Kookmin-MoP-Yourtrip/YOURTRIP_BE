@@ -97,6 +97,54 @@ class NaverPlaceMapperTest {
     }
 
     @Nested
+    @DisplayName("HTML 엔티티 디코딩 (이슈 #147)")
+    class HtmlEntities {
+
+        @Test
+        @DisplayName("회귀 — 쉼팡마씸의 &amp; 가 후보 목록에 그대로 실리지 않는다")
+        void decodesAmpersandInRealCase() {
+            assertThat(NaverPlaceMapper.normalizeTitle(
+                "<b>쉼팡마씸</b> 24시 무인카페 &amp; 4가지 식당"))
+                .isEqualTo("쉼팡마씸 24시 무인카페 & 4가지 식당");
+        }
+
+        @Test
+        @DisplayName("응답 전체를 옮길 때도 디코딩된 이름이 실린다 — 후보 이름은 여기서 한 번만 정해진다")
+        void decodesThroughToPlaces() {
+            NaverPlace place = onePlace(
+                item("호텔 아쿠아펠리스 스카이 전망대&amp;스카이 워크", "1292092884", "358363900"));
+
+            assertThat(place.name()).isEqualTo("호텔 아쿠아펠리스 스카이 전망대&스카이 워크");
+        }
+
+        @Test
+        @DisplayName("나머지 네 종류도 되돌린다")
+        void decodesRemainingEntities() {
+            assertThat(NaverPlaceMapper.decodeEntities("&lt;&gt;&quot;&#39;"))
+                .isEqualTo("<>\"'");
+        }
+
+        @Test
+        @DisplayName("&amp;amp; 를 이중 디코딩하지 않는다 — 앰퍼샌드를 마지막에 푸는 이유다")
+        void doesNotDoubleDecode() {
+            assertThat(NaverPlaceMapper.decodeEntities("&amp;lt;b&amp;gt;")).isEqualTo("&lt;b&gt;");
+        }
+
+        @Test
+        @DisplayName("이스케이프된 태그가 진짜 태그로 되살아나지 않는다 — 스트립이 먼저다")
+        void doesNotResurrectTags() {
+            assertThat(NaverPlaceMapper.normalizeTitle("가게 &lt;b&gt;강조&lt;/b&gt;"))
+                .isEqualTo("가게 <b>강조</b>");
+        }
+
+        @Test
+        @DisplayName("null은 빈 문자열이다")
+        void handlesNull() {
+            assertThat(NaverPlaceMapper.normalizeTitle(null)).isEmpty();
+        }
+    }
+
+    @Nested
     @DisplayName("seedRank — 응답 순서가 곧 인기 순위다")
     class SeedRank {
 
