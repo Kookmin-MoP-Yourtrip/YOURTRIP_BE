@@ -51,6 +51,50 @@
 | C9 | ASG 부재 시 스킵 | *(미측정)* | |
 | C10 | 최소 권한 실증 | *(미측정)* | |
 
+## 구현 단계에서 로컬로 확인한 것
+
+AWS 없이 확인할 수 있는 것은 먼저 확인했다. 아래는 실측이 아니라 **구현 검증**이며, 위 판정 결과와는 별개다.
+
+### `-plain.jar` 함정이 실재한다 (C3의 전제)
+
+`./gradlew assemble`의 산출물:
+
+| 파일 | 크기 |
+|---|---|
+| `yourtrip-0.0.1-SNAPSHOT.jar` | 113,321,795 B (boot jar) |
+| `yourtrip-0.0.1-SNAPSHOT-plain.jar` | 383,004 B |
+
+`build/libs/*.jar`는 **두 파일에 매칭된다**(`ls build/libs/*.jar | wc -l` → `2`). 이 저장소에 남아 있던 업로드 안내가 정확히 그 글롭을 쓰고 있었으므로, 실제로 잘못된 JAR이 올라갈 수 있는 상태였다. plain jar가 배포되면 인스턴스는 `no main manifest attribute`로 뜨지 못한다.
+
+워크플로의 2단 방어를 같은 명령으로 확인했다.
+
+```bash
+JAR=$(find build/libs -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' -print -quit)
+# -> build/libs/yourtrip-0.0.1-SNAPSHOT.jar
+unzip -l "$JAR" | grep -q 'BOOT-INF/'                          # 통과
+unzip -l build/libs/*-plain.jar | grep -q 'BOOT-INF/'          # 걸림 (BOOT-INF 없음)
+```
+
+1차(이름)로 걸러진 파일이 2차(구조)도 통과하고, plain jar는 2차에서 확실히 걸린다. **이름 규칙이 바뀌더라도 구조 검사가 남는다**는 것이 2단으로 둔 이유다.
+
+### terraform 구성이 유효하다
+
+```bash
+terraform -chdir=terraform/prod validate           # Success
+terraform -chdir=terraform/prod-permanent validate # Success
+terraform fmt -check                               # 두 모듈 모두 차이 없음
+```
+
+`skip_matching` 인자와 `aws_iam_openid_connect_provider`의 `thumbprint_list` 생략이 provider 5.100에서 유효함을 이 단계에서 확인했다.
+
+### 워크플로에 시크릿 참조가 없다
+
+```bash
+grep -c "secrets\." .github/workflows/deploy.yml   # 0
+```
+
+C2의 절반(워크플로 파일 쪽)은 이것으로 충족된다. 나머지 절반(`gh secret list`)은 저장소 설정이라 측정 시 확인한다.
+
 ## 항목별 확인 방법
 
 ### C1 · C2 — 인증과 시크릿
