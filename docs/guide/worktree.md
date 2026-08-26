@@ -47,6 +47,22 @@ WT="$(git rev-parse --show-toplevel)"                        # 지금 있는 워
 > [ -f "$WORKTREE_INCLUDE" ] || WORKTREE_INCLUDE="$MAIN_DIR/.worktreeinclude"
 > ```
 
+## 훅이 끝난 뒤 — terraform은 `init`이 한 번 필요하다
+
+훅은 **파일 복사까지만** 한다. terraform은 그것만으로 동작하지 않는다.
+
+state가 S3 원격 backend로 갔고(#157) provider 캐시(`.terraform/`)는 복사 대상이 아니라서, **새 worktree에서 terraform을 쓰려면 쓸 모듈마다 `init`을 한 번 돌려야 한다.**
+
+```bash
+terraform -chdir=terraform/prod-permanent init
+```
+
+- **`init` 전에는 `plan`도 `state list`도 실패한다** — "Backend initialization required" 또는 "No state file was found!"가 뜬다. 이건 state가 없다는 뜻이 아니라 **아직 원격을 안 본다는 뜻**이다.
+- **AWS 자격증명이 있어야 한다.** state가 로컬 파일이던 시절에는 자격증명 없이도 `state list` 정도는 됐지만, 이제 backend 초기화 자체가 S3 접근을 요구한다.
+- **메인 워킹트리도 같다.** `backend.tf`가 처음 들어온 브랜치를 체크아웃한 뒤 첫 실행에서 한 번 필요하다.
+
+대신 **state 파일을 손으로 복사할 일이 없어졌다.** 기억해야 할 절차가 "state 8개 복사"에서 "`init` 한 번"으로 바뀐 셈이고, 복사를 빠뜨려 낡은 state로 apply하는 사고 자체가 성립하지 않는다. 근거와 실측은 [docs/tasks/tfstate-remote-backend/](../tasks/tfstate-remote-backend/README.md)에 있다.
+
 ## 반드시 알아야 할 함정 3가지
 
 ### 1. worktree에서 수정한 gitignore 파일은 어디에도 전파되지 않는다
