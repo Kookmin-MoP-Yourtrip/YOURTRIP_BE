@@ -53,7 +53,6 @@ resource "aws_instance" "app" {
     cloudfront_domain          = var.cloudfront_domain
     cloudfront_key_pair_id     = var.cloudfront_key_pair_id
     cloudfront_distribution_id = var.cloudfront_distribution_id
-    gemini_api_key             = var.gemini_api_key
     redis_host                 = aws_elasticache_cluster.this.cache_nodes[0].address
   })
 

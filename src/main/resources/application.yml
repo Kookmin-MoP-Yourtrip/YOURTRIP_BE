@@ -165,9 +165,6 @@ cloudfront:
   # 깨지는 UX 문제를 일으킬 수 있어서다.
   signed-url-ttl-minutes: 60
 
-gemini:
-  api-key: ${GEMINI_API_KEY}
-
 # AI 코스 생성 파이프라인 전체 설정 (AiCourseProperties).
 ai:
   course:

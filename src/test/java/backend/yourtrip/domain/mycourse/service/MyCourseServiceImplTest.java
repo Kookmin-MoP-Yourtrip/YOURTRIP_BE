@@ -4,12 +4,17 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import backend.yourtrip.domain.mycourse.dto.ai.ResolvedDay;
+import backend.yourtrip.domain.mycourse.dto.ai.ResolvedPlace;
+import backend.yourtrip.domain.mycourse.dto.request.AICourseCreateRequest;
 import backend.yourtrip.domain.mycourse.dto.request.MyCourseCreateRequest;
+import backend.yourtrip.domain.mycourse.dto.response.AICourseCreateResponse;
 import backend.yourtrip.domain.mycourse.dto.response.DayScheduleResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceImageResponse;
 import backend.yourtrip.domain.mycourse.dto.response.PlaceResponse;
@@ -23,20 +28,28 @@ import backend.yourtrip.domain.mycourse.repository.DayScheduleRepository;
 import backend.yourtrip.domain.mycourse.repository.PlaceImageRepository;
 import backend.yourtrip.domain.mycourse.repository.PlaceRepository;
 import backend.yourtrip.domain.mycourse.repository.TravelCourseRepository;
+import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
+import backend.yourtrip.global.ai.candidate.CandidateSourceType;
+import backend.yourtrip.global.ai.grounding.GroundedPlace;
+import backend.yourtrip.global.ai.pipeline.AiCourseDay;
+import backend.yourtrip.global.ai.pipeline.AiCourseDraft;
+import backend.yourtrip.global.ai.pipeline.AiCoursePipeline;
+import backend.yourtrip.global.ai.pipeline.AiCoursePlace;
+import backend.yourtrip.global.ai.pipeline.CourseBrief;
+import backend.yourtrip.global.ai.route.SlotType;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService.CourseSignature;
 import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.errorCode.AiCourseErrorCode;
 import backend.yourtrip.global.exception.errorCode.CloudFrontErrorCode;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
-import backend.yourtrip.global.gemini.service.GeminiService;
-import backend.yourtrip.global.kakao.KakaoLocalClient;
 import backend.yourtrip.global.s3.service.S3Service;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.lang.reflect.Field;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -68,9 +81,7 @@ class MyCourseServiceImplTest {
     @Mock
     private CloudFrontService cloudFrontService;
     @Mock
-    private GeminiService geminiService;
-    @Mock
-    private ObjectMapper objectMapper;
+    private AiCoursePipeline aiCoursePipeline;
     @Mock
     private TravelCourseRepository travelCourseRepository;
     @Mock
@@ -81,8 +92,6 @@ class MyCourseServiceImplTest {
     private PlaceImageRepository placeImageRepository;
     @Mock
     private UploadCourseRepository uploadCourseRepository;
-    @Mock
-    private KakaoLocalClient kakaoLocalClient;
     @Mock
     private MyCourseDetailReader myCourseDetailReader;
     @Mock
@@ -106,10 +115,12 @@ class MyCourseServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        // 인자 순서는 MyCourseServiceImpl의 필드 선언 순서와 같아야 한다 — 위치 인자라
+        // 자리가 밀리면 엉뚱한 목이 주입된 채 조용히 통과할 수 있다.
         myCourseService = new MyCourseServiceImpl(
-            userService, s3Service, cloudFrontService, geminiService, objectMapper,
+            userService, s3Service, cloudFrontService, aiCoursePipeline,
             travelCourseRepository, dayScheduleRepository, placeRepository,
-            placeImageRepository, uploadCourseRepository, kakaoLocalClient,
+            placeImageRepository, uploadCourseRepository,
             myCourseDetailReader, aiCoursePersister, eventPublisher
         );
     }
@@ -321,6 +332,71 @@ class MyCourseServiceImplTest {
 
         // then
         verify(dayScheduleRepository, times(3)).save(any(DaySchedule.class));
+    }
+
+    @Test
+    @DisplayName("createAICourse - 파이프라인 산출물의 제목과 day 내 장소 순서가 그대로 저장에 전달된다")
+    void createAiCourse_PassesTitleAndOrderedPlacesToPersister() {
+        // given
+        AICourseCreateRequest request = new AICourseCreateRequest(
+            "경주", LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 2),
+            List.of(KeywordType.WALK, KeywordType.HEALING));
+
+        // 동선 순서가 뒤바뀌면 안 되므로 이름이 정렬 순서와 다른 배치를 쓴다
+        AiCourseDraft draft = new AiCourseDraft("경주 힐링 산책 코스", "고즈넉한 유적 산책", List.of(
+            new AiCourseDay(1, LocalTime.of(10, 0), LocalTime.of(23, 59), List.of(
+                aiCoursePlace("첨성대", LocalTime.of(10, 0)),
+                aiCoursePlace("동궁과 월지", LocalTime.of(11, 30)))),
+            new AiCourseDay(2, LocalTime.of(10, 0), LocalTime.of(23, 59), List.of(
+                aiCoursePlace("불국사", LocalTime.of(10, 0))))));
+
+        given(userService.getCurrentUserId()).willReturn(OWNER_ID);
+        given(aiCoursePipeline.generate(any(CourseBrief.class))).willReturn(draft);
+        given(aiCoursePersister.save(any(), anyString(), any(), any())).willReturn(COURSE_ID);
+
+        // when
+        AICourseCreateResponse response = myCourseService.createAICourse(request);
+
+        // then
+        assertThat(response.myCourseId()).isEqualTo(COURSE_ID);
+
+        ArgumentCaptor<List<ResolvedDay>> daysCaptor = ArgumentCaptor.captor();
+        verify(aiCoursePersister).save(any(), eq("경주 힐링 산책 코스"),
+            daysCaptor.capture(), eq(OWNER_ID));
+
+        List<ResolvedDay> saved = daysCaptor.getValue();
+        assertThat(saved).hasSize(2);
+        assertThat(saved.get(0).places())
+            .extracting(ResolvedPlace::placeName)
+            .containsExactly("첨성대", "동궁과 월지"); // 순서까지 단언한다 (8-3)
+    }
+
+    @Test
+    @DisplayName("createAICourse - 파이프라인이 hard fail하면 예외가 전파되고 저장은 호출되지 않는다")
+    void createAiCourse_PipelineFailure_PropagatesWithoutSaving() {
+        // given
+        AICourseCreateRequest request = new AICourseCreateRequest(
+            "경주", LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 2),
+            List.of(KeywordType.HEALING));
+
+        given(userService.getCurrentUserId()).willReturn(OWNER_ID);
+        given(aiCoursePipeline.generate(any(CourseBrief.class)))
+            .willThrow(new BusinessException(AiCourseErrorCode.AI_GROUNDING_FAILED));
+
+        // when & then
+        assertThatThrownBy(() -> myCourseService.createAICourse(request))
+            .isInstanceOf(BusinessException.class)
+            .extracting(e -> ((BusinessException) e).getErrorCode())
+            .isEqualTo(AiCourseErrorCode.AI_GROUNDING_FAILED);
+
+        verify(aiCoursePersister, never()).save(any(), anyString(), any(), any());
+    }
+
+    private AiCoursePlace aiCoursePlace(String name, LocalTime startTime) {
+        return new AiCoursePlace(
+            new GroundedPlace(name, SlotType.ATTRACTION, 35.83, 129.22, "경북 경주시",
+                null, CandidateSourceType.SEEDED, null),
+            startTime, 90);
     }
 
     private DaySchedule daySchedule() {

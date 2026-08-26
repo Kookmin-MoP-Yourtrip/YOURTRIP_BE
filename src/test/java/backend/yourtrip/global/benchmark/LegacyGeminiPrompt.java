@@ -1,40 +1,26 @@
-package backend.yourtrip.global.gemini.service;
+package backend.yourtrip.global.benchmark;
 
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
-import com.google.genai.Client;
-import com.google.genai.types.GenerateContentConfig;
-import com.google.genai.types.GenerateContentResponse;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
 
-@Service
-@RequiredArgsConstructor
-public class GeminiService {
+/**
+ * 구 Gemini 단일 호출 경로의 프롬프트 원문 — <b>3점 비교의 첫 측정점(25.6%)을 재현하는 기준</b>이다.
+ *
+ * <p>원본은 {@code GeminiService.buildPrompt}였으나 8-4에서 {@code global/gemini} 패키지가
+ * 삭제되면서, 하네스가 baseline을 언제든 재측정할 수 있도록 프롬프트를 <b>글자 그대로</b> 이곳으로
+ * 옮겼다(STEP-8 착수 결정 2). 문자 하나라도 바뀌면 "모델 교체 효과" 측정의 통제 변수가 무너지므로
+ * <b>수정 금지</b>다.
+ *
+ * <p>프로덕션 의존은 {@link KeywordType#buildKeywordsJson}뿐이며 이는 업로드 코스 도메인
+ * 소유라 계속 존재한다. google-genai SDK 의존은 없다 — baseline 측정은 이 문자열을
+ * {@code OpenAiLlmClient}로 보낸다.
+ */
+final class LegacyGeminiPrompt {
 
-    private final Client geminiClient;
-
-    public String generateAICourse(String location, int days, List<KeywordType> keywords) {
-        GenerateContentResponse response = geminiClient.models.generateContent("gemini-2.5-flash",
-            buildPrompt(location, days, keywords), getGenerationConfig());
-
-        return response.text();
+    private LegacyGeminiPrompt() {
     }
 
-    /**
-     * 단일 호출 구조의 프롬프트를 조립한다.
-     *
-     * <p><b>이 메서드가 {@code static public}인 이유는 벤치마크 하네스 때문이다.</b>
-     * 2단계 baseline 재측정({@code AiHallucinationBaselineTest})은 "모델만 Gemini에서 OpenAI로
-     * 바꿨을 때 환각률이 어떻게 달라지는가"를 재는데, 그러려면 <b>프롬프트가 글자 하나까지
-     * 같아야</b> 한다. 하네스가 이 문자열을 복사해 가면 원본과 drift가 생겨 측정이 "모델 교체
-     * 효과"를 재는 것이 아니게 된다. {@code KakaoConfig.buildKakaoWebClient}가 같은 이유로
-     * 만들어진 선례다.
-     *
-     * <p>이 프롬프트는 8단계에서 통째로 사라진다 — 스키마·형식 강제는 구조화 출력이, 시간 배치와
-     * 동선은 {@code RouteOptimizer}가 맡게 되므로 "취향과 컨셉"만 남는다(프롬프트 전략).
-     */
-    public static String buildPrompt(String location, int days, List<KeywordType> keywords) {
+    static String buildPrompt(String location, int days, List<KeywordType> keywords) {
         return """
              당신은 한국인 여행자를 위한 전문 여행 코스 플래너 AI입니다.
              사용자의 선호도와 여행 정보를 바탕으로, 하루 단위로 잘 쪼개진 동선 최적화 여행 일정을 설계하세요.
@@ -102,7 +88,7 @@ public class GeminiService {
             15. 같은 day 안에서 startTime끼리 겹치지 않도록 하세요.
             16. 모든 필드에는 null 및 빈 문자열("")이 허용되지 않습니다.
             17. 모든 문자열 값 안에서는 큰따옴표(")를 사용하지 말고, 필요한 경우 작은따옴표(')를 사용하세요.
-                        
+
             "placeName"은 반드시 실제 존재하는 업소의 공식 이름만 제공하라.
             다음 규칙을 반드시 지켜라:
 
@@ -135,16 +121,4 @@ public class GeminiService {
             KeywordType.buildKeywordsJson(keywords),
             days);
     }
-
-    private GenerateContentConfig getGenerationConfig() {
-        return GenerateContentConfig.builder()
-            .temperature(0.3f)
-            .topK(40f)
-            .topP(0.85f)
-            .maxOutputTokens(4096)
-            .candidateCount(1)
-            .responseMimeType("application/json")
-            .build();
-    }
-
 }

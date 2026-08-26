@@ -1195,10 +1195,9 @@ public interface MyCourseControllerSpec {
         - 사용자가 원하는 여행지, 여행 일자, 태그들을 입력하면 AI가 이를 바탕으로 최적의 여행 코스를 생성합니다.
         - 생성된 코스는 내 코스 목록에서 확인할 수 있으며, 필요에 따라 수정 및 삭제가 가능합니다.
         - 생성된 나의 코스 ID가 반환됩니다.
-        - ai가 생성한 장소를 바탕으로 백엔드 내부에서 카카오맵 검색을 통해 위경도와 placeUrl을 받아와서 나의 코스에 저장하는 구조인데
-            간혹 카카오맵에서 장소 검색 결과가 없는 경우 latitude, longitude, placeUrl이 null로 저장될 수 있습니다. (수기로 장소 등록한 것이랑 똑같이 처리하면 될듯)
-        - AI가 코스를 생성하는데 약간의 시간이 소요됩니다.
-        - 종종 코스 생성에 실패하는 경우가 생기는데 다시 시도하면 성공할 확률이 높습니다.
+        - 모든 장소는 실존 검증을 거쳐 실좌표(latitude, longitude)와 함께 저장됩니다.
+            다만 placeUrl은 검증 결과에 따라 null로 저장될 수 있습니다. (수기로 장소 등록한 것이랑 똑같이 처리하면 될듯)
+        - AI가 코스를 생성하는데 약간의 시간이 소요됩니다. (최대 30초)
         ### 제약조건
         - 요청 값
             - 여행지(location): 필수 입력
@@ -1206,7 +1205,8 @@ public interface MyCourseControllerSpec {
             - 선호 활동(preferredActivities): 선택 입력
         ### ⚠ 예외상황
         - `INVALID_REQUEST_FIELD(400)`: 필수 필드 값 누락, 등록되지 않는 태그 값, 날짜 범위 오류 등
-        - `JSON_TRANSFORMATION_FAILED(503)`: AI 코스 생성에 실패했을 때
+        - `AI_GROUNDING_FAILED(503)`: 실존이 검증된 장소를 하나도 확보하지 못했을 때 (재시도 가능)
+        - `AI_COURSE_TIMEOUT(504)`: 시간 예산(30초) 안에 코스를 완성하지 못했을 때 (재시도 가능)
         """
     )
     AICourseCreateResponse createAICourse(AICourseCreateRequest request);

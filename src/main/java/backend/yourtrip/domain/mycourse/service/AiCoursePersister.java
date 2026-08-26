@@ -13,7 +13,6 @@ import backend.yourtrip.domain.mycourse.repository.PlaceRepository;
 import backend.yourtrip.domain.mycourse.repository.TravelCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
-import backend.yourtrip.global.gemini.dto.GeminiCourseDto;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -48,15 +47,18 @@ public class AiCoursePersister {
     /**
      * 외부 I/O가 모두 끝난 상태에서 호출된다 — 이 트랜잭션 안에는 DB 작업만 있다.
      *
+     * <p>LLM 산출물에서 저장에 필요한 값은 코스 제목뿐이라 산출물 DTO가 아니라
+     * {@code title} 문자열을 받는다 — 저장 계층이 LLM 벤더의 응답 형태를 모르게 유지한다.
+     *
      * @return 생성된 코스 ID
      */
     @Transactional
-    public Long save(AICourseCreateRequest request, GeminiCourseDto courseDto,
+    public Long save(AICourseCreateRequest request, String title,
         List<ResolvedDay> resolvedDays, Long userId) {
 
         User user = userService.getUser(userId);
         TravelCourse travelCourse = travelCourseRepository.save(
-            TravelCourseMapper.toAICourseEntity(request, courseDto, user));
+            TravelCourseMapper.toAICourseEntity(request, title, user));
 
         for (ResolvedDay resolvedDay : resolvedDays) {
             DaySchedule daySchedule = dayScheduleRepository.save(

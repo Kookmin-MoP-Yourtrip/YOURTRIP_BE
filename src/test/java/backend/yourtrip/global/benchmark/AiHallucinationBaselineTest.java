@@ -13,10 +13,8 @@ import backend.yourtrip.global.ai.exception.LlmParseException;
 import backend.yourtrip.global.ai.exception.LlmTransportException;
 import backend.yourtrip.global.ai.exception.LlmTruncatedResponseException;
 import backend.yourtrip.global.ai.openai.OpenAiLlmClient;
-import backend.yourtrip.global.gemini.dto.GeminiCourseDto;
-import backend.yourtrip.global.gemini.dto.GeminiCourseDto.DayScheduleDto;
-import backend.yourtrip.global.gemini.dto.GeminiCourseDto.PlaceDto;
-import backend.yourtrip.global.gemini.service.GeminiService;
+import backend.yourtrip.global.benchmark.LegacyGeminiCourseDto.DayScheduleDto;
+import backend.yourtrip.global.benchmark.LegacyGeminiCourseDto.PlaceDto;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
 import backend.yourtrip.global.kakao.PlaceLookup;
 import backend.yourtrip.global.kakao.PlaceMatchScorer;
@@ -122,8 +120,9 @@ import org.junit.jupiter.api.Test;
  * 호출</b>(이름 게이트·점수·후보 수 5가 자동으로 따라온다), 점수 구간, 층화 추출 시드 42,
  * <b>그리고 프롬프트 95줄 원문</b>. 특히 json_schema 판에서도 프롬프트의
  * 스키마 구간을 빼지 않는다 — 빼면 V2 외에 프롬프트까지 변수가 되어 측정이 무의미해진다
- * (프롬프트 슬림화는 6단계의 일이다). 프롬프트는 복사하지 않고
- * {@link GeminiService#buildPrompt}를 그대로 호출해 drift를 원천 차단한다.
+ * (프롬프트 슬림화는 6단계의 일이다). 프롬프트는 {@link LegacyGeminiPrompt#buildPrompt}를
+ * 호출한다 — 원래는 {@code GeminiService.buildPrompt}를 직접 불러 drift를 차단했으나, 8-4에서
+ * {@code global/gemini}가 삭제되며 원문이 <b>바이트 동일성 검증을 거쳐</b> 하네스 소유로 이관됐다.
  *
  * <p><b>의미 재시도는 끈다</b>({@code semantic-attempts: 1}). 깨진 응답을 한 번 더 물어서 고치면
  * 파싱 실패율이 "재시도 후"의 값이 되는데, Gemini 측정값에는 그런 보정이 없었다.
@@ -156,7 +155,7 @@ class AiHallucinationBaselineTest {
     private static final String SCHEMA_RESOURCE = "/schemas/single-call-course.json";
 
     /**
-     * 프롬프트 원문이 요구하는 출력 상한과 맞춘다({@code GeminiService.getGenerationConfig}의
+     * 프롬프트 원문이 요구하는 출력 상한과 맞춘다(구 {@code GeminiService.getGenerationConfig}의
      * {@code maxOutputTokens}). 이 값을 바꾸면 절단 발생률이 달라져 측정이 비교 불가능해진다.
      */
     private static final int MAX_OUTPUT_TOKENS = 4096;
@@ -401,12 +400,12 @@ class AiHallucinationBaselineTest {
                 spec.region().tier(), spec.keywordSet().id());
 
             parser.reset();
-            GeminiCourseDto dto;
+            LegacyGeminiCourseDto dto;
             try {
                 dto = llmClient.generate(new LlmCall<>(AGENT_NAME, null,
-                    GeminiService.buildPrompt(spec.region().name(), TRIP_DAYS,
+                    LegacyGeminiPrompt.buildPrompt(spec.region().name(), TRIP_DAYS,
                         spec.keywordSet().keywords()),
-                    GeminiCourseDto.class, responseSchema));
+                    LegacyGeminiCourseDto.class, responseSchema));
                 consecutiveCallFailures = 0;
             } catch (LlmTruncatedResponseException e) {
                 // 구조화 출력으로 막히지 않는 실패다. finishReason 과 수신 길이를 남겨야
@@ -475,7 +474,7 @@ class AiHallucinationBaselineTest {
 
     // ── 파이프라인 단계 재현 ────────────────────────────────────────────────────
 
-    private List<PlaceRow> groundPlaces(RequestSpec spec, GeminiCourseDto dto,
+    private List<PlaceRow> groundPlaces(RequestSpec spec, LegacyGeminiCourseDto dto,
         KakaoLocalClient kakaoLocalClient) {
 
         List<PlaceRow> rows = new ArrayList<>();
@@ -571,7 +570,7 @@ class AiHallucinationBaselineTest {
 
     // ── 부가 지표 집계 ─────────────────────────────────────────────────────────
 
-    private RequestOutcome summarize(RequestSpec spec, GeminiCourseDto dto, int totalPlaces,
+    private RequestOutcome summarize(RequestSpec spec, LegacyGeminiCourseDto dto, int totalPlaces,
         int responseBytes) {
         List<DayScheduleDto> days = dto.daySchedules() == null ? List.of() : dto.daySchedules();
 
@@ -622,7 +621,7 @@ class AiHallucinationBaselineTest {
      *   <li>{@code semantic-attempts: 1} — 재시도가 깨진 응답을 고쳐버리면 파싱 실패율이
      *       "재시도 후" 값이 되는데, Gemini 측정에는 그런 보정이 없었다</li>
      *   <li>{@code temperature 0.3} / {@code max-output-tokens 4096} — 프롬프트 원문이 쓰던
-     *       {@code GeminiService.getGenerationConfig()} 값 그대로다. 모델만 바뀌어야 한다</li>
+     *       구 {@code GeminiService.getGenerationConfig()} 값 그대로다. 모델만 바뀌어야 한다</li>
      * </ul>
      * 전송 재시도는 넉넉히 둔다 — 429로 측정이 중단되면 그날 배치를 다시 돌려야 한다.
      */

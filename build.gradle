@@ -95,7 +95,6 @@ dependencies {
     implementation platform('software.amazon.awssdk:bom:2.51.0') // 최신 안정판으로 맞추기
     implementation 'software.amazon.awssdk:s3'
     implementation 'software.amazon.awssdk:cloudfront' // CloudFrontUtilities (Signed URL 발급), CloudFrontClient (invalidation)
-    implementation 'com.google.genai:google-genai:1.28.0'
 
     // AI 코스 생성 멀티 에이전트 파이프라인용 LLM 전송 계층.
     // 2.0.x가 아니라 1.1.x인 이유: Spring AI 2.0은 Spring Boot 4.0/4.1을 요구하는데 이 레포는

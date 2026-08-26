@@ -191,8 +191,3 @@ variable "cloudfront_distribution_id" {
   description = "기존 terraform/의 output cloudfront_distribution_id 값을 그대로 사용."
   type        = string
 }
-
-variable "gemini_api_key" {
-  type      = string
-  sensitive = true
-}

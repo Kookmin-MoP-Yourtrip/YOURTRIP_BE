@@ -27,8 +27,8 @@ import org.springframework.util.StreamUtils;
  * 실제로는 비어 있는" 어긋남이 생긴다. 어느 쪽이든 빈 생성이 실패하므로 기동 실패라는 효과는 같다.
  *
  * <h2>플레이스홀더는 명명 기반 {@code {{name}}}</h2>
- * 현재 {@code GeminiService}는 {@code .formatted(location, days, keywordsJson, days)}처럼 <b>같은 값을
- * 두 번 넘기고 순서에 의존</b>한다 — 프롬프트를 편집하다 문단 하나만 옮겨도 조용히 깨진다. 명명 기반은
+ * 구 {@code GeminiService}(8-4에서 삭제)는 {@code .formatted(location, days, keywordsJson, days)}처럼
+ * <b>같은 값을 두 번 넘기고 순서에 의존</b>했다 — 프롬프트를 편집하다 문단 하나만 옮겨도 조용히 깨진다. 명명 기반은
  * 그 결합을 끊고, 아래 세 규칙이 나머지 실수를 막는다.
  * <ul>
  *   <li><b>표기가 틀린 자리는 기동 시점에 잡는다</b> — {@code {{ location }}}처럼 패턴을 벗어난 표기는

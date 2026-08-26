@@ -51,7 +51,6 @@ jwt_secret     = ""
 mail_email      = ""
 mail_password    = ""
 kakao_api_key     = ""
-gemini_api_key      = ""
 
 s3_bucket                  = ""
 aws_access_key              = ""
