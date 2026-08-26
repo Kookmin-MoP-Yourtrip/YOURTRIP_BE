@@ -1,0 +1,18 @@
+# 이 파일을 terraform.tfvars로 복사한 뒤 값을 채운다.
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# terraform.tfvars는 .gitignore 대상이다. 이 example 파일만 git이 추적한다.
+
+# 가비아에서 구매한 도메인(apex). www나 http를 붙이지 않는다.
+# 예: "yourtrip-example.com"
+domain_name = ""
+
+# 배포 JAR을 둘 S3 버킷 이름. S3 버킷 이름은 전역에서 유일해야 하므로 이미 쓰이는 이름이면
+# apply가 실패한다. 계정 ID나 임의 접미사를 붙여 충돌을 피한다.
+# 예: "yourtrip-prod-artifacts-520426835144"
+artifact_bucket_name = ""
+
+# 아래는 기본값이 있어 대개 그대로 둔다.
+# aws_region                    = "ap-northeast-2"   # terraform/prod/와 반드시 일치해야 한다
+# name_prefix                   = "yourtrip-prod"
+# artifact_bucket_force_destroy = false
