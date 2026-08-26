@@ -7,6 +7,31 @@
 #  - AmazonSSMManagedInstanceCore: Session Manager 접속과 RDS로의 포트포워딩에 필요하다.
 #    AL2023 AMI는 SSM Agent가 이미 설치·실행 중이라 이 권한만 있으면 바로 동작한다.
 #  - (커스텀) 배포 아티팩트 읽기 + 앱 시크릿 읽기: 아래 참고.
+# Auto Scaling이 ALB 타깃 그룹을 검증하고 인스턴스를 띄우려면 서비스 연결 역할이 있어야 한다.
+# 보통 계정에서 ASG를 처음 만들 때 AWS가 자동 생성하지만, 그 생성이 비동기라 첫 apply가
+# 먼저 실패한다 — 실제로 이 저장소에서 겪었다:
+#
+#   Access denied when attempting to assume role .../AWSServiceRoleForAutoScaling.
+#   Validating load balancer configuration failed.
+#
+# 재시도하면 그 사이 역할이 만들어져 통과하므로 "한 번 실패하고 다시 하면 되는" 문제로 보이지만,
+# 이 저장소를 clone해 자기 계정에 처음 apply하는 사람은 그대로 같은 실패를 겪는다. IaC가
+# "받아서 그대로 돌리면 뜬다"를 만족하려면 여기서 보장해야 한다.
+#
+# 이미 역할이 있는 계정에서는 생성이 InvalidInput(이름 중복)으로 실패하므로, 존재 여부를
+# 조회해 없을 때만 만든다. 있는 경우 terraform은 이 역할을 관리하지 않고 destroy도 하지 않는다.
+data "aws_iam_roles" "autoscaling_service_linked" {
+  name_regex  = "AWSServiceRoleForAutoScaling"
+  path_prefix = "/aws-service-role/autoscaling.amazonaws.com/"
+}
+
+resource "aws_iam_service_linked_role" "autoscaling" {
+  count = length(data.aws_iam_roles.autoscaling_service_linked.names) == 0 ? 1 : 0
+
+  aws_service_name = "autoscaling.amazonaws.com"
+  description      = "Managed by terraform/prod. Required for ASG to validate ALB target groups."
+}
+
 data "aws_iam_policy_document" "ec2_assume_role" {
   statement {
     actions = ["sts:AssumeRole"]

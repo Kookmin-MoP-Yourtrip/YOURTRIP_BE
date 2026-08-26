@@ -126,6 +126,10 @@ resource "aws_launch_template" "app" {
 resource "aws_autoscaling_group" "app" {
   name = "${var.name_prefix}-asg"
 
+  # 서비스 연결 역할이 먼저 있어야 ALB 타깃 그룹 검증이 통과한다. 역할이 이미 있는 계정에서는
+  # iam.tf의 리소스가 count = 0이라 이 depends_on은 빈 리스트를 가리키며 아무 제약도 걸지 않는다.
+  depends_on = [aws_iam_service_linked_role.autoscaling]
+
   # 앱 인스턴스는 primary 한 AZ에만 둔다 — RDS·ElastiCache와 같은 AZ여야 하기 때문이다.
   # ALB는 두 AZ에 걸쳐 있지만 타깃은 한 AZ에 모인다. AZ 장애에 그대로 노출되는 구조이며,
   # 지연·실측 재현성을 택한 결과로 설계 문서에 한계로 적혀 있다.

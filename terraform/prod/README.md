@@ -105,6 +105,70 @@ aws ec2 describe-instances --filters "Name=tag:Project,Values=yourtrip" \
   "Name=instance-state-name,Values=running,stopped" --query 'Reservations[].Instances[].InstanceId'
 ```
 
+## 트러블슈팅
+
+### apply 중 네트워크가 끊기면 멀쩡한 RDS가 tainted로 표시된다
+
+**증상**: apply가 아래처럼 실패한다.
+
+```
+Error: waiting for RDS DB Instance (...) create: ... dial tcp: lookup rds.ap-northeast-2.amazonaws.com: no such host
+Error: waiting for ElastiCache Cache Cluster (...) create: ... UnknownError
+```
+
+**무슨 일이 벌어진 것인가**: 생성 요청은 이미 AWS에 도달했고 리소스는 정상적으로 만들어지는 중이다. terraform이 **완료를 확인하지 못했을 뿐**인데, 그 경우 해당 리소스를 `tainted`로 표시한다.
+
+**그대로 다시 apply하면 안 된다.** plan이 이렇게 나온다.
+
+```
+# aws_db_instance.this is tainted, so must be replaced
+Plan: 5 to add, 0 to change, 2 to destroy.
+```
+
+정상 동작 중인 DB를 지우고 다시 만든다는 뜻이다. RDS 재생성은 5분 이상 걸리고, 데이터가 있었다면 함께 사라진다.
+
+**대응**: 실제 상태를 먼저 확인한다.
+
+```bash
+aws rds describe-db-instances --query "DBInstances[].{ID:DBInstanceIdentifier,Status:DBInstanceStatus}" --output table
+aws elasticache describe-cache-clusters --query "CacheClusters[].{ID:CacheClusterId,Status:CacheClusterStatus}" --output table
+```
+
+`available`이면 리소스는 멀쩡하므로 taint만 해제한다.
+
+```bash
+cp terraform.tfstate terraform.tfstate.pre-untaint-bak
+terraform untaint aws_db_instance.this
+terraform untaint aws_elasticache_cluster.this
+terraform plan -out=tfplan        # destroy가 0인지 반드시 확인
+```
+
+실제로 `creating` 상태로 멈춰 있거나 `failed`라면 그때는 taint가 맞으므로 그대로 재생성한다.
+
+### ASG가 인스턴스를 띄우지 못하고 계속 교체한다
+
+타깃이 `unhealthy` → 인스턴스 교체 → 다시 `unhealthy`가 반복되면 앱이 기동하지 못하는 것이다. 먼저 **자동 교체를 멈춰야** 로그를 볼 시간이 생긴다.
+
+```bash
+aws autoscaling suspend-processes --auto-scaling-group-name yourtrip-prod-asg \
+  --scaling-processes ReplaceUnhealthy HealthCheck
+```
+
+이건 형상이 아니라 실행 상태만 바꾸는 조작이라 drift가 아니다. 진단이 끝나면 반드시 되돌린다.
+
+```bash
+aws autoscaling resume-processes --auto-scaling-group-name yourtrip-prod-asg
+```
+
+진단은 SSM으로 인스턴스에 들어가지 않고도 할 수 있다.
+
+```bash
+aws ssm send-command --instance-ids <id> --document-name AWS-RunShellScript \
+  --parameters 'commands=["grep -oE \"^[A-Z_]+\" /opt/app/.env | sort | tr \"\\n\" \" \"","journalctl -u yourtrip-app -n 40 --no-pager"]'
+```
+
+`.env`에 시크릿 8개가 있는지부터 본다. 없으면 user-data의 SSM 조회 구간이 실패한 것이다.
+
 ## 알아둬야 할 것
 
 - **AZ가 셋 다 같아야 한다.** App EC2·RDS·ElastiCache를 `availability_zone_primary` 하나로 고정한다. 부하테스트 환경에서 ElastiCache만 다른 AZ에 떨어져 Redis 명령 지연 바닥값이 0.2~0.4ms에서 **1.2ms로 굳은 사고**가 있었다(`elasticache.tf` 주석, 커밋 `7cbef86`). 그 대가로 앱은 단일 AZ에 묶인다 — ALB만 2 AZ에 걸쳐 있다.
