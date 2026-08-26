@@ -22,3 +22,8 @@ output "artifact_bucket_arn" {
   description = "terraform/prod/의 EC2 IAM 정책이 s3:GetObject를 허용할 대상 ARN (참고/디버깅용)"
   value       = aws_s3_bucket.artifacts.arn
 }
+
+output "github_actions_role_arn" {
+  description = "CD 워크플로가 assume할 역할. GitHub 저장소 변수 AWS_ROLE_ARN에 넣는다(비밀이 아니므로 secret이 아니라 variable이다)."
+  value       = aws_iam_role.github_actions.arn
+}
