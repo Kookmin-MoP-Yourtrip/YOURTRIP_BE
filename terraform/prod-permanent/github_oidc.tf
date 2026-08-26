@@ -128,10 +128,13 @@ data "aws_iam_policy_document" "github_actions_deploy" {
     resources = [local.artifact_key_parameter_arn]
   }
 
-  # CancelInstanceRefresh는 워크플로가 폴링 타임아웃에 걸렸을 때 뒷정리에 쓴다.
+  # 취소 권한은 주지 않는다. 폴링이 타임아웃해도 워크플로는 refresh를 그대로 두고 job만
+  # 실패시킨다 — 취소하면 ASG가 용량을 줄이면서 건강한 인스턴스를 종료할 수 있다는 것이
+  # 실측으로 확인됐다(docs/tasks/cd-pipeline/verification.md). 사람이 콘솔에서 판단해
+  # 취소해야 할 때는 운영자 자격증명을 쓴다.
   statement {
     sid       = "TriggerInstanceRefresh"
-    actions   = ["autoscaling:StartInstanceRefresh", "autoscaling:CancelInstanceRefresh"]
+    actions   = ["autoscaling:StartInstanceRefresh"]
     resources = [local.asg_arn_pattern]
   }
 

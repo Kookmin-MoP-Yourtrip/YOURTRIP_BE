@@ -127,6 +127,8 @@ terraform -chdir=terraform/prod output -raw current_artifact_key
 
 `min_healthy 100`이라 **새 인스턴스가 healthy가 되기 전에는 기존 것을 죽이지 않는다.** 즉 배포가 실패해도 이전 버전이 계속 서비스한다. 급하지 않다.
 
+> ⚠️ **진행 중인 instance refresh를 취소하지 않는다.** 취소하면 교체를 위해 늘어나 있던 용량이 원래대로 줄어드는데, ASG는 줄일 대상을 **건강 여부와 무관하게** 가장 오래된 인스턴스로 고른다. 그게 유일하게 살아 있던 정상 인스턴스일 수 있다 — 실제로 그래서 **3분 53초 서비스가 끊긴 적이 있다**([verification.md](../tasks/cd-pipeline/verification.md)의 "마주친 문제" 2번). 워크플로도 타임아웃 때 취소하지 않고 job만 실패시킨다. 정리하려면 **취소가 아니라 롤백**(4절)을 쓴다 — 정상 SHA로 새 refresh를 걸면 이전 것은 자연히 대체된다.
+
 원인을 본다.
 
 ```bash
@@ -204,7 +206,7 @@ tr '\0' ' ' < /proc/$(systemctl show -p MainPID --value yourtrip-app)/cmdline; e
 |---|---|
 | 아티팩트 버킷 `app/` 아래에 쓰기 | 그 밖의 경로·버킷에 쓰기, 삭제 |
 | `artifact_key` 파라미터 읽기·쓰기 | 시크릿(`/yourtrip/prod/env/*`) 접근 |
-| instance refresh 시작·취소·조회 | ASG·Launch Template 형상 변경 |
+| instance refresh 시작·조회 | ASG·Launch Template 형상 변경, **진행 중인 refresh 취소** |
 | 타깃 헬스 조회 | 인스턴스 원격 명령 실행(`ssm:SendCommand`) |
 
 **인프라의 모양은 terraform만 바꾼다**([CLAUDE.md](../../CLAUDE.md))는 규칙을 IAM으로 강제한 결과다. 배포 파이프라인이 인프라를 바꿀 수 있으면 state가 모르는 변경이 생긴다.
