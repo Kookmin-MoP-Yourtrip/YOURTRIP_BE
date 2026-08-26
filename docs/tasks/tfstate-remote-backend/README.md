@@ -82,7 +82,7 @@ terraform -chdir=terraform/prod-permanent output -raw tfstate_bucket_name
 |---|---|---|
 | V1 | state가 원격에 있다 | ✅ `root/`·`prod-permanent/` 두 키 생성. **`prod`·`loadtest`는 객체가 생기지 않았다** — 리소스 0인 빈 state는 원격에 쓰이지 않는다. 다음 apply 시점에 생성된다 |
 | V2 | 리소스를 잃지 않았다 | ✅ 루트는 전후 `state list` **차이 0**. `prod-permanent`는 이번에 추가한 버킷 리소스 4개만 증가(15 → 19) |
-| V3 | 형상이 바뀌지 않았다 | ✅ `prod-permanent` `No changes`. 루트는 변경이 잡혔으나 **마이그레이션과 무관한 기존 drift**였다(아래) |
+| V3 | 형상이 바뀌지 않았다 | ✅ `prod-permanent` `No changes`. 루트도 **기존 drift를 고친 뒤 `No changes`**(아래) — 그 drift는 마이그레이션과 무관하게 원래 있던 것이다 |
 | V4 | 잠금이 동작한다 | ✅ apply 중 `.tflock` 객체(253B) 생성 확인. 동시 apply가 `Error acquiring the state lock` / **`StatusCode: 412`** 로 거부됨 |
 | V5 | 수동 복사가 사라졌다 | ✅ 로컬 state 파일을 전부 무력화한 뒤에도 `state list`가 원격에서 정상 동작(루트 19, prod-permanent 19) |
 | V6 | 버저닝이 백업을 대체한다 | ✅ 객체 버전 누적 확인 |
@@ -100,7 +100,19 @@ CR을 제거하면 두 값은 **완전히 동일**하다. 즉 키 자체는 같�
 
 **마이그레이션이 원인이 아니다** — 마이그레이션 이전 백업(`terraform.tfstate.pre-migrate-bak`)의 값도 178자·CR 없음으로 동일했다. worktree와 메인의 `.pem` 해시도 같아, 이 drift는 **어느 워킹트리에서 apply해도 재현된다.**
 
-이 상태로 루트 모듈에 apply하면 CloudFront 서명 키가 교체되고 **기존에 발급된 Signed URL이 전부 무효화된다.** 이번 작업 범위 밖이라 고치지 않았고, 별도 이슈로 다룬다.
+그대로 두면 루트 모듈에 apply하는 순간 CloudFront 서명 키가 교체되고 **기존에 발급된 Signed URL이 전부 무효화된다.** state 이전과는 다른 문제지만 여기서 발견했고 그대로 두면 다음 apply에서 사고가 나므로, 같은 브랜치에서 고쳤다.
+
+**고친 방식 — `.pem` 파일이 아니라 코드를 고쳤다.** [cloudfront.tf](../../../terraform/cloudfront.tf)에서 넘기기 전에 줄바꿈을 정규화한다:
+
+```hcl
+encoded_key = replace(file(var.cloudfront_public_key_path), "\r\n", "\n")
+```
+
+파일 쪽을 LF로 바꾸는 편이 단순해 보이지만 택하지 않았다. `.pem`은 `.gitignore` 대상이라 **파일 수정은 그 워킹트리에만 남고 커밋으로 전파되지 않는다.** 이 저장소에는 worktree가 20개 넘게 있고 각각 CRLF 사본을 갖고 있어, 한 곳을 고쳐도 나머지에서 같은 plan이 다시 뜬다. 키를 새로 만들면 또 재발한다. 코드에서 정규화하면 파일이 어떤 줄바꿈이든 결과가 같아지고, 그 보장이 커밋으로 모두에게 전달된다.
+
+`file()`로 읽는 파일 여섯 개를 전수 확인했는데 **CRLF인 것은 이 `.pem` 하나뿐**이었다(SSH 공개키 2개, systemd 유닛, JVM 옵션, instance refresh JSON은 모두 LF). 그래서 같은 수정을 다른 곳에 퍼뜨릴 필요가 없었다.
+
+수정 후 루트 모듈 `plan`이 **`No changes`(exit 0)** 로 돌아온 것을 확인했다.
 
 ## 로컬 state 파일의 처리
 
