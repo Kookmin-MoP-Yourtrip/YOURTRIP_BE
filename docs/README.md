@@ -46,7 +46,7 @@
 
 | 문서 | 내용 |
 |---|---|
-| [tasks/prod-infra-iac/](tasks/prod-infra-iac/README.md) | 운영 인프라를 ALB + ASG + RDS + ElastiCache로 IaC화 — 수명 기준 state 분리, 시크릿의 SSM 이관, 요청 수 기반 스케일 임계값 산정 |
+| [tasks/prod-infra-iac/](tasks/prod-infra-iac/README.md) | 운영 인프라를 ALB + ASG + RDS + ElastiCache로 IaC화 — 수명 기준 state 분리, 시크릿의 SSM 이관, 요청 수 기반 스케일 임계값 산정. 사전 등록한 판정 기준 12개를 실측으로 전부 통과([verification.md](tasks/prod-infra-iac/verification.md))하고 스케일아웃까지 실증 |
 
 ### 커넥션 풀 / presigned URL 병목
 

@@ -1,6 +1,6 @@
 # 운영 인프라 IaC화 — 수명이 다른 리소스는 state를 나눈다
 
-> [#119](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/119)의 설계·판정 기준 기록이다. 아래 판정 기준은 **구축 전에 못 박은 것**이고, 실제 검증 결과는 환경을 띄운 뒤 `verification.md`에 따로 기록한다.
+> [#119](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/119)의 설계·판정 기준 기록이다. 아래 판정 기준은 **구축 전에 못 박은 것**이고, 실제 검증 결과는 [verification.md](verification.md)에 있다(12개 전부 통과).
 >
 > **왜 하는가**: 운영 서버가 Terraform 관리 밖에 있어 **저장소가 운영 형상을 알지 못한다.** [profile.md](../../guide/profile.md) §4의 "이 절은 아직 미완성이다" 경고와 `<TODO: 확인 필요>` 2곳, [deploy/prod/README.md](../../../deploy/prod/README.md)의 한계 3개 항목이 전부 같은 원인에서 나왔다. 특히 `deploy/prod/yourtrip-app.service`는 **운영 서버의 실제 구성을 확인하고 쓴 것이 아니라 부하테스트 환경 구조를 옮긴 추정본**이다. [tomcat-thread-sizing](../tomcat-thread-sizing/README.md)·[jvm-heap-sizing](../jvm-heap-sizing/README.md)이 실측으로 정한 값(`threads.max=32`, `-Xmx768m`)이 있는데 그 값이 적용될 환경은 기록돼 있지 않다 — 근거와 적용 대상이 끊겨 있다.
 >
@@ -95,7 +95,9 @@ jvm_opts_env = file("${path.module}/../../deploy/prod/jvm-opts.env")
 
 ### 이 정책은 유기적으로 발동하지 않는다
 
-min 1 / max 2에 실트래픽이 사실상 0이므로 500 req/s는 **k6를 의도적으로 돌려야 도달한다.** 데모를 위해 임계값을 낮추는 것은 이 저장소의 사전 등록 원칙(판정 기준을 측정 전에 못 박고 사후에 완화하지 않는다) 위반이므로, 대신 `var.scaleout_request_count_per_target_per_minute`(기본 30000)로 노출한다. **데모 시 임시로 낮췄다면 그 값과 이유를 `verification.md`에 함께 기록한다.**
+min 1 / max 2에 실트래픽이 사실상 0이므로 500 req/s는 **k6를 의도적으로 돌려야 도달한다.** 데모를 위해 임계값을 낮추는 것은 이 저장소의 사전 등록 원칙(판정 기준을 측정 전에 못 박고 사후에 완화하지 않는다) 위반이므로, 대신 `var.scaleout_request_count_per_target_per_minute`(기본 30000)로 노출한다. **데모 시 임시로 낮췄다면 그 값과 이유를 [verification.md](verification.md)에 함께 기록한다.**
+
+> 실제 검증에서는 임계값을 그대로 두고 k6로 초당 2,972를 걸어 발동시켰다. 다만 **부하가 3분이면 발동하지 않는다** — 알람이 3분 연속 초과를 요구하는 데다 ALB 지표가 CloudWatch에 1~3분 지연되어 도착하기 때문이다. 최소 5~6분은 걸어야 한다([verification.md](verification.md)의 P11 상세).
 
 ### 부수 설정과 근거
 

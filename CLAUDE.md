@@ -27,7 +27,8 @@ YOURTRIP_BE/
 ├── prometheus.yml                # 앱 /actuator/prometheus 스크레이프 설정
 ├── docs/                         # guide/(운영·측정 가이드), tasks/(작업별 설계·실측 기록)
 ├── scripts/                      # k6 부하테스트 스크립트, Grafana provisioning, 시드 SQL
-├── terraform/                    # loadtest/ 부하테스트 인프라(EC2·RDS·ElastiCache)
+├── terraform/                    # 루트=S3·CloudFront·IAM(영구) / prod-permanent=도메인·ACM·아티팩트(영구)
+│                                 # / prod=ALB·ASG·RDS·Redis(온디맨드) / loadtest=부하테스트(온디맨드)
 ├── src/main/resources/           # application.yml + application-{local,prod}.yml (아래 "애플리케이션 프로필")
 ├── src/test/resources/           # application-test.yml (H2 인메모리 DB)
 └── src/main/java/backend/yourtrip/
@@ -144,14 +145,23 @@ docker compose up -d redis
 
 ## 인프라(terraform) 변경 규칙
 
-부하테스트 인프라(`terraform/loadtest/`)는 원격 backend 없이 **로컬 `terraform.tfstate` 하나가 유일한 진실 공급원**이다. 따라서:
+terraform 모듈은 **수명 기준으로 4개**이고 각각 별도 state를 가진다. 전부 원격 backend 없이 **로컬 `terraform.tfstate` 하나가 유일한 진실 공급원**이다.
+
+| 모듈 | 담는 것 | destroy 대상인가 |
+|---|---|---|
+| `terraform/` | S3 미디어 버킷, CloudFront, 앱용 IAM | **아니다** |
+| `terraform/prod-permanent/` | 도메인 호스티드존, ACM 인증서, 배포 아티팩트 버킷 | **아니다** — 지우면 네임서버 위임부터 다시 해야 한다 |
+| `terraform/prod/` | ALB, ASG, RDS, ElastiCache, DNS 레코드 | **그렇다** — 데모·측정이 끝나면 내린다 |
+| `terraform/loadtest/` | 부하테스트용 EC2·RDS·ElastiCache | **그렇다** |
+
+따라서:
 
 - **리소스의 형상을 콘솔이나 AWS CLI로 직접 바꾸지 않는다.** `terraform.tfvars`/`.tf`를 고치고 `plan`으로 영향(특히 `must be replaced`)을 확인한 뒤 `apply`한다. terraform을 우회한 변경은 state에 남지 않아, 나중에 `destroy`해도 실제 리소스가 지워지지 않고 과금이 계속되는 drift가 된다(실제 발생 사례가 README에 있다).
 - **실행 상태만 바꾸는 조작은 CLI로 해도 된다** — 인스턴스 start/stop, 측정용 임시 보안그룹 규칙(끝나면 회수). 형상이 아니라서 drift가 생기지 않는다.
 - **이미 어긋났다면 `terraform import`로 정합화한다.** 리소스를 살려둔 채 state만 맞추므로 배포물·시드가 보존된다. 단 `plan` 확인은 인스턴스가 **running일 때** 해야 한다(stopped면 퍼블릭 IP 해제 때문에 불필요한 `replace`가 뜬다).
 - `terraform.tfstate`·`terraform.tfvars`는 `.gitignore` 대상이므로, worktree에서 바뀌었으면 위 worktree 규칙에 따라 메인 워킹트리 사본도 갱신한다.
 
-자세한 절차와 실제 사고 사례는 [terraform/loadtest/README.md](terraform/loadtest/README.md)의 "인프라 변경은 반드시 terraform을 거친다" 절에 있다.
+자세한 절차와 실제 사고 사례는 [terraform/loadtest/README.md](terraform/loadtest/README.md)의 "인프라 변경은 반드시 terraform을 거친다" 절에 있다. 운영 모듈의 실행·철거 절차와 트러블슈팅(네트워크 순단으로 정상 리소스가 tainted되는 경우 등)은 [terraform/prod/README.md](terraform/prod/README.md)에 있다.
 
 ## 작업 방식 (포트폴리오 저장소 특성)
 
