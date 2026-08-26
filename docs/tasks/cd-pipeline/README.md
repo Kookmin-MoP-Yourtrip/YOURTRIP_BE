@@ -52,6 +52,8 @@ aws s3 cp "s3://${artifact_bucket}/${artifact_key}" /opt/app/app.jar
 
 그런데 이 저장소는 **원격 backend가 없다.** 로컬 `terraform.tfstate`가 유일한 진실 공급원이고 `terraform.tfvars`에는 `my_ip_cidr` 같은 로컬 의존 값이 있다. 러너에서 apply를 돌리는 정석 경로가 막혀 있다.
 
+> **[이후 해소됨]** 이 전제는 #157에서 state를 S3 원격 backend로 옮기며 사라졌다. 다만 아래에서 A안을 택한 이유는 "원격 backend가 없어서"만이 아니라 **LT가 불변이 되어 drift가 0이 되고 CD 권한이 최소로 줄어들기 때문**이기도 하다. 그 근거는 backend가 생긴 뒤에도 그대로 유효해, 지금도 A안을 유지한다. `terraform.tfvars`의 로컬 의존 값은 여전히 남아 있다.
+
 ### 세 가지 경로 비교
 
 | | **A. SSM 간접 참조 (채택)** | B. CD가 LT 새 버전 생성 | C. 원격 backend + apply |
@@ -110,7 +112,7 @@ data "aws_ssm_parameter" "artifact_key" {
 
 | 후보 | 판단 |
 |---|---|
-| `terraform/`(루트) | ❌ 이 state에는 앱용 IAM 액세스 키가 평문으로 들어 있다. 건드리는 횟수를 늘릴 이유가 없다 |
+| `terraform/`(루트) | ❌ 앱 미디어 인프라(S3·CloudFront)용이라 CD 인증과 관심사가 다르다. 게다가 앱용 IAM 액세스 키를 관리하는 state라 **재발급하면 secret이 평문으로 실린다**(현재 state에는 없다 — [terraform/README.md](../../../terraform/README.md)의 트레이드오프 절 참고). 건드리는 횟수를 늘릴 이유가 없다 |
 | `terraform/prod/` | ❌ **destroy 대상이다.** 서버가 내려간 평시에도 dev 머지마다 S3 업로드는 계속돼야 하는데, 역할이 여기 있으면 destroy 직후부터 **AssumeRole 자체가 실패해** 워크플로가 빨간불이 된다 |
 | **`terraform/prod-permanent/`** | ✅ 아티팩트 버킷과 수명이 같다. 버킷 ARN을 같은 state에서 직접 참조할 수 있어 하드코딩도 사라진다 |
 

@@ -35,7 +35,7 @@
 - **ACM 인증서**를 일회성 state에 두면 destroy마다 삭제되고 apply마다 재발급 + DNS 검증 대기가 붙는다. 인증서는 미사용 상태에서도 검증 CNAME이 존에 남아 있으면 자동 갱신되므로 영구 state가 정확하다.
 - **호스티드존**은 destroy하면 NS 세트가 바뀐다. 도메인을 가비아에서 샀기 때문에 **네임서버를 가비아 콘솔에 다시 입력하고 전파를 다시 기다려야 한다.** 이 수동 절차를 반복하지 않으려면 존은 영구여야 한다.
 - **alias 레코드는 일부러 일회성 쪽에 둔다.** ALB DNS명이 apply마다 바뀌는 문제가 이걸로 자동 해결된다 — 레코드가 `aws_lb.this.dns_name`을 참조하므로 항상 새 ALB를 가리킨다. ALB alias는 AWS가 TTL 60초를 쓰므로 전환 지연도 1분 이내다. destroy 후 도메인이 NXDOMAIN이 되는 것은 "서버가 내려가 있다"는 사실의 정직한 반영이라 허용한다.
-- 기존 `terraform/`에 합치지 않는 이유: 그 state에는 앱용 IAM access key가 평문으로 들어 있어 건드리는 횟수를 늘리고 싶지 않고, `.gitignore`·`.worktreeinclude` 블록이 **경로 프리픽스 방식**이라 디렉터리를 나눠야 대칭이 유지된다.
+- 기존 `terraform/`에 합치지 않는 이유: 그 state는 앱용 IAM access key를 관리해 **재발급하면 secret이 평문으로 실리므로**(현재 state에는 없다 — [terraform/README.md](../../../terraform/README.md)의 트레이드오프 절 참고) 건드리는 횟수를 늘리고 싶지 않고, `.gitignore`·`.worktreeinclude` 블록이 **경로 프리픽스 방식**이라 디렉터리를 나눠야 대칭이 유지된다.
 
 모듈 간 값 전달은 저장소 관례대로 `terraform -chdir=../prod-permanent output -raw ...`를 손으로 tfvars에 옮긴다. `terraform_remote_state`를 쓰지 않는 것은 [terraform/loadtest](../../../terraform/loadtest/README.md)가 이미 그 방식을 택했고, 여기서만 바꾸면 두 관례가 공존하기 때문이다.
 
