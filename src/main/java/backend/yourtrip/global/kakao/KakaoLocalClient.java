@@ -2,8 +2,6 @@ package backend.yourtrip.global.kakao;
 
 import backend.yourtrip.global.ai.candidate.PlaceNameNormalizer;
 import backend.yourtrip.global.common.ApiFailureCause;
-import backend.yourtrip.global.exception.BusinessException;
-import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
 import java.util.Comparator;
@@ -35,39 +33,20 @@ public class KakaoLocalClient {
             .bodyToMono(KakaoSearchResponse.class)
             // 타임아웃은 KakaoConfig의 HttpClient(connect 2초 / response 3초)가 담당한다.
             // block(Duration)으로 제한하면 초과 시 IllegalStateException이 던져져
-            // 아래 findBestPlace의 catch를 빠져나가지만, HttpClient가 끊으면
+            // 아래 lookup()의 catch를 빠져나가지만, HttpClient가 끊으면
             // WebClientRequestException으로 올라와 정상적으로 잡힌다.
             .block();
     }
 
     /**
-     * AI가 준 placeName + placeLocation을 기반으로 가장 그럴듯한 Kakao 장소 하나를 고른다.
-     * 이름이 일치하는 후보가 하나도 없으면 매칭 실패로 보고 null을 반환한다.
-     *
-     * <p><b>{@link #lookupBestPlace} 위에 얇게 얹혀 있다</b>(ROADMAP 4-8). 검색·이름 게이트·점수
-     * 로직을 두 벌로 만들지 않기 위해서다 — 두 벌이면 1-2에서 잡은 이름 게이트 결함이 한쪽에만
-     * 고쳐지는 날이 온다. 이 메서드의 시그니처와 예외 계약은 그대로 두어 {@code MyCourseServiceImpl}의
-     * 동작이 변하지 않는다.
-     */
-    public KakaoSearchResponse.Document findBestPlace(String placeName, String placeLocation) {
-        return switch (lookupBestPlace(placeName, placeLocation)) {
-            case PlaceLookup.Found found -> found.document();
-            case PlaceLookup.NoResult ignored -> null;
-            // 이름 불일치도 기존에는 무결과와 한 값이었다 — 5-2가 둘을 값으로 가른 것은
-            // 기록을 위해서이지 이 경로의 동작을 바꾸기 위해서가 아니다.
-            case PlaceLookup.NameMismatch ignored -> null;
-            // 실패를 값으로 받았지만 이 경로의 계약은 예외다. 기존 호출부는 부분 실패를 다룰
-            // 준비가 되어 있지 않다(장소 하나를 못 붙이면 코스 저장 자체가 무의미하다).
-            case PlaceLookup.Failed ignored -> throw new BusinessException(
-                MyCourseErrorCode.KAKAO_API_FAILED);
-        };
-    }
-
-    /**
-     * {@link #findBestPlace}와 같은 검색·판정을 하되 <b>결과를 값으로</b> 돌려준다 (ROADMAP 4-8).
+     * 이름 게이트를 건 검색 1회. <b>결과를 값으로</b> 돌려준다 (ROADMAP 4-8).
      *
      * <p>왜 값이어야 하는지는 {@link PlaceLookup}에 적혀 있다 — 지오코딩 캐스케이드가 무결과와
      * 호출 실패를 정반대로 다뤄야 하기 때문이다.
+     *
+     * <p><b>예전에는 이 위에 {@code findBestPlace}가 얹혀 있었다</b> — 무결과를 {@code null}로,
+     * 호출 실패를 {@code BusinessException}으로 번역해 {@code MyCourseServiceImpl}의 옛 계약을
+     * 지키던 얇은 껍질이다. 8-1이 그 경로를 파이프라인 호출로 교체하면서 호출부가 사라져 지웠다.
      *
      * @param placeName     찾을 장소 이름. <b>이름 게이트의 기준</b>이라 비면 항상 무결과가 된다
      * @param placeLocation 앞에 붙일 지역 접두사. 비어 있으면 {@code placeName}만으로 검색한다
@@ -122,7 +101,7 @@ public class KakaoLocalClient {
 
             if (response == null) {
                 // 200인데 본문이 비어 온 경우. MALFORMED로 볼 여지도 있으나 무결과로 둔다 —
-                // findBestPlace가 이 상황에서 null을 돌려주던 동작을 바꾸지 않기 위해서다.
+                // "물어봤는데 아무것도 없었다"에 가깝지 "물어보지 못했다"가 아니기 때문이다.
                 return new PlaceLookup.NoResult();
             }
 

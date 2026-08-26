@@ -160,7 +160,7 @@ class PlaceMatchScorerTest {
             // 빈 문자열은 모든 문자열에 포함되므로 "가게".contains("") 가 true 다.
             // 고치고 싶어지지만 **환각률 baseline 이 이 계산으로 측정된 값**이라 그대로 둔다.
             //
-            // 프로덕션에서는 도달하지 않는다 — findBestPlace 가 이름 게이트를 먼저 거치고
+            // 프로덕션에서는 도달하지 않는다 — lookupBestPlace 가 이름 게이트를 먼저 거치고
             // PlaceNameNormalizer.similar 는 한쪽이 비면 false 를 준다. 게이트 없이 전 후보를
             // 채점하는 측정 하네스에서만 나타난다.
             Document document = new Document("1", null, null, null, null, null,
