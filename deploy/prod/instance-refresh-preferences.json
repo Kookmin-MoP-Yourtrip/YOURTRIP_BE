@@ -1,0 +1,5 @@
+{
+  "MinHealthyPercentage": 100,
+  "MaxHealthyPercentage": 200,
+  "SkipMatching": false
+}

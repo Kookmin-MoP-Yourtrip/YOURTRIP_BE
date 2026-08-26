@@ -31,6 +31,7 @@
 |---|---|
 | `/yourtrip/prod/env/<KEY>` | `.env`에 `KEY=VALUE` 한 줄로 들어갈 값 |
 | `/yourtrip/prod/cloudfront_private_key` | 파일(`/opt/app/cloudfront_private_key.pem`)로 떨어져야 하는 PEM |
+| `/yourtrip/prod/artifact_key` | 인스턴스가 내려받을 JAR의 S3 키. **비밀이 아니라 `String`이다** |
 
 ```bash
 export AWS_PROFILE=terraform-admin
@@ -44,7 +45,15 @@ done
 # CloudFront 서명 개인키(PEM 파일 전체). file:// 로 넘겨야 개행이 보존된다.
 aws ssm put-parameter --name /yourtrip/prod/cloudfront_private_key \
   --type SecureString --value "file://../cloudfront_private_key.pem" --overwrite
+
+# 배포할 JAR의 S3 키. 이후로는 CD가 배포마다 갱신하므로 사람이 만지는 것은 이 1회뿐이다.
+# 비밀이 아니므로 SecureString이 아니고, env/ 하위도 아니다 — 그 아래 두면 user-data가
+# 일괄 조회해 .env에 넣어버려 앱 환경변수를 오염시킨다.
+aws ssm put-parameter --name /yourtrip/prod/artifact_key \
+  --type String --value "app/<short-sha>.jar" --overwrite
 ```
+
+> **Windows Git Bash에서는 `MSYS_NO_PATHCONV=1`을 앞에 붙인다.** 그러지 않으면 `/yourtrip/prod/...`가 Windows 경로로 변환돼, "이름은 슬래시로 시작해야 한다"는 엉뚱한 `ValidationException`이 난다.
 
 등록 확인 (값은 출력하지 않는다):
 
@@ -52,7 +61,13 @@ aws ssm put-parameter --name /yourtrip/prod/cloudfront_private_key \
 aws ssm get-parameters-by-path --path /yourtrip/prod --recursive --query 'Parameters[].Name' --output text
 ```
 
-`env/` 아래 8개와 `cloudfront_private_key` 1개, 합쳐 9개가 나와야 한다.
+`env/` 아래 8개와 `cloudfront_private_key`, `artifact_key` 각 1개, 합쳐 10개가 나와야 한다.
+
+> **`artifact_key`는 terraform이 관리하지 않는다** — 시크릿과 같은 이유이면서 하나가 더 있다.
+> `destroy`가 지우지 않아야, 서버를 내렸다가 다시 올렸을 때 **마지막으로 배포된 JAR로 그대로
+> 뜬다.** terraform이 들고 있으면 재apply 때 tfvars에 적힌 옛 SHA로 되돌아가 CD가 내보낸
+> 최신본을 잃는다. 대신 `terraform/prod`가 이 값을 `data`로 읽으므로, 등록하지 않으면
+> **plan이 그 자리에서 실패한다**(조용한 부팅 실패로 넘어가지 않는다).
 
 `S3_BUCKET`·`CLOUDFRONT_*` 같은 비밀 아닌 값은 SSM이 아니라 tfvars를 거쳐 user_data에 직접 렌더링된다 — 노출돼도 무해하고, terraform이 이미 아는 값이기 때문이다.
 
@@ -168,6 +183,20 @@ aws ssm send-command --instance-ids <id> --document-name AWS-RunShellScript \
 ```
 
 `.env`에 시크릿 8개가 있는지부터 본다. 없으면 user-data의 SSM 조회 구간이 실패한 것이다.
+
+### `artifact_key`가 없어서 plan·destroy가 막힌다
+
+`asg.tf`의 `data "aws_ssm_parameter" "artifact_key"`는 **읽기만 하는데도 plan을 막는다.** 등록을
+안 했다면 그게 의도한 동작이다(사전 준비 참고) — 등록하면 풀린다.
+
+문제는 **파라미터를 지운 뒤 `destroy`를 하려는 경우**다. 만들 리소스가 없는데도 data 읽기가
+먼저 실패해 철거가 진행되지 않는다. 이때는 state에서 data를 떼어내고 다시 시도한다.
+
+```bash
+terraform state rm data.aws_ssm_parameter.artifact_key
+```
+
+data 소스라 state에서 빼도 실제 파라미터에는 아무 영향이 없고, 다음 apply 때 다시 읽는다.
 
 ## 알아둬야 할 것
 

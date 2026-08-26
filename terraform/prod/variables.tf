@@ -155,11 +155,6 @@ variable "app_ami_id" {
   default     = ""
 }
 
-variable "app_artifact_key" {
-  description = "아티팩트 버킷 안의 JAR 키. 커밋 SHA로 고정한다(예: app/1b2ed0b.jar) — app/app.jar 같은 가변 키를 쓰면 배포 중 스케일아웃이 일어났을 때 새 인스턴스가 다른 바이트를 받아 혼종 fleet이 된다."
-  type        = string
-}
-
 variable "app_root_volume_size" {
   description = "루트 EBS 크기(GB). JAR + JVM + 로그만 올리므로 작게 잡는다."
   type        = number

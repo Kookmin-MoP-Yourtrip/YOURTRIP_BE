@@ -92,11 +92,36 @@ chmod 644 /opt/app/jvm-opts.env
 # ------------------------------------------------------------
 # 4) 배포 JAR을 S3에서 내려받는다
 #
-# 키가 커밋 SHA로 고정돼 있어(app/<sha>.jar) 스케일아웃으로 뜬 인스턴스도 지금 돌고 있는
-# 것과 정확히 같은 바이트를 받는다. app/app.jar 같은 가변 키를 쓰면 배포 중 스케일아웃이
-# 일어났을 때 혼종 fleet이 된다.
+# 키를 여기 상수로 박지 않고 SSM에서 받아온다. 상수로 박으면 키를 바꿀 때마다 Launch
+# Template 새 버전이 필요하고, 그건 terraform apply를 거쳐야만 새 JAR을 내보낼 수 있다는
+# 뜻이다. 이 저장소는 원격 backend가 없어 CI 러너에서 apply를 돌릴 수 없으므로, JAR 버전만
+# terraform 밖으로 빼서 배포가 SSM 값 하나만 바꾸면 되게 했다(#120).
+#
+# 키 자체는 여전히 커밋 SHA로 고정된다(app/<sha>.jar) — 스케일아웃으로 뜬 인스턴스도 지금
+# 돌고 있는 것과 정확히 같은 바이트를 받는다. app/app.jar 같은 가변 키를 쓰면 배포 중
+# 스케일아웃이 일어났을 때 혼종 fleet이 된다. 바뀐 것은 그 키가 정해지는 시점뿐이다:
+# apply 시점(tfvars) → 배포 시점(SSM).
+#
+# 조회에 실패하면 set -e가 여기서 부팅을 멈춘다. 앱이 뜨지 않으면 타깃 그룹 헬스체크가
+# 실패해 ASG가 그 인스턴스를 InService로 승격하지 않으므로, 잘못된 버전이 조용히 서비스에
+# 들어가는 경로가 없다.
+#
+# ARTIFACT_KEY는 중괄호 없이 쓴다 — terraform이 치환하는 것은 달러+중괄호 형태뿐이라 이
+# 변수는 그대로 남아 bash가 해석한다. 이 파일 맨 위의 이스케이프 규약 참고.
 # ------------------------------------------------------------
-aws s3 cp "s3://${artifact_bucket}/${artifact_key}" /opt/app/app.jar
+ARTIFACT_KEY=$(aws ssm get-parameter \
+  --name "${ssm_path}/artifact_key" \
+  --query 'Parameter.Value' \
+  --output text)
+
+# set -e는 조회 자체가 실패한 경우(ParameterNotFound)만 잡는다. 빈 값이 조회에 '성공'하면
+# s3 cp가 버킷 루트를 받으려다 엉뚱하게 실패하므로, 여기서 이유를 남기고 멈춘다.
+if [ -z "$ARTIFACT_KEY" ]; then
+  echo "artifact_key 파라미터가 비어 있다: ${ssm_path}/artifact_key" >&2
+  exit 1
+fi
+
+aws s3 cp "s3://${artifact_bucket}/$ARTIFACT_KEY" /opt/app/app.jar
 chmod 644 /opt/app/app.jar
 
 # ------------------------------------------------------------

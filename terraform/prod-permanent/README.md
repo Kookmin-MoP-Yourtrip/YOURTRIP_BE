@@ -7,6 +7,7 @@
 | Route53 호스티드존 | destroy하면 NS 세트가 바뀌어 **가비아 콘솔에서 네임서버를 다시 입력**하고 전파를 다시 기다려야 한다 |
 | ACM 인증서 + DNS 검증 레코드 | 검증 CNAME이 존에 남아 있으면 자동 갱신된다. 매번 재발급하면 apply마다 검증 대기가 붙는다 |
 | 배포 아티팩트 S3 버킷 | 서버가 내려가 있어도 빌드 산출물은 남아 있어야 한다 |
+| GitHub Actions OIDC provider + 배포 역할 | **서버가 내려가 있어도 CD는 돌아야 한다.** 운영은 온디맨드라 대부분의 기간 `../prod/`가 없는데, 그때도 dev 머지마다 JAR을 S3에 올리는 것까지는 계속돼야 한다. 역할을 `../prod/`에 두면 destroy 직후부터 AssumeRole이 실패해 워크플로가 빨간불이 된다 |
 
 > ⚠️ **이 모듈은 destroy 대상이 아니다.** 서버를 내릴 때는 `terraform -chdir=../prod destroy`만 실행한다. 여기까지 destroy하면 도메인 위임부터 다시 해야 한다.
 
@@ -85,9 +86,18 @@ terraform output -raw artifact_bucket_name
 
 세 값을 `../prod/terraform.tfvars`에 넣는다.
 
+CD 역할 ARN은 tfvars가 아니라 **GitHub 저장소 변수**로 간다. 비밀이 아니므로 `secret`이 아니라 `variable`이고, **이 워크플로에 `secrets` 참조가 하나도 없다는 사실 자체가 산출물이다**(#120).
+
+```bash
+gh variable set AWS_ROLE_ARN --body "$(terraform output -raw github_actions_role_arn)"
+gh variable set ARTIFACT_BUCKET --body "$(terraform output -raw artifact_bucket_name)"
+```
+
 ## 알아둬야 할 것
 
 - **Route 53 Registrar에서 도메인을 샀다면 `route53.tf`를 고쳐야 한다.** 그 경우 호스티드존이 등록과 동시에 자동 생성되므로, `resource`가 아니라 `data "aws_route53_zone"`으로 기존 존을 읽어야 한다. 그러지 않으면 NS가 다른 두 번째 존이 생기고 **레코드는 들어가는데 외부 조회는 안 되는** 형태로 DNS가 조용히 실패한다.
 - **인증서 리전은 `ap-northeast-2`다.** ALB는 리전 리소스라 인증서도 같은 리전이어야 한다. CloudFront용 인증서가 `us-east-1`을 요구하는 것과 규칙이 다르므로 혼동하지 않는다.
 - **호스티드존은 존재만으로 월 $0.50이 과금된다.** 서버를 내려도 이 비용은 계속 나간다 — 도메인을 유지하는 값이다.
+- **GitHub OIDC provider는 계정당 하나만 존재할 수 있다.** 다른 프로젝트가 이미 만들어 뒀다면 apply가 `EntityAlreadyExists`로 실패한다. 그때는 기존 ARN을 `github_oidc_provider_arn` 변수에 채우면 새로 만들지 않고 재사용한다(`aws iam list-open-id-connect-providers`로 찾는다).
+- **CD 역할의 신뢰 정책은 `dev` 브랜치로 못박혀 있다.** 롤백용 `workflow_dispatch`도 반드시 `dev`를 선택해 실행해야 한다 — dispatch의 `sub` 클레임은 이벤트 종류가 아니라 **선택한 ref**로 결정되기 때문이다. 다른 브랜치를 고르면 AssumeRole이 거부된다.
 - `terraform.tfstate`·`terraform.tfvars`는 `.gitignore` 대상이며, worktree에서 작업했다면 [CLAUDE.md](../../CLAUDE.md)의 worktree 규칙에 따라 메인 워킹트리 사본도 갱신해야 한다.
