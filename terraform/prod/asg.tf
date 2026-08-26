@@ -22,6 +22,21 @@ data "aws_ami" "al2023" {
 # output으로 알려주게 한다(outputs.tf의 app_ami_id).
 locals {
   app_ami_id = var.app_ami_id != "" ? var.app_ami_id : data.aws_ami.al2023.id
+
+  # instance refresh 조건의 정본. CD 워크플로가 aws CLI에 --preferences file:// 로 넘기는
+  # 파일과 같은 것을 여기서도 읽는다. 두 경로가 각자 숫자를 들고 있으면 "terraform으로
+  # 굴리면 무중단인데 CD로 굴리면 아니다"가 되는데, 그 차이는 배포가 실제로 터지기
+  # 전까지 드러나지 않는다. deploy/prod/의 systemd 유닛·JVM 옵션을 file()로 잇는 것과
+  # 같은 방식이다.
+  refresh_prefs = jsondecode(file("${path.module}/../../deploy/prod/instance-refresh-preferences.json"))
+}
+
+# 다음에 뜨는 인스턴스가 내려받을 JAR 키. terraform이 만들지도 관리하지도 않는 값이지만
+# (시크릿과 같은 이유로 CLI 1회 등록한다) 여기서 읽는 데는 목적이 있다 — 등록돼 있지 않으면
+# plan이 그 자리에서 실패한다. 이 블록이 없으면 인스턴스는 정상적으로 뜨고 user-data만
+# 조용히 실패해, 헬스체크가 계속 깨지는 이유를 찾아 로그를 뒤져야 한다.
+data "aws_ssm_parameter" "artifact_key" {
+  name = "${var.ssm_parameter_path}/artifact_key"
 }
 
 resource "aws_launch_template" "app" {
@@ -89,7 +104,6 @@ resource "aws_launch_template" "app" {
 
     ssm_path        = var.ssm_parameter_path
     artifact_bucket = var.artifact_bucket_name
-    artifact_key    = var.app_artifact_key
 
     # systemd 유닛과 JVM 옵션은 다시 타이핑하지 않고 deploy/prod/의 정본을 읽는다.
     # templatefile()은 주입된 값을 재스캔하지 않으므로, 유닛 안의 $JVM_OPTS가 terraform
@@ -157,19 +171,28 @@ resource "aws_autoscaling_group" "app" {
     version = aws_launch_template.app.latest_version
   }
 
-  # Launch Template이 바뀌면(새 JAR 키, AMI 핀 변경 등) 실행 중인 인스턴스를 굴려 교체한다.
+  # Launch Template이 바뀌면(AMI 핀 변경 등) 실행 중인 인스턴스를 굴려 교체한다.
   # min_healthy 100 / max_healthy 200이라 '먼저 띄우고 나중에 죽이는' 순서가 되어
   # desired=1에서도 무중단으로 교체된다 — max_size 2가 이걸 가능하게 하는 여유 슬롯이다.
   #
-  # 이것이 deploy/prod/README.md의 "배포 자동화는 여기 없다"를 부분적으로 해소한다:
-  # 새 JAR을 S3에 올리고 app_artifact_key만 바꿔 apply하면 롤링 교체가 일어난다.
-  # (빌드·업로드는 여전히 수동이라 완전한 CD는 후속 이슈다.)
+  # ⚠️ 이 블록은 terraform이 LT 변경을 감지해 refresh를 트리거할 때만 쓰인다. 배포는 더 이상
+  # LT를 바꾸지 않으므로(JAR 키가 SSM으로 빠졌다, #120) CD는 start-instance-refresh를 CLI로
+  # 직접 부르는데, 그 경로에는 이 블록이 적용되지 않고 AWS 기본값이 쓰인다. 기본값은
+  # MinHealthyPercentage 90이고, desired=1에서 그 값은 '먼저 죽이고 나중에 띄우는' 순서를
+  # 허용해 무중단이 깨진다. 그래서 양쪽이 local.refresh_prefs의 같은 파일을 읽는다.
   instance_refresh {
     strategy = "Rolling"
 
     preferences {
-      min_healthy_percentage = 100
-      max_healthy_percentage = 200
+      min_healthy_percentage = local.refresh_prefs.MinHealthyPercentage
+      max_healthy_percentage = local.refresh_prefs.MaxHealthyPercentage
+
+      # ⚠️ 기본값(false)과 같지만 반드시 명시한다. true면 ASG는 '이미 목표 LT 버전으로 도는'
+      # 인스턴스를 건너뛰는데, 이 구성에서 LT는 배포마다 바뀌지 않으므로 fleet 전체가 skip
+      # 대상이 된다 — refresh가 아무것도 교체하지 않고 즉시 Successful이 되어, 배포는
+      # 초록불인데 옛 JAR이 계속 도는 상태가 된다. LT를 불변으로 만든 대가로 생긴 함정이라
+      # 값이 눈에 보이는 편이 낫다.
+      skip_matching = local.refresh_prefs.SkipMatching
     }
 
     # triggers에 "launch_template"을 넣지 않는다 — Launch Template 변경은 원래 항상 refresh를

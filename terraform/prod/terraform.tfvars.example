@@ -22,13 +22,11 @@ artifact_bucket_name = ""
 acm_certificate_arn  = ""
 
 # ------------------------------------------------------------
-# 배포할 JAR의 S3 키. 커밋 SHA로 고정한다 — 가변 키를 쓰면 배포 중 스케일아웃이 일어났을 때
-# 새 인스턴스가 다른 바이트를 받아 혼종 fleet이 된다.
-#   ./gradlew clean bootJar
-#   SHA=$(git rev-parse --short HEAD)
-#   aws s3 cp build/libs/*.jar "s3://<artifact_bucket_name>/app/$SHA.jar"
+# 배포할 JAR의 S3 키는 이 파일에 없다. SSM 파라미터 /yourtrip/prod/artifact_key에 있고,
+# CD 워크플로가 배포마다 그 값을 갱신한다(#120). terraform이 관리하지 않으므로 destroy해도
+# 남아 있고, 다시 apply하면 마지막에 배포된 버전으로 인스턴스가 뜬다.
+# 최초 apply 전에 1회 등록이 필요하다 — README.md의 "사전 준비" 참고.
 # ------------------------------------------------------------
-app_artifact_key = ""   # 예: "app/a4a4f9f.jar"
 
 # ------------------------------------------------------------
 # 기존 terraform/(영구 인프라)의 출력값을 그대로 옮긴다
