@@ -3,7 +3,10 @@ package backend.yourtrip.global.benchmark;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
+import backend.yourtrip.global.benchmark.BaselineInputSet.KeywordSetSpec;
+import backend.yourtrip.global.benchmark.BaselineInputSet.RegionSpec;
+import backend.yourtrip.global.benchmark.BaselineInputSet.RegionTier;
+import backend.yourtrip.global.benchmark.BaselineInputSet.RequestSpec;
 import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.LlmCall;
 import backend.yourtrip.global.ai.LlmResponseParser;
@@ -131,8 +134,8 @@ import org.junit.jupiter.api.Test;
 @Tag("benchmark")
 class AiHallucinationBaselineTest {
 
-    /** 여행 일수. 일수까지 변수로 두면 표본이 흩어져 지역·키워드 효과를 못 본다. */
-    private static final int TRIP_DAYS = 3;
+    /** 여행 일수. 정의와 근거는 {@link BaselineInputSet#TRIP_DAYS}. */
+    private static final int TRIP_DAYS = BaselineInputSet.TRIP_DAYS;
 
     /** RPM 방어용 요청 간 지연. -Dhallucination.delayMs 로 조정한다. */
     private static final long DEFAULT_DELAY_MS = 5_000L;
@@ -199,37 +202,11 @@ class AiHallucinationBaselineTest {
 
     // ── 입력 세트: 지역 10개 × 키워드 조합 3개 = 30요청 ──────────────────────────
 
-    private enum RegionTier {FAMOUS, MINOR}
+    // 정의는 BaselineInputSet 이 소유한다 — 이 세트를 쓰는 측정이 둘 이상이고, 하네스마다
+    // 사본을 두면 한쪽만 바뀌어도 겉으로는 드러나지 않는다.
+    private static final List<RegionSpec> REGIONS = BaselineInputSet.REGIONS;
 
-    private record RegionSpec(String name, RegionTier tier) {}
-
-    private static final List<RegionSpec> REGIONS = List.of(
-        new RegionSpec("경주", RegionTier.FAMOUS),
-        new RegionSpec("부산", RegionTier.FAMOUS),
-        new RegionSpec("제주", RegionTier.FAMOUS),
-        new RegionSpec("서울", RegionTier.FAMOUS),
-        new RegionSpec("강릉", RegionTier.FAMOUS),
-        new RegionSpec("순천", RegionTier.MINOR),
-        new RegionSpec("영주", RegionTier.MINOR),
-        new RegionSpec("공주", RegionTier.MINOR),
-        new RegionSpec("통영", RegionTier.MINOR),
-        new RegionSpec("삼척", RegionTier.MINOR)
-    );
-
-    private record KeywordSetSpec(String id, List<KeywordType> keywords) {}
-
-    /**
-     * duration 카테고리(ONE_DAY 등)는 넣지 않는다 — 실제 일수(3일)와 모순되는데,
-     * 그건 이미 알려진 별개 결함이라 환각 측정에 노이즈만 더한다.
-     */
-    private static final List<KeywordSetSpec> KEYWORD_SETS = List.of(
-        new KeywordSetSpec("A", List.of(KeywordType.WALK, KeywordType.COUPLE,
-            KeywordType.HEALING, KeywordType.SENSIBILITY, KeywordType.COST_EFFECTIVE)),
-        new KeywordSetSpec("B", List.of(KeywordType.CAR, KeywordType.FAMILY,
-            KeywordType.NATURE, KeywordType.NORMAL)),
-        new KeywordSetSpec("C", List.of(KeywordType.WALK, KeywordType.FRIENDS,
-            KeywordType.FOOD, KeywordType.ACTIVITY, KeywordType.PREMIUM))
-    );
+    private static final List<KeywordSetSpec> KEYWORD_SETS = BaselineInputSet.KEYWORD_SETS;
 
     // ── 결과 레코드 ────────────────────────────────────────────────────────────
 
@@ -1075,17 +1052,8 @@ class AiHallucinationBaselineTest {
 
     // ── 유틸 ──────────────────────────────────────────────────────────────────
 
-    private record RequestSpec(int requestId, RegionSpec region, KeywordSetSpec keywordSet) {}
-
     private List<RequestSpec> buildInputSet() {
-        List<RequestSpec> specs = new ArrayList<>();
-        int id = 1;
-        for (RegionSpec region : REGIONS) {
-            for (KeywordSetSpec keywordSet : KEYWORD_SETS) {
-                specs.add(new RequestSpec(id++, region, keywordSet));
-            }
-        }
-        return specs;
+        return BaselineInputSet.buildInputSet();
     }
 
     /** Spring 컨텍스트가 없어 spring-dotenv 가 동작하지 않으므로 .env 를 직접 읽는다. */
