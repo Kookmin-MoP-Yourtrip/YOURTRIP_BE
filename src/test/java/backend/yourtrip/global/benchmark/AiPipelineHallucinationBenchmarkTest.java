@@ -11,6 +11,7 @@ import static backend.yourtrip.global.benchmark.HallucinationArtifacts.oneLine;
 import static backend.yourtrip.global.benchmark.HallucinationArtifacts.placeCsvRow;
 import static backend.yourtrip.global.benchmark.HallucinationArtifacts.writeUtf8Bom;
 import static backend.yourtrip.global.benchmark.HallucinationReport.pct;
+import static backend.yourtrip.global.benchmark.HallucinationScoring.BAND_KAKAO_ERROR;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -166,6 +167,22 @@ class AiPipelineHallucinationBenchmarkTest {
     /** 연속 이만큼 실패하면 키·쿼터 문제로 보고 멈춘다. 환각률 하네스가 세운 방침이다. */
     private static final int ABORT_AFTER_CONSECUTIVE_FAILURES = 3;
 
+    /**
+     * 채점(카카오 검색)이 연속 이만큼 실패하면 멈춘다 — {@code AiHallucinationBaselineTest}의
+     * 재채점 모드와 같은 임계값이다.
+     *
+     * <p><b>이 가드가 없으면 측정이 조용히 무효가 된다.</b> 카카오 키가 만료되거나 쿼터가
+     * 소진되면 {@code lookupBestPlace}가 전건 {@code Failed}를 <b>값으로</b> 돌려주므로 예외가
+     * 나지 않는다. 하네스는 30요청을 끝까지 완주하고 CSV 도 정상 산출하는데, 모든 장소가
+     * {@code KAKAO_ERROR} 라 자동 프록시와 이름 불일치율의 <b>분자가 0</b>이 된다 — 리포트에는
+     * "자동 프록시 0.0% / 장소 미확보율 0.0%"로 찍히고, 이건 지어냄률 0.0%라는 실제 결론과
+     * 겉모습이 같아 산출물만 보고는 가려낼 수 없다.
+     *
+     * <p>채점은 LLM 120회를 이미 다 쓴 뒤의 단계이므로, 조기 중단하면 이어 돌릴 때 그 비용을
+     * 아낄 수 있다는 이유도 그대로 성립한다.
+     */
+    private static final int ABORT_AFTER_CONSECUTIVE_KAKAO_ERRORS = 5;
+
     /** 파이프라인 고유 열. baseline 17열 <b>뒤에</b> 붙는다 — 앞을 건드리면 재채점 호환이 깨진다. */
     private static final String PIPELINE_CSV_HEADER =
         ",source,modifier,slotType,pipelineLat,pipelineLng,pipelinePlaceUrl";
@@ -277,6 +294,9 @@ class AiPipelineHallucinationBenchmarkTest {
         List<PipelinePlaceRow> rows, List<RequestOutcome> outcomes) throws IOException {
 
         int consecutiveFailures = 0;
+        // 채점 실패는 요청 경계를 넘어 이어진다 — 카카오가 죽으면 다음 요청에서도 계속 실패한다.
+        int[] consecutiveKakaoErrors = {0};
+
         for (RequestSpec spec : inputSet) {
             Map<String, Long> before = curationCounts(registry);
             long startNanos = System.nanoTime();
@@ -313,13 +333,14 @@ class AiPipelineHallucinationBenchmarkTest {
 
             dumpDraft(draftMapper, rawDir, spec, draft);
 
-            List<PipelinePlaceRow> scored = score(spec, draft, kakaoClient, scoringDelayMs);
-            rows.addAll(scored);
-            outcomes.add(summarize(spec, draft, scored.size(), elapsedMs, delta));
+            int rowsBefore = rows.size();
+            score(spec, draft, kakaoClient, scoringDelayMs, rows, consecutiveKakaoErrors);
+            int scoredCount = rows.size() - rowsBefore;
+            outcomes.add(summarize(spec, draft, scoredCount, elapsedMs, delta));
 
             System.out.printf("  #%02d %-4s %s : day %d, 장소 %2d개, %,6dms%s%n",
                 spec.requestId(), spec.region().name(), spec.keywordSet().id(),
-                draft.days().size(), scored.size(), elapsedMs,
+                draft.days().size(), scoredCount, elapsedMs,
                 elapsedMs > PRODUCTION_BUDGET_MS ? "  ← 운영 예산 초과" : "");
 
             sleep(delayMs);
@@ -327,27 +348,42 @@ class AiPipelineHallucinationBenchmarkTest {
     }
 
     /**
-     * 초안의 장소 전건을 <b>baseline 과 같은 채점기로</b> 판정한다.
+     * 초안의 장소 전건을 <b>baseline 과 같은 채점기로</b> 판정해 {@code sink}에 더한다.
      *
      * <p>{@code placeIndex}는 day 안에서 0부터 매긴다 — baseline 의 {@code groundPlaces}와 같다.
      * 파이프라인의 리스트 순서가 곧 방문 순서이므로 이 번호는 동선 순서이기도 하다.
+     *
+     * <p><b>결과를 반환하지 않고 {@code sink}에 바로 넣는 이유</b>: 아래 카카오 연속 실패 단언이
+     * {@code AssertionError}를 던지면 그 요청의 채점이 중간에 끊기는데, 지역 리스트에 모았다가
+     * 반환하는 구조였다면 그때까지 채점한 것이 통째로 사라진다. 호출자의 {@code try/finally}가
+     * 산출물을 남기는 의미가 있으려면 부분 결과도 함께 남아야 한다.
+     *
+     * @param consecutiveKakaoErrors 요청을 건너뛰며 이어지는 카운터라 배열 홀더로 받는다
      */
-    private static List<PipelinePlaceRow> score(RequestSpec spec, AiCourseDraft draft,
-        KakaoLocalClient kakaoClient, long scoringDelayMs) {
+    private static void score(RequestSpec spec, AiCourseDraft draft, KakaoLocalClient kakaoClient,
+        long scoringDelayMs, List<PipelinePlaceRow> sink, int[] consecutiveKakaoErrors) {
 
-        List<PipelinePlaceRow> rows = new ArrayList<>();
         for (AiCourseDay day : draft.days()) {
             int placeIndex = 0;
             for (AiCoursePlace place : day.places()) {
                 GroundedPlace grounded = place.place();
-                rows.add(new PipelinePlaceRow(
-                    HallucinationScoring.groundOnePlace(spec, day.day(), placeIndex++,
-                        grounded.name(), kakaoClient),
-                    grounded));
+                PlaceRow scored = HallucinationScoring.groundOnePlace(spec, day.day(),
+                    placeIndex++, grounded.name(), kakaoClient);
+                sink.add(new PipelinePlaceRow(scored, grounded));
+
+                // 키가 죽었거나 쿼터가 끝났으면 남은 장소를 헛돌리지 말고 멈춘다. 상수 javadoc 참고 —
+                // 카카오 실패는 예외가 아니라 값이라 이 검사가 없으면 측정이 조용히 무효가 된다.
+                consecutiveKakaoErrors[0] = BAND_KAKAO_ERROR.equals(scored.scoreBand())
+                    ? consecutiveKakaoErrors[0] + 1 : 0;
+                assertThat(consecutiveKakaoErrors[0])
+                    .as("카카오 채점이 연속 %d회 실패했다 — 키·쿼터를 확인하고 "
+                            + "PIPELINE_HALLUCINATION_REQUEST_FROM=%d 으로 이어 돌려라",
+                        consecutiveKakaoErrors[0], spec.requestId())
+                    .isLessThan(ABORT_AFTER_CONSECUTIVE_KAKAO_ERRORS);
+
                 sleep(scoringDelayMs);
             }
         }
-        return rows;
     }
 
     private static RequestOutcome summarize(RequestSpec spec, AiCourseDraft draft, int totalPlaces,
