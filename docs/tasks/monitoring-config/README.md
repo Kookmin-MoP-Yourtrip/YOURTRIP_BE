@@ -6,7 +6,7 @@
 >
 > **결론만 먼저** — **Grafana Cloud free tier + Alloy 단일 에이전트**를 채택한다. 앱이 노출하는 시리즈는 실측 **471개**로 free 한도 10,000의 5%에 불과하고, Alloy가 node_exporter를 내장하므로 **CloudWatch Agent를 제거하면 상주 프로세스가 늘지 않는다.** 로그(journald)까지 같은 에이전트가 처리한다.
 >
-> **확정하지 못한 것** — Alloy의 상주 RSS를 재기 전이다. 이 값이 CloudWatch Agent의 **130.6MB**보다 큰지 작은지가 [jvm-heap-sizing](../jvm-heap-sizing/README.md)의 `-Xmx` 예산에 직접 영향을 준다. 판정 구간은 아래 M7에 미리 등록해 둔다.
+> **확정하지 못한 것** — Alloy의 상주 RSS를 재기 전이다. 이 값이 CloudWatch Agent의 **130.6MB**보다 큰지 작은지가 [jvm-heap-sizing](../jvm-heap-sizing/README.md)의 `-Xmx` 예산에 직접 영향을 준다. 판정 구간은 아래 P2에 미리 등록해 둔다.
 
 ## 무엇이 문제였나
 
@@ -111,36 +111,124 @@ http_server_requests_seconds_count{...,status="404",uri="/api/upload-courses/{up
 
 **인스턴스 1대당 1,000 시리즈 미만**이고, ASG max 2대에 배포 시 이전 인스턴스 시리즈가 겹치는 것까지 감안해도 3,000 수준이다. free 한도의 30%다.
 
+## 설계 결정과 대가
+
+### 왜 토큰을 `password_file`로 주입하는가
+
+Alloy의 `basic_auth`는 `password`와 `password_file`을 상호 배타로 받는다. 셋 중 하나를 골라야 했다.
+
+| 방식 | 판단 |
+|---|---|
+| `password = sys.env("TOKEN")` | ❌ `/proc/<pid>/environ`에 남는다. 시크릿을 user-data에서 SSM으로 옮긴 것과 같은 이유로 피한다 |
+| `local.file` + `is_secret = true` | △ 동작하지만 **`aws ssm get-parameter --output text`가 붙이는 끝 개행을 직접 지워야 한다.** 안 지우면 basic auth 헤더가 깨지는데, 그 실패는 "인증 실패"로만 보여 원인을 찾기 어렵다 |
+| **`password_file`** | ✅ **채택.** 설정 파일에 값이 없고, 읽는 쪽(`prometheus/common`)이 `TrimSpace`를 하므로 **개행 함정이 구조적으로 사라진다** |
+
+Grafana 문서는 `password_file`이 요청마다 파일을 읽는다고 경고하며 고빈도에서는 `local.file`을 권한다. **이 박스의 쓰기 빈도는 분당 수 회라 해당 없다.** 스크레이프 대상이 크게 늘면 그때 옮긴다.
+
+### ⚠️ `loki.source.journal`에는 조용한 실패 모드가 있다
+
+Alloy 소스의 이 컴포넌트는 빌드 태그 게이트 뒤에 있다.
+
+```go
+//go:build linux && cgo && promtail_journal_enabled
+```
+
+태그가 없으면 같은 디렉터리의 `journal_stub.go`가 대신 컴파일되는데, **컴포넌트를 정상 등록만 하고 아무것도 읽지 않는다.** 설정 검증도 통과하고 로그에 오류도 남지 않는다.
+
+공식 리눅스 빌드는 이 태그를 켜므로(`GO_TAGS="embedalloyui promtail_journal_enabled"`) RPM은 안전하다. **그러나 "오류가 없다"로는 이것을 판정할 수 없다.** 그래서 판정을 메트릭 존재로 못 박는다 — 실제 구현만 등록하는 메트릭이 있다.
+
+```bash
+curl -s localhost:12345/metrics | grep loki_source_journal_target_lines_total
+```
+
+stub 빌드에는 이 메트릭이 아예 없다. 아래 P6이 이것을 본다.
+
+### 왜 `instance` 라벨을 hostname으로 두는가
+
+instance refresh는 `min_healthy_percentage = 100`이라 **교체 중 두 인스턴스가 몇 분간 공존한다.** 라벨을 고정 문자열로 두면 그 구간에 같은 시리즈로 두 값이 들어가 remote_write가 중복·역순 샘플로 거절한다. `constants.hostname`을 쓰면 구조적으로 갈린다.
+
+대가는 교체마다 새 시리즈가 생기는 것인데, **활성 시리즈는 최근 창에 샘플이 있는 것만 세므로** 옛 인스턴스는 곧 빠진다.
+
+### 왜 Alloy 버전을 핀하는가
+
+핀하지 않으면 **같은 커밋을 다른 날 apply했을 때 다른 에이전트가 떠서 메모리 실측(P2)의 비교 대상이 사라진다.** `asg.tf`가 AMI를 `var.app_ami_id`로 핀할 수 있게 해 둔 것과 같은 이유다. `var.alloy_version`으로 뺀다.
+
+### 왜 collector를 처음부터 깎지 않는가
+
+`prometheus.exporter.unix`의 비활성 목록은 **Grafana 공식 Linux 통합의 값을 그대로 쓴다**(`ipvs`, `btrfs`, `infiniband`, `xfs`, `zfs`). 더 깎고 싶은 유혹이 있지만 **시리즈 수는 이번에 재는 값 중 하나다.** 기준선을 먼저 만들고, 축소는 아래 기각선이 발동할 때만 한다. **측정 후에 목록을 새로 만드는 것은 사후 완화다.**
+
 ## 사전 등록한 판정 기준
 
 측정·검증 **전에** 못 박는다. 사후에 완화하지 않는다.
 
+### 사전 등록 예측
+
+| 가설 | 내용 | 판별자 |
+|---|---|---|
+| **H1 (설계자 예측)** | Alloy RSS는 CloudWatch Agent(130.6MB)보다 **작다.** Grafana 공식 자원 추정이 "활성 시리즈 100만당 11GiB"이므로 예상 1,100~1,500 시리즈의 기인분은 **약 15MiB**이고, 나머지는 Go 런타임 상주분이다. **예측 구간 60~110MB** | `ps -o rss= -C alloy` 최댓값 |
+| H2 | 내장 exporter 3개 + remote_write WAL + 로그 파이프라인의 고정 오버헤드가 CWA를 넘는다 | 위와 동일 |
+
+### 채택 기준 — 전부 만족
+
 | # | 항목 | 통과 기준 |
 |---|---|---|
-| M1 | 앱 지표 도달 | Grafana Cloud에서 `jvm_memory_used_bytes`가 조회된다 |
-| M2 | 호스트 지표 도달 | `node_memory_MemAvailable_bytes`가 조회된다 |
-| M3 | 로그 도달 | Loki에서 `yourtrip-app` 유닛 로그가 조회되고, OS 로그(cloud-init 등)도 함께 있다 |
-| M4 | 시리즈 수 | 활성 시리즈 **10,000 미만**. 여유율도 함께 기록한다 |
-| M5 | actuator 외부 차단 유지 | ALB 경유 `/actuator/prometheus`가 여전히 **403**([prod-infra-iac](../prod-infra-iac/README.md)의 P2 재확인) |
-| M6 | CloudWatch Agent 부재 | 인스턴스에 `amazon-cloudwatch-agent` 프로세스가 없다 |
-| M7 | **Alloy 상주 메모리** | 아래 별도 판정 |
-| M8 | 앱 무영향 | 힙 상한이 여전히 `805306368`(768MiB), 활성 프로필 `prod` |
+| P1 | Alloy 생존 | 부팅 30분 뒤 `systemctl is-active alloy` = `active`, `NRestarts` = 0, `dmesg \| grep -i oom` 0건, cloud-init 로그에 `Alloy 구성 실패` 0건 |
+| P2 | **Alloy 상주 메모리** | 아래 별도 판정 |
+| P3 | 앱 지표 도달·정확 | `sum(jvm_memory_max_bytes{job="yourtrip-app",area="heap"} > 0)` = **805306368**. 도달과 값 정확성을 한 등식으로 잠근다([deploy/prod/README.md](../../../deploy/prod/README.md)의 확인 절차와 같은 항등식) |
+| P4 | 호스트 지표 도달 | `node_memory_MemAvailable_bytes{job="yourtrip-host"}` 조회됨. **종전 `mem_used_percent`와 같은 값이 `1 - MemAvailable/MemTotal`로 계산됨을 한 번 확인** — CloudWatch Agent를 걷어내도 잃는 것이 없다는 증명이다 |
+| P5 | journald **전체** 도달 | `{job="yourtrip-journal"}`이 반환되고 `unit` 라벨에 `yourtrip-app.service` **그리고 OS 유닛 3종 이상**(cloud-init·sshd·amazon-ssm-agent 등)이 함께 있다. **앱 유닛만 있으면 기각** |
+| P6 | journal 지원이 실제로 컴파일돼 있다 | `loki_source_journal_target_lines_total`이 존재하고 **30초 간격 2회 관측에서 증가**한다. 위 "조용한 실패 모드" 참고 — 오류 부재로는 판정할 수 없다 |
+| P7 | 활성 시리즈 | **3,000 미만**이고 free 10,000 대비 여유율 기록. job별(`yourtrip-app`/`yourtrip-host`/`alloy`)로 분해한다 |
+| P8 | 전송 실패 0 | 30분 창에서 `prometheus_remote_write_wal_samples_appended_total` 증가, `..._failed_samples_total` = 0, `..._dropped_samples_total` = 0, `loki_write_dropped_entries_total` = 0 |
+| P9 | actuator 외부 차단 유지 | ALB 경유 `/actuator/prometheus`와 `/actuator`가 **둘 다 403**([prod-infra-iac](../prod-infra-iac/README.md) P2 재확인). localhost 스크레이프가 이 규칙을 우회하지 않음을 증명한다 |
+| P10 | CloudWatch Agent 부재 | `pgrep -a amazon-cloudwatch-agent` 0건 **그리고** `rpm -q` 미설치 **그리고** 역할에 `CloudWatchAgentServerPolicy` 미부착 |
+| P11 | 앱 무영향 | 힙 상한 `805306368` 유지, 프로필 `prod`, **교체 중 1초 간격 폴링에서 200 아닌 응답 0건** |
+| P12 | 철거 완결성 + 파라미터 생존 | destroy 후 ALB·RDS·ElastiCache·EC2·ASG 전부 비어 있음. **그리고** `/yourtrip/prod/grafana/*` 5개가 살아 있음 — 재apply 때 재입력이 없다는 주장의 실증 |
 
-### M7 — 메모리 판정
+### 기각 기준 — 하나라도 해당하면
 
-현행 `-Xmx768m`은 **OS+에이전트 실측 321MB**를 전제로 산정됐고, 그중 CloudWatch Agent가 **130.6MB**였다. 이를 제거하고 Alloy(RSS = X)를 올리면 OS 항목은 `190 + X`가 된다.
-
-| 구간 | 판정 | 근거 |
+| # | 조건 | 조치 |
 |---|---|---|
-| **X ≤ 110MB** | 채택 + 부수 효과 | OS 실측이 300MB 미만이 되어 `-Xmx` 기각선이 해제된다 → **힙 재판정 여지**(별도 이슈) |
-| **110 < X ≤ 130.6MB** | 채택 | 기존 예산 대비 악화 없음 |
-| **X > 130.6MB** | 조건부 | CloudWatch Agent보다 무겁다는 뜻. `prometheus.exporter.unix`의 불필요한 collector를 끄고 재측정. 그래도 초과하면 예산을 다시 짜거나 방식을 재검토한다 |
+| R1 | P2가 최종 기각 구간 | CloudWatch Agent 복원 또는 수집 방식 재설계 |
+| R2 | P5 실패(앱 유닛만) 또는 P6 실패 | 로그 수집 목표 미달 — 원인 규명 전까지 채택하지 않는다 |
+| R3 | P11 위반 | 즉시 롤백 |
+| R4 | P7이 10,000 초과 | free tier 전제가 깨진 것 — 설계 재검토 |
 
-**측정 방법**은 [memory-map.md](../jvm-heap-sizing/memory-map.md) §2와 같게 한다 — 앱 정지 상태의 `MemTotal - MemAvailable`, 그리고 `ps -o rss= -C alloy`. 같은 방식이어야 321MB와 직접 비교된다.
+### P2 — 메모리 판정
+
+**측정 방법을 [memory-map.md](../jvm-heap-sizing/memory-map.md) §2와 같게 한다** — 앱 정지 상태의 `MemTotal − MemAvailable`. 그래야 321MB와 직접 비교된다.
+
+```
+종전 OS+에이전트 실측            321.0 MB
+  − amazon-cloudwatch-agent      130.6 MB
+  ────────────────────────────────────
+  = CWA 없는 잔여                190.4 MB
+```
+
+[jvm-heap-sizing/README.md](../jvm-heap-sizing/README.md) §5가 못 박은 선은 **"OS 실측이 300MB를 넘으면 1024 → 768로 내린다"** 였고 321MB로 발동했다. **같은 300MB 선을 그대로 쓴다** — 그러려면 Alloy RSS **X ≤ 109.6MB**여야 한다.
+
+| 구간 | 판정 |
+|---|---|
+| **P2-A: X ≤ 109.6MB** | **채택.** 종전 기각선이 해제된다. ⚠️ **그러나 이번에 `-Xmx`를 올리지 않는다** — 힙 재산정은 별도의 사전 등록과 A/B가 필요한 독립 판단이고, 여기서 함께 바꾸면 변수가 둘이 되어 어느 쪽 효과인지 읽을 수 없다(#101이 A/B에서 `-Xss`를 함께 건드리지 않은 것과 같다). 해제 사실만 기록하고 **후속 이슈로 분리**한다 |
+| **P2-B: 109.6 < X ≤ 130.6MB** | **채택.** 종전 CWA보다 무겁지 않다 = 예산 악화 없음. 300MB 선은 여전히 발동 상태이므로 `-Xmx768m`의 근거가 유지된다 |
+| **P2-C: X > 130.6MB** | **1차 기각.** 아래 축소안을 **순서대로 1회** 적용하고 재측정. 그래도 초과하면 최종 기각(R1) |
+
+**축소안 — 지금 등록한다. 측정 후에 새로 만들지 않는다.**
+
+1. `disable_collectors`에 추가: `nfs`, `nfsd`, `mdadm`, `bonding`, `bcache`, `tapestats`, `hwmon`, `rapl`, `thermal_zone`, `edac`, `dmi` — t3.small/AL2023/EBS 단일 볼륨에 존재하지 않거나 상수인 장치 클래스
+2. `prometheus.exporter.self`와 그 scrape 제거 — P2의 시계열 교차검증을 포기하는 대가
+3. systemd 드롭인에 `Environment=GOMEMLIMIT=100MiB`
+
+**측정 규약**
+
+- 부팅 후 **30분 이상** 경과, 앱 기동 완료 상태에서 시작
+- `ps -o rss= -C alloy`를 **1초 간격 300초** 폴링한 **최댓값**
+- 같은 창의 `alloy_resources_process_resident_memory_bytes`와 **교차검증** — 두 경로가 5% 안에서 일치하지 않으면 폐기하고 재측정한다. [memory-map.md](../jvm-heap-sizing/memory-map.md) §7이 남긴 "1초 폴링은 첨두를 놓친다"는 한계를 이 항목이 보완한다
+- OS 실측은 **앱을 정지시켜야 하므로 서비스가 끊긴다** → **destroy 직전에 딱 한 번만** 한다
 
 ## 한계
 
-- **Alloy RSS를 재기 전에 이 문서를 쓴다.** M7이 미확정인 채로 방식을 확정했다. 시리즈 수·비용·프로세스 수라는 나머지 축에서 격차가 충분히 크다고 판단했기 때문이지만, **메모리 하나만으로 뒤집힐 여지는 남아 있다.**
+- **Alloy RSS를 재기 전에 이 문서를 쓴다.** P2가 미확정인 채로 방식을 확정했다. 시리즈 수·비용·프로세스 수라는 나머지 축에서 격차가 충분히 크다고 판단했기 때문이지만, **메모리 하나만으로 뒤집힐 여지는 남아 있다.**
 - **`exception` 라벨을 자극하지 못했다.** 시리즈 실측 중 모든 응답이 `exception="none"`이었다. 실제 500이 발생하면 예외 클래스명마다 라벨 값이 생긴다. `GlobalExceptionHandler`가 `BusinessException`으로 뭉쳐 처리하므로 증가 폭은 제한적일 것으로 보이나 검증하지 않았다.
 - **인증된 트래픽을 재현하지 않았다.** 스윕 47건 중 29건이 403이었다. JWT를 넣으면 같은 uri에 `status="200"` 조합이 추가되는데, 이는 상한 계산의 `× 6 status`에 이미 반영돼 있다.
 - **시리즈 실측은 로컬 환경이다.** 운영에서 AI 코스 생성 등 클래스 로딩이 많은 경로를 타면 JVM 계열 지표가 조금 더 자랄 수 있다. 다만 그 계열은 고정분이라 자릿수가 바뀌지 않는다.
@@ -150,7 +238,7 @@ http_server_requests_seconds_count{...,status="404",uri="/api/upload-courses/{up
 
 | 문서 | 이 작업에서 쓴 내용 |
 |---|---|
-| [jvm-heap-sizing/memory-map.md](../jvm-heap-sizing/memory-map.md) | OS+에이전트 321MB, CloudWatch Agent 130.6MB, 기각선. M7 판정의 근거 |
+| [jvm-heap-sizing/memory-map.md](../jvm-heap-sizing/memory-map.md) | OS+에이전트 321MB, CloudWatch Agent 130.6MB, 기각선. P2 판정의 근거 |
 | [jvm-heap-sizing/README.md](../jvm-heap-sizing/README.md) | `-Xmx` 예산 산정식 |
 | [prod-infra-iac/README.md](../prod-infra-iac/README.md) | ALB `/actuator` 차단(P2), 사전 등록 판정 기준의 형식 |
 | [guide/monitoring.md](../../guide/monitoring.md) | 로컬 Prometheus·Grafana 구성, 커뮤니티 대시보드 11378 |
