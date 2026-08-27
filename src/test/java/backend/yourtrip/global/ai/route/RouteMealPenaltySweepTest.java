@@ -94,9 +94,15 @@ class RouteMealPenaltySweepTest {
      * <p>위쪽으로 16.0까지 벌린 것은 <b>포화를 확인하기 위해서</b>다. 위반이 더는 줄지 않는
      * 구간이 보여야 "2.0이 포화 안쪽인가 바깥인가"를 말할 수 있다. 계산에 외부 호출이 없어
      * 팔을 늘리는 비용이 사실상 0이다.
+     *
+     * <p><b>1.0~2.0 사이 셋은 1차 실행 뒤에 더했다.</b> 처음 격자
+     * ({@code 0, 0.25, 0.5, 1, 2, 3, 4, 8, 16})로는 위반이 0이 되는 지점이 1.0과 2.0 <b>사이
+     * 어딘가</b>라는 것까지만 보여, 판정 기준 (b)를 풀 수 없었다. 바꾼 것은 <b>판정 기준이 아니라
+     * 해상도</b>다 — 유리한 값을 찾으려고 축을 옮긴 것이 아니라, 미리 정해 둔 질문에 답할 수
+     * 있을 만큼 같은 축을 촘촘하게 했다. 1차 결과는 STEP-3 에 그대로 남겼다.
      */
     private static final double[] LAMBDAS =
-        {0.0, 0.25, 0.5, 1.0, 2.0, 3.0, 4.0, 8.0, 16.0};
+        {0.0, 0.25, 0.5, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0, 4.0, 8.0, 16.0};
 
     /** 두 값이 같다고 볼 허용 오차. 거리 규모가 수백 km 라 1e-6은 상대오차 1e-9 안쪽이다. */
     private static final double EPSILON = 1e-6;
@@ -242,6 +248,8 @@ class RouteMealPenaltySweepTest {
                 (int) places.stream().filter(p -> p.slotType() == SlotType.MEAL).count(),
                 RouteGeometry.totalDistanceKm(beforeOrder),
                 shortestKm,
+                RouteGeometry.selfIntersections(beforeOrder),
+                RouteGeometry.backtrackVertices(beforeOrder),
                 arms));
         }
 
@@ -313,8 +321,12 @@ class RouteMealPenaltySweepTest {
 
         double beforeSum = subset.stream().mapToDouble(DaySample::beforeKm).sum();
         double shortestSum = subset.stream().mapToDouble(DaySample::shortestKm).sum();
-        System.out.printf("  before %.2f km (완전탐색 OFF) · shortest %.2f km (거리만 최소화)%n",
-            beforeSum, shortestSum);
+        System.out.printf(
+            "  before %.2f km · 교차 %d · 역행 %d   (완전탐색 OFF)%n",
+            beforeSum,
+            subset.stream().mapToInt(DaySample::beforeCrossings).sum(),
+            subset.stream().mapToInt(DaySample::beforeBacktracks).sum());
+        System.out.printf("  shortest %.2f km   (거리만 최소화한 참조값)%n", shortestSum);
         System.out.printf("  %6s %10s %8s %12s %10s %8s %8s %7s%n",
             "λ", "after km", "감소율", "식사위반(분)", "양보 km", "교차", "역행", "악화");
 
@@ -413,22 +425,31 @@ class RouteMealPenaltySweepTest {
             }
         }
 
-        // (b) 포화 — 위반이 더 줄지 않기 시작하는 가장 작은 λ. 그 위쪽은 거리만 내주는 구간이다.
-        double saturation = Double.NaN;
-        for (int i = 0; i + 1 < LAMBDAS.length; i++) {
-            if (aggregate(subset, LAMBDAS[i]).violationMinutes()
-                == aggregate(subset, LAMBDAS[i + 1]).violationMinutes()) {
-                saturation = LAMBDAS[i];
+        // (b) 포화 — 여기서부터 위로는 산출이 <b>더 이상 변하지 않는</b> 가장 작은 λ.
+        //
+        // 거리와 위반을 둘 다 봐야 한다. 위반만 보면 "위반은 같은데 거리는 계속 오르는" 구간을
+        // 포화로 오독하는데, 그건 포화가 아니라 낭비이고 (a) 지배로 잡혀야 할 것이다. 반대로
+        // 둘 다 고정이면 그 구간의 λ 들은 <b>같은 순열을 낸다</b> — 현행이 그 위에 있어도
+        // 바꿔서 얻을 것이 없다.
+        Aggregate top = aggregate(subset, LAMBDAS[LAMBDAS.length - 1]);
+        double plateauStart = Double.NaN;
+        for (double lambda : LAMBDAS) {
+            Aggregate agg = aggregate(subset, lambda);
+            if (Math.abs(agg.afterKm() - top.afterKm()) <= EPSILON
+                && agg.violationMinutes() == top.violationMinutes()) {
+                plateauStart = lambda;
                 break;
             }
         }
 
         System.out.printf("  [%s] (a) 현행 %.1f 을 지배하는 λ: %s%n", label, PRODUCTION_LAMBDA,
             dominating.isEmpty() ? "없음" : String.join(", ", dominating));
-        System.out.printf("  [%s] (b) 위반이 더 줄지 않기 시작하는 λ: %s  → 현행이 %s%n", label,
-            Double.isNaN(saturation) ? "없음(16.0까지 계속 줄어든다)" : "%.2f".formatted(saturation),
-            Double.isNaN(saturation) || saturation >= PRODUCTION_LAMBDA
-                ? "포화 안쪽이 아니다" : "포화 바깥 — 낭비다");
+        System.out.printf("  [%s] (b) 산출이 고정되는 포화 시작 λ: %.2f  → 현행은 %s%n",
+            label, plateauStart,
+            plateauStart < PRODUCTION_LAMBDA - EPSILON
+                ? "포화 안쪽 (여유 %.0f%% — 거리·위반이 모두 같아 낭비가 아니다)"
+                    .formatted((PRODUCTION_LAMBDA / plateauStart - 1) * 100)
+                : "포화가 시작되는 바로 그 지점이다");
     }
 
     // ── 집계 ──────────────────────────────────────────────────────────────────
@@ -512,6 +533,7 @@ class RouteMealPenaltySweepTest {
         int requestId, String location, String regionTier, String keywordSet,
         int day, int placeCount, int mealCount,
         double beforeKm, double shortestKm,
+        int beforeCrossings, int beforeBacktracks,
         Map<Double, ArmResult> arms
     ) {}
 
