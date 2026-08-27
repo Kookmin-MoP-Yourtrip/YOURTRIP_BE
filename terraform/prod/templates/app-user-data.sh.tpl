@@ -162,3 +162,98 @@ CWEOF
 /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
   -a fetch-config -m ec2 -s \
   -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+# ------------------------------------------------------------
+# 7) Grafana Alloy — 앱 지표 + 호스트 지표 + journald 로그
+#
+# 설정 정본은 deploy/prod/config.alloy이고 asg.tf가 file()로 읽어 주입한다.
+# 설계 근거는 docs/tasks/monitoring-config/README.md에 있다.
+#
+# 앱(5번)보다 뒤에 두는 것이 의도다. 관측 실패가 서비스 실패가 되면 안 된다.
+# 아래 구간은 실패해도 부팅을 멈추지 않되, 실패를 로그에 크게 남긴다 — 그리고 판정 기준
+# P1이 Alloy 생존을 따로 확인하므로 "조용히 안 도는" 상태로 넘어가는 경로는 없다.
+#
+# 앱 로그를 놓치지도 않는다: Alloy가 늦게 떠도 journald가 이미 갖고 있고 config.alloy의
+# max_age가 12시간이라 소급해 읽는다. 잃는 것은 앱 기동 직후 몇십 초의 '지표'뿐이다.
+# ------------------------------------------------------------
+set +e
+(
+  # 서브셸 안에서 -e를 다시 켠다. 밖에서 +e만 하면 서브셸이 그것을 상속해 첫 실패에서
+  # 멈추지 않고 끝까지 흘러가, 아래 rc 검사가 의미를 잃는다.
+  set -e
+
+  rpm --import https://rpm.grafana.com/gpg.key
+  cat > /etc/yum.repos.d/grafana.repo <<'REPOEOF'
+[grafana]
+name=grafana
+baseurl=https://rpm.grafana.com
+repo_gpgcheck=1
+enabled=1
+gpgcheck=1
+gpgkey=https://rpm.grafana.com/gpg.key
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+REPOEOF
+
+  # 버전을 핀하는 이유는 재현성이다 — 같은 커밋을 다른 날 apply했을 때 다른 에이전트가
+  # 뜨면 메모리 실측(P2)의 비교 대상이 사라진다. AMI를 var.app_ami_id로 핀할 수 있게 해 둔
+  # 것과 같은 이유다(asg.tf).
+  #
+  # RPM이 유닛(/usr/lib/systemd/system/alloy.service)·설정 경로(/etc/alloy/)·alloy 사용자와
+  # adm·systemd-journal 그룹 가입까지 만든다. 그래서 deploy/prod/에 유닛 파일을 두지 않고
+  # 설정 하나만 소유한다 — journald 읽기 권한도 이 그룹 가입으로 이미 갖춰진다.
+  dnf install -y "alloy-${alloy_version}"
+
+  cat > /etc/alloy/config.alloy <<'ALLOYEOF'
+${alloy_config}
+ALLOYEOF
+  chmod 644 /etc/alloy/config.alloy
+
+  # 접속 정보와 토큰. env/ 하위가 아니라 grafana/ 하위인 이유는 2번 섹션에 있다 —
+  # env/는 일괄 조회돼 앱 .env에 KEY=VALUE로 들어가므로 앱 환경변수를 오염시킨다.
+  # artifact_key를 env/ 밖에 둔 것과 같은 기준이다.
+  set +x
+  GRAFANA_PROM_URL=$(aws ssm get-parameter --name "${ssm_path}/grafana/prometheus_url" --query 'Parameter.Value' --output text)
+  GRAFANA_PROM_USER=$(aws ssm get-parameter --name "${ssm_path}/grafana/prometheus_username" --query 'Parameter.Value' --output text)
+  GRAFANA_LOKI_URL=$(aws ssm get-parameter --name "${ssm_path}/grafana/loki_url" --query 'Parameter.Value' --output text)
+  GRAFANA_LOKI_USER=$(aws ssm get-parameter --name "${ssm_path}/grafana/loki_username" --query 'Parameter.Value' --output text)
+
+  # heredoc이 아니라 printf를 쓴다. 2번 섹션의 .env 생성과 같은 형태이고, 따옴표 없는
+  # heredoc이 값 안의 특수문자를 전개하는 경로를 아예 만들지 않는다.
+  {
+    printf 'GRAFANA_CLOUD_PROM_URL=%s\n'  "$GRAFANA_PROM_URL"
+    printf 'GRAFANA_CLOUD_PROM_USER=%s\n' "$GRAFANA_PROM_USER"
+    printf 'GRAFANA_CLOUD_LOKI_URL=%s\n'  "$GRAFANA_LOKI_URL"
+    printf 'GRAFANA_CLOUD_LOKI_USER=%s\n' "$GRAFANA_LOKI_USER"
+  } > /etc/alloy/endpoints.env
+
+  # 토큰만 별도 파일이다. config.alloy가 password_file로 이 경로를 읽으므로 설정에 평문이
+  # 남지 않고, 읽는 쪽이 TrimSpace를 하므로 --output text가 붙이는 끝 개행을 지울 필요가
+  # 없다. CloudFront 개인키를 파일로 떨어뜨리는 2번 섹션과 같은 형태다.
+  aws ssm get-parameter --name "${ssm_path}/grafana/token" --with-decryption \
+    --query 'Parameter.Value' --output text > /etc/alloy/grafana-cloud.token
+  set -x
+
+  chmod 644 /etc/alloy/endpoints.env
+  chmod 640 /etc/alloy/grafana-cloud.token
+  chown root:alloy /etc/alloy/grafana-cloud.token
+
+  # 패키지가 소유한 /etc/sysconfig/alloy를 건드리지 않고 드롭인으로 덧붙인다. 그래야
+  # "우리가 넣은 값"과 "패키지 기본값(CONFIG_FILE 등)"이 파일 단위로 갈려, 어느 쪽이
+  # 무엇을 정했는지 헷갈리지 않는다.
+  mkdir -p /etc/systemd/system/alloy.service.d
+  cat > /etc/systemd/system/alloy.service.d/10-yourtrip.conf <<'DROPINEOF'
+[Service]
+EnvironmentFile=/etc/alloy/endpoints.env
+DROPINEOF
+
+  systemctl daemon-reload
+  systemctl enable --now alloy.service
+)
+ALLOY_RC=$?
+set -e
+
+if [ "$ALLOY_RC" -ne 0 ]; then
+  echo "!!! Alloy 구성 실패 (rc=$ALLOY_RC). 앱은 5번에서 이미 기동했으므로 부팅은 계속한다." >&2
+  echo "!!! 진단: systemctl status alloy / journalctl -u alloy / 이 로그의 위쪽" >&2
+fi

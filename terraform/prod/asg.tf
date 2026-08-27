@@ -39,6 +39,16 @@ data "aws_ssm_parameter" "artifact_key" {
   name = "${var.ssm_parameter_path}/artifact_key"
 }
 
+# Grafana Cloud 접속 정보가 등록돼 있지 않으면 plan이 여기서 실패한다. 위 artifact_key와
+# 정확히 같은 이유다 — 등록을 빠뜨려도 인스턴스는 정상적으로 뜨고 관측만 조용히 비어,
+# 대시보드가 왜 빈지 찾아 user-data 로그를 뒤져야 한다.
+#
+# 다섯 개 중 URL 하나만 읽는다. aws_ssm_parameter data 소스가 읽은 값은 tfstate에 남으므로,
+# 토큰을 읽으면 시크릿을 SSM으로 옮긴 의미가 사라진다. 비밀이 아닌 값으로 존재만 확인한다.
+data "aws_ssm_parameter" "grafana_cloud_prometheus_url" {
+  name = "${var.ssm_parameter_path}/grafana/prometheus_url"
+}
+
 resource "aws_launch_template" "app" {
   name_prefix   = "${var.name_prefix}-app-"
   image_id      = local.app_ami_id
@@ -111,6 +121,15 @@ resource "aws_launch_template" "app" {
     # .gitattributes의 `deploy/** text eol=lf`가 CRLF 유입을 막아준다(없으면 유닛이 조용히 깨진다).
     service_unit = file("${path.module}/../../deploy/prod/yourtrip-app.service")
     jvm_opts_env = file("${path.module}/../../deploy/prod/jvm-opts.env")
+
+    # Alloy 설정도 같은 방식으로 잇는다 — 값과 근거를 저장소가 들고 있어야 하고,
+    # .gitattributes의 `deploy/** text eol=lf`가 CRLF 유입을 막아준다.
+    #
+    # ⚠️ config.alloy에 달러나 퍼센트 뒤에 중괄호가 오는 표기가 있으면 templatefile()이
+    #    보간으로 해석해 이 apply가 그 자리에서 깨진다(주석 안이라도 마찬가지다).
+    #    확인 명령은 deploy/prod/README.md에 있다.
+    alloy_config  = file("${path.module}/../../deploy/prod/config.alloy")
+    alloy_version = var.alloy_version
 
     cloudwatch_namespace = "YourtripProd"
   }))
