@@ -26,7 +26,7 @@
 [KakaoLocalClient.java](../../../src/main/java/backend/yourtrip/global/kakao/KakaoLocalClient.java)의 `score()`는 이름 일치 +5 / 주소 일치 +3 / 카테고리 +2로 최대 10점을 매기지만 **하한선이 없다.** `max()`로 최고점을 뽑으므로 0점 후보도 그대로 반환된다. LLM이 지어낸 상호명으로 검색하면 카카오가 그 지역의 무관한 POI를 돌려주고, 그게 사용자 코스에 저장된다. BASELINE 측정이 이 경로를 세탁(지어낸 이름 `FABRICATED`가 검증을 통과)으로 분류했다. **1-2에서 해소했다** — 다만 처방은 하한선이 아니라 이름 일치 게이트였다(하한선은 실측에서 역효과).
 
 **② LLM이 지리를 모르는 채로 동선을 짠다.**
-[GeminiService.java](../../../src/main/java/backend/yourtrip/global/gemini/service/GeminiService.java)의 95줄 프롬프트 하나가 컨셉 설계 + 장소 선정 + 시간 배치 + 동선 최적화 + 제목 작명을 동시에 요구한다. 좌표 없이 텍스트로만 최적화하니 지그재그 동선이 나오고, 다섯 가지 일을 한 번에 시켜 각각이 다 얕다.
+`GeminiService`의 95줄 프롬프트 하나가 컨셉 설계 + 장소 선정 + 시간 배치 + 동선 최적화 + 제목 작명을 동시에 요구한다. 좌표 없이 텍스트로만 최적화하니 지그재그 동선이 나오고, 다섯 가지 일을 한 번에 시켜 각각이 다 얕다. **그 클래스는 8-4에서 삭제됐지만 프롬프트 원문은 바이트 동일성 검증을 거쳐 [LegacyGeminiPrompt.java](../../../src/test/java/backend/yourtrip/global/benchmark/LegacyGeminiPrompt.java)로 이관돼**, 3점 비교의 첫 측정점을 언제든 재현할 수 있다.
 
 **③ 트랜잭션이 외부 I/O 전체를 감싼다.**
 [MyCourseServiceImpl.java](../../../src/main/java/backend/yourtrip/domain/mycourse/service/MyCourseServiceImpl.java)의 `createAICourse`는 `@Transactional` 안에서 타임아웃 없는 LLM 호출과 `block(20초)` 카카오 호출을 최대 18회 수행한다. `open-in-view: false`라 트랜잭션 전체에 커넥션이 묶인다. 이건 품질 문제가 아니라 **가용성 문제**이고, 파이프라인 재설계와 무관하게 우선 고쳐야 한다.
