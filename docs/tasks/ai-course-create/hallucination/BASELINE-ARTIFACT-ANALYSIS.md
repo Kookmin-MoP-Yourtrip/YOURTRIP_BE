@@ -31,13 +31,13 @@ results/
 
 | 파일 | 내용 | 규모 |
 |---|---|---|
-| `merged3-places.csv` | 장소별 검증 결과 (최종 병합본) | **389행** |
-| `merged3-requests.csv` | 요청별 지표 (최종 병합본) | 30행 |
+| `gemini-20260811/places.csv` | 장소별 검증 결과 (최종 병합본) | **389행** |
+| `gemini-20260811/requests.csv` | 요청별 지표 (최종 병합본) | 30행 |
 | `manual-verification-*.csv` × 3 | 사람이 verdict를 채운 층화 표본 | 합계 **104행** |
-| `raw-20260812-*/response-*.json` | Gemini 원본 응답 | 17개 |
+| `gemini-20260811/raw/*/response-*.json` | Gemini 원본 응답 | 17개 |
 | `hallucination-baseline-*.csv` | 배치별 원본 (병합 전) | 5세트 |
 
-`merged3-*`이 전체 입력 세트(지역 10곳 × 스타일 3조합 = 30요청)를 커버하는 최종본이다. 아래 집계는 별도 언급이 없으면 전부 이 파일 기준이다.
+`gemini-20260811/`이 전체 입력 세트(지역 10곳 × 스타일 3조합 = 30요청)를 커버하는 최종본이다. 아래 집계는 별도 언급이 없으면 전부 이 파일 기준이다.
 
 ---
 
@@ -154,7 +154,7 @@ SEA LIFE 부산 아쿠아리움  → 씨라이프 부산아쿠아리움
 
 | 로드맵 서술 | 실제 |
 |---|---|
-| "파싱 실패율 28.6%의 산출물이 남아 있지 않다"(미해결 항목) | **남아 있다.** `merged3-requests.csv`와 `raw-*/` |
+| "파싱 실패율 28.6%의 산출물이 남아 있지 않다"(미해결 항목) | **남아 있다.** `gemini-20260811/requests.csv`와 `raw-*/` |
 | "프롬프트의 JSON 예시에 trailing comma가 들어 있는 것이 유력한 원인"(목표 1) | **이 데이터로는 뒷받침되지 않는다** |
 
 ### 28.6%의 출처를 특정했다
@@ -203,7 +203,7 @@ SEA LIFE 부산 아쿠아리움  → 씨라이프 부산아쿠아리움
 정상 응답 16개는 전부 1,401 ~ 1,658자(1,557 ~ 1,862바이트)이고 완전한 JSON이다. #30만 **386자(458바이트)에서 키 이름 중간에 잘렸다.**
 
 > 이 수치는 **문자 수**다 — 한글이 UTF-8에서 3바이트라 파일 크기와 다르다. 원문은
-> [artifacts/raw-20260812-184600/](artifacts/raw-20260812-184600/)에 있다.
+> [artifacts/gemini-20260811/raw/184600/](artifacts/gemini-20260811/raw/184600/)에 있다.
 
 ### 2단계 설계에 미치는 영향
 
@@ -359,11 +359,11 @@ BASELINE 문서의 수치를 원본에서 재계산했다. **매칭 실패율과
 
 - **층 분포** — 장소별 CSV의 `scoreBand` 빈도. 현행 층은 결과값(`KAKAO_ERROR`/`NO_RESULT`/
   `NAME_MISMATCH`) + `Found` 점수 구간(`0`=S0, `1~4`=S1_4, `5~7`=S5_7, `8~10`=S8_10)이다.
-  옛 산출물(`merged3-*`)은 `NAME_MISMATCH` 없이 점수 구간만 있다 — 현행 기준 재채점은
-  `BASELINE_RESCORE_FROM=results/merged3-places.csv`로 만든 `*-rescore-*` CSV를 쓴다
+  옛 산출물(`gemini-20260811/`)은 `NAME_MISMATCH` 없이 점수 구간만 있다 — 현행 기준 재채점은
+  `BASELINE_RESCORE_FROM=docs/tasks/ai-course-create/hallucination/artifacts/gemini-20260811/places.csv`로 만든 `*-rescore-*` CSV를 쓴다
 - **verdict 교차표** — `manual-verification-*.csv` 3개를 합쳐 `scoreBand` × `verdict`. `#`로 시작하는 주석 행 제외
 - **정규화 효과** — `aiPlaceName`과 `matchedPlaceName`에 `[\s·・.,\-_()\[\]/&|]+` 제거 + 소문자화를 적용한 뒤 양방향 `contains`. 정규화 전에는 불일치인데 후에는 일치하는 행을 센다
-- **파싱 실패** — `merged3-requests.csv`의 `parseError`에 `JSON_PARSE` 포함 여부. 분모를 전체로 할지 호출 성공분으로 할지에 따라 값이 크게 달라지므로 반드시 명시할 것
+- **파싱 실패** — `gemini-20260811/requests.csv`의 `parseError`에 `JSON_PARSE` 포함 여부. 분모를 전체로 할지 호출 성공분으로 할지에 따라 값이 크게 달라지므로 반드시 명시할 것
 - **지어냄률** — `Σ (층별 FABRICATED 비율 × 층별 전체 비중)`. 세탁 통과율은 같은 식을 `Found` 층에만 적용
 
 ---

@@ -145,7 +145,7 @@ LLM부터 다시 돌리려면 `./gradlew benchmarkTest --tests '*AiHallucination
 > 값(지어냄률 10.1%, 상한 10.5%, `WRONG_MATCH` 5.6%p)은 **옛 밴드 기준으로 뽑힌 104건을 새 층에
 > 재조인한 99건**에서 나왔고, 그 표본은 층별로 11~28건씩 불균등해 아래 "이 측정의 한계"가 스스로
 > 약점으로 적어 둔 것이었다. 재판정은 그 한계를 닫기 위해 미기입으로 남아 있던
-> [manual-verification-rescore-20260825-110536.csv](artifacts/manual-verification-rescore-20260825-110536.csv)를
+> [gemini-rescore-20260825/verdicts.csv](artifacts/gemini-rescore-20260825/verdicts.csv)를
 > 채운 것이며, **채점 결과 389행과 검증 함수는 한 글자도 바뀌지 않았다** — 바뀐 것은 "어느 50건을
 > 사람이 판정했는가"뿐이다. 판정자는 Claude 세션(웹 검색으로 실존 확인, 근거는 `note` 열)이고
 > 사용자 검토를 거쳤다. 옛 값은 [BASELINE-ARTIFACT-ANALYSIS.md](BASELINE-ARTIFACT-ANALYSIS.md)의
@@ -223,7 +223,7 @@ LLM부터 다시 돌리려면 `./gradlew benchmarkTest --tests '*AiHallucination
 ## 지역 티어별 소급 집계 ★
 
 > ROADMAP 4-10으로 수행한 **소급 집계**다. 새 API 호출도 비용도 없이 이 측정의 원본 산출물
-> ([artifacts/](artifacts/)의 `merged3-places.csv` 389장소 · `merged3-requests.csv` 30요청 · `manual-verification-*.csv` 104건)을
+> ([artifacts/](artifacts/)의 `gemini-20260811/places.csv` 389장소 · `gemini-20260811/requests.csv` 30요청 · `manual-verification-*.csv` 104건)을
 > `regionTier` 축으로 다시 자른 것이다. 목적은 4단계(네이버 시더 + TourAPI 후보 공급)의 출발
 > 가설 **"무인지 지역일수록 파라메트릭이 약하다"** 를 코드 한 줄 짜기 전에 확인하는 것이었다.
 >

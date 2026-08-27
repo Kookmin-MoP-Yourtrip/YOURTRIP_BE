@@ -698,7 +698,7 @@ class AiHallucinationBaselineTest {
      * 그대로 재사용해 경로를 하나로 유지한다.
      *
      * <pre>
-     * BASELINE_RESCORE_FROM=results/merged3-places.csv \
+     * BASELINE_RESCORE_FROM=docs/tasks/ai-course-create/hallucination/artifacts/gemini-20260811/places.csv \
      *   ./gradlew benchmarkTest --tests '*AiHallucinationBaselineTest*' --rerun
      * </pre>
      */

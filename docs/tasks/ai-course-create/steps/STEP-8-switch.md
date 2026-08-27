@@ -269,10 +269,10 @@ Gemini 경로를 타고 `global/gemini`도 살아 있었다. 즉 두 PR의 수�
 389개를 새 게이트로 재채점했다(LLM 0회, 카카오만 389회).
 
 ```bash
-BASELINE_RESCORE_FROM=docs/tasks/ai-course-create/hallucination/artifacts/merged3-places.csv ./gradlew benchmarkTest --tests '*AiHallucinationBaselineTest*' --rerun
+BASELINE_RESCORE_FROM=docs/tasks/ai-course-create/hallucination/artifacts/gemini-20260811/places.csv ./gradlew benchmarkTest --tests '*AiHallucinationBaselineTest*' --rerun
 ```
 
-결과는 옛 게이트로 만든 [`hallucination-baseline-rescore-20260825-110536.csv`](../hallucination/artifacts/hallucination-baseline-rescore-20260825-110536.csv)와
+결과는 옛 게이트로 만든 [`gemini-rescore-20260825/places.csv`](../hallucination/artifacts/gemini-rescore-20260825/places.csv)와
 **390행 전부 바이트 단위로 동일**했다. 자동 프록시 11.6% · 이름 불일치율 9.5% · 장소 미확보율
 21.1% — 한 자리도 움직이지 않았다.
 
