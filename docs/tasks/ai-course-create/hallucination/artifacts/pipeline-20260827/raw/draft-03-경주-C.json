@@ -1,0 +1,254 @@
+{
+  "title" : "골목의 맛과 호수의 속도, 경주 사흘",
+  "concept" : "뚜벅이로 이어지는 권역마다 경주의 풍경을 걷고, 친구들과 액티비티와 프리미엄 미식으로 하루를 채운다.",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "경주 금리단길",
+        "slotType" : "STROLL",
+        "latitude" : 35.8420235954,
+        "longitude" : 129.2148312586,
+        "address" : "경상북도 경주시 원효로 127",
+        "placeUrl" : "http://place.map.kakao.com/122904148",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "경주대릉원",
+        "slotType" : "ATTRACTION",
+        "latitude" : 35.8381327,
+        "longitude" : 129.2123207,
+        "address" : "경상북도 경주시 황남동 31-1",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:15:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "포석로 소갈비찜",
+        "slotType" : "MEAL",
+        "latitude" : 35.8359027,
+        "longitude" : 129.2118391,
+        "address" : "경상북도 경주시 포석로1068번길 22",
+        "placeUrl" : "http://place.map.kakao.com/1747033771",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:55:00",
+      "stayMinutes" : 84
+    }, {
+      "place" : {
+        "name" : "미피스토어",
+        "slotType" : "SHOPPING",
+        "latitude" : 35.8342945,
+        "longitude" : 129.2095908,
+        "address" : "경상북도 경주시 포석로 1046",
+        "placeUrl" : "http://place.map.kakao.com/210891597",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:35:00",
+      "stayMinutes" : 78
+    }, {
+      "place" : {
+        "name" : "이치니산도",
+        "slotType" : "CAFE",
+        "latitude" : 35.83639,
+        "longitude" : 129.2092884,
+        "address" : "경상북도 경주시 사정로 58",
+        "placeUrl" : "http://place.map.kakao.com/1918888925",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "16:05:00",
+      "stayMinutes" : 78
+    }, {
+      "place" : {
+        "name" : "청온채",
+        "slotType" : "MEAL",
+        "latitude" : 35.8376216,
+        "longitude" : 129.2087986,
+        "address" : "경상북도 경주시 포석로1079번길 8-5 청온채",
+        "placeUrl" : "http://place.map.kakao.com/1537697848",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "경주엑스포대공원",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 35.8340564631,
+        "longitude" : 129.2895443842,
+        "address" : "경상북도 경주시 경감로 614 (천군동)",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 50
+    }, {
+      "place" : {
+        "name" : "보문정(경주)",
+        "slotType" : "STROLL",
+        "latitude" : 35.8413250823,
+        "longitude" : 129.2892803112,
+        "address" : "경상북도 경주시 신평동 150-1",
+        "placeUrl" : "http://place.map.kakao.com/11943719",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:05:00",
+      "stayMinutes" : 69
+    }, {
+      "place" : {
+        "name" : "올바릇식당 경주점",
+        "slotType" : "MEAL",
+        "latitude" : 35.8472389,
+        "longitude" : 129.2802123,
+        "address" : "경상북도 경주시 보문로 368-5 1층 올바릇식당 경주점",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 83
+    }, {
+      "place" : {
+        "name" : "경주루지월드",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 35.8445031,
+        "longitude" : 129.2891009,
+        "address" : "경상북도 경주시 천북남로 16",
+        "placeUrl" : "http://place.map.kakao.com/1657883363",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:10:00",
+      "stayMinutes" : 152
+    }, {
+      "place" : {
+        "name" : "엘로우",
+        "slotType" : "CAFE",
+        "latitude" : 35.8450628,
+        "longitude" : 129.2719235,
+        "address" : "경상북도 경주시 경감로 375-16",
+        "placeUrl" : "http://place.map.kakao.com/1657634396",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "16:00:00",
+      "stayMinutes" : 76
+    }, {
+      "place" : {
+        "name" : "조돌칼국수 경주본점",
+        "slotType" : "MEAL",
+        "latitude" : 35.8510774,
+        "longitude" : 129.2617673,
+        "address" : "경상북도 경주시 북군길 3-6 조돌칼국수",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "09:30:00",
+    "endTime" : "22:40:00",
+    "places" : [ {
+      "place" : {
+        "name" : "월정교",
+        "slotType" : "ATTRACTION",
+        "latitude" : 35.8293658,
+        "longitude" : 129.2173527,
+        "address" : "경상북도 경주시 교동 274",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:30:00",
+      "stayMinutes" : 91
+    }, {
+      "place" : {
+        "name" : "교촌마을",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 35.8302886,
+        "longitude" : 129.2164809,
+        "address" : "경상북도 경주시 교촌길 39-2",
+        "placeUrl" : "http://place.map.kakao.com/25182534",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:15:00",
+      "stayMinutes" : 120
+    }, {
+      "place" : {
+        "name" : "백조식당",
+        "slotType" : "MEAL",
+        "latitude" : 35.8359986,
+        "longitude" : 129.2108197,
+        "address" : "경상북도 경주시 첨성로81번길 31 2층 백조식당",
+        "placeUrl" : "http://place.map.kakao.com/1015604817",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:30:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "교촌가람",
+        "slotType" : "CAFE",
+        "latitude" : 35.8301741,
+        "longitude" : 129.2156291,
+        "address" : "경상북도 경주시 교촌길 39-11 교촌가람",
+        "placeUrl" : "http://place.map.kakao.com/27460279",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:15:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "교촌치킨 신경주역점",
+        "slotType" : "MEAL",
+        "latitude" : 35.802689,
+        "longitude" : 129.1364262,
+        "address" : "경상북도 경주시 건천읍 경주역세권4로 28 교촌치킨 신경주역점",
+        "placeUrl" : "http://place.map.kakao.com/317044323",
+        "source" : "SEEDED",
+        "matchedModifier" : "NEAR_STATION"
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "전촌항",
+        "slotType" : "STROLL",
+        "latitude" : 35.7915707162,
+        "longitude" : 129.495191498,
+        "address" : "경상북도 경주시 감포읍 전촌리 1245-11",
+        "placeUrl" : "http://place.map.kakao.com/25018001",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "21:40:00",
+      "stayMinutes" : 60
+    } ]
+  } ]
+}

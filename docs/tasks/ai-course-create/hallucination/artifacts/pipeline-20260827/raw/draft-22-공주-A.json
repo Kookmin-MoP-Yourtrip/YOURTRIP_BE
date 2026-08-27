@@ -1,0 +1,228 @@
+{
+  "title" : "강물과 돌담 사이, 느린 사흘",
+  "concept" : "걸어서 이어지는 고즈넉한 풍경 속에서 연인과 산책·감성·가성비를 함께 즐기는 힐링 여행",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "제민천",
+        "slotType" : "STROLL",
+        "latitude" : 36.4567293641,
+        "longitude" : 127.1223636816,
+        "address" : "충청남도 공주시 무령로 201 (교동)",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 76
+    }, {
+      "place" : {
+        "name" : "개성집 공주점",
+        "slotType" : "MEAL",
+        "latitude" : 36.4635339,
+        "longitude" : 127.122505,
+        "address" : "충청남도 공주시 미나리3길 6-5",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 81
+    }, {
+      "place" : {
+        "name" : "쌍수정사적비",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 36.4622454578,
+        "longitude" : 127.1257160097,
+        "address" : "충청남도 공주시 금성동 14-4",
+        "placeUrl" : "http://place.map.kakao.com/12643995",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:05:00",
+      "stayMinutes" : 50
+    }, {
+      "place" : {
+        "name" : "공산성연지",
+        "slotType" : "ATTRACTION",
+        "latitude" : 36.4639480871,
+        "longitude" : 127.1284157218,
+        "address" : "충청남도 공주시 금성동 58",
+        "placeUrl" : "http://place.map.kakao.com/12651430",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:05:00",
+      "stayMinutes" : 111
+    }, {
+      "place" : {
+        "name" : "고마커피",
+        "slotType" : "CAFE",
+        "latitude" : 36.4660007,
+        "longitude" : 127.1222387,
+        "address" : "충청남도 공주시 백미고을길 10-7",
+        "placeUrl" : "http://place.map.kakao.com/80547821",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "16:10:00",
+      "stayMinutes" : 70
+    }, {
+      "place" : {
+        "name" : "시장정육점식당",
+        "slotType" : "MEAL",
+        "latitude" : 36.4658673,
+        "longitude" : 127.1222369,
+        "address" : "충청남도 공주시 백미고을길 10-5",
+        "placeUrl" : "http://place.map.kakao.com/7970877",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:00:00",
+    "endTime" : "16:30:00",
+    "places" : [ {
+      "place" : {
+        "name" : "공주 중학동 구 선교사 가옥",
+        "slotType" : "STROLL",
+        "latitude" : 36.449491377,
+        "longitude" : 127.1264579543,
+        "address" : "충청남도 공주시 쪽지골길 18-13 (중학동)",
+        "placeUrl" : "http://place.map.kakao.com/308310065",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "카페, 소솜",
+        "slotType" : "CAFE",
+        "latitude" : 36.4515877,
+        "longitude" : 127.1211912,
+        "address" : "충청남도 공주시 제민2길 1-2 카페, 소솜",
+        "placeUrl" : "http://place.map.kakao.com/1107149318",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "10:15:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "책방, 잇다",
+        "slotType" : "SHOPPING",
+        "latitude" : 36.4533666,
+        "longitude" : 127.123913,
+        "address" : "충청남도 공주시 웅진로 145-1 1층",
+        "placeUrl" : "http://place.map.kakao.com/2064819919",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:25:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "곰선생동태씨",
+        "slotType" : "MEAL",
+        "latitude" : 36.4673457,
+        "longitude" : 127.1432623,
+        "address" : "충청남도 공주시 무령로 466-3",
+        "placeUrl" : "http://place.map.kakao.com/1327398348",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:50:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "공주한옥마을",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 36.4645968,
+        "longitude" : 127.1085301,
+        "address" : "충청남도 공주시 관광단지길 12",
+        "placeUrl" : "http://place.map.kakao.com/21490830",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:30:00",
+      "stayMinutes" : 120
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "09:30:00",
+    "endTime" : "16:00:00",
+    "places" : [ {
+      "place" : {
+        "name" : "공주 고마나루",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 36.4687082638,
+        "longitude" : 127.1063453516,
+        "address" : "충청남도 공주시 백제큰길 2045 (웅진동)",
+        "placeUrl" : "http://place.map.kakao.com/12777448",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:30:00",
+      "stayMinutes" : 45
+    }, {
+      "place" : {
+        "name" : "공주무령왕릉과왕릉원",
+        "slotType" : "ATTRACTION",
+        "latitude" : 36.4630908,
+        "longitude" : 127.1144131,
+        "address" : "충청남도 공주시 왕릉로 37",
+        "placeUrl" : "http://place.map.kakao.com/2056894818",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:30:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "로컬커피",
+        "slotType" : "CAFE",
+        "latitude" : 36.4586708,
+        "longitude" : 127.1183204,
+        "address" : "충청남도 공주시 용당길 55-7 로컬커피",
+        "placeUrl" : "http://place.map.kakao.com/1890024756",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "12:15:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "곰골식당",
+        "slotType" : "MEAL",
+        "latitude" : 36.4517894,
+        "longitude" : 127.1206246,
+        "address" : "충청남도 공주시 봉황산1길 1-2 곰골식당",
+        "placeUrl" : "http://place.map.kakao.com/21254899",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:30:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "공주왕도심1코스",
+        "slotType" : "STROLL",
+        "latitude" : 36.4581104,
+        "longitude" : 127.1214512,
+        "address" : "충청남도 공주시 교동 262-1",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:00:00",
+      "stayMinutes" : 60
+    } ]
+  } ]
+}

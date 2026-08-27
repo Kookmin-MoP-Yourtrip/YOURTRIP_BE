@@ -1,0 +1,254 @@
+{
+  "title" : "골목의 온기, 숲과 강 사이의 사흘",
+  "concept" : "가까운 권역을 천천히 걸으며 서울의 골목 감성, 초록의 여유, 강변의 노을을 가성비 있게 즐기는 연인 여행",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "09:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "그랑핸드 서촌",
+        "slotType" : "SHOPPING",
+        "latitude" : 37.5772481,
+        "longitude" : 126.9730242,
+        "address" : "서울특별시 종로구 자하문로4길 14-2",
+        "placeUrl" : "http://place.map.kakao.com/1738151085",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:30:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "블루보틀 삼청 카페",
+        "slotType" : "CAFE",
+        "latitude" : 37.5801444,
+        "longitude" : 126.9808616,
+        "address" : "서울특별시 종로구 북촌로5길 76",
+        "placeUrl" : "http://place.map.kakao.com/353512935",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "10:45:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "콩지POT지",
+        "slotType" : "MEAL",
+        "latitude" : 37.5788262,
+        "longitude" : 126.9843199,
+        "address" : "서울특별시 종로구 북촌로 21-15 1,2층",
+        "placeUrl" : "http://place.map.kakao.com/21326543",
+        "source" : "SEEDED",
+        "matchedModifier" : "ROOFTOP"
+      },
+      "startTime" : "12:00:00",
+      "stayMinutes" : 85
+    }, {
+      "place" : {
+        "name" : "북촌한옥마을",
+        "slotType" : "ATTRACTION",
+        "latitude" : 37.5790529392,
+        "longitude" : 126.9867060298,
+        "address" : "서울특별시 종로구 계동길 37 (계동)",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:35:00",
+      "stayMinutes" : 129
+    }, {
+      "place" : {
+        "name" : "삼청공원",
+        "slotType" : "STROLL",
+        "latitude" : 37.5889267212,
+        "longitude" : 126.982819993,
+        "address" : "서울특별시 종로구 삼청로 156 (삼청동)",
+        "placeUrl" : "http://place.map.kakao.com/11147911",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "16:00:00",
+      "stayMinutes" : 79
+    }, {
+      "place" : {
+        "name" : "삼청동수제비",
+        "slotType" : "MEAL",
+        "latitude" : 37.5845273,
+        "longitude" : 126.9819599,
+        "address" : "서울특별시 종로구 삼청로 101-1",
+        "placeUrl" : "http://place.map.kakao.com/13559837",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "10:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "올리브영N 성수",
+        "slotType" : "SHOPPING",
+        "latitude" : 37.5442118,
+        "longitude" : 127.0544295,
+        "address" : "서울특별시 성동구 연무장7길 13 팩토리얼 성수",
+        "placeUrl" : "http://place.map.kakao.com/1764743941",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "진작다이닝 성수점",
+        "slotType" : "MEAL",
+        "latitude" : 37.549352,
+        "longitude" : 127.0457186,
+        "address" : "서울특별시 성동구 왕십리로14나길 10 1층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 78
+    }, {
+      "place" : {
+        "name" : "블루보틀 성수 카페",
+        "slotType" : "CAFE",
+        "latitude" : 37.54811,
+        "longitude" : 127.0456544,
+        "address" : "서울특별시 성동구 아차산로 7 케이티링커스",
+        "placeUrl" : "http://place.map.kakao.com/1492599844",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "13:00:00",
+      "stayMinutes" : 66
+    }, {
+      "place" : {
+        "name" : "서울숲 곤충식물원",
+        "slotType" : "ATTRACTION",
+        "latitude" : 37.5431247707,
+        "longitude" : 127.0418131384,
+        "address" : "서울특별시 성동구 뚝섬로 273 (성수동1가)",
+        "placeUrl" : "http://place.map.kakao.com/13127878",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:20:00",
+      "stayMinutes" : 100
+    }, {
+      "place" : {
+        "name" : "서울숲",
+        "slotType" : "STROLL",
+        "latitude" : 37.5419644,
+        "longitude" : 127.0385663,
+        "address" : "서울특별시 성동구 뚝섬로 273",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "16:15:00",
+      "stayMinutes" : 65
+    }, {
+      "place" : {
+        "name" : "미쁘동 성수",
+        "slotType" : "MEAL",
+        "latitude" : 37.5475514,
+        "longitude" : 127.0401268,
+        "address" : "서울특별시 성동구 서울숲2길 11-12 2층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "ROOFTOP"
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "10:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "선유도공원전망대",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 37.5446087,
+        "longitude" : 126.8979559,
+        "address" : "서울특별시 영등포구 선유로 343",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:30:00",
+      "stayMinutes" : 45
+    }, {
+      "place" : {
+        "name" : "망원정 터",
+        "slotType" : "STROLL",
+        "latitude" : 37.5499992917,
+        "longitude" : 126.9047532101,
+        "address" : "서울특별시 마포구 동교로8안길 23 (합정동)",
+        "placeUrl" : "http://place.map.kakao.com/11080730",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "망원도",
+        "slotType" : "MEAL",
+        "latitude" : 37.5538197,
+        "longitude" : 126.9055713,
+        "address" : "서울특별시 마포구 포은로 75",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "ROOFTOP"
+      },
+      "startTime" : "12:45:00",
+      "stayMinutes" : 87
+    }, {
+      "place" : {
+        "name" : "어글리베이커리",
+        "slotType" : "CAFE",
+        "latitude" : 37.5550335,
+        "longitude" : 126.9060383,
+        "address" : "서울특별시 마포구 월드컵로13길 73 1층 어글리 베이커리",
+        "placeUrl" : "http://place.map.kakao.com/828640256",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "14:25:00",
+      "stayMinutes" : 83
+    }, {
+      "place" : {
+        "name" : "작은평화 망원",
+        "slotType" : "SHOPPING",
+        "latitude" : 37.5569557,
+        "longitude" : 126.9036521,
+        "address" : "서울특별시 마포구 망원로 62 2층",
+        "placeUrl" : "http://place.map.kakao.com/1598663226",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "16:00:00",
+      "stayMinutes" : 82
+    }, {
+      "place" : {
+        "name" : "우이락 망원본점",
+        "slotType" : "MEAL",
+        "latitude" : 37.5564437,
+        "longitude" : 126.9059919,
+        "address" : "서울특별시 마포구 포은로8길 22 우이락 망원본점",
+        "placeUrl" : "http://place.map.kakao.com/1088815991",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  } ]
+}

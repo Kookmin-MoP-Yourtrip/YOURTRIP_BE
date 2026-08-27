@@ -1,0 +1,254 @@
+{
+  "title" : "초록의 결을 따라 걷는 서울",
+  "concept" : "자차로 서울의 서로 다른 자연 권역을 여유롭게 오가며 가족과 산책, 전망, 체험을 균형 있게 즐기는 여행",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "초안산수국동산",
+        "slotType" : "STROLL",
+        "latitude" : 37.6297456,
+        "longitude" : 127.0473231,
+        "address" : "서울특별시 노원구",
+        "placeUrl" : "http://place.map.kakao.com/2125058971",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 62
+    }, {
+      "place" : {
+        "name" : "뮈에",
+        "slotType" : "CAFE",
+        "latitude" : 37.618068,
+        "longitude" : 127.046972,
+        "address" : "서울특별시 성북구 돌곶이로 205 1층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:15:00",
+      "stayMinutes" : 61
+    }, {
+      "place" : {
+        "name" : "북서울꿈의숲전망대",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 37.6200448,
+        "longitude" : 127.0385557,
+        "address" : "서울특별시 강북구",
+        "placeUrl" : "http://place.map.kakao.com/17806879",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:20:00",
+      "stayMinutes" : 45
+    }, {
+      "place" : {
+        "name" : "명인갈비 미아점",
+        "slotType" : "MEAL",
+        "latitude" : 37.6173484,
+        "longitude" : 127.0285916,
+        "address" : "서울특별시 강북구 솔샘로 327 테마빌딩 1층 101호 명인갈비 미아점",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:15:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "북서울꿈의숲",
+        "slotType" : "ATTRACTION",
+        "latitude" : 37.6233355,
+        "longitude" : 127.0407343,
+        "address" : "서울특별시 강북구 월계로 173",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:55:00",
+      "stayMinutes" : 150
+    }, {
+      "place" : {
+        "name" : "버거킹 미아역점",
+        "slotType" : "MEAL",
+        "latitude" : 37.6255268,
+        "longitude" : 127.026771,
+        "address" : "서울특별시 강북구 도봉로 188 삼성생명빌딩",
+        "placeUrl" : "http://place.map.kakao.com/344679784",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:00:00",
+    "endTime" : "19:55:00",
+    "places" : [ {
+      "place" : {
+        "name" : "서울숲",
+        "slotType" : "STROLL",
+        "latitude" : 37.5419644,
+        "longitude" : 127.0385663,
+        "address" : "서울특별시 성동구 뚝섬로 273",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 81
+    }, {
+      "place" : {
+        "name" : "뚝섬문화예술공원",
+        "slotType" : "ATTRACTION",
+        "latitude" : 37.5458925,
+        "longitude" : 127.0399805,
+        "address" : "서울특별시 성동구 왕십리로11길 9",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "10:30:00",
+      "stayMinutes" : 132
+    }, {
+      "place" : {
+        "name" : "타코튜즈데이 성수 본점",
+        "slotType" : "MEAL",
+        "latitude" : 37.5467382,
+        "longitude" : 127.0455685,
+        "address" : "서울특별시 성동구 왕십리로10길 10 1층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:50:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "나무다",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 37.5457261,
+        "longitude" : 127.0423333,
+        "address" : "서울특별시 성동구 서울숲2길 32-14 B1층 112호",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "14:25:00",
+      "stayMinutes" : 180
+    }, {
+      "place" : {
+        "name" : "오뜨로 성수",
+        "slotType" : "MEAL",
+        "latitude" : 37.5438991,
+        "longitude" : 127.0465584,
+        "address" : "서울특별시 성동구 뚝섬로1길 31 서울숲 M타워 1층",
+        "placeUrl" : "http://place.map.kakao.com/75396556",
+        "source" : "SEEDED",
+        "matchedModifier" : "PARKING_AVAILABLE"
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "자연도소금빵in 성수",
+        "slotType" : "CAFE",
+        "latitude" : 37.542326,
+        "longitude" : 127.0555087,
+        "address" : "서울특별시 성동구 연무장길 56-1 1층",
+        "placeUrl" : "http://place.map.kakao.com/134679676",
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "18:55:00",
+      "stayMinutes" : 60
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "08:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "우이동 산악문화HUB",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 37.6643538,
+        "longitude" : 127.0109323,
+        "address" : "서울특별시 강북구 삼양로 689-1 지하 2층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "PARKING_AVAILABLE"
+      },
+      "startTime" : "08:30:00",
+      "stayMinutes" : 155
+    }, {
+      "place" : {
+        "name" : "둘렛길맛집",
+        "slotType" : "MEAL",
+        "latitude" : 37.6260357,
+        "longitude" : 126.9336678,
+        "address" : "서울특별시 은평구 불광로18가길 49 세자매 둘레길 식당",
+        "placeUrl" : "http://place.map.kakao.com/1335341542",
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 86
+    }, {
+      "place" : {
+        "name" : "스타벅스 더북한산점",
+        "slotType" : "CAFE",
+        "latitude" : 37.6554576,
+        "longitude" : 126.9475563,
+        "address" : "서울특별시 은평구 대서문길 24-11 (진관동)",
+        "placeUrl" : "http://place.map.kakao.com/76206032",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:10:00",
+      "stayMinutes" : 82
+    }, {
+      "place" : {
+        "name" : "북한산전망대",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 37.6552737,
+        "longitude" : 126.9539812,
+        "address" : "서울특별시 은평구 진관동 265-1",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:40:00",
+      "stayMinutes" : 56
+    }, {
+      "place" : {
+        "name" : "삼청공원",
+        "slotType" : "STROLL",
+        "latitude" : 37.5889267212,
+        "longitude" : 126.982819993,
+        "address" : "서울특별시 종로구 삼청로 156 (삼청동)",
+        "placeUrl" : "http://place.map.kakao.com/11147911",
+        "source" : "LISTED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "16:00:00",
+      "stayMinutes" : 81
+    }, {
+      "place" : {
+        "name" : "자연에서왔소 본점",
+        "slotType" : "MEAL",
+        "latitude" : 37.5911829,
+        "longitude" : 127.0038405,
+        "address" : "서울특별시 성북구 성북로 36",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  } ]
+}

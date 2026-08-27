@@ -1,0 +1,241 @@
+{
+  "title" : "파도 따라 맛보고 움직이는 제주 사흘",
+  "concept" : "뚜벅이로 이어지는 해안 권역을 중심으로 친구와 액티비티와 프리미엄 미식 경험을 즐기는 여행",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "용연",
+        "slotType" : "STROLL",
+        "latitude" : 33.5152118184,
+        "longitude" : 126.5139125156,
+        "address" : "제주특별자치도 제주시 흥운길 73 (용담이동)",
+        "placeUrl" : "http://place.map.kakao.com/1698424203",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 71
+    }, {
+      "place" : {
+        "name" : "제주목 관아",
+        "slotType" : "ATTRACTION",
+        "latitude" : 33.5140021,
+        "longitude" : 126.5218052,
+        "address" : "제주특별자치도 제주시 관덕로 25",
+        "placeUrl" : "http://place.map.kakao.com/10805294",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:25:00",
+      "stayMinutes" : 112
+    }, {
+      "place" : {
+        "name" : "제로포인트트레일",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 33.5147676675,
+        "longitude" : 126.5292195284,
+        "address" : "제주특별자치도 제주시 산지로 25 (건입동)",
+        "placeUrl" : "http://place.map.kakao.com/1264782617",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:35:00",
+      "stayMinutes" : 142
+    }, {
+      "place" : {
+        "name" : "윤재커피",
+        "slotType" : "CAFE",
+        "latitude" : 33.5118486,
+        "longitude" : 126.5240163,
+        "address" : "제주특별자치도 제주시 중앙로12길 1 중앙로12길1",
+        "placeUrl" : "http://place.map.kakao.com/371491242",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "16:10:00",
+      "stayMinutes" : 70
+    }, {
+      "place" : {
+        "name" : "문희 제주본점",
+        "slotType" : "MEAL",
+        "latitude" : 33.5062971,
+        "longitude" : 126.5238993,
+        "address" : "제주특별자치도 제주시 중앙로24길 9 단독상가1층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:00:00",
+    "endTime" : "15:55:00",
+    "places" : [ {
+      "place" : {
+        "name" : "방사탑(제주)",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 33.54749654,
+        "longitude" : 126.650530461,
+        "address" : "제주특별자치도 제주시 조천읍 신흥로1길 25",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 45
+    }, {
+      "place" : {
+        "name" : "함덕 서핑, 카약, 패들보드",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 33.5439,
+        "longitude" : 126.668,
+        "address" : "제주특별자치도 제주시 조천읍 함덕리 1008",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:05:00",
+      "stayMinutes" : 120
+    }, {
+      "place" : {
+        "name" : "함덕해수욕장 (함덕 서우봉 해변)",
+        "slotType" : "STROLL",
+        "latitude" : 33.5439000013,
+        "longitude" : 126.668356772,
+        "address" : "제주특별자치도 제주시 조천읍 조함해안로 519-10",
+        "placeUrl" : "http://place.map.kakao.com/8148451",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:15:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "함덕 연옥",
+        "slotType" : "MEAL",
+        "latitude" : 33.5425102,
+        "longitude" : 126.669246,
+        "address" : "제주특별자치도 제주시 조천읍 조함해안로 528 2층 연옥",
+        "placeUrl" : "http://place.map.kakao.com/1730219412",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:30:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "델문도",
+        "slotType" : "CAFE",
+        "latitude" : 33.543731,
+        "longitude" : 126.6686961,
+        "address" : "제주특별자치도 제주시 조천읍 조함해안로 519-10",
+        "placeUrl" : "http://place.map.kakao.com/26867476",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:55:00",
+      "stayMinutes" : 60
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "09:30:00",
+    "endTime" : "19:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "곽지해수욕장",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 33.4485353054,
+        "longitude" : 126.3031045774,
+        "address" : "제주특별자치도 제주시 애월읍 곽지리 1565",
+        "placeUrl" : "http://place.map.kakao.com/25022153",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:30:00",
+      "stayMinutes" : 45
+    }, {
+      "place" : {
+        "name" : "바구스서핑스쿨 애월점",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 33.4515134,
+        "longitude" : 126.3070282,
+        "address" : "제주특별자치도 제주시 애월읍 곽지9길 21",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:30:00",
+      "stayMinutes" : 120
+    }, {
+      "place" : {
+        "name" : "훈도 애월흑돼지 본점",
+        "slotType" : "MEAL",
+        "latitude" : 33.4622,
+        "longitude" : 126.3123506,
+        "address" : "제주특별자치도 제주시 애월읍 애월로 37 1층 훈도 애월흑돼지",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:45:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "한담몰",
+        "slotType" : "SHOPPING",
+        "latitude" : 33.4623557,
+        "longitude" : 126.312013,
+        "address" : "제주특별자치도 제주시 애월읍 애월로1길 7 한담몰",
+        "placeUrl" : "http://place.map.kakao.com/83525038",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:15:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "한담해안산책로",
+        "slotType" : "STROLL",
+        "latitude" : 33.4590382,
+        "longitude" : 126.310511,
+        "address" : "제주특별자치도 제주시 애월읍 곽지리 1359",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:25:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "레이지펌프",
+        "slotType" : "CAFE",
+        "latitude" : 33.4662685,
+        "longitude" : 126.3095403,
+        "address" : "제주특별자치도 제주시 애월읍 애월북서길 32 lazypump",
+        "placeUrl" : "http://place.map.kakao.com/88307711",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "16:40:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "문개어멍",
+        "slotType" : "MEAL",
+        "latitude" : 33.4857711,
+        "longitude" : 126.3924908,
+        "address" : "제주특별자치도 제주시 애월읍 가문동길 38 문개어멍",
+        "placeUrl" : "http://place.map.kakao.com/1373421785",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "18:30:00",
+      "stayMinutes" : 75
+    } ]
+  } ]
+}

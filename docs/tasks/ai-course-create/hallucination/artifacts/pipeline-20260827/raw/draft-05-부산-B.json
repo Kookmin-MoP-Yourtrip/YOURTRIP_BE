@@ -1,0 +1,254 @@
+{
+  "title" : "바다와 숲 사이, 부산 가족 나들이",
+  "concept" : "자차로 부산의 서로 다른 해안 권역을 여유롭게 오가며 자연 풍경과 가족 휴식을 즐기는 3일 코스",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "감지해변산책로",
+        "slotType" : "STROLL",
+        "latitude" : 35.0603516,
+        "longitude" : 129.0715574,
+        "address" : "부산광역시 영도구 감지길 94-21",
+        "placeUrl" : "http://place.map.kakao.com/12025736",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 83
+    }, {
+      "place" : {
+        "name" : "태종대 욜로조개구이",
+        "slotType" : "MEAL",
+        "latitude" : 35.0613861,
+        "longitude" : 129.0768627,
+        "address" : "부산광역시 영도구 감지길87번길 21 욜로조개구이",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 83
+    }, {
+      "place" : {
+        "name" : "태종대",
+        "slotType" : "ATTRACTION",
+        "latitude" : 35.053784,
+        "longitude" : 129.086041,
+        "address" : "부산광역시 영도구 전망로 24",
+        "placeUrl" : "http://place.map.kakao.com/8111808",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:05:00",
+      "stayMinutes" : 121
+    }, {
+      "place" : {
+        "name" : "카페씨야",
+        "slotType" : "CAFE",
+        "latitude" : 35.0523263,
+        "longitude" : 129.0922574,
+        "address" : "부산광역시 영도구 전망로 181",
+        "placeUrl" : "http://place.map.kakao.com/1777735734",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:10:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "태종대전망대",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 35.0504319,
+        "longitude" : 129.0882401,
+        "address" : "부산광역시 영도구 전망로 257",
+        "placeUrl" : "http://place.map.kakao.com/8109574",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "16:35:00",
+      "stayMinutes" : 52
+    }, {
+      "place" : {
+        "name" : "찬's 컴퍼니",
+        "slotType" : "MEAL",
+        "latitude" : 35.0513201,
+        "longitude" : 129.0835856,
+        "address" : "부산광역시 영도구 전망로 257",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "송정서핑학교",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 35.1810226785,
+        "longitude" : 129.2024952959,
+        "address" : "부산광역시 해운대구 송정해변로 34-8 (송정동)",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 128
+    }, {
+      "place" : {
+        "name" : "광안리 산해횟집",
+        "slotType" : "MEAL",
+        "latitude" : 35.1550331,
+        "longitude" : 129.1316917,
+        "address" : "부산광역시 수영구 광안해변로344번길 17-20 풍경타워 8층 광안리 산해횟집",
+        "placeUrl" : "http://place.map.kakao.com/20554112",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 85
+    }, {
+      "place" : {
+        "name" : "수월경화",
+        "slotType" : "CAFE",
+        "latitude" : 35.1761111,
+        "longitude" : 129.1965736,
+        "address" : "부산광역시 해운대구 송정중앙로6번길 188 4층",
+        "placeUrl" : "http://place.map.kakao.com/148813545",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:20:00",
+      "stayMinutes" : 79
+    }, {
+      "place" : {
+        "name" : "죽도공원",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 35.1799561988,
+        "longitude" : 129.206133898,
+        "address" : "부산광역시 해운대구 송정해변로 1-23",
+        "placeUrl" : "http://place.map.kakao.com/8576816",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:45:00",
+      "stayMinutes" : 54
+    }, {
+      "place" : {
+        "name" : "오랑대",
+        "slotType" : "STROLL",
+        "latitude" : 35.2035548,
+        "longitude" : 129.2298485,
+        "address" : "부산광역시 기장군 기장읍",
+        "placeUrl" : "http://place.map.kakao.com/11650926",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:55:00",
+      "stayMinutes" : 79
+    }, {
+      "place" : {
+        "name" : "어느멋진날",
+        "slotType" : "MEAL",
+        "latitude" : 35.2587892,
+        "longitude" : 129.2342138,
+        "address" : "부산광역시 기장군 일광읍 기장해안로 1286 (기장 일광해수욕장 해변 바로 앞)",
+        "placeUrl" : "http://place.map.kakao.com/1019513691",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "09:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "다대응봉봉수대",
+        "slotType" : "ATTRACTION",
+        "latitude" : 35.065739,
+        "longitude" : 128.969061,
+        "address" : "부산광역시 사하구 다대동 산31-3",
+        "placeUrl" : "http://place.map.kakao.com/8518331",
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "09:30:00",
+      "stayMinutes" : 122
+    }, {
+      "place" : {
+        "name" : "아미산전망대",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 35.052689,
+        "longitude" : 128.9608234,
+        "address" : "부산광역시 사하구 다대낙조2길 77",
+        "placeUrl" : "http://place.map.kakao.com/12664720",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:45:00",
+      "stayMinutes" : 53
+    }, {
+      "place" : {
+        "name" : "삼도축산",
+        "slotType" : "MEAL",
+        "latitude" : 35.0482563,
+        "longitude" : 128.9662659,
+        "address" : "부산광역시 사하구 다대로 686",
+        "placeUrl" : "http://place.map.kakao.com/418262723",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:45:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "다대포해수욕장",
+        "slotType" : "STROLL",
+        "latitude" : 35.0471271,
+        "longitude" : 128.9632341,
+        "address" : "부산광역시 사하구 다대동",
+        "placeUrl" : "http://place.map.kakao.com/8214103",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:20:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "이지요661",
+        "slotType" : "CAFE",
+        "latitude" : 35.0473823,
+        "longitude" : 128.9688394,
+        "address" : "부산광역시 사하구 다대로 661",
+        "placeUrl" : "http://place.map.kakao.com/562078056",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:55:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "통영산꼼장어",
+        "slotType" : "MEAL",
+        "latitude" : 35.0465467,
+        "longitude" : 128.9685685,
+        "address" : "부산광역시 사하구 몰운대1길 31",
+        "placeUrl" : "http://place.map.kakao.com/16490734",
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  } ]
+}
