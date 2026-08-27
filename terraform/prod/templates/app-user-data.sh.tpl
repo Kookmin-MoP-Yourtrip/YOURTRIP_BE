@@ -23,7 +23,9 @@ set -euo pipefail
 # 부팅 로그를 남긴다. 아래에서 시크릿을 다루는 구간만 -x를 끈다.
 set -x
 
-dnf install -y java-21-amazon-corretto-headless amazon-cloudwatch-agent
+# Alloy는 여기서 설치하지 않는다. Grafana 저장소가 잠깐 안 되는 것이 서비스 장애가 되면
+# 안 되므로, set -e가 JAR 다운로드 전에 부팅을 죽이지 않도록 6번 섹션으로 미룬다.
+dnf install -y java-21-amazon-corretto-headless
 mkdir -p /opt/app
 
 # ------------------------------------------------------------
@@ -139,32 +141,7 @@ systemctl daemon-reload
 systemctl enable --now yourtrip-app.service
 
 # ------------------------------------------------------------
-# 6) CloudWatch Agent — 메모리 사용률
-#
-# 기본 CloudWatch 지표는 EC2 메모리를 노출하지 않는다. -Xmx768m이 2GB 박스에서 실제로
-# 버티는지 보려면 이 지표가 필요하다(docs/tasks/jvm-heap-sizing/).
-# ------------------------------------------------------------
-mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
-cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'CWEOF'
-{
-  "metrics": {
-    "namespace": "${cloudwatch_namespace}",
-    "metrics_collected": {
-      "mem": {
-        "measurement": ["mem_used_percent"],
-        "metrics_collection_interval": 30
-      }
-    }
-  }
-}
-CWEOF
-
-/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
-  -a fetch-config -m ec2 -s \
-  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
-
-# ------------------------------------------------------------
-# 7) Grafana Alloy — 앱 지표 + 호스트 지표 + journald 로그
+# 6) Grafana Alloy — 앱 지표 + 호스트 지표 + journald 로그
 #
 # 설정 정본은 deploy/prod/config.alloy이고 asg.tf가 file()로 읽어 주입한다.
 # 설계 근거는 docs/tasks/monitoring-config/README.md에 있다.

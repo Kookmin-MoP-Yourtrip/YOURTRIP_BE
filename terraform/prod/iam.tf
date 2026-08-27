@@ -1,9 +1,11 @@
 # App EC2 전용 IAM 역할.
 #
-# loadtest의 관리형 정책 2개를 그대로 계승하고, 운영에만 필요한 커스텀 정책 1개를 더한다.
-#  - CloudWatchAgentServerPolicy: CloudWatch Agent가 mem_used_percent를 게시할 수 있게 한다.
-#    기본 CloudWatch 지표는 EC2 메모리를 노출하지 않는데, -Xmx768m이 2GB 박스에서 실제로
-#    버티는지 보려면 이 지표가 필요하다.
+# 관리형 정책 1개와 운영에만 필요한 커스텀 정책 1개로 이뤄진다.
+#
+# CloudWatchAgentServerPolicy는 #121에서 제거됐다. 호스트 지표를 Grafana Alloy가 내장
+# node_exporter로 걷어 Grafana Cloud로 직접 보내므로 AWS 쪽 게시 권한이 필요 없어졌다.
+# 인스턴스가 Grafana Cloud 토큰을 SSM에서 읽어야 하지만, 그 권한은 아래 ReadAppSecrets가
+# /yourtrip/prod/* 와일드카드로 이미 덮고 있어 정책을 새로 붙이지 않는다.
 #  - AmazonSSMManagedInstanceCore: Session Manager 접속과 RDS로의 포트포워딩에 필요하다.
 #    AL2023 AMI는 SSM Agent가 이미 설치·실행 중이라 이 권한만 있으면 바로 동작한다.
 #  - (커스텀) 배포 아티팩트 읽기 + 앱 시크릿 읽기: 아래 참고.
@@ -46,11 +48,6 @@ data "aws_iam_policy_document" "ec2_assume_role" {
 resource "aws_iam_role" "app_ec2" {
   name               = "${var.name_prefix}-app-ec2-role"
   assume_role_policy = data.aws_iam_policy_document.ec2_assume_role.json
-}
-
-resource "aws_iam_role_policy_attachment" "app_ec2_cloudwatch_agent" {
-  role       = aws_iam_role.app_ec2.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
 
 resource "aws_iam_role_policy_attachment" "app_ec2_ssm" {

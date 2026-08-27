@@ -130,8 +130,6 @@ resource "aws_launch_template" "app" {
     #    확인 명령은 deploy/prod/README.md에 있다.
     alloy_config  = file("${path.module}/../../deploy/prod/config.alloy")
     alloy_version = var.alloy_version
-
-    cloudwatch_namespace = "YourtripProd"
   }))
 
   # ASG가 붙이는 태그와 별개로, 인스턴스·볼륨에 직접 붙는 태그다.
