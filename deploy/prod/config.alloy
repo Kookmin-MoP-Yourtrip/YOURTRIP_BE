@@ -59,9 +59,10 @@ prometheus.scrape "app" {
 // 같은 값은 node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes로 계산된다 —
 // 판정 기준 P4가 "걷어내도 잃는 것이 없다"를 그 등식으로 확인한다.
 //
-// disable_collectors는 Grafana 공식 Linux 통합의 값을 그대로 쓴다. 더 깎지 않는 이유는
-// 시리즈 수가 이번에 재는 값이기 때문이다 — 기준선을 먼저 만들고, 축소는 사전 등록한
-// 기각선(P2-C)이 발동할 때만 한다.
+// disable_collectors는 처음에 Grafana 공식 Linux 통합의 값(앞 5개)만 썼다. 기준선을 먼저
+// 만들고 축소는 기각선이 발동할 때만 한다는 원칙이었는데, P2가 248.5MB로 기각 구간에
+// 들어와 사전 등록한 축소안 1번을 적용했다 — 뒤 11개가 그것이다. t3.small/AL2023/EBS 단일
+// 볼륨에 존재하지 않거나 값이 상수인 장치 클래스들이라, 끄면 시리즈만 줄고 잃는 정보가 없다.
 //
 // instance = constants.hostname: instance refresh는 min_healthy 100이라 교체 중 두
 // 인스턴스가 몇 분간 공존한다. 라벨을 고정 문자열로 두면 그 구간에 같은 시리즈에 두 값이
@@ -69,7 +70,11 @@ prometheus.scrape "app" {
 // 것인데, 활성 시리즈는 최근 창에 샘플이 있는 것만 세므로 옛 인스턴스는 곧 빠진다.
 // ─────────────────────────────────────────────────────────────────────────────
 prometheus.exporter.unix "host" {
-  disable_collectors = ["ipvs", "btrfs", "infiniband", "xfs", "zfs"]
+  disable_collectors = [
+    "ipvs", "btrfs", "infiniband", "xfs", "zfs",
+    "nfs", "nfsd", "mdadm", "bonding", "bcache", "tapestats",
+    "hwmon", "rapl", "thermal_zone", "edac", "dmi",
+  ]
 
   filesystem {
     fs_types_exclude     = "^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|tmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$"
@@ -93,6 +98,15 @@ discovery.relabel "host" {
     target_label = "instance"
     replacement  = constants.hostname
   }
+
+  // job도 여기서 덮어쓴다. prometheus.exporter.unix가 targets에 job="integrations/unix"를
+  // 붙여 보내는데, 그 라벨이 아래 prometheus.scrape의 job_name보다 우선한다 — #121 검증에서
+  // 지표가 yourtrip-host가 아니라 integrations/unix로 들어오는 것을 보고 알았다.
+  // scrape 쪽 job_name만 적어두면 조용히 무시되므로 relabel로 명시한다.
+  rule {
+    target_label = "job"
+    replacement  = "yourtrip-host"
+  }
 }
 
 prometheus.scrape "host" {
@@ -103,31 +117,18 @@ prometheus.scrape "host" {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3) Alloy 자신의 지표 — 판정 기준 P2가 이것을 필요로 한다
+// 3) Alloy 자신의 지표 — 사전 등록한 축소안 2번으로 제거했다
 //
-// Alloy의 상주 메모리는 이번 도입의 채택 조건이다(P2). ps 한 번은 스냅숏이라 그 사이의
-// 첨두를 놓치는데, 그것은 memory-map.md §7이 이미 한계로 적어 둔 문제다. 시계열로 남기면
-// ps 폴링과 서로를 교차검증할 수 있으므로, 시리즈 비용을 내고 켜 둔다.
+// 원래는 prometheus.exporter.self로 Alloy 자신의 RSS를 시계열로 남겨 ps 폴링과 교차검증할
+// 생각이었다(memory-map.md §7이 "1초 폴링은 첨두를 놓친다"를 한계로 적어 뒀기 때문이다).
 //
-// P2-C가 발동하면 이 블록이 축소안 2번으로 제거 대상이 된다.
+// 그런데 P2가 248.5MB로 기각 구간에 들어왔고, 이 컴포넌트가 만드는 시리즈가 571개로
+// 전체 1,291개의 44%였다 — 자기를 관측하려고 관측 대상을 키우는 꼴이었다. 축소안 2번이
+// 이 블록을 지목하고 있었으므로 그대로 적용한다.
+//
+// 대가는 명확하다. Alloy 메모리를 시계열로 볼 수 없으므로 P2는 ps 폴링 하나에만 의존하고,
+// 그 한계(첨두 누락)를 그대로 안는다. 되살릴 때는 시리즈 비용을 다시 계산한다.
 // ─────────────────────────────────────────────────────────────────────────────
-prometheus.exporter.self "alloy" {}
-
-discovery.relabel "alloy" {
-  targets = prometheus.exporter.self.alloy.targets
-
-  rule {
-    target_label = "instance"
-    replacement  = constants.hostname
-  }
-}
-
-prometheus.scrape "alloy" {
-  targets         = discovery.relabel.alloy.output
-  job_name        = "alloy"
-  scrape_interval = "60s"
-  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 4) 지표 전송
@@ -149,10 +150,10 @@ prometheus.remote_write "grafana_cloud" {
   }
 
   endpoint {
-    url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
+    url = sys.env("GRAFANA_CLOUD_PROM_URL")
 
     basic_auth {
-      username      = sys.env("GRAFANA_CLOUD_PROMETHEUS_USERNAME")
+      username      = sys.env("GRAFANA_CLOUD_PROM_USER")
       password_file = "/etc/alloy/grafana-cloud.token"
     }
   }
@@ -211,7 +212,7 @@ loki.write "grafana_cloud" {
     url = sys.env("GRAFANA_CLOUD_LOKI_URL")
 
     basic_auth {
-      username      = sys.env("GRAFANA_CLOUD_LOKI_USERNAME")
+      username      = sys.env("GRAFANA_CLOUD_LOKI_USER")
       password_file = "/etc/alloy/grafana-cloud.token"
     }
   }

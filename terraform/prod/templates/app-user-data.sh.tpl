@@ -226,10 +226,19 @@ ALLOYEOF
   # 패키지가 소유한 /etc/sysconfig/alloy를 건드리지 않고 드롭인으로 덧붙인다. 그래야
   # "우리가 넣은 값"과 "패키지 기본값(CONFIG_FILE 등)"이 파일 단위로 갈려, 어느 쪽이
   # 무엇을 정했는지 헷갈리지 않는다.
+  #
+  # GOMEMLIMIT은 사전 등록한 축소안 3번이다. Go 런타임은 상한을 주지 않으면 GC를 미루고
+  # 반환도 늦춰서, RSS가 "실제로 필요한 양"이 아니라 "아직 돌려주지 않은 양"이 된다.
+  # #121 실측에서 Alloy RSS가 248.5MB였는데(기각 구간), Grafana 공식 자원 추정으로는
+  # 1,291 시리즈의 기인분이 15MiB 안팎이라 대부분이 런타임 여유분으로 보였다.
+  #
+  # 이 값은 하드 리밋이 아니라 GC 목표다 — 넘으면 죽는 것이 아니라 GC가 더 공격적으로
+  # 돈다. 대가는 CPU를 조금 더 쓰는 것이고, 이 박스에서 Alloy의 CPU는 무시할 수준이다.
   mkdir -p /etc/systemd/system/alloy.service.d
   cat > /etc/systemd/system/alloy.service.d/10-yourtrip.conf <<'DROPINEOF'
 [Service]
 EnvironmentFile=/etc/alloy/endpoints.env
+Environment=GOMEMLIMIT=100MiB
 DROPINEOF
 
   systemctl daemon-reload
