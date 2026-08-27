@@ -159,12 +159,20 @@ set +e
   # 멈추지 않고 끝까지 흘러가, 아래 rc 검사가 의미를 잃는다.
   set -e
 
+  # ⚠️ repo_gpgcheck는 0이다. Grafana 공식 문서는 1을 적고 있지만 AL2023에서 그대로 쓰면
+  #    저장소 자체가 무시돼 설치가 실패한다 — #121에서 실측했다:
+  #      Failed to download metadata for repo 'grafana':
+  #        repomd.xml GPG signature verification error: Bad GPG signature
+  #      Ignoring repositories: grafana / No match for argument: alloy-...
+  #    검증 대상이 다르다는 점이 중요하다. repo_gpgcheck는 저장소 메타데이터(repomd.xml)의
+  #    서명을, gpgcheck는 패키지 자체의 서명을 본다. 후자는 1로 유지하므로 설치되는 RPM의
+  #    무결성은 그대로 검증된다 — 끄는 것은 메타데이터 서명 확인뿐이다.
   rpm --import https://rpm.grafana.com/gpg.key
   cat > /etc/yum.repos.d/grafana.repo <<'REPOEOF'
 [grafana]
 name=grafana
 baseurl=https://rpm.grafana.com
-repo_gpgcheck=1
+repo_gpgcheck=0
 enabled=1
 gpgcheck=1
 gpgkey=https://rpm.grafana.com/gpg.key
