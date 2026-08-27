@@ -98,7 +98,19 @@ resource "aws_launch_template" "app" {
     }
   }
 
-  user_data = base64encode(templatefile("${path.module}/templates/app-user-data.sh.tpl", {
+  # base64encode가 아니라 base64gzip이다. EC2 user_data는 16,384바이트가 상한인데, Alloy
+  # 설정을 주입하면서 그 선을 넘었다(약 28KB — 이 저장소는 주석에 근거를 남기고 한글은
+  # UTF-8에서 글자당 3바이트라 본문보다 주석이 크다). 실제로 #121에서 이 한도에 걸려
+  # apply가 InvalidUserData.Malformed로 실패했다.
+  #
+  # gzip은 cloud-init이 매직 넘버를 보고 알아서 푼다 — 부팅 스크립트를 고칠 필요가 없다.
+  # 압축 후 약 10KB로 37% 여유가 생긴다. 주석을 걷어내 크기를 맞추는 대안도 있었지만,
+  # 근거를 지우는 것이 이 저장소의 방식과 반대라 택하지 않았다.
+  #
+  # ⚠️ 여유가 무한하지 않다. 여기에 무언가를 더 붙일 때는 압축 후 크기를 먼저 확인한다:
+  #    cat templates/app-user-data.sh.tpl ../../deploy/prod/config.alloy \
+  #        ../../deploy/prod/yourtrip-app.service ../../deploy/prod/jvm-opts.env | gzip -9 -c | wc -c
+  user_data = base64gzip(templatefile("${path.module}/templates/app-user-data.sh.tpl", {
     # 비밀이 아닌 값만 여기로 넘어간다. 비밀은 인스턴스가 SSM에서 직접 받아간다.
     db_host     = aws_db_instance.this.address
     db_name     = var.rds_db_name
