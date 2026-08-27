@@ -9,7 +9,7 @@
 | VPC·서브넷 2개·IGW·라우팅 | 전용 `10.43.0.0/16` (loadtest의 10.42와 비충돌) |
 | 보안그룹 4종 | alb / app / rds / elasticache — 규칙은 별개 리소스로 분리 |
 | SSH 키페어 | break-glass용. 평상시 접속은 SSM Session Manager |
-| IAM 역할·인스턴스 프로파일 | CloudWatch Agent + SSM + (아티팩트 읽기 · 시크릿 읽기) |
+| IAM 역할·인스턴스 프로파일 | SSM + (아티팩트 읽기 · 시크릿 읽기). CloudWatch Agent 권한은 #121에서 제거됐다 |
 | RDS PostgreSQL | db.t3.micro, 단일 AZ, 암호화 켬 |
 | ElastiCache Redis | cache.t3.micro, **App과 같은 AZ 고정** |
 | ALB·Launch Template·ASG·DNS 레코드 | *(다음 단계에서 추가된다)* |
@@ -32,6 +32,7 @@
 | `/yourtrip/prod/env/<KEY>` | `.env`에 `KEY=VALUE` 한 줄로 들어갈 값 |
 | `/yourtrip/prod/cloudfront_private_key` | 파일(`/opt/app/cloudfront_private_key.pem`)로 떨어져야 하는 PEM |
 | `/yourtrip/prod/artifact_key` | 인스턴스가 내려받을 JAR의 S3 키. **비밀이 아니라 `String`이다** |
+| `/yourtrip/prod/grafana/<이름>` | Grafana Cloud 접속 정보와 토큰(#121). **URL·숫자 ID는 `String`, 토큰만 `SecureString`** |
 
 ```bash
 export AWS_PROFILE=terraform-admin
@@ -51,6 +52,27 @@ aws ssm put-parameter --name /yourtrip/prod/cloudfront_private_key \
 # 일괄 조회해 .env에 넣어버려 앱 환경변수를 오염시킨다.
 aws ssm put-parameter --name /yourtrip/prod/artifact_key \
   --type String --value "app/<short-sha>.jar" --overwrite
+
+# Grafana Cloud(#121). 값은 Cloud Portal(grafana.com/orgs) → 스택 Details의 각 카드에서 얻는다.
+# env/ 하위가 아닌 이유는 artifact_key와 같다 — 그 아래 두면 앱 .env를 오염시킨다.
+# ⚠️ Prometheus와 Loki의 숫자 ID는 서로 다른 값이다. 같은 값을 넣으면 한쪽이 401로 막힌다.
+aws ssm put-parameter --name /yourtrip/prod/grafana/prometheus_url \
+  --type String --value "https://prometheus-prod-NN-prod-<region>.grafana.net/api/prom/push" --overwrite
+aws ssm put-parameter --name /yourtrip/prod/grafana/prometheus_username \
+  --type String --value "<Prometheus 숫자 ID>" --overwrite
+aws ssm put-parameter --name /yourtrip/prod/grafana/loki_url \
+  --type String --value "https://logs-prod-NNN.grafana.net/loki/api/v1/push" --overwrite
+aws ssm put-parameter --name /yourtrip/prod/grafana/loki_username \
+  --type String --value "<Loki 숫자 ID>" --overwrite
+
+# 토큰만 SecureString이다. Access Policy 토큰이어야 하고 스코프에 metrics:write 와
+# logs:write 가 둘 다 있어야 한다 — Alloy가 지표와 로그를 같은 토큰 하나로 보낸다
+# (deploy/prod/config.alloy의 password_file). 카드의 "Generate now"로 만든 서비스별
+# 토큰은 한쪽 스코프만 가져 맞지 않는다.
+read -rsp "GRAFANA_CLOUD_TOKEN: " v && echo
+aws ssm put-parameter --name /yourtrip/prod/grafana/token \
+  --type SecureString --value "$v" --overwrite
+unset v
 ```
 
 > **Windows Git Bash에서는 `MSYS_NO_PATHCONV=1`을 앞에 붙인다.** 그러지 않으면 `/yourtrip/prod/...`가 Windows 경로로 변환돼, "이름은 슬래시로 시작해야 한다"는 엉뚱한 `ValidationException`이 난다.
@@ -61,7 +83,9 @@ aws ssm put-parameter --name /yourtrip/prod/artifact_key \
 aws ssm get-parameters-by-path --path /yourtrip/prod --recursive --query 'Parameters[].Name' --output text
 ```
 
-`env/` 아래 8개와 `cloudfront_private_key`, `artifact_key` 각 1개, 합쳐 10개가 나와야 한다.
+`env/` 아래 8개, `cloudfront_private_key`·`artifact_key` 각 1개, `grafana/` 아래 5개 — 합쳐 **15개**가 나와야 한다.
+
+> **`grafana/` 5개가 없으면 `plan`이 실패한다.** `artifact_key`와 같은 장치를 걸어 뒀다([asg.tf](asg.tf)의 `data.aws_ssm_parameter.grafana_cloud_prometheus_url`). 등록을 빠뜨려도 인스턴스는 정상적으로 뜨고 **관측만 조용히 비기 때문에**, 대시보드가 왜 빈지 찾아 user-data 로그를 뒤지는 상황을 막는다. 다섯 개 중 URL 하나만 읽는 이유는 `data` 소스가 읽은 값이 tfstate에 남기 때문이다 — 토큰을 읽으면 시크릿을 SSM으로 옮긴 의미가 사라진다.
 
 > **`artifact_key`는 terraform이 관리하지 않는다** — 시크릿과 같은 이유이면서 하나가 더 있다.
 > `destroy`가 지우지 않아야, 서버를 내렸다가 다시 올렸을 때 **마지막으로 배포된 JAR로 그대로
@@ -74,12 +98,13 @@ aws ssm get-parameters-by-path --path /yourtrip/prod --recursive --query 'Parame
 ## 사전 준비
 
 1. **`prod-permanent`가 먼저 apply돼 있어야 한다.** 인증서와 아티팩트 버킷이 필요하다.
-2. **SSM 파라미터를 등록한다** (위 절차).
-3. **SSH 키페어를 만든다.** 개인키는 terraform에 넣지 않는다.
+2. **Grafana Cloud 스택과 Access Policy 토큰을 만든다.** 무료 계정이면 가입과 동시에 스택이 만들어진다. 접속 정보 4개와 토큰을 다음 단계에서 SSM에 넣는다 — 절차는 [docs/tasks/monitoring-config/](../../docs/tasks/monitoring-config/README.md) 참고.
+3. **SSM 파라미터를 등록한다** (위 절차).
+4. **SSH 키페어를 만든다.** 개인키는 terraform에 넣지 않는다.
    ```bash
    ssh-keygen -t ed25519 -f ./yourtrip-prod-ssh -C yourtrip-prod
    ```
-4. **`terraform.tfvars`를 만든다.**
+5. **`terraform.tfvars`를 만든다.**
    ```bash
    cp terraform.tfvars.example terraform.tfvars
    ```
