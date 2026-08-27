@@ -42,7 +42,7 @@
 | P9 | actuator 외부 차단 유지 | ✅ ALB 경유 `/actuator` `/actuator/prometheus` `/actuator/health` **전부 403**, 같은 시각 `localhost:8080`은 **200** |
 | P10 | CloudWatch Agent 부재 | ✅ `pgrep` 0건, `rpm -q` 미설치, 역할에 `AmazonSSMManagedInstanceCore` **하나뿐** |
 | P11 | 앱 무영향 | ✅ `-Xmx768m -Xss512k`, 프로필 `prod`, `NRestarts=0`, ALB 타깃 `healthy` |
-| P12 | 철거 완결성 + 파라미터 생존 | 〔destroy 후 기록〕 |
+| P12 | 철거 완결성 + 파라미터 생존 | ✅ **39개 전부 destroy**, 고아 0건. SSM `/yourtrip/prod/*` **15개 전원 생존**(그중 `grafana/` 5개) |
 
 **P9가 이 설계의 요점을 보여준다.** 같은 순간에 ALB 경유는 403이고 localhost는 200이다. Alloy가 차단을 **우회**하는 것이 아니라 애초에 **그 경로를 타지 않는다**는 뜻이다.
 
@@ -180,6 +180,22 @@ F1 (Alloy)           364.3 MB
 세 구성 모두 768보다 큰 여지를 주지만, **300MB 기각선이 사후 완화 금지 원칙에 따라 그대로 발동해 있으므로 채택값은 `-Xmx768m`이다.**
 
 > **`-Xmx1024m`은 애초에 불가능했다.** 예산식이 1024를 보장하려면 `OS ≤ 220MB`여야 하는데, **에이전트 없는 F0가 300.2MB다.** "CloudWatch Agent를 걷어내면 힙을 올릴 수 있다"는 [README.md](README.md)의 기대(P2-A)는 **어느 에이전트를 쓰든 성립하지 않았다.** 후속 이슈로 분리해 둔 `-Xmx` 재판정은 이 사실을 출발점으로 삼아야 한다.
+
+## P12 상세 — 철거와 생존
+
+**측정을 위해 CLI로 한 조작이 terraform 형상을 하나도 건드리지 않았다.** `plan -destroy`가 `0 to add, 0 to change, 39 to destroy`를 냈다. ASG 프로세스 suspend/resume, 인스턴스에 CloudWatch Agent 설치·제거는 **실행 상태 조작이지 형상 변경이 아니다**([CLAUDE.md](../../../CLAUDE.md)의 "인프라 변경은 반드시 terraform을 거친다")는 원칙이 drift 0으로 실증됐다.
+
+| 확인 | 결과 |
+|---|---|
+| ALB / 타깃 그룹 / ASG / RDS / ElastiCache / EIP / NAT | **전부 0** |
+| SG · Launch Template · DB Subnet Group · Cache Subnet Group · RDS 스냅샷 | **전부 0** |
+| `yourtrip-prod-app-ec2-role` | 삭제됨 |
+| SSM `/yourtrip/prod/*` | **15개 생존** (`env/` 8, `grafana/` 5, `artifact_key`, `cloudfront_private_key`) |
+| `prod-permanent` 자산 (호스티드존·ACM·S3 4개·CloudFront·OIDC 역할) | **그대로 생존** |
+
+**재apply 때 Grafana Cloud 접속 정보를 다시 넣을 필요가 없다**는 주장이 이것으로 실증됐다. 시크릿을 terraform 리소스로 만들지 않았기 때문이다 — 만들었다면 destroy와 함께 사라지고 tfstate에 평문으로도 남았을 것이다.
+
+> **이번 작업과 무관한 리소스가 하나 남아 있다.** 기본 VPC의 `capstone`(t3.micro, **stopped**, 2026-07-14 생성)과 그 20GB EBS다. `terraform/prod`가 만든 VPC와 다른 곳에 있고 생성 시점도 6주 앞서므로 이 작업의 고아가 아니다. 다만 **정지 상태여도 EBS는 과금된다**(월 약 $1.6).
 
 ## 마주친 문제
 
