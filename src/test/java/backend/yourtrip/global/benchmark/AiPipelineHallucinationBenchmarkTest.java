@@ -92,6 +92,26 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * <b>요청의 {@code location}</b>을 넣는다. baseline 이 그렇게 하기 때문이다. 권역을 쓰면
  * 검색어가 더 좁아져 파이프라인에 유리해지는데, 그건 파이프라인의 개선이 아니라 채점의 변경이다.
  *
+ * <h2>같은 밴드가 baseline 과 다른 것을 뜻한다 — 해석 주의</h2>
+ *
+ * <p>절차를 같게 맞췄다고 <b>의미</b>까지 같아지지는 않는다. {@code SEEDED}·{@code LISTED}는
+ * {@code GroundingStage.resolve}의 승계 분기에서 <b>카카오를 한 번도 부르지 않고 무조건
+ * {@code HIT}으로</b> 통과한다(호출 0회). 그래서 카카오에 없는 장소라도 네이버·TourAPI 가 준
+ * 실좌표와 함께 최종 코스에 실린다.
+ *
+ * <pre>
+ *   baseline   NO_RESULT = 좌표를 못 얻음        → 지도에 못 찍는 장소
+ *   파이프라인  NO_RESULT = 카카오에 없을 뿐      → 좌표는 있고 placeUrl 만 빈다
+ * </pre>
+ *
+ * <p>즉 파이프라인에서 <b>"장소 미확보율"이라는 이름은 사실과 어긋난다</b> — 장소는 확보했고
+ * 확보하지 못한 것은 카카오 교차확인이다. 그래서 이 하네스는 출처별 분해를 함께 찍고, CSV 에
+ * {@code source} 열을 남긴다. <b>baseline 과 직접 비교할 수 있는 것은 {@code SUGGESTED}뿐이다</b>
+ * — 후보 목록 밖에서 나온 이름이라 단일 호출과 성격이 같다.
+ *
+ * <p>1차 지표인 지어냄률은 이 문제를 타지 않는다. 판정자가 답하는 질문이 "카카오에 있는가"가
+ * 아니라 <b>"그 이름이 그 지역에 실존하는가"</b>이기 때문이다.
+ *
  * <h2>예산을 운영값(30초)이 아니라 180초로 둔다</h2>
  *
  * <p>병합 후 실측 최대 지연이 28.0초로 운영 예산 30초에 붙어 있어(STEP-8 판정 2), 운영값으로
@@ -489,8 +509,12 @@ class AiPipelineHallucinationBenchmarkTest {
             System.out.printf("  %-10s %6d %6d(%4.1f%%) %6d(%4.1f%%)%n", source, group.size(),
                 noResult, pct(noResult, group.size()), mismatch, pct(mismatch, group.size()));
         });
-        System.out.printf("  ※ SEEDED·LISTED 는 네이버·TourAPI 가 실존을 확인한 후보라 낮게 나오는 것이 정상이다.%n");
-        System.out.printf("     이 표가 말하는 것은 LLM 의 지식이 아니라 후보 공급이 얼마나 덮었는가다.%n");
+        System.out.printf("  ※ SEEDED·LISTED 의 NO_RESULT 는 환각이 아니라 카카오 커버리지 구멍이다 —%n");
+        System.out.printf("     그 후보는 카카오를 거치지 않고 네이버·TourAPI 응답을 승계해 실좌표와 함께%n");
+        System.out.printf("     코스에 실린다(GroundingStage.resolve 의 inherit 분기, 호출 0회·무조건 HIT).%n");
+        System.out.printf("     baseline 에서 NO_RESULT 는 좌표 없음이었지만 여기서는 카카오 링크만 없다.%n");
+        System.out.printf("  ※ baseline 과 직접 비교할 수 있는 것은 SUGGESTED 뿐이다 — 목록 밖에서 나온%n");
+        System.out.printf("     이름이라 단일 호출과 성격이 같다. 나머지는 후보 공급의 덮개를 재는 값이다.%n");
     }
 
     /** 폴백이 채운 슬롯과 빈 슬롯. 클래스 javadoc "측정 오염 감시" 참고. */
