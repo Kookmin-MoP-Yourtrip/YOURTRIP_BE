@@ -41,9 +41,30 @@
 | 파일 | 규모 | 근거가 되는 것 |
 |---|---|---|
 | `hallucination-baseline-rescore-20260825-110536.csv` | 389행 | **현행 모든 수치의 근거.** 프로덕션 `lookupBestPlace()`(이름 게이트 포함)로 다시 매긴 결과. `NAME_MISMATCH` 결과값과 `rejectedCandidateName`(게이트가 걸러낸 후보)이 여기에만 있다 |
-| `manual-verification-rescore-20260825-110536.csv` | 50행 | 새 층 기준 층화 워크시트. **verdict 미기입** — 채우면 표본 대표성이 정식으로 회복된다 |
+| `manual-verification-rescore-20260825-110536.csv` | 50행 | 새 층 기준 층화 워크시트(층당 10건, 시드 42). **2026-08-27 판정 완료** — 이 파일이 현행 지어냄률 9.5%·세탁 통과율 0.6%의 근거다. 판정자는 Claude 세션(웹 검색으로 실존 확인, 근거는 `note` 열) + 사용자 검토 |
 
 카카오만 다시 검색한 것이라 LLM 재호출은 없었다. **다시 돌리면 같은 값이 안 나온다** — 카카오 DB가 시간에 따라 변하기 때문이다(이번엔 2주 차이라 `NO_RESULT` 드리프트가 0건이었다).
+
+### 파이프라인 측정 (2026-08-27) — `pipeline-20260827/` · ROADMAP 8-6
+
+3점 비교의 **마지막 측정점**이다. 같은 입력 세트(`BaselineInputSet` 30요청)를 `AiCoursePipeline`에 태우고, 출력 장소 전건을 **baseline과 같은 채점기**(`HallucinationScoring`)로 판정했다.
+
+| 파일 | 규모 | 근거가 되는 것 |
+|---|---|---|
+| `hallucination-pipeline-20260827.csv` | 525행 | 장소별 채점 + 파이프라인 고유 축. **앞 17열이 baseline CSV와 동일**해 `BASELINE_RESCORE_FROM`으로 되먹일 수 있고, 뒤에 `source`·`modifier`·`slotType`·좌표·`placeUrl`이 붙는다 |
+| `hallucination-pipeline-20260827-requests.csv` | 30행 | 요청별 `elapsedMs`(지연 재측정의 근거) · `curationCurator/Fallback/Unfilled` · `droppedAfterCuration` |
+| `manual-verification-pipeline-20260827.csv` | 50행 | 층화 워크시트(층당 10건, 시드 42). **판정 완료 — 지어냄률 0.0%의 근거.** 판정자는 Claude 세션 + 사용자 검토 |
+| `raw/draft-*.json` | 30건 | `AiCourseDraft` 원본. 파이프라인은 요청당 LLM을 네 번 부르므로 단일 응답 원문이 없고, 초안이 그 자리를 대신한다 |
+
+**채집 당시 상태** — 재현이 안 되므로 조건을 함께 남긴다.
+
+- 30요청 **전건 성공**, 장소 525개, 16분 소요
+- 출처 분해: `SEEDED` 409 · `LISTED` 108 · **`SUGGESTED` 8(1.5%)**
+- **`ai.curation.slot{result=fallback}` 1 / 545 슬롯(0.2%, #07 제주A)** — 폴백이 채운 장소는 환각률이 구조적으로 0에 가까워 결과를 좋아 보이게 하므로 반드시 병기한다(STEP-7 판정 13). `unfilled`는 0
+- **네이버 rate limit(429) 12회 발생** — 일일 쿼터가 아니라 순간 제한(`errorCode 420`)이고 요청 #05·#07·#19·#27에서 났다. fail-open이라 요청은 살았고, 오히려 그 요청들의 VIEWPOINT 슬롯 확보량이 평균보다 많았다(2.25 대 1.77 — TourAPI가 덮었다). 재측정하지 않은 근거는 [STEP-8](../../steps/STEP-8-switch.md) 판정 4
+- 예산은 운영값(30초)이 아니라 **180초**로 두고 쟀다 — 최대 지연 28.0초가 예산에 붙어 있어 운영값으로 재면 일부 요청이 504로 잘리고 그 장소가 환각률 분모에서 통째로 빠진다. 대신 `elapsedMs`로 역산한다(p50 22.3초 · p95 29.4초 · max 30.1초 · 30초 초과 1건)
+
+**읽을 때 주의** — `NO_RESULT` 밴드의 뜻이 baseline과 다르다. `SEEDED`·`LISTED`는 `GroundingStage`의 승계 분기에서 카카오를 **한 번도 부르지 않고** 통과하므로, 카카오에 없어도 네이버·TourAPI 좌표와 함께 코스에 실린다. baseline에서 `NO_RESULT`는 "좌표를 못 얻음"이었지만 여기서는 "카카오 링크만 없음"이다. **baseline과 직접 비교할 수 있는 축은 `SUGGESTED` 8건뿐이고, 전수 판정 결과 8건 모두 실존했다.**
 
 ### LLM 원본 응답 — `raw-*/` 17건
 
@@ -64,19 +85,31 @@
 
 집계 규칙은 [AI-HALLUCINATION-GEMINI.md](../AI-HALLUCINATION-GEMINI.md)의 "지표의 정의"에 있다. 주의할 점 셋:
 
-1. **`#`으로 시작하는 주석 행을 제외**한다(수동 검증 CSV의 머리말 5줄)
-2. **판정과 재채점 결과는 장소 키 `(requestId, day, aiPlaceName)`로 조인**한다. 수동 검증 CSV의 `scoreBand` 컬럼은 **재채점 전 옛 밴드**라 그대로 쓰면 안 된다
-3. **판정 104건 중 5건(영주 #19)은 재채점 대상에 없다** — 초기 배치 재시도로 요청 19의 장소 목록이 바뀌었기 때문이다. 유효 표본은 99건
+1. **`#`으로 시작하는 주석 행을 제외**한다(수동 검증 CSV의 머리말 6줄)
+2. **어느 워크시트를 쓰는지 먼저 정한다.** 현행 수치는 `manual-verification-rescore-*.csv`(50행) 하나에서 나온다. 옛 `manual-verification-2026081*.csv`(104건)는 **옛 밴드 기준 표본**이라 `scoreBand` 컬럼을 그대로 쓰면 안 되고, 재채점 결과와 장소 키 `(requestId, day, aiPlaceName)`로 조인해 층을 다시 매겨야 한다
+3. **옛 판정 104건 중 5건(영주 #19)은 재채점 대상에 없다** — 초기 배치 재시도로 요청 19의 장소 목록이 바뀌었기 때문이다. 그 표본의 유효 건수는 99건이다(현행 50건 워크시트에는 해당 없음)
+4. **두 워크시트의 값을 섞지 않는다.** 같은 지표를 다른 표본에서 잰 값이라 지어냄률이 9.5%(50건)와 10.1%(99건)로 갈린다. 경위는 [AI-HALLUCINATION-GEMINI.md](../AI-HALLUCINATION-GEMINI.md)의 `[정정]` 블록에 있다
 
 하네스로 다시 돌리려면:
 
 ```bash
-# 새로 측정 (LLM 실호출 — 비용 발생)
+# 단일 호출 baseline 새로 측정 (LLM 실호출 — 비용 발생)
 ./gradlew benchmarkTest --tests '*AiHallucinationBaselineTest*' --rerun
 
 # 기존 장소명으로 카카오만 재채점 (LLM 호출 없음)
-BASELINE_RESCORE_FROM=results/merged3-places.csv \
+BASELINE_RESCORE_FROM=docs/tasks/ai-course-create/hallucination/artifacts/merged3-places.csv \
   ./gradlew benchmarkTest --tests '*AiHallucinationBaselineTest*' --rerun
+
+# 파이프라인 측정 (8-6) — LLM 약 120회 · 네이버 540~900 · TourAPI ≤270 · 카카오 1,050~1,550, 약 16분
+./gradlew benchmarkTest --tests '*AiPipelineHallucinationBenchmarkTest*' --rerun
+
+# 스모크 2요청만
+PIPELINE_HALLUCINATION_REQUEST_LIMIT=2 \
+  ./gradlew benchmarkTest --tests '*AiPipelineHallucinationBenchmarkTest*' --rerun
 ```
+
+**TourAPI 일 1,000건이 가장 빡빡하다** — 파이프라인 30요청이 ≤270회를 쓰므로 하루 3회가 한계다.
+파이프라인 장소 CSV도 앞 17열이 baseline과 같아 `BASELINE_RESCORE_FROM`으로 되먹일 수 있다
+(채점 로직만 바뀌었을 때 LLM 없이 재채점하는 용도).
 
 재현이 어디까지 되고 무엇이 안 되는지는 [AI-HALLUCINATION-GEMINI.md](../AI-HALLUCINATION-GEMINI.md)의 "재측정 재현 조건"에 정리돼 있다.
