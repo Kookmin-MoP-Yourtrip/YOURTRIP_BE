@@ -1,0 +1,254 @@
+{
+  "title" : "바다와 동굴 사이, 삼척 가족 여행",
+  "concept" : "자차로 삼척의 해안과 산악 자연을 여유롭게 오가며 가족과 함께 풍경과 체험을 즐기는 3일 코스",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "19:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "추암 촛대바위",
+        "slotType" : "ATTRACTION",
+        "latitude" : 37.4794524764,
+        "longitude" : 129.1602292408,
+        "address" : "강원특별자치도 동해시 추암동 산 69",
+        "placeUrl" : "http://place.map.kakao.com/1571515576",
+        "source" : "LISTED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 150
+    }, {
+      "place" : {
+        "name" : "포카츠",
+        "slotType" : "MEAL",
+        "latitude" : 37.4654283,
+        "longitude" : 129.1650774,
+        "address" : "강원특별자치도 삼척시 새천년도로 601-59 2층",
+        "placeUrl" : "http://place.map.kakao.com/1272795447",
+        "source" : "SEEDED",
+        "matchedModifier" : "PARKING_AVAILABLE"
+      },
+      "startTime" : "12:40:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "작은후진해수욕장",
+        "slotType" : "STROLL",
+        "latitude" : 37.4638879088,
+        "longitude" : 129.1758977619,
+        "address" : "강원특별자치도 삼척시 새천년도로 467 (교동)",
+        "placeUrl" : "http://place.map.kakao.com/21055099",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:20:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "보사노바 커피로스터스 삼척점",
+        "slotType" : "CAFE",
+        "latitude" : 37.4658056,
+        "longitude" : 129.17149,
+        "address" : "강원특별자치도 삼척시 새천년도로 517 보사노바커피 삼척점",
+        "placeUrl" : "http://place.map.kakao.com/1905915864",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:55:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "아리랑횟집",
+        "slotType" : "MEAL",
+        "latitude" : 37.4654067,
+        "longitude" : 129.1702752,
+        "address" : "강원특별자치도 삼척시 새천년도로 527-18",
+        "placeUrl" : "http://place.map.kakao.com/1838816494",
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "삼척해상스카이워크",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 37.4502557,
+        "longitude" : 129.1894641,
+        "address" : "강원특별자치도 삼척시",
+        "placeUrl" : "http://place.map.kakao.com/622072230",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "19:00:00",
+      "stayMinutes" : 45
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "08:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "삼척미로정원",
+        "slotType" : "STROLL",
+        "latitude" : 37.4441270181,
+        "longitude" : 129.070707789,
+        "address" : "강원특별자치도 삼척시 미로면 동안로 540",
+        "placeUrl" : "http://place.map.kakao.com/717134130",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "08:30:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "귀네미마을",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 37.3356643,
+        "longitude" : 129.0054668,
+        "address" : "강원특별자치도 태백시 삼수동",
+        "placeUrl" : "http://place.map.kakao.com/23789607",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:10:00",
+      "stayMinutes" : 120
+    }, {
+      "place" : {
+        "name" : "굴피집",
+        "slotType" : "MEAL",
+        "latitude" : 37.3236842,
+        "longitude" : 129.0144891,
+        "address" : "강원특별자치도 삼척시 신기면 환선로 864-2 굴피집",
+        "placeUrl" : "http://place.map.kakao.com/16780835",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:20:00",
+      "stayMinutes" : 85
+    }, {
+      "place" : {
+        "name" : "환선굴",
+        "slotType" : "ATTRACTION",
+        "latitude" : 37.3243,
+        "longitude" : 129.0081703,
+        "address" : "강원특별자치도 삼척시 신기면 환선로 800 대이동굴관광센터",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:50:00",
+      "stayMinutes" : 128
+    }, {
+      "place" : {
+        "name" : "카페 통방아",
+        "slotType" : "CAFE",
+        "latitude" : 37.3240649,
+        "longitude" : 129.0152028,
+        "address" : "강원특별자치도 삼척시 신기면 환선로 858",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "16:05:00",
+      "stayMinutes" : 79
+    }, {
+      "place" : {
+        "name" : "이주일식당",
+        "slotType" : "MEAL",
+        "latitude" : 37.3257852,
+        "longitude" : 129.0200429,
+        "address" : "강원특별자치도 삼척시 신기면 환선로 858-1",
+        "placeUrl" : "http://place.map.kakao.com/16420248",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "09:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "초곡용굴촛대바위길",
+        "slotType" : "STROLL",
+        "latitude" : 37.3103744,
+        "longitude" : 129.2978233,
+        "address" : "강원특별자치도 삼척시 근덕면 초곡길 236-4",
+        "placeUrl" : "http://place.map.kakao.com/1778342372",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 70
+    }, {
+      "place" : {
+        "name" : "마카올래",
+        "slotType" : "CAFE",
+        "latitude" : 37.2885326,
+        "longitude" : 129.3180719,
+        "address" : "강원특별자치도 삼척시 근덕면 장호항길 120",
+        "placeUrl" : "http://place.map.kakao.com/1916221079",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:25:00",
+      "stayMinutes" : 69
+    }, {
+      "place" : {
+        "name" : "홍문어",
+        "slotType" : "MEAL",
+        "latitude" : 37.2881246,
+        "longitude" : 129.317628,
+        "address" : "강원특별자치도 삼척시 근덕면 장호항길 111 장호어민회관 1층 홍문어",
+        "placeUrl" : "http://place.map.kakao.com/1624484765",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:40:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "갈남항",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 37.2807757781,
+        "longitude" : 129.3251150597,
+        "address" : "강원특별자치도 삼척시 원덕읍 갈남리 99-20",
+        "placeUrl" : "http://place.map.kakao.com/11393994",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:20:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "삼척바다배낚시체험",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 37.2858255,
+        "longitude" : 129.3174478,
+        "address" : "강원특별자치도 삼척시 근덕면 삼척로 2048-49 1동 1층 01호, b0-1호",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:25:00",
+      "stayMinutes" : 180
+    }, {
+      "place" : {
+        "name" : "성덕호횟집",
+        "slotType" : "MEAL",
+        "latitude" : 37.2868926,
+        "longitude" : 129.3161521,
+        "address" : "강원특별자치도 삼척시 근덕면 장호길 99 성덕호횟집",
+        "placeUrl" : "http://place.map.kakao.com/21448645",
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  } ]
+}

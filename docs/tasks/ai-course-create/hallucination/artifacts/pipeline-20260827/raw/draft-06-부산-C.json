@@ -1,0 +1,254 @@
+{
+  "title" : "파도 따라, 부산 미식 원정대",
+  "concept" : "걸어서 이어지는 부산의 대표 권역을 따라 액티비티와 프리미엄 미식의 밀도를 높이는 친구 여행",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "19:00:00",
+    "places" : [ {
+      "place" : {
+        "name" : "빙동댕 프리미엄 빙수카페 해운대점",
+        "slotType" : "CAFE",
+        "latitude" : 35.1657024,
+        "longitude" : 129.1691864,
+        "address" : "부산광역시 해운대구 해운대로 732 상가 101호",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "EXPENSIVE"
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 76
+    }, {
+      "place" : {
+        "name" : "더파티 프리미엄 해운대점",
+        "slotType" : "MEAL",
+        "latitude" : 35.1602156,
+        "longitude" : 129.1666037,
+        "address" : "부산광역시 해운대구 해운대해변로298번길 24 팔레드시즈 지하 1층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "EXPENSIVE"
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "해운대해수욕장",
+        "slotType" : "STROLL",
+        "latitude" : 35.1581445,
+        "longitude" : 129.1583542,
+        "address" : "부산광역시 해운대구 우동",
+        "placeUrl" : "http://place.map.kakao.com/7913306",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:00:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "요트탈래",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 35.1566216976,
+        "longitude" : 129.152097571,
+        "address" : "부산광역시 해운대구 동백로 52",
+        "placeUrl" : "http://place.map.kakao.com/1965241452",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:15:00",
+      "stayMinutes" : 120
+    }, {
+      "place" : {
+        "name" : "격주 해운대점",
+        "slotType" : "SHOPPING",
+        "latitude" : 35.1562274,
+        "longitude" : 129.1447516,
+        "address" : "부산광역시 해운대구 마린시티2로 33 제니스스퀘어 104동 139호",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "EXPENSIVE"
+      },
+      "startTime" : "16:30:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "램바란스 프리미엄 광안본점",
+        "slotType" : "MEAL",
+        "latitude" : 35.1552208,
+        "longitude" : 129.1340933,
+        "address" : "부산광역시 수영구 민락수변로 125 4층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "EXPENSIVE"
+      },
+      "startTime" : "17:45:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "호텔 아쿠아펠리스 스카이 전망대&스카이 워크",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 35.1540069,
+        "longitude" : 129.1187461,
+        "address" : "부산광역시 수영구 광안해변로 225 호텔 아쿠아펠리스 21층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:30:00",
+      "stayMinutes" : 45
+    }, {
+      "place" : {
+        "name" : "페로어페로 광안리점",
+        "slotType" : "CAFE",
+        "latitude" : 35.1482225,
+        "longitude" : 129.114093,
+        "address" : "부산광역시 수영구 남천바다로 38-6 페로어페로",
+        "placeUrl" : "http://place.map.kakao.com/862025041",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:30:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "조개대표 광안본점",
+        "slotType" : "MEAL",
+        "latitude" : 35.1498913,
+        "longitude" : 129.1153155,
+        "address" : "부산광역시 수영구 광남로94번길 16 204호",
+        "placeUrl" : "http://place.map.kakao.com/433896245",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:45:00",
+      "stayMinutes" : 83
+    }, {
+      "place" : {
+        "name" : "광안리해변 테마거리",
+        "slotType" : "STROLL",
+        "latitude" : 35.1551657503,
+        "longitude" : 129.1221363273,
+        "address" : "부산광역시 수영구 민락동 (민락동)",
+        "placeUrl" : "http://place.map.kakao.com/12644071",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:20:00",
+      "stayMinutes" : 76
+    }, {
+      "place" : {
+        "name" : "레이저태그스포츠 광안점",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 35.1558823541,
+        "longitude" : 129.12306956,
+        "address" : "부산광역시 수영구 광안해변로 269 (민락동) 지하층 101호",
+        "placeUrl" : "http://place.map.kakao.com/1712410462",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:50:00",
+      "stayMinutes" : 150
+    }, {
+      "place" : {
+        "name" : "광안리 진양호횟집",
+        "slotType" : "MEAL",
+        "latitude" : 35.1550327,
+        "longitude" : 129.1317328,
+        "address" : "부산광역시 수영구 광안해변로344번길 17-20 풍경타워 4층 광안리 진양호횟집",
+        "placeUrl" : "http://place.map.kakao.com/8556968",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "10:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "국제시장 먹자골목",
+        "slotType" : "ATTRACTION",
+        "latitude" : 35.1011311741,
+        "longitude" : 129.0280793175,
+        "address" : "부산광역시 중구 중구로 36",
+        "placeUrl" : "http://place.map.kakao.com/12711092",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "부산타워",
+        "slotType" : "STROLL",
+        "latitude" : 35.1010769,
+        "longitude" : 129.0323421,
+        "address" : "부산광역시 중구 용두산길 37-30",
+        "placeUrl" : "http://place.map.kakao.com/1534486834",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:45:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "홍유단 남포본점",
+        "slotType" : "MEAL",
+        "latitude" : 35.0984709,
+        "longitude" : 129.0321042,
+        "address" : "부산광역시 중구 구덕로34번길 5 2,3층",
+        "placeUrl" : "http://place.map.kakao.com/753120163",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:55:00",
+      "stayMinutes" : 84
+    }, {
+      "place" : {
+        "name" : "빙동댕 프리미엄 빙수카페 부산남포점",
+        "slotType" : "CAFE",
+        "latitude" : 35.0984676,
+        "longitude" : 129.0320401,
+        "address" : "부산광역시 중구 구덕로34번길 5 1층 빙동댕",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "EXPENSIVE"
+      },
+      "startTime" : "14:30:00",
+      "stayMinutes" : 78
+    }, {
+      "place" : {
+        "name" : "아이스토어 롯데백화점 광복점",
+        "slotType" : "SHOPPING",
+        "latitude" : 35.0978173,
+        "longitude" : 129.0366766,
+        "address" : "부산광역시 중구 중앙대로 2 롯데백화점 광복점 아쿠아몰 1층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "EXPENSIVE"
+      },
+      "startTime" : "16:00:00",
+      "stayMinutes" : 77
+    }, {
+      "place" : {
+        "name" : "부산명물횟집",
+        "slotType" : "MEAL",
+        "latitude" : 35.09711367503743,
+        "longitude" : 129.03112054346374,
+        "address" : "부산 중구 자갈치해안로 55",
+        "placeUrl" : "http://place.map.kakao.com/7908577",
+        "source" : "SUGGESTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  } ]
+}

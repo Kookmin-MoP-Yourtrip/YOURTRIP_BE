@@ -1,0 +1,228 @@
+{
+  "title" : "갈대와 숲 사이, 순천의 느린 사흘",
+  "concept" : "자차로 권역을 여유롭게 오가며 가족과 함께 습지·숲·옛마을의 자연을 만나는 여행",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "용산전망대",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 34.8730493045,
+        "longitude" : 127.5193226643,
+        "address" : "전남광주통합특별시 순천시 해룡면 순천만길 513-51",
+        "placeUrl" : "http://place.map.kakao.com/1133962119",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 45
+    }, {
+      "place" : {
+        "name" : "남파랑길61-1코스(우회)",
+        "slotType" : "STROLL",
+        "latitude" : 34.8842166,
+        "longitude" : 127.4990593,
+        "address" : "전남광주통합특별시 순천시",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:00:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "밥꽃이야기 들마루",
+        "slotType" : "MEAL",
+        "latitude" : 34.8876881,
+        "longitude" : 127.5073547,
+        "address" : "전남광주통합특별시 순천시 순천만길 496 밥꽃이야기 들마루",
+        "placeUrl" : "http://place.map.kakao.com/671502675",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:05:00",
+      "stayMinutes" : 87
+    }, {
+      "place" : {
+        "name" : "만대재",
+        "slotType" : "CAFE",
+        "latitude" : 34.8883585,
+        "longitude" : 127.5087459,
+        "address" : "전남광주통합특별시 순천시 순천만길 530 만대재",
+        "placeUrl" : "http://place.map.kakao.com/542026001",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:40:00",
+      "stayMinutes" : 84
+    }, {
+      "place" : {
+        "name" : "순천만습지",
+        "slotType" : "ATTRACTION",
+        "latitude" : 34.8852266,
+        "longitude" : 127.5093719,
+        "address" : "전남광주통합특별시 순천시 순천만길 513-25",
+        "placeUrl" : "http://place.map.kakao.com/1191246407",
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "15:10:00",
+      "stayMinutes" : 137
+    }, {
+      "place" : {
+        "name" : "순천만명품식당",
+        "slotType" : "MEAL",
+        "latitude" : 34.887351,
+        "longitude" : 127.5081633,
+        "address" : "전남광주통합특별시 순천시 순천만길 518 1층",
+        "placeUrl" : "http://place.map.kakao.com/928989253",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "08:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "오공치 전망대",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 34.9275538,
+        "longitude" : 127.3292537,
+        "address" : "전남광주통합특별시 순천시 낙안면 상송리 산53-3",
+        "placeUrl" : "http://place.map.kakao.com/1483968996",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "08:30:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "선암사계곡",
+        "slotType" : "STROLL",
+        "latitude" : 34.9923189536,
+        "longitude" : 127.3414158254,
+        "address" : "전남광주통합특별시 순천시 승주읍 죽학리",
+        "placeUrl" : "http://place.map.kakao.com/12639186",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:55:00",
+      "stayMinutes" : 88
+    }, {
+      "place" : {
+        "name" : "다반사",
+        "slotType" : "CAFE",
+        "latitude" : 34.99228,
+        "longitude" : 127.3431177,
+        "address" : "전남광주통합특별시 순천시 승주읍 승암교길 14",
+        "placeUrl" : "http://place.map.kakao.com/1764159275",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 88
+    }, {
+      "place" : {
+        "name" : "길상식당",
+        "slotType" : "MEAL",
+        "latitude" : 34.9918946,
+        "longitude" : 127.3438304,
+        "address" : "전남광주통합특별시 순천시 승주읍 승암교길 8 길상식당",
+        "placeUrl" : "http://place.map.kakao.com/11891805",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:05:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "선암사",
+        "slotType" : "ATTRACTION",
+        "latitude" : 34.9972547,
+        "longitude" : 127.3313108,
+        "address" : "전남광주통합특별시 순천시 승주읍 선암사길 450",
+        "placeUrl" : "http://place.map.kakao.com/7947688",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:40:00",
+      "stayMinutes" : 150
+    }, {
+      "place" : {
+        "name" : "송광사길상식당",
+        "slotType" : "MEAL",
+        "latitude" : 35.0044747,
+        "longitude" : 127.2658511,
+        "address" : "전남광주통합특별시 순천시 송광면 송광사안길 123",
+        "placeUrl" : "http://place.map.kakao.com/21272882",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "09:00:00",
+    "endTime" : "15:05:00",
+    "places" : [ {
+      "place" : {
+        "name" : "낙안전통가옥체험장",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 34.9082143,
+        "longitude" : 127.3389623,
+        "address" : "전남광주통합특별시 순천시 낙안면 충민길 90",
+        "placeUrl" : "http://place.map.kakao.com/16428950",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 120
+    }, {
+      "place" : {
+        "name" : "순천 낙안읍성",
+        "slotType" : "ATTRACTION",
+        "latitude" : 34.9064463,
+        "longitude" : 127.3416564,
+        "address" : "전남광주통합특별시 순천시 낙안면 충민길 30",
+        "placeUrl" : "http://place.map.kakao.com/8234854",
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "11:10:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "최대감벌교꼬막",
+        "slotType" : "MEAL",
+        "latitude" : 34.9049525,
+        "longitude" : 127.3437331,
+        "address" : "전남광주통합특별시 순천시 낙안면 삼일로 63 1층 최대감벌교꼬막",
+        "placeUrl" : "http://place.map.kakao.com/1286663140",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:45:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "순천농협파머스마켓 낙안점",
+        "slotType" : "SHOPPING",
+        "latitude" : 34.9056547,
+        "longitude" : 127.3432946,
+        "address" : "전남광주통합특별시 순천시 낙안면 삼일로 43",
+        "placeUrl" : "http://place.map.kakao.com/91940496",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:05:00",
+      "stayMinutes" : 60
+    } ]
+  } ]
+}

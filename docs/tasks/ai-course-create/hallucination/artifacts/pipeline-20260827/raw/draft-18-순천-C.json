@@ -1,0 +1,254 @@
+{
+  "title" : "갈대와 골목 사이, 친구들과 순천을 맛보다",
+  "concept" : "뚜벅이로 이어지는 권역별 산책과 활동, 하루 두 번의 여유로운 미식으로 순천을 깊이 즐기는 프리미엄 친구 여행",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "20:00:00",
+    "places" : [ {
+      "place" : {
+        "name" : "순천 문화의거리",
+        "slotType" : "ATTRACTION",
+        "latitude" : 34.9546922812,
+        "longitude" : 127.4827571342,
+        "address" : "전남광주통합특별시 순천시 영동길 18 (행동)",
+        "placeUrl" : "http://place.map.kakao.com/18905860",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 134
+    }, {
+      "place" : {
+        "name" : "양지쌈밥",
+        "slotType" : "MEAL",
+        "latitude" : 34.9550489,
+        "longitude" : 127.4834575,
+        "address" : "전남광주통합특별시 순천시 금곡길 8 양지쌈밥",
+        "placeUrl" : "http://place.map.kakao.com/21295112",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:25:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "아트박스 순천중앙점",
+        "slotType" : "SHOPPING",
+        "latitude" : 34.9542109,
+        "longitude" : 127.4855273,
+        "address" : "전남광주통합특별시 순천시 황금2길 14",
+        "placeUrl" : "http://place.map.kakao.com/26968997",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:10:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "라망드마망",
+        "slotType" : "CAFE",
+        "latitude" : 34.9531226,
+        "longitude" : 127.4863735,
+        "address" : "전남광주통합특별시 순천시 중앙시장길 46 1층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:50:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "해강 순천시청점",
+        "slotType" : "MEAL",
+        "latitude" : 34.951797,
+        "longitude" : 127.4880252,
+        "address" : "전남광주통합특별시 순천시 장명4길 12",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "봉화산무장애나눔길",
+        "slotType" : "STROLL",
+        "latitude" : 34.9542855,
+        "longitude" : 127.497306,
+        "address" : "전남광주통합특별시 순천시",
+        "placeUrl" : "http://place.map.kakao.com/1760186498",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "19:00:00",
+      "stayMinutes" : 60
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "옥천서원(순천)",
+        "slotType" : "STROLL",
+        "latitude" : 34.9522063796,
+        "longitude" : 127.4787131086,
+        "address" : "전남광주통합특별시 순천시 임청대길 18",
+        "placeUrl" : "http://place.map.kakao.com/10615117",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "순천의 계절",
+        "slotType" : "CAFE",
+        "latitude" : 34.9246863,
+        "longitude" : 127.4934405,
+        "address" : "전남광주통합특별시 순천시 순천만길 28",
+        "placeUrl" : "http://place.map.kakao.com/2141166738",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:30:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "순천호탄집 오천지구점",
+        "slotType" : "MEAL",
+        "latitude" : 34.9321077,
+        "longitude" : 127.4958839,
+        "address" : "전남광주통합특별시 순천시 오천3길 4-9",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:45:00",
+      "stayMinutes" : 78
+    }, {
+      "place" : {
+        "name" : "스카이큐브",
+        "slotType" : "ATTRACTION",
+        "latitude" : 34.9267901901,
+        "longitude" : 127.5018339461,
+        "address" : "전남광주통합특별시 순천시 강변로 435 (오천동)",
+        "placeUrl" : "http://place.map.kakao.com/389181911",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:15:00",
+      "stayMinutes" : 99
+    }, {
+      "place" : {
+        "name" : "순천만국가정원 테라피가든",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 34.9272265,
+        "longitude" : 127.5066747,
+        "address" : "전남광주통합특별시 순천시 국가정원1호길 152-55 테라피가든",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:10:00",
+      "stayMinutes" : 128
+    }, {
+      "place" : {
+        "name" : "나눌터",
+        "slotType" : "MEAL",
+        "latitude" : 34.9326178,
+        "longitude" : 127.5140375,
+        "address" : "전남광주통합특별시 순천시 팔마1길 4",
+        "placeUrl" : "http://place.map.kakao.com/14504521",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "08:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "용산전망대",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 34.8730493045,
+        "longitude" : 127.5193226643,
+        "address" : "전남광주통합특별시 순천시 해룡면 순천만길 513-51",
+        "placeUrl" : "http://place.map.kakao.com/1133962119",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "08:30:00",
+      "stayMinutes" : 58
+    }, {
+      "place" : {
+        "name" : "남파랑길61-1코스(우회)",
+        "slotType" : "STROLL",
+        "latitude" : 34.8842166,
+        "longitude" : 127.4990593,
+        "address" : "전남광주통합특별시 순천시",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:50:00",
+      "stayMinutes" : 85
+    }, {
+      "place" : {
+        "name" : "밥꽃이야기 들마루",
+        "slotType" : "MEAL",
+        "latitude" : 34.8876881,
+        "longitude" : 127.5073547,
+        "address" : "전남광주통합특별시 순천시 순천만길 496 밥꽃이야기 들마루",
+        "placeUrl" : "http://place.map.kakao.com/671502675",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "만대재",
+        "slotType" : "CAFE",
+        "latitude" : 34.8883585,
+        "longitude" : 127.5087459,
+        "address" : "전남광주통합특별시 순천시 순천만길 530 만대재",
+        "placeUrl" : "http://place.map.kakao.com/542026001",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:15:00",
+      "stayMinutes" : 88
+    }, {
+      "place" : {
+        "name" : "순천만습지",
+        "slotType" : "ATTRACTION",
+        "latitude" : 34.8852266,
+        "longitude" : 127.5093719,
+        "address" : "전남광주통합특별시 순천시 순천만길 513-25",
+        "placeUrl" : "http://place.map.kakao.com/1191246407",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:55:00",
+      "stayMinutes" : 147
+    }, {
+      "place" : {
+        "name" : "순천만명품식당",
+        "slotType" : "MEAL",
+        "latitude" : 34.887351,
+        "longitude" : 127.5081633,
+        "address" : "전남광주통합특별시 순천시 순천만길 518 1층",
+        "placeUrl" : "http://place.map.kakao.com/928989253",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  } ]
+}

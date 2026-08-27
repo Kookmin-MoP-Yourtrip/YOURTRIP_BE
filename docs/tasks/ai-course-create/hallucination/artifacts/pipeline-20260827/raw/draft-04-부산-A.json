@@ -1,0 +1,254 @@
+{
+  "title" : "파도 곁에 머무는 사흘",
+  "concept" : "대중교통과 도보로 이어지는 해안 권역을 따라 연인과 여유롭게 걷고 쉬며 감성을 채우는 가성비 여행",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "09:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "부산엑스더스카이",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 35.1599502,
+        "longitude" : 129.1697687,
+        "address" : "부산광역시 해운대구 달맞이길 30",
+        "placeUrl" : "http://place.map.kakao.com/1431820215",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:30:00",
+      "stayMinutes" : 45
+    }, {
+      "place" : {
+        "name" : "카페해운대1994",
+        "slotType" : "CAFE",
+        "latitude" : 35.1630901,
+        "longitude" : 129.1583041,
+        "address" : "부산광역시 해운대구 해운대로 620 라뮤에뜨상가 1층 122호 카페해운대1994",
+        "placeUrl" : "http://place.map.kakao.com/1578643703",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "10:35:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "상국이네",
+        "slotType" : "MEAL",
+        "latitude" : 35.1620055,
+        "longitude" : 129.1628895,
+        "address" : "부산광역시 해운대구 구남로41번길 40-1 상국이네",
+        "placeUrl" : "http://place.map.kakao.com/9089301",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:45:00",
+      "stayMinutes" : 86
+    }, {
+      "place" : {
+        "name" : "동백공원",
+        "slotType" : "ATTRACTION",
+        "latitude" : 35.1536609221,
+        "longitude" : 129.1523226328,
+        "address" : "부산광역시 해운대구 동백로 99 (우동)",
+        "placeUrl" : "http://place.map.kakao.com/10296784",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:30:00",
+      "stayMinutes" : 132
+    }, {
+      "place" : {
+        "name" : "동백섬",
+        "slotType" : "STROLL",
+        "latitude" : 35.1539199,
+        "longitude" : 129.152185,
+        "address" : "부산광역시 해운대구 우동 710-1",
+        "placeUrl" : "http://place.map.kakao.com/8257954",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:50:00",
+      "stayMinutes" : 80
+    }, {
+      "place" : {
+        "name" : "광안리 산해횟집",
+        "slotType" : "MEAL",
+        "latitude" : 35.1550331,
+        "longitude" : 129.1316917,
+        "address" : "부산광역시 수영구 광안해변로344번길 17-20 풍경타워 8층 광안리 산해횟집",
+        "placeUrl" : "http://place.map.kakao.com/20554112",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "10:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "해파랑길1코스",
+        "slotType" : "STROLL",
+        "latitude" : 35.1410228,
+        "longitude" : 129.1175821,
+        "address" : "부산광역시 수영구 남천동 148-13",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "카페오뜨 광안비치점",
+        "slotType" : "CAFE",
+        "latitude" : 35.1527816,
+        "longitude" : 129.1176048,
+        "address" : "부산광역시 수영구 광안해변로 209 2층",
+        "placeUrl" : "http://place.map.kakao.com/1519162143",
+        "source" : "SEEDED",
+        "matchedModifier" : "ROOFTOP"
+      },
+      "startTime" : "11:20:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "호텔 아쿠아펠리스 스카이 전망대&스카이 워크",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 35.1540069,
+        "longitude" : 129.1187461,
+        "address" : "부산광역시 수영구 광안해변로 225 호텔 아쿠아펠리스 21층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "ROOFTOP"
+      },
+      "startTime" : "12:30:00",
+      "stayMinutes" : 45
+    }, {
+      "place" : {
+        "name" : "페이센동 광안리점",
+        "slotType" : "MEAL",
+        "latitude" : 35.156021,
+        "longitude" : 129.1224621,
+        "address" : "부산광역시 수영구 민락로 7-5 2층 페이센동 광안리점",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "13:30:00",
+      "stayMinutes" : 86
+    }, {
+      "place" : {
+        "name" : "광안리해수욕장",
+        "slotType" : "ATTRACTION",
+        "latitude" : 35.154121,
+        "longitude" : 129.1201409,
+        "address" : "부산광역시 수영구 광안해변로 219",
+        "placeUrl" : "http://place.map.kakao.com/8202423",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:05:00",
+      "stayMinutes" : 130
+    }, {
+      "place" : {
+        "name" : "광안리 진양호횟집",
+        "slotType" : "MEAL",
+        "latitude" : 35.1550327,
+        "longitude" : 129.1317328,
+        "address" : "부산광역시 수영구 광안해변로344번길 17-20 풍경타워 4층 광안리 진양호횟집",
+        "placeUrl" : "http://place.map.kakao.com/8556968",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "09:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "해돋이전망대",
+        "slotType" : "ATTRACTION",
+        "latitude" : 35.0891108108,
+        "longitude" : 129.0559688873,
+        "address" : "부산광역시 영도구 해돋이3길 410-1 (청학동)",
+        "placeUrl" : "http://place.map.kakao.com/27496725",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 100
+    }, {
+      "place" : {
+        "name" : "흰여울문화마을",
+        "slotType" : "STROLL",
+        "latitude" : 35.0798603,
+        "longitude" : 129.0434588,
+        "address" : "부산광역시 영도구 영선동4가 605-3",
+        "placeUrl" : "http://place.map.kakao.com/22875776",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:00:00",
+      "stayMinutes" : 65
+    }, {
+      "place" : {
+        "name" : "루아앤티그리 광복점",
+        "slotType" : "MEAL",
+        "latitude" : 35.0968083,
+        "longitude" : 129.034799,
+        "address" : "부산광역시 중구 용미길10번길 1 1, 2층",
+        "placeUrl" : "http://place.map.kakao.com/1058750439",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:25:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "다이소 부산남포점",
+        "slotType" : "SHOPPING",
+        "latitude" : 35.098439,
+        "longitude" : 129.0309155,
+        "address" : "부산광역시 중구 구덕로 46",
+        "placeUrl" : "http://place.map.kakao.com/26855845",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:10:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "클라우드밤",
+        "slotType" : "CAFE",
+        "latitude" : 35.0983705,
+        "longitude" : 129.0266549,
+        "address" : "부산광역시 중구 비프광장로 12-1 2층",
+        "placeUrl" : "http://place.map.kakao.com/21554492",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "15:50:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "장인닭갈비 남포점",
+        "slotType" : "MEAL",
+        "latitude" : 35.0987829,
+        "longitude" : 129.0307684,
+        "address" : "부산광역시 중구 구덕로48번길 4-1 1층",
+        "placeUrl" : "http://place.map.kakao.com/513957146",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  } ]
+}

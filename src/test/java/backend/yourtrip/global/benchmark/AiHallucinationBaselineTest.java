@@ -1,5 +1,19 @@
 package backend.yourtrip.global.benchmark;
 
+import static backend.yourtrip.global.benchmark.BenchmarkEnv.loadDotEnv;
+import static backend.yourtrip.global.benchmark.BenchmarkEnv.resolve;
+import static backend.yourtrip.global.benchmark.BenchmarkEnv.setting;
+import static backend.yourtrip.global.benchmark.BenchmarkEnv.sleep;
+import static backend.yourtrip.global.benchmark.BenchmarkEnv.text;
+import static backend.yourtrip.global.benchmark.HallucinationArtifacts.RESULTS_DIR;
+import static backend.yourtrip.global.benchmark.HallucinationArtifacts.csv;
+import static backend.yourtrip.global.benchmark.HallucinationArtifacts.oneLine;
+import static backend.yourtrip.global.benchmark.HallucinationArtifacts.readCsv;
+import static backend.yourtrip.global.benchmark.HallucinationArtifacts.writeUtf8Bom;
+import static backend.yourtrip.global.benchmark.HallucinationReport.pct;
+import static backend.yourtrip.global.benchmark.HallucinationScoring.BAND_KAKAO_ERROR;
+import static backend.yourtrip.global.benchmark.HallucinationScoring.groundOnePlace;
+import static backend.yourtrip.global.benchmark.HallucinationScoring.nullToEmpty;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -7,6 +21,7 @@ import backend.yourtrip.global.benchmark.BaselineInputSet.KeywordSetSpec;
 import backend.yourtrip.global.benchmark.BaselineInputSet.RegionSpec;
 import backend.yourtrip.global.benchmark.BaselineInputSet.RegionTier;
 import backend.yourtrip.global.benchmark.BaselineInputSet.RequestSpec;
+import backend.yourtrip.global.benchmark.HallucinationScoring.PlaceRow;
 import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.LlmCall;
 import backend.yourtrip.global.ai.LlmResponseParser;
@@ -19,10 +34,8 @@ import backend.yourtrip.global.ai.openai.OpenAiLlmClient;
 import backend.yourtrip.global.benchmark.LegacyGeminiCourseDto.DayScheduleDto;
 import backend.yourtrip.global.benchmark.LegacyGeminiCourseDto.PlaceDto;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
-import backend.yourtrip.global.kakao.PlaceLookup;
 import backend.yourtrip.global.kakao.PlaceMatchScorer;
 import backend.yourtrip.global.kakao.config.KakaoConfig;
-import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -34,13 +47,11 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -179,12 +190,6 @@ class AiHallucinationBaselineTest {
      */
     private static final Double TEMPERATURE = null;
 
-    /** 수동 검증 워크시트에서 점수 구간별로 뽑을 표본 수. */
-    private static final int SAMPLES_PER_BAND = 10;
-
-    /** 층화 추출을 재현 가능하게 만드는 고정 시드 — 재분석 시 같은 표본이 나와야 한다. */
-    private static final long SAMPLING_SEED = 42L;
-
     /**
      * 호출이 연속 이 횟수만큼 최종 실패하면 쿼터 소진으로 보고 측정을 조기 중단한다.
      *
@@ -194,11 +199,6 @@ class AiHallucinationBaselineTest {
      * 재시도와 곱해져 실제 시도 횟수를 알 수 없게 된다.
      */
     private static final int ABORT_AFTER_CONSECUTIVE_FAILURES = 3;
-
-    /** CSV·콘솔에 남기는 예외 메시지의 최대 길이. */
-    private static final int MAX_ERROR_LENGTH = 300;
-
-    private static final Path RESULTS_DIR = Path.of("results");
 
     // ── 입력 세트: 지역 10개 × 키워드 조합 3개 = 30요청 ──────────────────────────
 
@@ -210,58 +210,10 @@ class AiHallucinationBaselineTest {
 
     // ── 결과 레코드 ────────────────────────────────────────────────────────────
 
-    /**
-     * 결과 구간. 앞의 셋은 {@link PlaceLookup}의 변형을 그대로 옮긴 것이고, 뒤의 넷은
-     * {@code Found}의 점수를 나눈 것이다. bestScore 는 -3 = 이름 게이트 전멸,
-     * -2 = 카카오 API 오류, -1 = 검색 결과 0건, 그 외 0~10.
-     */
-    private static final String BAND_KAKAO_ERROR = "KAKAO_ERROR";
-    private static final String BAND_NO_RESULT = "NO_RESULT";
-    private static final String BAND_NAME_MISMATCH = "NAME_MISMATCH";
-    private static final String BAND_S0 = "S0";
-    private static final String BAND_S1_4 = "S1_4";
-    private static final String BAND_S5_7 = "S5_7";
-    private static final String BAND_S8_10 = "S8_10";
-
-    private static final List<String> ALL_BANDS = List.of(
-        BAND_KAKAO_ERROR, BAND_NO_RESULT, BAND_NAME_MISMATCH,
-        BAND_S0, BAND_S1_4, BAND_S5_7, BAND_S8_10);
-
-    /**
-     * 자동 프록시가 세는 구간. <b>{@code NO_RESULT} 하나뿐이다.</b>
-     *
-     * <p>예전에는 {@code S0}·{@code S1_4}도 넣었는데, <b>표기만 다른 장소가 어느 구간에 떨어질지를
-     * 카카오의 {@code category_group_code} 부여 여부가 갈랐다</b> — 카테고리 +2가 붙으면 5점
-     * ({@code S5_7}, 안 걸림), 안 붙으면 3점({@code S1_4}, 걸림). 실측에서 표기 차이 32건이
-     * 15 / 17로 쪼개졌다. {@code NO_RESULT}는 검색 결과가 0건이라 점수 구성 자체가 개입하지 않아
-     * 그런 자의성이 없다.
-     *
-     * <p>{@code NAME_MISMATCH}는 <b>따로 센다</b>(이름 불일치율). 게이트에도 거짓 양성이 있기
-     * 때문이다("해운대 해변" → "해운대해수욕장"). 둘의 합은 장소 미확보율로 따로 보고한다.
-     */
-    private static final Set<String> SUSPECT_BANDS = Set.of(BAND_NO_RESULT);
-
-    /**
-     * 장소 1건의 검증 결과.
-     *
-     * <p>{@code kakaoTotalCount}를 뺐다 — {@link PlaceLookup}은 검색 총건수를 노출하지 않고,
-     * 그 값을 얻자고 검색을 두 번 부르면 판정과 기록이 서로 다른 응답을 볼 수 있다. 대신
-     * {@code rejectedCandidateName}이 들어왔다: 이름 게이트가 무엇을 걸렀는지 봐야 거짓 양성
-     * (같은 곳인데 표기가 다른 경우)을 사후에 가려낼 수 있다.
-     *
-     * <p><b>{@code matchedX}/{@code matchedY}/{@code matchedCategoryGroupCode}는 환각률 측정이
-     * 쓰지 않는다 — 그럼에도 남기는 이유.</b> 카카오 응답에 이미 들어 있는데 버리고 있었고,
-     * 버리고 나면 되찾는 방법이 389건 재호출뿐이다. 응답에 있는 것을 그대로 적는 비용은 0에
-     * 가깝고, {@code artifacts/README.md}가 기록한 "산출물 소실" 사고는 되돌릴 수 없다.
-     */
-    private record PlaceRow(
-        int requestId, String location, RegionTier tier, String keywordSetId,
-        int day, int placeIndex, String aiPlaceName,
-        int bestScore, String scoreBand,
-        String matchedPlaceName, String matchedCategory, String matchedAddress,
-        String matchedPlaceUrl, String rejectedCandidateName,
-        String matchedX, String matchedY, String matchedCategoryGroupCode
-    ) {}
+    // 결과 구간(band)·PlaceRow·채점은 HallucinationScoring 이 소유한다. 파이프라인 하네스(8-6)가
+    // 같은 판정을 걸어야 3점 비교가 성립하는데, 하네스마다 사본을 두면 한쪽만 바뀌어도 겉으로는
+    // 드러나지 않는다 — 두 CSV 모두 같은 열 이름과 같은 행수를 내기 때문이다.
+    // 아래 RequestOutcome 은 단일 호출 고유라 여기 남는다(파이프라인은 요청당 LLM 을 네 번 부른다).
 
     /**
      * 요청 1건의 결말.
@@ -479,85 +431,6 @@ class AiHallucinationBaselineTest {
         return rows;
     }
 
-    /** 이름만 받는다 — 재채점 모드가 {@code PlaceDto} 없이(CSV의 문자열로) 재사용하기 위해서다. */
-    private PlaceRow groundOnePlace(RequestSpec spec, int day, int placeIndex, String placeName,
-        KakaoLocalClient kakaoLocalClient) {
-
-        String aiPlaceName = placeName == null ? "" : placeName;
-
-        // 실제 호출부(MyCourseServiceImpl:564-565)와 같이 placeLocation 자리에 지역명을 넘긴다.
-        // 키워드 조립("{지역} {장소}")과 후보 수(5)는 lookupBestPlace 안에 있다 — 복제하지 않는다.
-        String placeLocation = spec.region().name();
-
-        PlaceLookup lookup;
-        try {
-            lookup = kakaoLocalClient.lookupBestPlace(aiPlaceName, placeLocation);
-        } catch (RuntimeException e) {
-            // lookupBestPlace 는 실패도 값으로 돌려주므로 여기까지 오는 일은 없어야 한다.
-            // 그래도 측정을 멈추지 않기 위해 오류 자체를 하나의 결과로 기록한다.
-            return placeRow(spec, day, placeIndex, aiPlaceName, placeLocation,
-                -2, BAND_KAKAO_ERROR, null, "");
-        }
-
-        return switch (lookup) {
-            case PlaceLookup.Failed failed -> placeRow(spec, day, placeIndex, aiPlaceName,
-                placeLocation, -2, BAND_KAKAO_ERROR, null, failed.cause().name());
-
-            case PlaceLookup.NoResult ignored -> placeRow(spec, day, placeIndex, aiPlaceName,
-                placeLocation, -1, BAND_NO_RESULT, null, "");
-
-            // 검색은 됐는데 이름 게이트를 통과한 후보가 0건이다. 무엇에 걸렸는지 남긴다.
-            case PlaceLookup.NameMismatch mismatch -> placeRow(spec, day, placeIndex, aiPlaceName,
-                placeLocation, -3, BAND_NAME_MISMATCH, null,
-                nullToEmpty(mismatch.bestCandidateName()));
-
-            case PlaceLookup.Found found -> {
-                Document doc = found.document();
-                int score = PlaceMatchScorer.score(doc, aiPlaceName, placeLocation);
-                yield placeRow(spec, day, placeIndex, aiPlaceName, placeLocation,
-                    score, bandOf(score), doc, "");
-            }
-        };
-    }
-
-    /** 결과 네 갈래가 같은 열을 채우므로 조립을 한 곳에 모은다. */
-    private PlaceRow placeRow(RequestSpec spec, int day, int placeIndex, String aiPlaceName,
-        String placeLocation, int bestScore, String scoreBand, Document doc,
-        String rejectedCandidateName) {
-
-        return new PlaceRow(spec.requestId(), placeLocation, spec.region().tier(),
-            spec.keywordSet().id(), day, placeIndex, aiPlaceName,
-            bestScore, scoreBand,
-            doc == null ? "" : nullToEmpty(doc.place_name()),
-            doc == null ? "" : nullToEmpty(doc.category_name()),
-            // 도로명 우선·지번 폴백도 프로덕션 순수 함수를 쓴다.
-            doc == null ? "" : PlaceMatchScorer.bestAddressOf(doc),
-            doc == null ? "" : nullToEmpty(doc.place_url()),
-            rejectedCandidateName,
-            // 카카오는 x=경도·y=위도이고 값이 문자열이다. 여기서 double 로 바꾸지 않는 이유는
-            // 이 하네스가 좌표를 해석하지 않기 때문이다 — 파싱은 쓰는 쪽의 일이고, 중간에서
-            // 변환하면 응답 원문과 CSV 가 어긋날 수 있는 지점이 하나 늘어난다.
-            doc == null ? "" : nullToEmpty(doc.x()),
-            doc == null ? "" : nullToEmpty(doc.y()),
-            doc == null ? "" : nullToEmpty(doc.category_group_code()));
-    }
-
-    /**
-     * {@code Found}의 점수를 구간으로 나눈다. <b>게이트를 통과한 후보에만 적용된다</b> —
-     * 무결과·이름 불일치·API 오류는 점수 이전에 갈리므로 여기로 오지 않는다.
-     *
-     * <p>게이트({@code PlaceNameNormalizer.similar})는 정규화 후 비교하는데 점수의 이름 가점은
-     * 정규화하지 않으므로, <b>게이트를 통과해도 낮은 구간이 남는다</b>("동궁과 월지" → "동궁과월지"는
-     * 통과하지만 +5는 못 받는다). 그래서 이 구간은 정확도 신호가 아니라 <b>층화 추출과 순위</b>의
-     * 축이다.
-     */
-    private static String bandOf(int score) {
-        if (score == 0) return BAND_S0;
-        if (score <= 4) return BAND_S1_4;
-        if (score <= 7) return BAND_S5_7;
-        return BAND_S8_10;
-    }
-
     // ── 부가 지표 집계 ─────────────────────────────────────────────────────────
 
     private RequestOutcome summarize(RequestSpec spec, LegacyGeminiCourseDto dto, int totalPlaces,
@@ -678,43 +551,15 @@ class AiHallucinationBaselineTest {
         return s == null ? 0 : s.length();
     }
 
-    /** CSV·콘솔에 넣기 전에 개행을 없애고 길이를 제한한다 — 예외 메시지가 여러 줄이라 행이 깨진다. */
-    private static String oneLine(String s) {
-        String flat = nullToEmpty(s).replaceAll("\\s*[\\r\\n]+\\s*", " ").trim();
-        return flat.length() <= MAX_ERROR_LENGTH ? flat : flat.substring(0, MAX_ERROR_LENGTH) + "…";
-    }
-
     // ── 산출물 ────────────────────────────────────────────────────────────────
 
-    private void writePlaceCsv(String runTag, List<PlaceRow> rows) throws IOException {
-        StringBuilder sb = new StringBuilder();
-        // 열은 뒤에만 붙인다. 읽는 쪽(재채점 모드)이 이름으로 찾으므로 순수 추가는 구 스키마
-        // CSV 와 호환되지만, 중간에 끼우면 사람이 옛 산출물과 눈으로 대조할 때 열이 밀려 보인다.
-        sb.append("requestId,location,regionTier,keywordSet,day,placeIndex,aiPlaceName,")
-            .append("bestScore,scoreBand,matchedPlaceName,matchedCategory,")
-            .append("matchedAddress,matchedPlaceUrl,rejectedCandidateName,")
-            .append("matchedX,matchedY,matchedCategoryGroupCode\n");
+    // 장소별 CSV 와 층화 워크시트의 형식은 HallucinationArtifacts 가 소유한다. 여기 남는 것은
+    // 파일명 규칙("hallucination-baseline-{runTag}")뿐이다 — 그건 이 측정점의 이름이라
+    // 공유 대상이 아니다.
 
-        for (PlaceRow r : rows) {
-            sb.append(r.requestId()).append(',')
-                .append(csv(r.location())).append(',')
-                .append(r.tier()).append(',')
-                .append(csv(r.keywordSetId())).append(',')
-                .append(r.day()).append(',')
-                .append(r.placeIndex()).append(',')
-                .append(csv(r.aiPlaceName())).append(',')
-                .append(r.bestScore()).append(',')
-                .append(r.scoreBand()).append(',')
-                .append(csv(r.matchedPlaceName())).append(',')
-                .append(csv(r.matchedCategory())).append(',')
-                .append(csv(r.matchedAddress())).append(',')
-                .append(csv(r.matchedPlaceUrl())).append(',')
-                .append(csv(r.rejectedCandidateName())).append(',')
-                .append(csv(r.matchedX())).append(',')
-                .append(csv(r.matchedY())).append(',')
-                .append(csv(r.matchedCategoryGroupCode())).append('\n');
-        }
-        writeUtf8Bom(RESULTS_DIR.resolve("hallucination-baseline-" + runTag + ".csv"), sb.toString());
+    private void writePlaceCsv(String runTag, List<PlaceRow> rows) throws IOException {
+        HallucinationArtifacts.writePlaceCsv(
+            RESULTS_DIR.resolve("hallucination-baseline-" + runTag + ".csv"), rows);
     }
 
     private void writeRequestCsv(String runTag, List<RequestOutcome> outcomes) throws IOException {
@@ -744,89 +589,15 @@ class AiHallucinationBaselineTest {
             sb.toString());
     }
 
-    /**
-     * 점수 구간별 층화 추출 워크시트. 사람이 matchedPlaceUrl 을 열어 verdict 를 채운다.
-     *
-     * <p>층화(무작위가 아니라 구간별 균등)로 뽑는 이유: "몇 점부터 실제로 신뢰할 수 있는가"를
-     * 데이터로 확인해야 임계값(계획서의 min-kakao-score: 5)이 적절한지까지 판정할 수 있다.
-     * 대신 전체 환각률을 추정할 때는 구간별 비율을 전체 비중으로 가중해야 한다.
-     */
     private void writeManualVerificationCsv(String runTag, List<PlaceRow> rows) throws IOException {
-        Map<String, List<PlaceRow>> byBand = new LinkedHashMap<>();
-        for (String band : ALL_BANDS) {
-            byBand.put(band, new ArrayList<>());
-        }
-        for (PlaceRow r : rows) {
-            byBand.get(r.scoreBand()).add(r);
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("# verdict 를 채워주세요: CORRECT | FABRICATED | WRONG_MATCH | UNVERIFIABLE\n")
-            .append("#   CORRECT       AI 원안이 실존하고 카카오 매칭도 그 장소가 맞음\n")
-            .append("#   FABRICATED    AI 원안이 그 지역에 실존하지 않음 — 매칭 성공 여부는 보지 않는다\n")
-            .append("#                 (매칭까지 통과한 '세탁'인지는 scoreBand 로 사후 분해된다)\n")
-            .append("#   WRONG_MATCH   AI 원안은 실존하는데 카카오가 엉뚱한 것을 매칭\n")
-            .append("#   UNVERIFIABLE  판단 불가\n")
-            .append("scoreBand,bestScore,requestId,day,location,aiPlaceName,matchedPlaceName,")
-            .append("matchedAddress,matchedPlaceUrl,verdict,note\n");
-
-        Random random = new Random(SAMPLING_SEED);
-        for (Map.Entry<String, List<PlaceRow>> entry : byBand.entrySet()) {
-            List<PlaceRow> pool = new ArrayList<>(entry.getValue());
-            Collections.shuffle(pool, random);
-            for (PlaceRow r : pool.subList(0, Math.min(SAMPLES_PER_BAND, pool.size()))) {
-                sb.append(r.scoreBand()).append(',')
-                    .append(r.bestScore()).append(',')
-                    .append(r.requestId()).append(',')   // 같은 장소명이 여러 번 나올 때 출처 구분용
-                    .append(r.day()).append(',')
-                    .append(csv(r.location())).append(',')
-                    .append(csv(r.aiPlaceName())).append(',')
-                    .append(csv(r.matchedPlaceName())).append(',')
-                    .append(csv(r.matchedAddress())).append(',')
-                    .append(csv(r.matchedPlaceUrl())).append(',')
-                    .append(',')   // verdict — 사람이 채운다
-                    .append('\n'); // note
-            }
-        }
-        writeUtf8Bom(RESULTS_DIR.resolve("manual-verification-" + runTag + ".csv"), sb.toString());
+        HallucinationArtifacts.writeManualVerificationCsv(
+            RESULTS_DIR.resolve("manual-verification-" + runTag + ".csv"), rows);
     }
 
     private void report(List<PlaceRow> rows, List<RequestOutcome> outcomes, String runTag) {
-        System.out.printf("%n=== 점수 구간 분포 (장소 표본 %,d개) ===%n", rows.size());
-
-        Map<String, Integer> bandCounts = new LinkedHashMap<>();
-        for (String band : ALL_BANDS) {
-            bandCounts.put(band, 0);
-        }
-        for (PlaceRow r : rows) {
-            bandCounts.merge(r.scoreBand(), 1, Integer::sum);
-        }
-        for (Map.Entry<String, Integer> e : bandCounts.entrySet()) {
-            System.out.printf("  %-12s %4d건 (%5.1f%%)%n",
-                e.getKey(), e.getValue(), pct(e.getValue(), rows.size()));
-        }
-
-        long suspect = rows.stream().filter(r -> SUSPECT_BANDS.contains(r.scoreBand())).count();
-        long nameMismatch = rows.stream()
-            .filter(r -> BAND_NAME_MISMATCH.equals(r.scoreBand())).count();
-        System.out.printf("%n=== 자동 지표 (판정자 없이 코드가 계산한다) ===%n");
-        System.out.printf("  자동 프록시    NO_RESULT / 전체     = %d / %d = %.1f%%%n",
-            suspect, rows.size(), pct(suspect, rows.size()));
-        System.out.printf("  이름 불일치율  NAME_MISMATCH / 전체 = %d / %d = %.1f%%%n",
-            nameMismatch, rows.size(), pct(nameMismatch, rows.size()));
-        System.out.printf("  장소 미확보율  둘의 합              = %d / %d = %.1f%%"
-                + "   ← 운영 ai.grounding.match 와 같은 축%n",
-            suspect + nameMismatch, rows.size(), pct(suspect + nameMismatch, rows.size()));
-        System.out.printf("  ※ KAKAO_ERROR 는 분자에서 빠지고 분모엔 남는다 — 장애 시 값이 희석된다.%n");
-        System.out.printf("     지어낸 이름이 게이트를 통과해 실린 '세탁'은 수동 검증으로만 잡는다.%n");
-
-        System.out.printf("%n=== 지역 tier별 자동 프록시 (NO_RESULT 기준) ===%n");
-        for (RegionTier tier : RegionTier.values()) {
-            List<PlaceRow> tierRows = rows.stream().filter(r -> r.tier() == tier).toList();
-            long tierSuspect = tierRows.stream().filter(r -> SUSPECT_BANDS.contains(r.scoreBand())).count();
-            System.out.printf("  %-7s %4d / %4d = %.1f%%%n",
-                tier, tierSuspect, tierRows.size(), pct(tierSuspect, tierRows.size()));
-        }
+        // 장소 지표(구간 분포·자동 프록시·이름 불일치율·장소 미확보율·tier별)는 파이프라인
+        // 하네스와 공유한다 — 같은 문구로 찍혀야 두 산출물을 나란히 읽을 수 있다.
+        HallucinationReport.printPlaceMetrics(rows);
 
         // 재채점 모드는 요청 단위 결과가 없다(LLM을 부르지 않았으므로). 장소 지표만 낸다.
         if (outcomes.isEmpty()) {
@@ -913,11 +684,7 @@ class AiHallucinationBaselineTest {
         System.out.printf("  요청별 지표     results/hallucination-baseline-%s-requests.csv%n", runTag);
         System.out.printf("  수동 검증 대상  results/manual-verification-%s.csv  ← verdict 를 채워주세요%n",
             runTag);
-        System.out.printf("%n  수동 검증 후 지표 산출:%n");
-        System.out.printf("    지어냄률    = Σ_구간 (구간별 FABRICATED 비율 × 구간별 전체 비중)"
-            + "   ← 1차 지표%n");
-        System.out.printf("    세탁 통과율 = 위 식을 Found 구간(S0~S8_10)에만 적용"
-            + "                     ← 지어냈는데 통과한 것%n");
+        HallucinationReport.printManualMetricFormulas();
     }
 
     // ── 재채점 모드 ───────────────────────────────────────────────────────────
@@ -931,7 +698,7 @@ class AiHallucinationBaselineTest {
      * 그대로 재사용해 경로를 하나로 유지한다.
      *
      * <pre>
-     * BASELINE_RESCORE_FROM=results/merged3-places.csv \
+     * BASELINE_RESCORE_FROM=docs/tasks/ai-course-create/hallucination/artifacts/gemini-20260811/places.csv \
      *   ./gradlew benchmarkTest --tests '*AiHallucinationBaselineTest*' --rerun
      * </pre>
      */
@@ -1016,169 +783,10 @@ class AiHallucinationBaselineTest {
         report(placeRows, List.of(), runTag);
     }
 
-    /**
-     * 큰따옴표 이스케이프를 처리하는 최소 CSV 파서. {@code matchedCategory}에 쉼표가 들어
-     * 있어("여행 > 관광,명소") 단순 {@code split(",")}으로는 열이 밀린다. BOM은 걷어낸다.
-     */
-    private static List<List<String>> readCsv(Path path) throws IOException {
-        String content = Files.readString(path, StandardCharsets.UTF_8);
-        if (content.startsWith("\uFEFF")) {
-            content = content.substring(1);
-        }
-        List<List<String>> rows = new ArrayList<>();
-        List<String> current = new ArrayList<>();
-        StringBuilder field = new StringBuilder();
-        boolean quoted = false;
-        for (int i = 0; i < content.length(); i++) {
-            char c = content.charAt(i);
-            if (quoted) {
-                if (c == '"') {
-                    if (i + 1 < content.length() && content.charAt(i + 1) == '"') {
-                        field.append('"');
-                        i++;
-                    } else {
-                        quoted = false;
-                    }
-                } else {
-                    field.append(c);
-                }
-            } else if (c == '"') {
-                quoted = true;
-            } else if (c == ',') {
-                current.add(field.toString());
-                field.setLength(0);
-            } else if (c == '\n' || c == '\r') {
-                if (c == '\r' && i + 1 < content.length() && content.charAt(i + 1) == '\n') {
-                    i++;
-                }
-                current.add(field.toString());
-                field.setLength(0);
-                if (current.size() > 1 || !current.get(0).isBlank()) {
-                    rows.add(current);
-                }
-                current = new ArrayList<>();
-            } else {
-                field.append(c);
-            }
-        }
-        if (field.length() > 0 || !current.isEmpty()) {
-            current.add(field.toString());
-            rows.add(current);
-        }
-        return rows;
-    }
-
     // ── 유틸 ──────────────────────────────────────────────────────────────────
 
     private List<RequestSpec> buildInputSet() {
         return BaselineInputSet.buildInputSet();
     }
 
-    /** Spring 컨텍스트가 없어 spring-dotenv 가 동작하지 않으므로 .env 를 직접 읽는다. */
-    private static Map<String, String> loadDotEnv(Path path) throws IOException {
-        Map<String, String> env = new LinkedHashMap<>();
-        if (!Files.exists(path)) {
-            return env;
-        }
-        for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
-            String trimmed = line.trim();
-            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
-                continue;
-            }
-            int eq = trimmed.indexOf('=');
-            if (eq <= 0) {
-                continue;
-            }
-            String key = trimmed.substring(0, eq).trim();
-            String value = trimmed.substring(eq + 1).trim();
-            if (value.length() >= 2
-                && ((value.startsWith("\"") && value.endsWith("\""))
-                || (value.startsWith("'") && value.endsWith("'")))) {
-                value = value.substring(1, value.length() - 1);
-            }
-            if (!value.isEmpty()) {
-                env.put(key, value);
-            }
-        }
-        return env;
-    }
-
-    /**
-     * 실행 파라미터를 시스템 프로퍼티 → 환경변수 → 기본값 순으로 읽는다.
-     *
-     * <p>Gradle의 {@code Test} task는 {@code -D}로 준 시스템 프로퍼티를 테스트 JVM에 자동 전달하지
-     * 않지만(전달하려면 build.gradle에 {@code systemProperties} 설정이 필요하다) 환경변수는 자식
-     * 프로세스에 상속된다. build.gradle을 건드리지 않고 조절할 수 있도록 둘 다 지원한다.
-     */
-    private static long setting(String systemProperty, String envVar, long defaultValue) {
-        String raw = System.getProperty(systemProperty);
-        if (raw == null || raw.isBlank()) {
-            raw = System.getenv(envVar);
-        }
-        if (raw == null || raw.isBlank()) {
-            return defaultValue;
-        }
-        try {
-            return Long.parseLong(raw.trim());
-        } catch (NumberFormatException e) {
-            return defaultValue;
-        }
-    }
-
-    /** {@link #setting}의 문자열 버전. 측정 축(모델·출력 강제 방식) 선택에 쓴다. */
-    private static String text(String systemProperty, String envVar, String defaultValue) {
-        String raw = System.getProperty(systemProperty);
-        if (raw == null || raw.isBlank()) {
-            raw = System.getenv(envVar);
-        }
-        return (raw == null || raw.isBlank()) ? defaultValue : raw.trim();
-    }
-
-    /** 실제 OS 환경변수가 있으면 그것을 우선한다 — spring-dotenv 와 동일한 우선순위. */
-    private static String resolve(Map<String, String> dotEnv, String key) {
-        String fromOs = System.getenv(key);
-        if (fromOs != null && !fromOs.isBlank()) {
-            return fromOs;
-        }
-        return dotEnv.get(key);
-    }
-
-    private static void writeUtf8Bom(Path path, String content) throws IOException {
-        // 출력 디렉터리를 먼저 만든다. results/ 는 .gitignore 대상이라 clone 직후나 정리 후에는
-        // 존재하지 않는데, 없으면 여기서 NoSuchFileException 이 나고 그때는 이미 LLM 호출을
-        // 다 끝낸 뒤라 측정 비용만 날린다. raw-* 쪽은 이미 createDirectories 를 부르지만
-        // CSV 세 종은 이 메서드가 유일한 통로라 여기 한 곳이면 전부 덮인다.
-        Files.createDirectories(path.getParent());
-
-        // Excel(Windows)이 UTF-8 CSV의 한글을 깨뜨리지 않도록 BOM을 붙인다 — 수동 검증 워크시트를
-        // 사람이 스프레드시트로 열기 때문이다.
-        Files.writeString(path, "﻿" + content, StandardCharsets.UTF_8);
-    }
-
-    private static String csv(String value) {
-        String s = nullToEmpty(value);
-        if (s.contains(",") || s.contains("\"") || s.contains("\n")) {
-            return '"' + s.replace("\"", "\"\"") + '"';
-        }
-        return s;
-    }
-
-    private static String nullToEmpty(String s) {
-        return s == null ? "" : s;
-    }
-
-    private static double pct(long numerator, long denominator) {
-        return denominator == 0 ? 0.0 : numerator * 100.0 / denominator;
-    }
-
-    private static void sleep(long millis) {
-        if (millis <= 0) {
-            return;
-        }
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
 }

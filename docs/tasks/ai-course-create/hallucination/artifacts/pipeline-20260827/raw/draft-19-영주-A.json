@@ -1,0 +1,241 @@
+{
+  "title" : "느린 골목과 산빛, 영주에서의 사흘",
+  "concept" : "뚜벅이로 이어지는 가까운 권역을 중심으로 걷고 쉬며, 연인과 조용한 감성을 나누는 가성비 힐링 여행",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "소백산 자락길",
+        "slotType" : "STROLL",
+        "latitude" : 36.8232138,
+        "longitude" : 128.6168975,
+        "address" : "경상북도 영주시 선비로 213",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "영주포교당",
+        "slotType" : "ATTRACTION",
+        "latitude" : 36.8234008009,
+        "longitude" : 128.6215470622,
+        "address" : "경상북도 영주시 중앙로63번길 41-10 (영주동)",
+        "placeUrl" : "http://place.map.kakao.com/12675360",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:15:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "라라코스트 영주역점",
+        "slotType" : "MEAL",
+        "latitude" : 36.8103971,
+        "longitude" : 128.6229243,
+        "address" : "경상북도 영주시 대학로12번길 4 영주빌딩 2층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:05:00",
+      "stayMinutes" : 84
+    }, {
+      "place" : {
+        "name" : "더달달 영주역점",
+        "slotType" : "SHOPPING",
+        "latitude" : 36.8106633,
+        "longitude" : 128.6239108,
+        "address" : "경상북도 영주시 선비로 65",
+        "placeUrl" : "http://place.map.kakao.com/412885716",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:40:00",
+      "stayMinutes" : 76
+    }, {
+      "place" : {
+        "name" : "태극당 영주역점",
+        "slotType" : "CAFE",
+        "latitude" : 36.8104048,
+        "longitude" : 128.624967,
+        "address" : "경상북도 영주시 선비로 58-2",
+        "placeUrl" : "http://place.map.kakao.com/1781301485",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "16:05:00",
+      "stayMinutes" : 76
+    }, {
+      "place" : {
+        "name" : "장수식당",
+        "slotType" : "MEAL",
+        "latitude" : 36.8092159,
+        "longitude" : 128.6248942,
+        "address" : "경상북도 영주시 선비로 43 1층",
+        "placeUrl" : "http://place.map.kakao.com/1876567170",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:00:00",
+    "endTime" : "15:50:00",
+    "places" : [ {
+      "place" : {
+        "name" : "소수서원",
+        "slotType" : "ATTRACTION",
+        "latitude" : 36.9239285,
+        "longitude" : 128.5789835,
+        "address" : "경상북도 영주시 순흥면 소백로 2740",
+        "placeUrl" : "http://place.map.kakao.com/9479775",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "연화 카페",
+        "slotType" : "CAFE",
+        "latitude" : 36.92043,
+        "longitude" : 128.5743798,
+        "address" : "경상북도 영주시 순흥면 죽계로 26 연화 떡카페",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:45:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "순흥전통묵집",
+        "slotType" : "MEAL",
+        "latitude" : 36.9134136,
+        "longitude" : 128.5751528,
+        "address" : "경상북도 영주시 순흥면 순흥로39번길 21",
+        "placeUrl" : "http://place.map.kakao.com/21515429",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:00:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "소백산자락길1코스",
+        "slotType" : "STROLL",
+        "latitude" : 36.9347795,
+        "longitude" : 128.541169,
+        "address" : "경상북도 영주시 순흥면 배점리 379-1",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:45:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "성혈사(영주)",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 36.9507375084,
+        "longitude" : 128.5434780832,
+        "address" : "경상북도 영주시 순흥면 죽계로 459-99 (순흥면)",
+        "placeUrl" : "http://place.map.kakao.com/10470794",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:05:00",
+      "stayMinutes" : 45
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "09:00:00",
+    "endTime" : "20:30:00",
+    "places" : [ {
+      "place" : {
+        "name" : "희방계곡",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 36.9200449519,
+        "longitude" : 128.456742288,
+        "address" : "경상북도 영주시 풍기읍 죽령로1720번길 278",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 45
+    }, {
+      "place" : {
+        "name" : "묘솔캠핑장",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 36.9210874573,
+        "longitude" : 128.5076682616,
+        "address" : "경상북도 영주시 풍기읍 삼가로 423",
+        "placeUrl" : "http://place.map.kakao.com/20842180",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:20:00",
+      "stayMinutes" : 120
+    }, {
+      "place" : {
+        "name" : "뜬돌반점 영주택지본점",
+        "slotType" : "MEAL",
+        "latitude" : 36.816439,
+        "longitude" : 128.6061145,
+        "address" : "경상북도 영주시 대동로31번길 16-1 뜬돌반점 영주택지본점",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:45:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "스타벅스 영주가흥점",
+        "slotType" : "CAFE",
+        "latitude" : 36.8229112928205,
+        "longitude" : 128.610235066977,
+        "address" : "경북 영주시 영주로 90",
+        "placeUrl" : "http://place.map.kakao.com/2116412701",
+        "source" : "SUGGESTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:15:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "풍기향교",
+        "slotType" : "STROLL",
+        "latitude" : 36.8815506581,
+        "longitude" : 128.5253900551,
+        "address" : "경상북도 영주시 풍기읍 금계로 104",
+        "placeUrl" : "http://place.map.kakao.com/8640652",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:15:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "까몬 영주점",
+        "slotType" : "MEAL",
+        "latitude" : 36.8133849,
+        "longitude" : 128.6053905,
+        "address" : "경상북도 영주시 대학로201번길 5 1층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "19:15:00",
+      "stayMinutes" : 75
+    } ]
+  } ]
+}
