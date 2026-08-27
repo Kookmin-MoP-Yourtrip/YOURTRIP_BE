@@ -1,0 +1,218 @@
+// 운영 인스턴스의 Grafana Alloy 설정 — 이 파일이 정본이다.
+//
+// terraform/prod/templates/app-user-data.sh.tpl이 이 파일을 그대로 주입받아
+// /etc/alloy/config.alloy로 떨어뜨린다(asg.tf의 file()). 같은 디렉터리의 systemd 유닛·JVM
+// 옵션과 같은 방식이라, 손으로 복제한 사본이 아니고 한쪽만 고쳐 어긋날 일이 없다.
+//
+// ⚠️ 이 파일에 달러+중괄호나 퍼센트+중괄호를 쓰면 안 된다. terraform templatefile()이
+//    보간·지시어로 해석해 apply가 그 자리에서 깨진다. Alloy 문법에는 그 표기가 필요 없다 —
+//    환경변수는 sys.env("NAME"), 비밀은 password_file로 읽는다.
+//
+//    주석에 그 표기를 예시로 적는 것조차 같은 이유로 안 된다(주석도 templatefile이 읽는
+//    본문이다). 그래서 여기서는 말로만 적는다 — user-data 템플릿이 같은 경고를 남긴 것과
+//    같은 이유이고, 이 파일도 초안에서 실제로 한 번 그렇게 깨질 뻔했다.
+//    검증 명령은 docs/tasks/monitoring-config/README.md에 있다.
+//
+// ⚠️ CRLF가 섞이면 안 된다. .gitattributes의 `deploy/** text eol=lf`가 막고 있다.
+//    확인: git ls-files --eol deploy/prod/config.alloy → w/lf
+//
+// 접속 정보는 /etc/alloy/endpoints.env(systemd 드롭인이 EnvironmentFile로 읽는다),
+// 토큰은 /etc/alloy/grafana-cloud.token(0640 root:alloy)에서 온다. 둘 다 user-data가 SSM에서
+// 받아 쓴다. 이 파일에는 값이 하나도 없으므로 그대로 공개 저장소에 있어도 된다.
+//
+// 설계 근거 전문: docs/tasks/monitoring-config/README.md
+
+logging {
+  // debug로 올리지 않는다. Alloy 자신의 로그도 journald를 거쳐 아래 5)의 파이프라인으로
+  // 다시 들어오므로, 레벨을 올리면 "로그를 보내는 로그"가 증폭된다.
+  level  = "info"
+  format = "logfmt"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1) 앱 지표 — localhost 직행이라 ALB의 /actuator 차단 규칙과 무관하다
+//
+// terraform/prod/alb.tf의 리스너 규칙이 /actuator/*를 403으로 막지만, 그건 ALB를 지나는
+// 트래픽에만 적용된다. 여기서는 인스턴스 안에서 8080으로 직접 붙으므로 차단을 우회하는
+// 것이 아니라 애초에 그 경로를 타지 않는다. 판정 기준 P9가 이 사실을 확인한다.
+//
+// scrape_interval이 15s인 이유: 커뮤니티 대시보드(11378)가 짧은 rate 창을 쓰므로 60s로는
+// 패널이 비어 보인다. 호스트 지표(60s)와 값이 다른 것은 의도된 차이다.
+// ─────────────────────────────────────────────────────────────────────────────
+prometheus.scrape "app" {
+  targets = [{
+    "__address__"      = "localhost:8080",
+    "__metrics_path__" = "/actuator/prometheus",
+    "instance"         = constants.hostname,
+  }]
+
+  job_name        = "yourtrip-app"
+  scrape_interval = "15s"
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2) 호스트 지표 — node_exporter 내장. amazon-cloudwatch-agent를 대체한다.
+//
+// 종전에는 mem_used_percent 하나를 걷으려고 RSS 130.6MB짜리 에이전트를 켜 뒀는데, 그것이
+// 이 박스에서 가장 큰 비-JVM 프로세스였다(docs/tasks/jvm-heap-sizing/memory-map.md §2).
+// 같은 값은 node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes로 계산된다 —
+// 판정 기준 P4가 "걷어내도 잃는 것이 없다"를 그 등식으로 확인한다.
+//
+// disable_collectors는 Grafana 공식 Linux 통합의 값을 그대로 쓴다. 더 깎지 않는 이유는
+// 시리즈 수가 이번에 재는 값이기 때문이다 — 기준선을 먼저 만들고, 축소는 사전 등록한
+// 기각선(P2-C)이 발동할 때만 한다.
+//
+// instance = constants.hostname: instance refresh는 min_healthy 100이라 교체 중 두
+// 인스턴스가 몇 분간 공존한다. 라벨을 고정 문자열로 두면 그 구간에 같은 시리즈에 두 값이
+// 들어가 remote_write가 중복·역순 샘플로 거절한다. 대가는 교체마다 새 시리즈가 생기는
+// 것인데, 활성 시리즈는 최근 창에 샘플이 있는 것만 세므로 옛 인스턴스는 곧 빠진다.
+// ─────────────────────────────────────────────────────────────────────────────
+prometheus.exporter.unix "host" {
+  disable_collectors = ["ipvs", "btrfs", "infiniband", "xfs", "zfs"]
+
+  filesystem {
+    fs_types_exclude     = "^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|tmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tracefs)$"
+    mount_points_exclude = "^/(dev|proc|run/credentials/.+|sys|var/lib/docker/.+)($|/)"
+    mount_timeout        = "5s"
+  }
+
+  netclass {
+    ignored_devices = "^(veth.*|cali.*|[a-f0-9]{15})$"
+  }
+
+  netdev {
+    device_exclude = "^(veth.*|cali.*|[a-f0-9]{15})$"
+  }
+}
+
+discovery.relabel "host" {
+  targets = prometheus.exporter.unix.host.targets
+
+  rule {
+    target_label = "instance"
+    replacement  = constants.hostname
+  }
+}
+
+prometheus.scrape "host" {
+  targets         = discovery.relabel.host.output
+  job_name        = "yourtrip-host"
+  scrape_interval = "60s"
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3) Alloy 자신의 지표 — 판정 기준 P2가 이것을 필요로 한다
+//
+// Alloy의 상주 메모리는 이번 도입의 채택 조건이다(P2). ps 한 번은 스냅숏이라 그 사이의
+// 첨두를 놓치는데, 그것은 memory-map.md §7이 이미 한계로 적어 둔 문제다. 시계열로 남기면
+// ps 폴링과 서로를 교차검증할 수 있으므로, 시리즈 비용을 내고 켜 둔다.
+//
+// P2-C가 발동하면 이 블록이 축소안 2번으로 제거 대상이 된다.
+// ─────────────────────────────────────────────────────────────────────────────
+prometheus.exporter.self "alloy" {}
+
+discovery.relabel "alloy" {
+  targets = prometheus.exporter.self.alloy.targets
+
+  rule {
+    target_label = "instance"
+    replacement  = constants.hostname
+  }
+}
+
+prometheus.scrape "alloy" {
+  targets         = discovery.relabel.alloy.output
+  job_name        = "alloy"
+  scrape_interval = "60s"
+  forward_to      = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4) 지표 전송
+//
+// password_file을 쓰는 이유는 두 가지다.
+//   (가) 토큰이 이 설정 어디에도 없다. sys.env로 읽으면 /proc/<pid>/environ에 남는데,
+//        시크릿을 user_data에서 SSM으로 옮긴 것과 같은 이유로 피한다.
+//   (나) prometheus/common이 파일을 읽으면서 TrimSpace를 하므로, aws ssm get-parameter
+//        --output text가 붙이는 끝 개행을 손으로 지울 필요가 없다 — 안 지우면 basic auth
+//        헤더가 깨지는데 그 실패는 "인증 실패"로만 보여 원인을 찾기 어렵다.
+// 대가는 요청마다 파일을 읽는 것인데, 이 박스의 쓰기 빈도(분당 수 회)에서는 무시할 수 있다.
+// 스크레이프 대상이 크게 늘면 local.file(is_secret = true)로 옮긴다.
+//
+// URL과 username은 비밀이 아니므로 환경변수로 읽는다.
+// ─────────────────────────────────────────────────────────────────────────────
+prometheus.remote_write "grafana_cloud" {
+  external_labels = {
+    env = "prod",
+  }
+
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
+
+    basic_auth {
+      username      = sys.env("GRAFANA_CLOUD_PROMETHEUS_USERNAME")
+      password_file = "/etc/alloy/grafana-cloud.token"
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5) journald 전체 — 앱 유닛만이 아니라 OS 로그까지
+//
+// matches를 비워 두는 것이 의도다. 부팅 실패를 진단할 때 필요한 것은 앱 로그가 아니라
+// cloud-init 로그이고, 그때는 이미 인스턴스가 없다. 판정 기준 P5가 "앱 유닛만 있으면
+// 기각"인 이유가 이것이다.
+//
+// ⚠️ 이 컴포넌트는 빌드 태그(promtail_journal_enabled) 뒤에 있고, 태그가 없으면 stub이
+//    컴파일돼 오류 없이 아무것도 읽지 않는다. 공식 RPM은 태그를 켜지만 그것을 믿고 넘어가지
+//    않는다 — P6이 loki_source_journal_target_lines_total의 존재와 증가로 확인한다.
+//
+// boot_id는 라벨로 뽑지 않는다 — 이 박스는 인스턴스 하나에 부팅 한 번이라 instance와
+// 사실상 같은 값이고, 스트림 수만 늘린다.
+//
+// max_age 12h: Alloy는 앱보다 뒤에 기동하지만(user-data 순서), journald가 이미 갖고 있는
+// 앱 부팅 로그를 소급해 읽으므로 놓치지 않는다. 읽은 위치는 /var/lib/alloy/data에 남는다.
+// ─────────────────────────────────────────────────────────────────────────────
+discovery.relabel "journal" {
+  targets = []
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+
+  rule {
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+
+  rule {
+    source_labels = ["__journal__transport"]
+    target_label  = "transport"
+  }
+}
+
+loki.source.journal "host" {
+  max_age       = "12h"
+  relabel_rules = discovery.relabel.journal.rules
+  forward_to    = [loki.write.grafana_cloud.receiver]
+
+  labels = {
+    job      = "yourtrip-journal",
+    instance = constants.hostname,
+    env      = "prod",
+  }
+}
+
+loki.write "grafana_cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_LOKI_URL")
+
+    basic_auth {
+      username      = sys.env("GRAFANA_CLOUD_LOKI_USERNAME")
+      password_file = "/etc/alloy/grafana-cloud.token"
+    }
+  }
+}
