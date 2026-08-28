@@ -51,15 +51,25 @@
 
 Alloy는 `prometheus.exporter.unix`로 node_exporter를 **내장**하고 `loki.source.journal`로 journald를 읽는다. 단일 프로세스로 세 갈래를 모두 처리한다. Alloy가 Prometheus agent보다 단일 프로세스 기준 30% 무겁다는 점은 알려져 있지만, **비교 대상이 3-프로세스 구성이면 그 단점은 성립하지 않는다.**
 
-> ⚠️ **이 표가 이 작업에서 가장 약한 논거다 — 사후에 발견했다.**
+> ⚠️ **이 표가 이 작업에서 가장 약한 논거였다 — 사후에 보강했다.**
 >
-> **경량 대안을 후보에 올리지 않았다.** `Fluent Bit`은 `node_exporter_metrics`·`prometheus_scrape` 입력과 `prometheus_remote_write`·`loki` 출력으로 **같은 일을 한 프로세스에서 한다.** 즉 "1 대 3"이 아니라 **"1 대 1"** 이었고, C로 작성돼 GC 힙이 없으므로 실제 비용(익명 페이지)은 더 작을 가능성이 높다.
+> **개수는 근거가 아니다.** 프로세스가 둘이면 런타임도 둘이라 "1개가 항상 가볍다"는 자동으로 참이 아니고, 반대로 **모노리스 하나가 경량 프로세스 여럿보다 무거울 수 있다** — [verification.md](verification.md)에서 실측된 Alloy의 `Private_Clean` 182MB가 바로 "쓰지도 않는 컴포넌트를 전부 번들한 대가"다. 표의 "3"도 부정확하다. **`node_exporter`는 지표를 노출만 하고 긁지도 보내지도 않으므로** 스크레이퍼가 반드시 따로 필요한데, 그 사실이 드러나 있지 않다.
 >
-> **개수를 근거로 삼은 것 자체가 잘못이었다.** 프로세스가 둘이면 런타임도 둘이라 "1개가 항상 가볍다"는 자동으로 참이 아니고, 반대로 **모노리스 하나가 경량 프로세스 여럿보다 무거울 수 있다** — [verification.md](verification.md)에서 실측된 Alloy의 `Private_Clean` 182MB가 바로 "쓰지도 않는 컴포넌트를 전부 번들한 대가"다.
+> **그리고 경량 대안을 후보에 아예 올리지 않았다.** `Fluent Bit`은 `node_exporter_metrics`·`prometheus_scrape` 입력과 `prometheus_remote_write`·`loki` 출력으로 **같은 일을 한 프로세스에서 한다.** 즉 "1 대 3"이 아니라 **"1 대 1"** 이었다.
 >
-> 위 표의 "3"도 부정확하다. **`node_exporter`는 지표를 노출만 하고 긁지도 보내지도 않으므로** 스크레이퍼가 반드시 따로 필요한데, 그 사실이 표에 드러나 있지 않다.
+> **뒤늦게 검토한 결과 Fluent Bit을 기각한다. 근거는 메모리가 아니라 앱 지표를 읽지 못한다는 것이다.**
 >
-> **다만 Fluent Bit을 재지 않았다.** 실제로 가벼운지도, `node_exporter_metrics`의 수집기 커버리지가 이 대시보드를 감당하는지도 확인하지 않았다. **채택 판정(Q1-B)은 유효하지만, 그것이 "Alloy가 최선"을 뜻하지는 않는다** — 판정은 "예산을 깨지 않는다"만 말한다. 비교는 별도 이슈로 뗀다.
+> | 항목 | 확인 결과 |
+> |---|---|
+> | 호스트 지표 커버리지 | 지원 컬렉터 20종에 `meminfo`·`cpu`·`vmstat`·`stat`·`systemd`가 모두 있어 **이 대시보드가 쓰는 항목은 대부분 충족한다.** 빠지는 것은 PSI(`pressure`)뿐이다 |
+> | **Spring Boot 지표 파싱** | `prometheus_scrape`가 `/actuator/prometheus`를 읽다 **SIGSEGV로 죽는다.** 과학적 표기(`1.660594096832E9`)와 **HikariCP 라벨 조합**이 원인으로 지목됐다 — [fluent-bit#5894](https://github.com/fluent/fluent-bit/issues/5894), *closed as not planned* |
+> | **히스토그램 충실도** | 버킷 경계가 바뀌고(`le="0.001"` → `le="0.1"`) 카운트가 소실돼 **`histogram_quantile()`이 틀린 값을 낸다** — [fluent-bit#8919](https://github.com/fluent/fluent-bit/issues/8919), stale로 닫힘 |
+>
+> 두 결함 모두 **미해결로 닫힌 신고**이지 현재 확인된 결함은 아니다. 그러나 하나는 프로세스가 죽는 것이고 다른 하나는 **틀린 숫자를 조용히 보여주는 것**이라, 후자가 특히 나쁘다. 이 대시보드의 p95·p99 응답시간과 HikariCP 대기시간 패널이 전부 `histogram_quantile()` 위에 서 있다.
+>
+> **그리고 메모리로 이겨도 바꿀 이유가 없다.** Q1 판정선 476MB에 대해 `OS_alloy`가 364.3MB로 **111.7MB 여유**다. Fluent Bit이 더 가볍더라도 얻는 것은 **이미 있는 여유가 늘어나는 것**뿐이고, 그 대가로 위 두 위험을 산다.
+>
+> **그래서 정정된 논거는 이렇다** — Alloy를 고른 이유는 "프로세스가 1개라서"가 아니라 **"Spring Boot가 내는 지표를 손실 없이 읽어 보내는 단일 에이전트라서"** 다. 개수는 결과이지 이유가 아니었다.
 
 ### 왜 CloudWatch Agent를 제거하는가
 
