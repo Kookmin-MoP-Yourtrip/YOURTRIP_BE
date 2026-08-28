@@ -57,7 +57,7 @@ Alloy는 `prometheus.exporter.unix`로 node_exporter를 **내장**하고 `loki.s
 >
 > **그리고 경량 대안을 후보에 아예 올리지 않았다.** `Fluent Bit`은 `node_exporter_metrics`·`prometheus_scrape` 입력과 `prometheus_remote_write`·`loki` 출력으로 **같은 일을 한 프로세스에서 한다.** 즉 "1 대 3"이 아니라 **"1 대 1"** 이었다.
 >
-> **뒤늦게 검토한 결과 Fluent Bit을 기각한다. 근거는 메모리가 아니라 앱 지표를 읽지 못한다는 것이다.**
+> **뒤늦게 검토한 결과 Fluent Bit을 통합 에이전트로는 기각한다. 근거는 메모리가 아니라 앱 지표를 읽지 못한다는 것이다.**
 >
 > | 항목 | 확인 결과 |
 > |---|---|
@@ -66,6 +66,8 @@ Alloy는 `prometheus.exporter.unix`로 node_exporter를 **내장**하고 `loki.s
 > | **히스토그램 충실도** | 버킷 경계가 바뀌고(`le="0.001"` → `le="0.1"`) 카운트가 소실돼 **`histogram_quantile()`이 틀린 값을 낸다** — [fluent-bit#8919](https://github.com/fluent/fluent-bit/issues/8919), stale로 닫힘 |
 >
 > 두 결함 모두 **미해결로 닫힌 신고**이지 현재 확인된 결함은 아니다. 그러나 하나는 프로세스가 죽는 것이고 다른 하나는 **틀린 숫자를 조용히 보여주는 것**이라, 후자가 특히 나쁘다. 이 대시보드의 p95·p99 응답시간과 HikariCP 대기시간 패널이 전부 `histogram_quantile()` 위에 서 있다.
+>
+> **다만 기각 범위는 여기까지다 — 로그 수집기로서는 해당하지 않는다.** 위 두 결함은 **둘 다 지표 경로**(`prometheus_scrape` / `prometheus_remote_write`)의 것이다. `systemd` 입력 → `loki` 출력만 쓰는 구성에는 하나도 걸리지 않고, **그쪽이 Fluent Bit의 본업**이다. 그러므로 자체 호스팅 Prometheus가 직접 긁는 pull 아키텍처를 검토한다면, **로그 수집기 자리의 Fluent Bit은 이 기각과 무관하게 다시 후보가 된다.**
 >
 > **그리고 메모리로 이겨도 바꿀 이유가 없다.** Q1 판정선 476MB에 대해 `OS_alloy`가 364.3MB로 **111.7MB 여유**다. Fluent Bit이 더 가볍더라도 얻는 것은 **이미 있는 여유가 늘어나는 것**뿐이고, 그 대가로 위 두 위험을 산다.
 >
