@@ -123,8 +123,12 @@ if [ -z "$ARTIFACT_KEY" ]; then
   exit 1
 fi
 
-aws s3 cp "s3://${artifact_bucket}/$ARTIFACT_KEY" /opt/app/app.jar
+# --quiet로 진행률 바를 끈다. 이 출력은 journald로 그대로 들어가는데, 이제 그 로그가
+# Alloy를 거쳐 Loki로 전송되므로 인스턴스가 교체될 때마다 캐리지리턴 범벅인 진행률이
+# 보존 용량을 먹는다. 대신 다운로드 확인은 아래 한 줄로 남긴다(실패는 set -e가 잡는다).
+aws s3 cp "s3://${artifact_bucket}/$ARTIFACT_KEY" /opt/app/app.jar --quiet
 chmod 644 /opt/app/app.jar
+echo "downloaded artifact: $ARTIFACT_KEY ($(stat -c%s /opt/app/app.jar) bytes)"
 
 # ------------------------------------------------------------
 # 5) systemd 유닛 — deploy/prod/yourtrip-app.service의 정본을 주입받는다
