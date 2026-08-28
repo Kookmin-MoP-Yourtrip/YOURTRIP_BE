@@ -17,6 +17,11 @@
 #    현재 셸의 PID다. 실제로 IFS와 값 참조에 그렇게 썼다가 IFS가 깨지고 값이 PID+문자열이
 #    되어, SSM에서 받은 시크릿이 .env에 한 줄도 들어가지 않았다(앱은 JWT_SECRET 누락으로
 #    기동 실패). 중괄호 없는 bash 변수는 $VAR 그대로 쓰면 된다.
+#
+# 진단 메시지 규약: 주석은 한국어로 쓰되 stderr로 나가는 메시지(echo ... >&2)는 영문으로
+# 쓴다. 이 로그를 읽는 자리가 대개 `aws ssm send-command`의 출력인데, 콘솔 코드페이지가
+# cp949인 환경에서는 한글이 물음표로 깨진다. 하필 부팅 실패를 진단하는 바로 그 자리라
+# 원인 파악이 늦어진다(#121 검증 중 실제로 겪었다).
 
 set -euo pipefail
 
@@ -119,7 +124,7 @@ ARTIFACT_KEY=$(aws ssm get-parameter \
 # set -e는 조회 자체가 실패한 경우(ParameterNotFound)만 잡는다. 빈 값이 조회에 '성공'하면
 # s3 cp가 버킷 루트를 받으려다 엉뚱하게 실패하므로, 여기서 이유를 남기고 멈춘다.
 if [ -z "$ARTIFACT_KEY" ]; then
-  echo "artifact_key 파라미터가 비어 있다: ${ssm_path}/artifact_key" >&2
+  echo "ERROR: artifact_key parameter is empty: ${ssm_path}/artifact_key" >&2
   exit 1
 fi
 
@@ -252,6 +257,6 @@ ALLOY_RC=$?
 set -e
 
 if [ "$ALLOY_RC" -ne 0 ]; then
-  echo "!!! Alloy 구성 실패 (rc=$ALLOY_RC). 앱은 5번에서 이미 기동했으므로 부팅은 계속한다." >&2
-  echo "!!! 진단: systemctl status alloy / journalctl -u alloy / 이 로그의 위쪽" >&2
+  echo "!!! Alloy setup failed (rc=$ALLOY_RC). App already started in step 5; boot continues." >&2
+  echo "!!! Diagnose: systemctl status alloy / journalctl -u alloy / earlier lines in this log" >&2
 fi
