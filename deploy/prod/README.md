@@ -17,6 +17,7 @@
 | [jvm-opts.env](jvm-opts.env) | **JVM 옵션의 정본.** 값과 산정 근거가 함께 있다. systemd `EnvironmentFile`로 읽힌다 |
 | [yourtrip-app.service](yourtrip-app.service) | systemd 유닛. 부하테스트에서 검증된 구조를 옮긴 것이다 |
 | [instance-refresh-preferences.json](instance-refresh-preferences.json) | **인스턴스 교체 조건의 정본.** terraform과 CD 워크플로가 **같은 파일을 읽는다** — 아래 참고 |
+| [config.alloy](config.alloy) | **Grafana Alloy 설정의 정본.** 앱 지표(`localhost:8080/actuator/prometheus`)·호스트 지표·journald 로그를 Grafana Cloud로 보낸다. user-data가 `/etc/alloy/config.alloy`로 주입한다 |
 
 **JVM 옵션을 별도 파일로 나눈 이유**는 `/opt/app/.env`가 DB 비밀번호·API 키를 담고 있어 git 밖에 있어야 하기 때문이다. JVM 옵션은 비밀이 아니라 **근거를 남겨야 하는 설정**이므로 반대로 저장소가 들고 있어야 한다. systemd는 `EnvironmentFile=`을 여러 줄 쓸 수 있어 둘을 나란히 읽을 수 있다.
 
@@ -83,6 +84,30 @@ curl -sf http://localhost:8080/actuator/prometheus | awk '/^jvm_memory_max_bytes
 ```bash
 sudo journalctl -u yourtrip-app -n 200 --no-pager | grep -i profile
 ```
+
+**(3) Alloy가 실제로 관측하고 있는가**
+
+에이전트가 살아 있는 것과 지표·로그가 실제로 나가는 것은 다르다. 두 가지를 따로 본다.
+
+```bash
+systemctl is-active alloy && systemctl show -p NRestarts --value alloy
+```
+
+`active`와 `0`이 나와야 한다. 재시작 횟수가 쌓이고 있으면 OOM이거나 설정 오류다.
+
+```bash
+curl -s localhost:12345/metrics | grep -c loki_source_journal_target_lines_total
+```
+
+**`0`이면 로그를 한 줄도 못 읽고 있다.** `loki.source.journal`은 빌드 태그(`promtail_journal_enabled`) 뒤에 있어서, 태그가 없는 빌드에서는 컴포넌트가 **오류 없이 등록만 되고 아무것도 하지 않는다.** 로그가 안 올라오는데 `systemctl status`는 멀쩡한 상황이 이것이다. 공식 RPM은 태그를 켜므로 정상이면 1 이상이 나온다.
+
+**설정 파일을 고쳤다면 커밋 전에 확인한다.** `config.alloy`는 terraform이 `templatefile()`로 읽으므로, 달러나 퍼센트 뒤에 중괄호가 오는 표기가 하나라도 있으면 **apply가 그 자리에서 깨진다**(주석 안이라도 마찬가지다).
+
+```bash
+grep -n '[$%]{' deploy/prod/config.alloy
+```
+
+아무것도 출력되지 않아야 한다.
 
 ## 스펙을 바꾸면 이 값은 무효다
 

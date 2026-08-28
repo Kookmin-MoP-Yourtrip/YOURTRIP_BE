@@ -213,6 +213,22 @@ variable "enable_detailed_monitoring" {
   default     = true
 }
 
+variable "alloy_version" {
+  description = <<-EOT
+    설치할 Grafana Alloy의 RPM 버전(NEVRA의 version-release 부분).
+
+    핀하는 이유는 재현성이다 — 핀하지 않으면 같은 커밋을 다른 날 apply했을 때 다른
+    에이전트가 떠서 메모리 실측(docs/tasks/monitoring-config/의 P2)의 비교 대상이 사라진다.
+    app_ami_id를 핀할 수 있게 해 둔 것과 같은 이유다.
+
+    기본값이 1.18.1인 이유: 로컬 검증(L1~L4)을 이 버전으로 돌렸다. 검증한 것과 다른 버전을
+    배포하면 그 검증이 무의미해진다. 올릴 때는 로컬 검증부터 다시 한다.
+    인스턴스에서 정확한 NEVRA를 확인하려면 `dnf --showduplicates list alloy`.
+  EOT
+  type        = string
+  default     = "1.18.1-1"
+}
+
 # ============================================================
 # 앱 환경변수 — 비밀이 아닌 값만 여기 둔다
 #

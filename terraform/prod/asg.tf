@@ -39,6 +39,16 @@ data "aws_ssm_parameter" "artifact_key" {
   name = "${var.ssm_parameter_path}/artifact_key"
 }
 
+# Grafana Cloud 접속 정보가 등록돼 있지 않으면 plan이 여기서 실패한다. 위 artifact_key와
+# 정확히 같은 이유다 — 등록을 빠뜨려도 인스턴스는 정상적으로 뜨고 관측만 조용히 비어,
+# 대시보드가 왜 빈지 찾아 user-data 로그를 뒤져야 한다.
+#
+# 다섯 개 중 URL 하나만 읽는다. aws_ssm_parameter data 소스가 읽은 값은 tfstate에 남으므로,
+# 토큰을 읽으면 시크릿을 SSM으로 옮긴 의미가 사라진다. 비밀이 아닌 값으로 존재만 확인한다.
+data "aws_ssm_parameter" "grafana_cloud_prometheus_url" {
+  name = "${var.ssm_parameter_path}/grafana/prometheus_url"
+}
+
 resource "aws_launch_template" "app" {
   name_prefix   = "${var.name_prefix}-app-"
   image_id      = local.app_ami_id
@@ -88,7 +98,19 @@ resource "aws_launch_template" "app" {
     }
   }
 
-  user_data = base64encode(templatefile("${path.module}/templates/app-user-data.sh.tpl", {
+  # base64encode가 아니라 base64gzip이다. EC2 user_data는 16,384바이트가 상한인데, Alloy
+  # 설정을 주입하면서 그 선을 넘었다(약 28KB — 이 저장소는 주석에 근거를 남기고 한글은
+  # UTF-8에서 글자당 3바이트라 본문보다 주석이 크다). 실제로 #121에서 이 한도에 걸려
+  # apply가 InvalidUserData.Malformed로 실패했다.
+  #
+  # gzip은 cloud-init이 매직 넘버를 보고 알아서 푼다 — 부팅 스크립트를 고칠 필요가 없다.
+  # 압축 후 약 10KB로 37% 여유가 생긴다. 주석을 걷어내 크기를 맞추는 대안도 있었지만,
+  # 근거를 지우는 것이 이 저장소의 방식과 반대라 택하지 않았다.
+  #
+  # ⚠️ 여유가 무한하지 않다. 여기에 무언가를 더 붙일 때는 압축 후 크기를 먼저 확인한다:
+  #    cat templates/app-user-data.sh.tpl ../../deploy/prod/config.alloy \
+  #        ../../deploy/prod/yourtrip-app.service ../../deploy/prod/jvm-opts.env | gzip -9 -c | wc -c
+  user_data = base64gzip(templatefile("${path.module}/templates/app-user-data.sh.tpl", {
     # 비밀이 아닌 값만 여기로 넘어간다. 비밀은 인스턴스가 SSM에서 직접 받아간다.
     db_host     = aws_db_instance.this.address
     db_name     = var.rds_db_name
@@ -112,7 +134,14 @@ resource "aws_launch_template" "app" {
     service_unit = file("${path.module}/../../deploy/prod/yourtrip-app.service")
     jvm_opts_env = file("${path.module}/../../deploy/prod/jvm-opts.env")
 
-    cloudwatch_namespace = "YourtripProd"
+    # Alloy 설정도 같은 방식으로 잇는다 — 값과 근거를 저장소가 들고 있어야 하고,
+    # .gitattributes의 `deploy/** text eol=lf`가 CRLF 유입을 막아준다.
+    #
+    # ⚠️ config.alloy에 달러나 퍼센트 뒤에 중괄호가 오는 표기가 있으면 templatefile()이
+    #    보간으로 해석해 이 apply가 그 자리에서 깨진다(주석 안이라도 마찬가지다).
+    #    확인 명령은 deploy/prod/README.md에 있다.
+    alloy_config  = file("${path.module}/../../deploy/prod/config.alloy")
+    alloy_version = var.alloy_version
   }))
 
   # ASG가 붙이는 태그와 별개로, 인스턴스·볼륨에 직접 붙는 태그다.

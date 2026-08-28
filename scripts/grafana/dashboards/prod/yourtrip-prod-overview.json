@@ -1,0 +1,367 @@
+{
+  "uid": "yourtrip-prod-overview",
+  "title": "YOURTRIP Prod Overview",
+  "description": "운영 t3.small 한 대의 앱·호스트·로그를 한 화면에서 본다(#121). 데이터는 Grafana Cloud에 있어 인스턴스를 destroy해도 14일간 남는다. 데이터소스 UID를 박지 않고 변수로 고르게 한 것은 스택마다 UID가 다르기 때문이다. 설계 근거: docs/tasks/monitoring-config/README.md",
+  "tags": ["yourtrip", "prod", "monitoring-config"],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "ds_prom",
+        "type": "datasource",
+        "label": "Prometheus",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0
+      },
+      {
+        "name": "ds_loki",
+        "type": "datasource",
+        "label": "Loki",
+        "query": "loki",
+        "current": {},
+        "hide": 0
+      },
+      {
+        "name": "instance",
+        "type": "query",
+        "label": "instance",
+        "description": "instance refresh 때마다 새 hostname이 생긴다(config.alloy의 constants.hostname). 옛 인스턴스는 샘플이 끊기면 목록에서 빠진다.",
+        "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+        "query": "label_values(node_load1{job=\"yourtrip-host\"}, instance)",
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false,
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    { "id": 100, "type": "row", "title": "요약 — 예산이 버티고 있는가", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+
+    {
+      "id": 1,
+      "title": "힙 사용률 (상한 768MiB 대비)",
+      "description": "분모가 805306368(768MiB)로 고정돼 있어야 한다 — jvm-heap-sizing이 정한 값이다. 다른 값이면 배포가 jvm-opts.env를 반영하지 못한 것이다.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.75 },
+              { "color": "red", "value": 0.9 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "area", "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "sum(jvm_memory_used_bytes{job=\"yourtrip-app\", instance=~\"$instance\", area=\"heap\"}) / sum(jvm_memory_max_bytes{job=\"yourtrip-app\", instance=~\"$instance\", area=\"heap\"})", "legendFormat": "heap" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "박스 메모리 사용률",
+      "description": "종전 CloudWatch Agent의 mem_used_percent와 같은 값이다(1 − MemAvailable/MemTotal). CloudWatch Agent를 걷어내도 잃는 것이 없다는 근거이자 P4의 판정식이다.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.85 },
+              { "color": "red", "value": 0.95 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "area", "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "1 - (node_memory_MemAvailable_bytes{job=\"yourtrip-host\", instance=~\"$instance\"} / node_memory_MemTotal_bytes{job=\"yourtrip-host\", instance=~\"$instance\"})", "legendFormat": "mem_used" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "호스트 CPU 사용률",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.7 },
+              { "color": "red", "value": 0.9 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "area", "colorMode": "value" },
+      "targets": [
+        { "refId": "A", "expr": "1 - avg(rate(node_cpu_seconds_total{job=\"yourtrip-host\", instance=~\"$instance\", mode=\"idle\"}[5m]))", "legendFormat": "cpu" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "요청률 / 5xx",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "decimals": 2 }, "overrides": [] },
+      "options": { "graphMode": "area", "colorMode": "none" },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(http_server_requests_seconds_count{job=\"yourtrip-app\", instance=~\"$instance\"}[5m]))", "legendFormat": "전체" },
+        { "refId": "B", "expr": "sum(rate(http_server_requests_seconds_count{job=\"yourtrip-app\", instance=~\"$instance\", status=~\"5..\"}[5m]))", "legendFormat": "5xx" }
+      ]
+    },
+
+    { "id": 110, "type": "row", "title": "앱 — JVM", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 } },
+
+    {
+      "id": 10,
+      "title": "힙 / 논힙 사용량과 상한",
+      "description": "상한선이 805306368에 붙어 있는지를 눈으로 확인하는 패널이기도 하다. 논힙 상한은 −1(무제한)이라 그리지 않는다.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(jvm_memory_used_bytes{job=\"yourtrip-app\", instance=~\"$instance\", area=\"heap\"})", "legendFormat": "heap used" },
+        { "refId": "B", "expr": "sum(jvm_memory_committed_bytes{job=\"yourtrip-app\", instance=~\"$instance\", area=\"heap\"})", "legendFormat": "heap committed" },
+        { "refId": "C", "expr": "sum(jvm_memory_max_bytes{job=\"yourtrip-app\", instance=~\"$instance\", area=\"heap\"})", "legendFormat": "heap max (-Xmx)" },
+        { "refId": "D", "expr": "sum(jvm_memory_used_bytes{job=\"yourtrip-app\", instance=~\"$instance\", area=\"nonheap\"})", "legendFormat": "nonheap used" }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "GC — 초당 정지 시간과 횟수",
+      "description": "GC 종류(gc 라벨)가 곧 ergonomics의 판정 결과다. t3.small 미만으로 내리면 SerialGC로 조용히 바뀐다(memory-map.md §1).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (gc) (rate(jvm_gc_pause_seconds_sum{job=\"yourtrip-app\", instance=~\"$instance\"}[5m]))", "legendFormat": "{{gc}} 정지 s/s" },
+        { "refId": "B", "expr": "sum by (gc) (rate(jvm_gc_pause_seconds_count{job=\"yourtrip-app\", instance=~\"$instance\"}[5m]))", "legendFormat": "{{gc}} 회/s" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "스레드 — JVM live / Tomcat busy",
+      "description": "-Xss512k × 스레드 수가 힙 밖 예산에 들어간다(tomcat-thread-sizing). 실측 스레드당 커밋은 112KB였다.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "jvm_threads_live_threads{job=\"yourtrip-app\", instance=~\"$instance\"}", "legendFormat": "JVM live" },
+        { "refId": "B", "expr": "jvm_threads_daemon_threads{job=\"yourtrip-app\", instance=~\"$instance\"}", "legendFormat": "JVM daemon" },
+        { "refId": "C", "expr": "tomcat_threads_busy_threads{job=\"yourtrip-app\", instance=~\"$instance\"}", "legendFormat": "Tomcat busy" },
+        { "refId": "D", "expr": "tomcat_threads_current_threads{job=\"yourtrip-app\", instance=~\"$instance\"}", "legendFormat": "Tomcat current" }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "클래스 로드 — Metaspace가 자라는 이유",
+      "description": "클래스 로딩이 많은 경로(AI 코스 생성)를 타면 논힙이 자란다. memory-map.md §7이 남긴 한계와 직결된다.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "jvm_classes_loaded_classes{job=\"yourtrip-app\", instance=~\"$instance\"}", "legendFormat": "loaded classes" },
+        { "refId": "B", "expr": "sum(jvm_memory_used_bytes{job=\"yourtrip-app\", instance=~\"$instance\", id=~\"Metaspace|Compressed Class Space\"})", "legendFormat": "Metaspace+CCS bytes" }
+      ]
+    },
+
+    { "id": 120, "type": "row", "title": "앱 — HTTP", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 } },
+
+    {
+      "id": 20,
+      "title": "요청률 (status별)",
+      "description": "uri 라벨은 경로 패턴으로 정규화되고 미매핑 요청은 UNKNOWN으로 뭉친다 — 봇 스캔이 시리즈를 늘리지 못하는 이유다.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (status) (rate(http_server_requests_seconds_count{job=\"yourtrip-app\", instance=~\"$instance\"}[5m]))", "legendFormat": "{{status}}" }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "평균 응답시간 상위 10 uri",
+      "description": "Micrometer 기본 설정은 히스토그램 버킷을 내지 않으므로 분위수가 아니라 sum/count 평균이다. 분위수가 필요하면 percentiles-histogram을 켜야 하고 그만큼 시리즈가 는다.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "topk(10, sum by (uri) (rate(http_server_requests_seconds_sum{job=\"yourtrip-app\", instance=~\"$instance\"}[5m])) / sum by (uri) (rate(http_server_requests_seconds_count{job=\"yourtrip-app\", instance=~\"$instance\"}[5m])))", "legendFormat": "{{uri}}" }
+      ]
+    },
+
+    { "id": 130, "type": "row", "title": "앱 — 자원 풀", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 } },
+
+    {
+      "id": 30,
+      "title": "HikariCP 커넥션",
+      "description": "pending이 0을 벗어나면 커넥션 풀이 병목이다(connection-pool-bottleneck).",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "hikaricp_connections_active{job=\"yourtrip-app\", instance=~\"$instance\"}", "legendFormat": "active" },
+        { "refId": "B", "expr": "hikaricp_connections_idle{job=\"yourtrip-app\", instance=~\"$instance\"}", "legendFormat": "idle" },
+        { "refId": "C", "expr": "hikaricp_connections_pending{job=\"yourtrip-app\", instance=~\"$instance\"}", "legendFormat": "pending" },
+        { "refId": "D", "expr": "hikaricp_connections_max{job=\"yourtrip-app\", instance=~\"$instance\"}", "legendFormat": "max" }
+      ]
+    },
+    {
+      "id": 31,
+      "title": "Redis(Lettuce) 명령률",
+      "description": "Redis가 죽어도 앱은 DB 폴백으로 계속 도므로(RedisCacheErrorHandler), 실패는 여기서만 드러난다.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "ops", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(lettuce_command_completion_seconds_count{job=\"yourtrip-app\", instance=~\"$instance\"}[5m]))", "legendFormat": "완료/s" },
+        { "refId": "B", "expr": "sum(rate(lettuce_command_firstresponse_seconds_count{job=\"yourtrip-app\", instance=~\"$instance\"}[5m]))", "legendFormat": "첫 응답/s" }
+      ]
+    },
+    {
+      "id": 32,
+      "title": "캐시 적중",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "ops", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (cache, result) (rate(cache_gets_total{job=\"yourtrip-app\", instance=~\"$instance\"}[5m]))", "legendFormat": "{{cache}} {{result}}" },
+        { "refId": "B", "expr": "sum by (cache) (rate(cache_puts_total{job=\"yourtrip-app\", instance=~\"$instance\"}[5m]))", "legendFormat": "{{cache}} put" }
+      ]
+    },
+
+    { "id": 140, "type": "row", "title": "호스트 — CloudWatch Agent가 하던 일 + α", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 } },
+
+    {
+      "id": 40,
+      "title": "CPU (mode별)",
+      "description": "t3.small은 버스터블이라 steal과 iowait을 함께 봐야 한다 — mem_used_percent 하나만 걷던 종전 구성으로는 볼 수 없던 값이다.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 41 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "avg by (mode) (rate(node_cpu_seconds_total{job=\"yourtrip-host\", instance=~\"$instance\", mode!=\"idle\"}[5m]))", "legendFormat": "{{mode}}" }
+      ]
+    },
+    {
+      "id": 41,
+      "title": "메모리 — 예산의 실측치",
+      "description": "MemTotal − MemAvailable이 jvm-heap-sizing 예산식의 OS 항과 같은 값이다(앱 정지 시). 300MB·476MB 두 선의 근거는 monitoring-config/README.md 참고.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 41 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "node_memory_MemTotal_bytes{job=\"yourtrip-host\", instance=~\"$instance\"}", "legendFormat": "MemTotal" },
+        { "refId": "B", "expr": "node_memory_MemAvailable_bytes{job=\"yourtrip-host\", instance=~\"$instance\"}", "legendFormat": "MemAvailable" },
+        { "refId": "C", "expr": "node_memory_Cached_bytes{job=\"yourtrip-host\", instance=~\"$instance\"}", "legendFormat": "Cached" },
+        { "refId": "D", "expr": "node_memory_MemTotal_bytes{job=\"yourtrip-host\", instance=~\"$instance\"} - node_memory_MemAvailable_bytes{job=\"yourtrip-host\", instance=~\"$instance\"}", "legendFormat": "사용 중 (Total − Available)" }
+      ]
+    },
+    {
+      "id": 42,
+      "title": "디스크 여유 / IO",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 49 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "node_filesystem_avail_bytes{job=\"yourtrip-host\", instance=~\"$instance\", mountpoint=\"/\"}", "legendFormat": "/ 여유" },
+        { "refId": "B", "expr": "rate(node_disk_io_time_seconds_total{job=\"yourtrip-host\", instance=~\"$instance\"}[5m])", "legendFormat": "{{device}} io_time s/s" }
+      ]
+    },
+    {
+      "id": 43,
+      "title": "네트워크",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 49 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "Bps", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(node_network_receive_bytes_total{job=\"yourtrip-host\", instance=~\"$instance\", device!=\"lo\"}[5m]))", "legendFormat": "수신" },
+        { "refId": "B", "expr": "sum(rate(node_network_transmit_bytes_total{job=\"yourtrip-host\", instance=~\"$instance\", device!=\"lo\"}[5m]))", "legendFormat": "송신" }
+      ]
+    },
+    {
+      "id": 44,
+      "title": "Load average",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 49 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "node_load1{job=\"yourtrip-host\", instance=~\"$instance\"}", "legendFormat": "1m" },
+        { "refId": "B", "expr": "node_load5{job=\"yourtrip-host\", instance=~\"$instance\"}", "legendFormat": "5m" },
+        { "refId": "C", "expr": "node_load15{job=\"yourtrip-host\", instance=~\"$instance\"}", "legendFormat": "15m" }
+      ]
+    },
+
+    { "id": 150, "type": "row", "title": "로그 — journald 전체(앱 유닛만이 아니다)", "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 57 } },
+
+    {
+      "id": 50,
+      "title": "앱 로그 발생률 (level별)",
+      "description": "Micrometer의 logback_events_total. Loki와 달리 시계열이라, 로그 본문이 보존 기간을 지나 사라진 뒤에도 '얼마나 났는지'는 남는다.",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 58 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (level) (rate(logback_events_total{job=\"yourtrip-app\", instance=~\"$instance\"}[5m]))", "legendFormat": "{{level}}" }
+      ]
+    },
+    {
+      "id": 51,
+      "title": "journald — 최근 로그",
+      "description": "config.alloy가 matches를 비워 뒀으므로 앱 유닛뿐 아니라 cloud-init·sshd·amazon-ssm-agent까지 들어온다. 부팅 실패 진단은 인스턴스가 사라진 뒤에 하게 되므로 이것이 핵심이다(P5).",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 58 },
+      "datasource": { "type": "loki", "uid": "${ds_loki}" },
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" },
+      "targets": [
+        { "refId": "A", "expr": "{job=\"yourtrip-journal\", instance=~\"$instance\"}" }
+      ]
+    }
+  ]
+}

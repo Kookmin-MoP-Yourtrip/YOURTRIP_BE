@@ -1,6 +1,24 @@
-# Prometheus & Grafana 모니터링 구축 및 사용 가이드
+# 모니터링 가이드 — 로컬(docker)과 운영(Grafana Cloud)
 
-이 문서는 Spring Boot Actuator와 Docker 기반 **Prometheus(메트릭 수집 DB)** 및 **Grafana(시각화 대시보드)**를 연동하여 애플리케이션 및 DB 상태를 실시간 모니터링하는 방법을 다룹니다.
+이 저장소의 모니터링은 **수집기가 다른 두 계통**이다. 앱이 `/actuator/prometheus`로 지표를 내는 것만 같고, **그 뒤는 완전히 다르다.**
+
+| | 1부 — 로컬 (§1~§5) | 2부 — 운영 (§6) |
+|---|---|---|
+| 수집기 | `docker-compose.yml`의 Prometheus | 인스턴스의 **Grafana Alloy** |
+| 저장소 | 로컬 컨테이너 | **Grafana Cloud** (free tier) |
+| 호스트 지표 | 없음 | Alloy 내장 node_exporter |
+| 로그 | 없음(터미널에서 본다) | Loki (journald 전체) |
+| 용도 | **부하테스트 판정** — 붙였다 뗐다 하는 실험 도구 | **운영 관측** — 인프라를 destroy해도 14일 남는다 |
+
+**둘을 섞지 않는다.** 로컬 스택은 부하테스트 arm 전환(`$arm` 변수)을 전제로 만들어져 있어 운영에 그대로 쓸 수 없고, 반대로 운영 대시보드는 `job="yourtrip-app"`/`"yourtrip-host"`에 묶여 있어 로컬에서 뜨지 않는다.
+
+아래 1부는 로컬 docker 스택, 2부는 운영 인스턴스를 다룬다. 설계 근거는 [tasks/monitoring-config/](../tasks/monitoring-config/README.md)에 있다.
+
+---
+
+# 1부 — 로컬 (Prometheus & Grafana on docker)
+
+이 부분은 Spring Boot Actuator와 Docker 기반 **Prometheus(메트릭 수집 DB)** 및 **Grafana(시각화 대시보드)**를 연동하여 애플리케이션 및 DB 상태를 실시간 모니터링하는 방법을 다룹니다.
 
 ---
 
@@ -112,3 +130,78 @@ Grafana 커뮤니티에 공개된 완성도 높은 스프링 부트 대시보드
    - 캐시 적용 시: 동일한 k6 부하에도 `hikaricp_connections_active`가 거의 0~1에 머물고 응답 시간이 일정하게 유지되는 모습 포착 및 캡처
 
 > 📸 **포트폴리오 팁**: k6 실행 중 Grafana 대시보드의 캐시 적용 전/후 쿼리 그래프를 캡처하여 README 및 트러블슈팅 문서에 이미지로 첨부하면 훌륭한 시각적 근거가 됩니다!
+
+---
+
+# 2부 — 운영 (Grafana Cloud + Alloy)
+
+## 6. 운영 서버의 지표·로그를 보는 법
+
+### 6-1. 구조
+
+```
+[ Spring Boot (인스턴스:8080) ]        [ 커널 /proc, /sys ]        [ journald ]
+        │ /actuator/prometheus                │                          │
+        └────────────┬────────────────────────┴──────────────────────────┘
+                     ▼  (localhost 직행 — ALB를 지나지 않는다)
+            [ Grafana Alloy (같은 인스턴스, 프로세스 1개) ]
+                     │ remote_write (지표)   │ push (로그)
+                     ▼                       ▼
+        [ Grafana Cloud Prometheus ]   [ Grafana Cloud Loki ]
+```
+
+**에이전트가 하나뿐인 것이 이 구성의 핵심이다.** Alloy가 `prometheus.exporter.unix`로 node_exporter를 내장하고 `loki.source.journal`로 로그까지 읽으므로, 종전의 CloudWatch Agent를 걷어내면 **상주 프로세스가 늘지 않는다.** 왜 node_exporter+Promtail 3-프로세스 구성 대신 이 방식인지는 [monitoring-config/README.md](../tasks/monitoring-config/README.md)에 있다.
+
+**ALB의 `/actuator` 403 차단과 충돌하지 않는다.** Alloy는 인스턴스 안에서 `localhost:8080`으로 직접 붙으므로 애초에 ALB를 지나지 않는다. 차단을 우회하는 것이 아니다 — 판정 기준 P9가 이 사실을 확인한다.
+
+### 6-2. 무엇이 수집되나
+
+| job | 내용 | 주기 |
+|---|---|---|
+| `yourtrip-app` | Micrometer 전량 — JVM(힙·GC·스레드·클래스), HTTP, HikariCP, Lettuce, 캐시, Logback | 15s |
+| `yourtrip-host` | node_exporter — CPU(mode별), 메모리, 디스크, 네트워크, load | 60s |
+| `yourtrip-journal` | journald **전체** (앱 유닛만이 아니라 cloud-init·sshd·ssm-agent 포함) | 스트리밍 |
+
+`scrape_interval`이 서로 다른 것은 의도다 — 커뮤니티 대시보드가 짧은 `rate` 창을 쓰므로 앱 지표를 60s로 두면 패널이 비어 보인다.
+
+### 6-3. 인스턴스에 놓이는 것
+
+전부 [user-data](../../terraform/prod/templates/app-user-data.sh.tpl)가 부팅 시 만든다. **손으로 넣는 파일이 없다.**
+
+| 경로 | 내용 | 출처 |
+|---|---|---|
+| `/etc/alloy/config.alloy` | 파이프라인 정의 | [deploy/prod/config.alloy](../../deploy/prod/config.alloy) (정본) |
+| `/etc/alloy/endpoints.env` | Prometheus/Loki URL·username | SSM `/yourtrip/prod/grafana/*` |
+| `/etc/alloy/grafana-cloud.token` | 접속 토큰 (0640 root:alloy) | SSM `/yourtrip/prod/grafana/token` |
+| `/etc/systemd/system/alloy.service.d/10-yourtrip.conf` | EnvironmentFile + GOMEMLIMIT | user-data |
+
+**토큰이 설정 파일에도 환경변수에도 없다.** `password_file`로 읽으므로 `/proc/<pid>/environ`에 남지 않는다. 이 선택의 근거와 대가는 monitoring-config README의 "설계 결정과 대가" 참고.
+
+### 6-4. Grafana Cloud 접속과 대시보드
+
+1. [grafana.com](https://grafana.com/orgs) → 스택 → **Launch** 로 Grafana에 들어간다
+2. **Dashboards → New → Import → Upload JSON file** 에 [scripts/grafana/dashboards/prod/yourtrip-prod-overview.json](../../scripts/grafana/dashboards/prod/yourtrip-prod-overview.json) 을 올린다
+3. 상단에서 **Prometheus / Loki 데이터소스**를 고르고, `instance` 변수에서 볼 인스턴스를 고른다
+
+> **데이터소스 UID를 JSON에 박지 않은 이유**: Grafana Cloud는 스택마다 UID가 다르다. 로컬 docker 스택처럼 provisioning으로 UID를 고정할 수 없으므로 `ds_prom`/`ds_loki` **데이터소스 변수**로 뺐다. 이 저장소를 clone한 사람이 자기 스택에 그대로 올릴 수 있다.
+
+> **`instance` 변수가 필요한 이유**: 라벨이 `constants.hostname`이라 **인스턴스가 교체될 때마다 값이 바뀐다.** 고정 문자열로 두면 instance refresh 중 두 인스턴스가 공존하는 구간에 같은 시계열로 두 값이 들어가 remote_write가 거절한다.
+
+### 6-5. 인스턴스에서 직접 확인하기
+
+```bash
+aws ssm start-session --target <instance-id>
+```
+
+```bash
+systemctl is-active alloy && systemctl show -p NRestarts --value alloy
+curl -s localhost:12345/metrics | grep -c loki_source_journal_target_lines_total
+curl -s localhost:12345/metrics | grep -E 'samples_(failed|dropped)_total|loki_write_dropped'
+```
+
+- 두 번째 줄이 **0이면 로그가 조용히 안 걷히고 있다.** `loki.source.journal`은 빌드 태그(`promtail_journal_enabled`) 뒤에 있어서, 태그 없이 빌드되면 stub이 **오류 없이** 아무것도 읽지 않는다. **오류 부재로는 판정할 수 없다.**
+- 박스가 한가하면 이 카운터가 안 움직이는 것이 정상이다. 살아 있는지 보려면 `logger -t check "hello"` 로 줄을 만들고 다시 센다.
+
+### 6-6. 보존은 14일이다
+
+free tier의 보존 기간이 14일이라, **"인프라를 내려도 기록이 남는다"는 장점은 14일 창 안에서만 참이다.** Grafana Cloud는 **측정 중에 보는 창**이고 **남기는 곳은 이 저장소**다 — 수치는 [verification.md](../tasks/monitoring-config/verification.md)로 옮겨 적는다. 부하테스트 결과를 문서로 남겨온 것과 같은 방식이다.
