@@ -129,11 +129,29 @@ YOURTRIP은 사용자가 여행을 계획할 때 겪는
 - **Security**: Spring Security + JWT(`io.jsonwebtoken:jjwt` 0.11.5) 기반 인증/인가
 - **DB**: PostgreSQL + Spring Data JPA(Hibernate) — 테스트만 H2 인메모리(PostgreSQL 호환 모드)
 - **캐시**: Redis(Spring Data Redis + Lettuce) — 인기 코스 목록/상세 캐싱, 조회수 카운터, 랭킹 갱신 분산 락
-- **모니터링**: Spring Boot Actuator + Micrometer Prometheus, 로컬은 docker-compose의 Prometheus/Grafana로 관측
+- **모니터링**: Spring Boot Actuator + Micrometer — 로컬은 docker-compose(Prometheus·Grafana), 운영은 Grafana Alloy 단일 에이전트 → Grafana Cloud(Prometheus·Loki)
 - **AI**: Gemini(`com.google.genai:google-genai` 1.28.0) — 코스 추천 생성
 - **외부 연동**: Kakao(장소 검색 전용, 로그인은 미사용), AWS SDK v2(S3 + CloudFront Signed URL), Spring Mail
 - **문서화**: springdoc-openapi 2.6.0 (Swagger UI: `/swagger-ui.html`)
-- **Infra**: AWS EC2, RDS(PostgreSQL), S3, CloudFront, Nginx, Docker
+- **Infra**: AWS ALB + Auto Scaling Group(EC2), RDS(PostgreSQL), ElastiCache(Redis), S3, CloudFront, Route 53 — IaC는 Terraform(수명 기준 모듈 분리)
+- **CI/CD**: GitHub Actions — CI는 `dev` 대상 PR·push에서 빌드·테스트, CD는 OIDC 임시 자격증명으로 S3 업로드 + ASG 무중단 교체
+
+---
+
+## 🏗 아키텍처
+
+<p align="center">
+  <img width="900" alt="YOURTRIP 운영 아키텍처" src="docs/diagrams/architecture.png" />
+</p>
+
+| 흐름 | 경로 |
+|---|---|
+| **사용자 트래픽** | `Route 53` → `ALB` → `EC2(Spring Boot)` → `RDS` / `ElastiCache` |
+| **이미지** | 조회는 `CloudFront` → `S3`로 직행하고, 업로드만 앱 서버를 거친다 |
+| **CD** | `dev` 머지 → GitHub Actions가 JAR을 S3에 올리고 ASG에 무중단 교체를 지시 → 새 인스턴스가 부팅하며 S3에서 JAR을 받아 기동한다 |
+| **모니터링** | 인스턴스의 `Grafana Alloy` 한 프로세스가 앱 지표·호스트 지표·로그를 모아 `Grafana Cloud`(Prometheus·Loki)로 전송하고, Grafana가 시각화한다 |
+
+인프라는 전부 **Terraform**으로 관리하며, 수명(영구 / 온디맨드)을 기준으로 모듈을 나눠 두었다. 배포 파이프라인은 서버에 접속하지 않고, 새 인스턴스가 부팅 시 필요한 것을 직접 받아간다.
 
 ---
 
