@@ -134,7 +134,7 @@ YOURTRIP은 사용자가 여행을 계획할 때 겪는
 - **외부 연동**: Kakao(장소 검색 전용, 로그인은 미사용), AWS SDK v2(S3 + CloudFront Signed URL), Spring Mail
 - **문서화**: springdoc-openapi 2.6.0 (Swagger UI: `/swagger-ui.html`)
 - **Infra**: AWS ALB + Auto Scaling Group(EC2), RDS(PostgreSQL), ElastiCache(Redis), S3, CloudFront, Route 53 — IaC는 Terraform(수명 기준 모듈 분리)
-- **CI/CD**: GitHub Actions — CI는 `dev` 대상 PR·push에서 빌드·테스트, CD는 OIDC 임시 자격증명으로 S3 업로드 + ASG 무중단 교체(저장된 시크릿 0개)
+- **CI/CD**: GitHub Actions — CI는 `dev` 대상 PR·push에서 빌드·테스트, CD는 OIDC 임시 자격증명으로 S3 업로드 + ASG 무중단 교체
 
 ---
 
