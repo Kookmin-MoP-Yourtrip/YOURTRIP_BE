@@ -65,7 +65,7 @@ resource "aws_launch_template" "app" {
     delete_on_termination       = true
   }
 
-  # IMDSv2 강제. 시크릿을 user_data에서 SSM으로 옮긴 조치와 짝을 이룬다 — 앱이 Kakao·Gemini로
+  # IMDSv2 강제. 시크릿을 user_data에서 SSM으로 옮긴 조치와 짝을 이룬다 — 앱이 Kakao·OpenAI로
   # 아웃바운드 HTTP를 하므로 SSRF로 메타데이터 엔드포인트를 찔릴 표면이 실재하는데,
   # IMDSv2는 PUT으로 토큰을 먼저 받아야 하므로 단순 GET 기반 SSRF로는 뚫리지 않는다.
   # hop_limit = 1은 컨테이너 등 한 홉 건너에서의 접근을 막는다.

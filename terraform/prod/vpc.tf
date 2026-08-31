@@ -55,7 +55,7 @@ resource "aws_subnet" "secondary" {
   }
 }
 
-# 퍼블릭 서브넷 + 보안그룹 격리 구조라 NAT Gateway가 없다. 앱이 외부 API(Gemini·Kakao·S3·
+# 퍼블릭 서브넷 + 보안그룹 격리 구조라 NAT Gateway가 없다. 앱이 외부 API(OpenAI·Kakao·S3·
 # SMTP)를 호출해야 하는데, 프라이빗 서브넷으로 옮기면 NAT Gateway가 필요해져 월 고정비가
 # 붙는다. 데이터 계층은 publicly_accessible=false + SG 참조로만 격리한다 —
 # 즉 실질 경계가 SG 하나뿐이라는 점을 설계 문서에 한계로 적어뒀다.
