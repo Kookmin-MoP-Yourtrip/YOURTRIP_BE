@@ -1,0 +1,228 @@
+{
+  "title" : "물길과 숲길 사이, 느린 사흘",
+  "concept" : "자차로 자연 풍경과 문화유산 권역을 여유롭게 잇고, 가족 모두가 무리 없이 즐기는 영주 여행",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "19:10:00",
+    "places" : [ {
+      "place" : {
+        "name" : "소백산자락길1코스",
+        "slotType" : "STROLL",
+        "latitude" : 36.9347795,
+        "longitude" : 128.541169,
+        "address" : "경상북도 영주시 순흥면 배점리 379-1",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "선비촌",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 36.9275795,
+        "longitude" : 128.5820674,
+        "address" : "경상북도 영주시 순흥면 소백로 2796",
+        "placeUrl" : "http://place.map.kakao.com/10490979",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:15:00",
+      "stayMinutes" : 120
+    }, {
+      "place" : {
+        "name" : "선비촌종가집",
+        "slotType" : "MEAL",
+        "latitude" : 36.9270808,
+        "longitude" : 128.5815658,
+        "address" : "경상북도 영주시 순흥면 소백로 2796",
+        "placeUrl" : "http://place.map.kakao.com/10490979",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:20:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "소수서원",
+        "slotType" : "ATTRACTION",
+        "latitude" : 36.9239285,
+        "longitude" : 128.5789835,
+        "address" : "경상북도 영주시 순흥면 소백로 2740",
+        "placeUrl" : "http://place.map.kakao.com/9479775",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:45:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "연화 카페",
+        "slotType" : "CAFE",
+        "latitude" : 36.92043,
+        "longitude" : 128.5743798,
+        "address" : "경상북도 영주시 순흥면 죽계로 26 연화 떡카페",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "16:20:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "나드리",
+        "slotType" : "MEAL",
+        "latitude" : 36.823366607937686,
+        "longitude" : 128.62484665091358,
+        "address" : "경북 영주시 중앙로 89",
+        "placeUrl" : "http://place.map.kakao.com/8241870",
+        "source" : "SUGGESTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:55:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:00:00",
+    "endTime" : "15:10:00",
+    "places" : [ {
+      "place" : {
+        "name" : "선달산(봉화)",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 37.0390499671,
+        "longitude" : 128.7095245323,
+        "address" : "경상북도 봉화군 물야면 오전리",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 45
+    }, {
+      "place" : {
+        "name" : "소백산자락길10코스",
+        "slotType" : "STROLL",
+        "latitude" : 36.9979333,
+        "longitude" : 128.7106625,
+        "address" : "경상북도 봉화군 물야면 오전리 1238",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:05:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "부석사",
+        "slotType" : "ATTRACTION",
+        "latitude" : 36.9986007,
+        "longitude" : 128.6873224,
+        "address" : "경상북도 영주시 부석면 부석사로 345",
+        "placeUrl" : "http://place.map.kakao.com/7909668",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:15:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "부석사식당",
+        "slotType" : "MEAL",
+        "latitude" : 36.9952008,
+        "longitude" : 128.6816781,
+        "address" : "경상북도 영주시 부석면 부석사로 317",
+        "placeUrl" : "http://place.map.kakao.com/16430745",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:50:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "카페 무량수",
+        "slotType" : "CAFE",
+        "latitude" : 36.9944371,
+        "longitude" : 128.6828315,
+        "address" : "경상북도 영주시 부석면 부석사로 338-11 카페 무량수",
+        "placeUrl" : "http://place.map.kakao.com/1556092349",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:10:00",
+      "stayMinutes" : 60
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "09:30:00",
+    "endTime" : "15:35:00",
+    "places" : [ {
+      "place" : {
+        "name" : "영주 무섬외나무다리축제",
+        "slotType" : "ATTRACTION",
+        "latitude" : 36.7309272,
+        "longitude" : 128.621754,
+        "address" : "경상북도 영주시 문수면 무섬로234번길 31-12",
+        "placeUrl" : "http://place.map.kakao.com/715523955",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:30:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "초가카페",
+        "slotType" : "CAFE",
+        "latitude" : 36.7314166,
+        "longitude" : 128.6214077,
+        "address" : "경상북도 영주시 문수면 무섬로234번길 11-8",
+        "placeUrl" : "http://place.map.kakao.com/204174307",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:10:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "무섬식당",
+        "slotType" : "MEAL",
+        "latitude" : 36.7329918,
+        "longitude" : 128.6212705,
+        "address" : "경상북도 영주시 문수면 무섬로 238-3",
+        "placeUrl" : "http://place.map.kakao.com/471703179",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:15:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "영주호용마루공원",
+        "slotType" : "STROLL",
+        "latitude" : 36.7289181352,
+        "longitude" : 128.6726924845,
+        "address" : "경상북도 영주시 평은면 수변로 108",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:45:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "영주댐전망대",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 36.7320431,
+        "longitude" : 128.6744795,
+        "address" : "경상북도 영주시 평은면 수변로 50-61",
+        "placeUrl" : "http://place.map.kakao.com/144142487",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:50:00",
+      "stayMinutes" : 45
+    } ]
+  } ]
+}

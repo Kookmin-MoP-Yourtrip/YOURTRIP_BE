@@ -39,12 +39,12 @@ YOURTRIP_BE/
     │   ├── uploadcourse/     # 업로드(공개)된 코스, fork/좋아요/조회수 등
     │   └── user/             # 이메일 회원가입/로그인/JWT 발급 (카카오 로그인은 제거됨)
     └── global/
+        ├── ai/               # AI 코스 생성 멀티 에이전트 파이프라인 — Planner/Curator 에이전트, 후보 공급(네이버·TourAPI), 그라운딩, RouteOptimizer, OpenAI 어댑터(openai/)
         ├── cloudfront/       # CloudFront Signed URL 발급·무효화 (CloudFrontService)
         ├── common/           # BaseEntity (공통 응답 래퍼는 없음, 아래 "예외 처리" 참고)
         ├── config/           # SecurityConfig, SwaggerConfig, WebConfig, AsyncConfig, RedisConfig, RedisCacheErrorHandler
         ├── converter/        # OctetStreamReadMsgConverter
         ├── exception/        # BusinessException, GlobalExceptionHandler, errorCode/*
-        ├── gemini/           # Gemini AI 코스 추천 연동 (config/dto/service)
         ├── jwt/              # JwtAuthenticationFilter, JwtTokenProvider
         ├── kakao/            # 카카오 지도/장소 검색 클라이언트 (KakaoLocalClient, AI 코스 생성 시 장소 보정용)
         ├── mail/             # 이메일 인증 발송 (MailService, MailLog)
@@ -70,7 +70,7 @@ YOURTRIP_BE/
 - **DB**: PostgreSQL + Spring Data JPA (Hibernate) — 테스트만 H2 인메모리(PostgreSQL 호환 모드)
 - **캐시**: Redis (Spring Data Redis + Lettuce) — 인기 코스 목록/상세 캐싱, 조회수 카운터, 랭킹 갱신 분산 락. 캐시 실패는 `RedisCacheErrorHandler`가 잡아 DB 폴백으로 처리한다
 - **모니터링**: Spring Boot Actuator + Micrometer Prometheus (`/actuator/prometheus`) — 로컬은 docker-compose의 Prometheus/Grafana로 관측 ([monitoring.md](docs/guide/monitoring.md))
-- **AI**: Gemini (`com.google.genai:google-genai` 1.28.0) — 코스 추천 생성
+- **AI**: OpenAI (Spring AI 1.1.x를 어댑터 내부 전송 계층으로만 사용, `gpt-5.6-luna`/`gpt-5-nano`) — 멀티 에이전트 코스 생성 파이프라인 (`global/ai`, [docs/tasks/ai-course-create/ROADMAP.md](docs/tasks/ai-course-create/ROADMAP.md))
 - **외부 연동**: Kakao(자체 WebClient 클라이언트, 전용 SDK 없음 — 지도/장소 검색만 사용, 카카오 로그인은 제거됨), AWS SDK v2(S3 + CloudFront Signed URL), Spring Mail
 - **문서화**: springdoc-openapi 2.6.0 (Swagger UI: `/swagger-ui.html`)
 
@@ -83,7 +83,7 @@ docker compose up -d redis
 
 **Redis가 떠 있지 않으면** 캐시 경로가 전부 실패해 DB 폴백으로 동작한다(앱은 뜨지만 `WARN`이 대량으로 쌓인다). 모니터링까지 함께 보려면 `docker compose up -d`로 Prometheus/Grafana도 띄운다.
 
-필수 환경변수는 **[.env.example](.env.example)이 정본**이다(DB·JWT·Mail·S3·CloudFront·Kakao·Gemini·Redis 계열). 이 파일을 복사해 레포 루트에 `.env`를 만들면, `spring-dotenv`가 자동으로 읽어 주입하므로 셸에서 `export`할 필요 없이 `./gradlew bootRun`이 바로 동작한다(실제 OS 환경변수가 있으면 그 값이 항상 우선). 기본 포트는 8080.
+필수 환경변수는 **[.env.example](.env.example)이 정본**이다(DB·JWT·Mail·S3·CloudFront·Kakao·OpenAI·네이버·TourAPI·Redis 계열). 이 파일을 복사해 레포 루트에 `.env`를 만들면, `spring-dotenv`가 자동으로 읽어 주입하므로 셸에서 `export`할 필요 없이 `./gradlew bootRun`이 바로 동작한다(실제 OS 환경변수가 있으면 그 값이 항상 우선). 기본 포트는 8080.
 
 `src/main/resources/data.sql`은 로컬 개발용 시드 데이터(사용자/코스/일정/장소 샘플)이며 현재 git에 커밋되지 않은 상태다.
 

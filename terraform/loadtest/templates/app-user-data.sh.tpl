@@ -48,7 +48,6 @@ CLOUDFRONT_DOMAIN=${cloudfront_domain}
 CLOUDFRONT_KEY_PAIR_ID=${cloudfront_key_pair_id}
 CLOUDFRONT_PRIVATE_KEY_PATH=/opt/app/cloudfront_private_key.pem
 CLOUDFRONT_DISTRIBUTION_ID=${cloudfront_distribution_id}
-GEMINI_API_KEY=${gemini_api_key}
 REDIS_HOST=${redis_host}
 REDIS_PORT=6379
 JVM_OPTS=-Xmx768m -Xss512k

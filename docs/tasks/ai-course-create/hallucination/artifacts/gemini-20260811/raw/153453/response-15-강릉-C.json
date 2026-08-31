@@ -1,0 +1,88 @@
+{
+  "title": "강릉 친구들과 즐기는 액티브 미식 여행",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "강릉역",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "강릉중앙시장",
+          "startTime": "10:30"
+        },
+        {
+          "placeName": "금성백반",
+          "startTime": "12:00"
+        },
+        {
+          "placeName": "안목해변",
+          "startTime": "14:00"
+        },
+        {
+          "placeName": "보사노바",
+          "startTime": "15:00"
+        },
+        {
+          "placeName": "씨마크호텔 더 쉐프",
+          "startTime": "18:30"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "오죽헌",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "선교장",
+          "startTime": "11:00"
+        },
+        {
+          "placeName": "동화가든",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "경포호수",
+          "startTime": "14:00"
+        },
+        {
+          "placeName": "강릉아트센터",
+          "startTime": "16:00"
+        },
+        {
+          "placeName": "버드나무 브루어리",
+          "startTime": "18:30"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "정동진역",
+          "startTime": "09:00"
+        },
+        {
+          "placeName": "정동진 레일바이크",
+          "startTime": "10:00"
+        },
+        {
+          "placeName": "정동진 해변횟집",
+          "startTime": "12:00"
+        },
+        {
+          "placeName": "하슬라아트월드",
+          "startTime": "14:00"
+        },
+        {
+          "placeName": "강릉역",
+          "startTime": "16:30"
+        }
+      ]
+    }
+  ]
+}

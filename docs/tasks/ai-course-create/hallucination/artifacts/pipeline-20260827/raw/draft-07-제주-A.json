@@ -1,0 +1,228 @@
+{
+  "title" : "바람이 머문 자리, 제주 사흘",
+  "concept" : "대중교통과 도보로 무리 없이 이어지는 해안 산책, 조용한 골목, 감성적인 쉼을 중심으로 제주를 천천히 즐긴다.",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "16:55:00",
+    "places" : [ {
+      "place" : {
+        "name" : "아베베 베이커리 제주",
+        "slotType" : "CAFE",
+        "latitude" : 33.5126449,
+        "longitude" : 126.5287932,
+        "address" : "제주특별자치도 제주시 동문로6길 4 1-3층(일도일동)",
+        "placeUrl" : "http://place.map.kakao.com/587249375",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "문희 제주본점",
+        "slotType" : "MEAL",
+        "latitude" : 33.5062971,
+        "longitude" : 126.5238993,
+        "address" : "제주특별자치도 제주시 중앙로24길 9 단독상가1층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "틸디엔드",
+        "slotType" : "SHOPPING",
+        "latitude" : 33.5134836,
+        "longitude" : 126.5201179,
+        "address" : "제주특별자치도 제주시 관덕로 9-5 1층",
+        "placeUrl" : "http://place.map.kakao.com/1279026872",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:00:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "용두암",
+        "slotType" : "ATTRACTION",
+        "latitude" : 33.5147812884,
+        "longitude" : 126.5125098697,
+        "address" : "제주특별자치도 제주시 용두암길 15 (용담이동)",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:15:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "용담해안도로",
+        "slotType" : "STROLL",
+        "latitude" : 33.5155784156,
+        "longitude" : 126.5121043316,
+        "address" : "제주특별자치도 제주시 서해안로 687-8 (용담이동)",
+        "placeUrl" : "http://place.map.kakao.com/8013248",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:55:00",
+      "stayMinutes" : 60
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:00:00",
+    "endTime" : "16:10:00",
+    "places" : [ {
+      "place" : {
+        "name" : "다려도",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 33.5572322923,
+        "longitude" : 126.6953319009,
+        "address" : "제주특별자치도 제주시 조천읍 북촌리",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 48
+    }, {
+      "place" : {
+        "name" : "오드랑베이커리 함덕점",
+        "slotType" : "CAFE",
+        "latitude" : 33.5421004,
+        "longitude" : 126.6715215,
+        "address" : "제주특별자치도 제주시 조천읍 조함해안로 552-3",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:15:00",
+      "stayMinutes" : 66
+    }, {
+      "place" : {
+        "name" : "함덕 연옥",
+        "slotType" : "MEAL",
+        "latitude" : 33.5425102,
+        "longitude" : 126.669246,
+        "address" : "제주특별자치도 제주시 조천읍 조함해안로 528 2층 연옥",
+        "placeUrl" : "http://place.map.kakao.com/1730219412",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "함덕해수욕장 (함덕 서우봉 해변)",
+        "slotType" : "STROLL",
+        "latitude" : 33.5439000013,
+        "longitude" : 126.668356772,
+        "address" : "제주특별자치도 제주시 조천읍 조함해안로 519-10",
+        "placeUrl" : "http://place.map.kakao.com/8148451",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:00:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "서우봉둘레길",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 33.5407280629,
+        "longitude" : 126.6641460999,
+        "address" : "제주특별자치도 제주시 조천읍 함덕12길 16",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:10:00",
+      "stayMinutes" : 120
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "09:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "새연교",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 33.2378293118,
+        "longitude" : 126.559612034,
+        "address" : "제주특별자치도 서귀포시 서홍동",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:30:00",
+      "stayMinutes" : 47
+    }, {
+      "place" : {
+        "name" : "천지연폭포",
+        "slotType" : "ATTRACTION",
+        "latitude" : 33.2469679,
+        "longitude" : 126.5544249,
+        "address" : "제주특별자치도 서귀포시 천지동 666-2 667-7",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:35:00",
+      "stayMinutes" : 98
+    }, {
+      "place" : {
+        "name" : "먹고정 서귀포올레시장본점",
+        "slotType" : "MEAL",
+        "latitude" : 33.2472284,
+        "longitude" : 126.5624387,
+        "address" : "제주특별자치도 서귀포시 명동로 5-1 먹고정",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:25:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "유동커피",
+        "slotType" : "CAFE",
+        "latitude" : 33.2445258834582,
+        "longitude" : 126.563800348044,
+        "address" : "제주특별자치도 서귀포시 태평로 406-1",
+        "placeUrl" : "http://place.map.kakao.com/21160031",
+        "source" : "SUGGESTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:10:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "이중섭거리",
+        "slotType" : "STROLL",
+        "latitude" : 33.2455202067,
+        "longitude" : 126.5644697732,
+        "address" : "제주특별자치도 서귀포시 이중섭로 29 (서귀동)",
+        "placeUrl" : "http://place.map.kakao.com/8523750",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:50:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "기흥어물",
+        "slotType" : "MEAL",
+        "latitude" : 33.248393,
+        "longitude" : 126.5630299,
+        "address" : "제주특별자치도 서귀포시 중정로61번길 6",
+        "placeUrl" : "http://place.map.kakao.com/8821699",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  } ]
+}

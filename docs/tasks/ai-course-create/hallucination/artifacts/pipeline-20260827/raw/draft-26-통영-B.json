@@ -1,0 +1,254 @@
+{
+  "title" : "바다 곁에서 천천히, 통영 가족 사흘",
+  "concept" : "자차로 권역을 여유롭게 오가며 통영의 바다 풍경과 자연을 가족 템포에 맞춰 즐기는 여행",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "동피랑마을",
+        "slotType" : "ATTRACTION",
+        "latitude" : 34.8453461228,
+        "longitude" : 128.4276467571,
+        "address" : "경상남도 통영시 동피랑1길 6-18 (동호동)",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 110
+    }, {
+      "place" : {
+        "name" : "통영만나꿀빵",
+        "slotType" : "CAFE",
+        "latitude" : 34.844899,
+        "longitude" : 128.4258471,
+        "address" : "경상남도 통영시 통영해안로 349-2 1층 통영만나꿀빵",
+        "placeUrl" : "http://place.map.kakao.com/1286763227",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:00:00",
+      "stayMinutes" : 69
+    }, {
+      "place" : {
+        "name" : "뚱보할매김밥집",
+        "slotType" : "MEAL",
+        "latitude" : 34.8438766,
+        "longitude" : 128.4236559,
+        "address" : "경상남도 통영시 통영해안로 325",
+        "placeUrl" : "http://place.map.kakao.com/24199598",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:15:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "강구안",
+        "slotType" : "STROLL",
+        "latitude" : 34.8436462512,
+        "longitude" : 128.4242054351,
+        "address" : "경상남도 통영시 중앙동 (중앙동)",
+        "placeUrl" : "http://place.map.kakao.com/2001885490",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:50:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "서피랑공원",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 34.8440961439,
+        "longitude" : 128.4210029248,
+        "address" : "경상남도 통영시 서호동 6-1",
+        "placeUrl" : "http://place.map.kakao.com/1649343384",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "16:25:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "회운정",
+        "slotType" : "MEAL",
+        "latitude" : 34.8407788,
+        "longitude" : 128.4237592,
+        "address" : "경상남도 통영시 동충2길 39",
+        "placeUrl" : "http://place.map.kakao.com/898099645",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "카페쿠쿠오나통영",
+        "slotType" : "CAFE",
+        "latitude" : 34.8039806,
+        "longitude" : 128.3997153,
+        "address" : "경상남도 통영시 산양읍 산양중앙로 118",
+        "placeUrl" : "http://place.map.kakao.com/1940324470",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 61
+    }, {
+      "place" : {
+        "name" : "나폴리농원",
+        "slotType" : "ATTRACTION",
+        "latitude" : 34.802235,
+        "longitude" : 128.4245093,
+        "address" : "경상남도 통영시 산양읍 미륵산길 152 나폴리농원",
+        "placeUrl" : "http://place.map.kakao.com/8251322",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:15:00",
+      "stayMinutes" : 91
+    }, {
+      "place" : {
+        "name" : "삼칭이길",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 34.8086947756,
+        "longitude" : 128.4338277376,
+        "address" : "경상남도 통영시 산양읍 영운리",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:55:00",
+      "stayMinutes" : 45
+    }, {
+      "place" : {
+        "name" : "해미락",
+        "slotType" : "MEAL",
+        "latitude" : 34.8262425,
+        "longitude" : 128.4322842,
+        "address" : "경상남도 통영시 남포2길 41 3층",
+        "placeUrl" : "http://place.map.kakao.com/70254270",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:50:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "통영요트학교",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 34.828212058,
+        "longitude" : 128.4349604598,
+        "address" : "경상남도 통영시 도남로 269-28",
+        "placeUrl" : "http://place.map.kakao.com/8108619",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:25:00",
+      "stayMinutes" : 180
+    }, {
+      "place" : {
+        "name" : "코카모메 통영점",
+        "slotType" : "MEAL",
+        "latitude" : 34.8268216,
+        "longitude" : 128.4231205,
+        "address" : "경상남도 통영시 데메4길 63 상가 101호 코카모메 통영점",
+        "placeUrl" : "http://place.map.kakao.com/322286207",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "09:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "달아전망대",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 34.7686696,
+        "longitude" : 128.4000917,
+        "address" : "경상남도 통영시 산양읍 미남리 산246",
+        "placeUrl" : "http://place.map.kakao.com/17558254",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 56
+    }, {
+      "place" : {
+        "name" : "미스티크",
+        "slotType" : "CAFE",
+        "latitude" : 34.7759021,
+        "longitude" : 128.3958954,
+        "address" : "경상남도 통영시 산양읍 산양일주로 1215-52",
+        "placeUrl" : "http://place.map.kakao.com/511149366",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:05:00",
+      "stayMinutes" : 80
+    }, {
+      "place" : {
+        "name" : "해마루 팬션 식당",
+        "slotType" : "MEAL",
+        "latitude" : 34.7769904,
+        "longitude" : 128.3974006,
+        "address" : "경상남도 통영시 산양읍 산양일주로 1222 해마루팬션&식당",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 89
+    }, {
+      "place" : {
+        "name" : "산양관광도로",
+        "slotType" : "ATTRACTION",
+        "latitude" : 34.7950783,
+        "longitude" : 128.4166759,
+        "address" : "경상남도 통영시 산양읍 신전리 323-1",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "13:15:00",
+      "stayMinutes" : 145
+    }, {
+      "place" : {
+        "name" : "해안누리길24코스",
+        "slotType" : "STROLL",
+        "latitude" : 34.8105649,
+        "longitude" : 128.4409665,
+        "address" : "경상남도 통영시 산양읍 영운리 72-7",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:50:00",
+      "stayMinutes" : 87
+    }, {
+      "place" : {
+        "name" : "주차장실내포차",
+        "slotType" : "MEAL",
+        "latitude" : 34.8448029,
+        "longitude" : 128.4325257,
+        "address" : "경상남도 통영시 정동3길 15 1층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "PARKING_AVAILABLE"
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  } ]
+}

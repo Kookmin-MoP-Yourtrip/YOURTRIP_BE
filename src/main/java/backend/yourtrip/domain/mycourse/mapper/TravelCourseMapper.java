@@ -8,7 +8,6 @@ import backend.yourtrip.domain.mycourse.dto.response.MyCourseListItemResponse;
 import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
 import backend.yourtrip.domain.mycourse.entity.travelCourse.enums.TravelCourseType;
 import backend.yourtrip.domain.user.entity.User;
-import backend.yourtrip.global.gemini.dto.GeminiCourseDto;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
@@ -73,12 +72,12 @@ public class TravelCourseMapper {
             .build();
     }
 
-    //AI 생성
+    //AI 생성 — LLM 산출물에서 필요한 값은 title뿐이라 DTO가 아니라 문자열로 받는다
     public static TravelCourse toAICourseEntity(AICourseCreateRequest request,
-        GeminiCourseDto courseDto, User user) {
+        String title, User user) {
         return TravelCourse.builder()
             .user(user)
-            .title(courseDto.title())
+            .title(title)
             .location(request.location())
             .startDate(request.startDate())
             .endDate(request.endDate())

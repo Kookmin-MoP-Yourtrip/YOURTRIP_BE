@@ -23,6 +23,7 @@ import backend.yourtrip.domain.mycourse.entity.place.PlaceImage;
 import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
 import backend.yourtrip.domain.mycourse.entity.travelCourse.enums.TravelCourseType;
 import backend.yourtrip.domain.mycourse.event.MyCourseImagesCleanupEvent;
+import backend.yourtrip.domain.mycourse.mapper.AiCourseDraftMapper;
 import backend.yourtrip.domain.mycourse.mapper.DayScheduleMapper;
 import backend.yourtrip.domain.mycourse.mapper.PlaceMapper;
 import backend.yourtrip.domain.mycourse.mapper.TravelCourseMapper;
@@ -34,23 +35,20 @@ import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
+import backend.yourtrip.global.ai.pipeline.AiCourseDraft;
+import backend.yourtrip.global.ai.pipeline.AiCoursePipeline;
+import backend.yourtrip.global.ai.pipeline.CourseBrief;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UploadCourseErrorCode;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService.CourseSignature;
-import backend.yourtrip.global.gemini.dto.GeminiCourseDto;
-import backend.yourtrip.global.gemini.dto.GeminiCourseDto.PlaceDto;
-import backend.yourtrip.global.gemini.service.GeminiService;
-import backend.yourtrip.global.kakao.KakaoLocalClient;
-import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
 import backend.yourtrip.global.s3.service.S3Service;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -70,17 +68,15 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final UserService userService;
     private final S3Service s3Service;
     private final CloudFrontService cloudFrontService;
-    private final GeminiService geminiService;
-
-    private final ObjectMapper objectMapper;
+    private final AiCoursePipeline aiCoursePipeline;
 
     private final TravelCourseRepository travelCourseRepository;
     private final DayScheduleRepository dayScheduleRepository;
     private final PlaceRepository placeRepository;
     private final PlaceImageRepository placeImageRepository;
     private final UploadCourseRepository uploadCourseRepository;
-    private final KakaoLocalClient kakaoLocalClient;
     private final MyCourseDetailReader myCourseDetailReader;
+    private final AiCoursePersister aiCoursePersister;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
@@ -510,67 +506,33 @@ public class MyCourseServiceImpl implements MyCourseService {
         return hiddenCopy;
     }
 
-    @Transactional
+    /**
+     * <b>이 메서드에는 {@code @Transactional}이 없다.</b> LLM·장소 API 호출을 전부
+     * 트랜잭션 밖({@link AiCoursePipeline})에서 끝낸 뒤, 저장만 {@link AiCoursePersister}의
+     * 짧은 트랜잭션에 맡긴다. 예전에는 메서드 전체가 트랜잭션이라 외부 I/O가 끝날 때까지
+     * HikariCP 커넥션이 묶였다.
+     *
+     * <p>실패는 파이프라인이 판정한다 — 전 day 장소 0개일 때만 hard fail이고
+     * ({@code AI_GROUNDING_FAILED} 503 / 예산 소진이면 {@code AI_COURSE_TIMEOUT} 504),
+     * 나머지는 파이프라인 내부에서 degrade로 흡수된다.
+     */
+    @Override
     public AICourseCreateResponse createAICourse(AICourseCreateRequest request) {
+        // SecurityContextHolder는 요청 스레드의 ThreadLocal이므로 여기서 먼저 확보해 둔다.
+        // 파이프라인 하위 스테이지가 다른 스레드에서 돌아 거기서는 읽을 수 없다.
+        Long userId = userService.getCurrentUserId();
+
         int days =
             (int) ChronoUnit.DAYS.between(request.startDate(), request.endDate()) + 1;
 
-        //gemini 호출해서 json 문자열 받기
-        String json = geminiService.generateAICourse(request.location(), days, request.keywords());
-        log.info(json);
+        //파이프라인 실행 (외부 I/O — 여기까지가 트랜잭션 밖이다)
+        AiCourseDraft draft = aiCoursePipeline.generate(
+            CourseBrief.of(request.location(), days, request.keywords()));
 
-        //json -> dto 바이딩
-        GeminiCourseDto courseDto;
-        try {
-            courseDto = objectMapper.readValue(json, GeminiCourseDto.class);
-        } catch (JsonProcessingException e) {
-            log.error("Gemini에서 받은 JSON 파싱 실패", e);
-            throw new BusinessException(MyCourseErrorCode.JSON_TRANSFORMATION_FAILED);
-        }
+        //저장 (짧은 트랜잭션) — 리스트 순서가 곧 동선 순서이므로 변환기가 순서를 보존한다
+        Long courseId = aiCoursePersister.save(request, draft.title(),
+            AiCourseDraftMapper.toResolvedDays(draft), userId);
 
-        //travelCourse 생성
-        User user = userService.getUser(userService.getCurrentUserId());
-        TravelCourse travelCourse = travelCourseRepository.save(
-            TravelCourseMapper.toAICourseEntity(request, courseDto, user));
-
-        //daySchedule, place 생성
-        for (GeminiCourseDto.DayScheduleDto dayScheduleDto : courseDto.daySchedules()) {
-            DaySchedule daySchedule = dayScheduleRepository.save(
-                new DaySchedule(travelCourse, dayScheduleDto.day()));
-            travelCourse.getDaySchedules().add(daySchedule);
-
-            //각 place 저장
-            for (GeminiCourseDto.PlaceDto placeDto : dayScheduleDto.places()) {
-                Place place = placeRepository.save(
-                    PlaceMapper.toEntityFromGeminiDto(placeDto, daySchedule));
-
-                updatePlaceFromKakao(request, placeDto, place);
-
-                daySchedule.getPlaces().add(place);
-            }
-        }
-
-        return new AICourseCreateResponse(travelCourse.getId());
-    }
-
-    private void updatePlaceFromKakao(AICourseCreateRequest request, PlaceDto placeDto,
-        Place place) {
-        Document doc = kakaoLocalClient.findBestPlace(placeDto.placeName(),
-            request.location());
-
-        if (doc == null) { //적절한 장소가 카카오맵에 검색되지 않음
-            return;
-        }
-
-        //placeName, placeLocation, placeUrl, longitude, latitude 업데이트
-        String placeName = doc.place_name();
-        String placeLocation = doc.road_address_name() != null && !doc.road_address_name().isBlank()
-            ? doc.road_address_name()
-            : doc.address_name();
-        String placeUrl = doc.place_url();
-        double longitude = Double.parseDouble(doc.x());
-        double latitude = Double.parseDouble(doc.y());
-
-        place.updateKakaoPlace(placeName, placeLocation, placeUrl, latitude, longitude);
+        return new AICourseCreateResponse(courseId);
     }
 }

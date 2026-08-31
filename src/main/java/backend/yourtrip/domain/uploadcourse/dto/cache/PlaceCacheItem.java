@@ -11,8 +11,9 @@ public record PlaceCacheItem(
     String placeName,
     LocalTime startTime,
     String memo,
-    double latitude,
-    double longitude,
+    // UploadCourseMapper.toPlaceCacheItem이 Place의 nullable 좌표를 그대로 읽으므로 Double이어야 한다.
+    Double latitude,
+    Double longitude,
     String placeUrl,
     String placeLocation,
     List<PlaceImageCacheItem> placeImages

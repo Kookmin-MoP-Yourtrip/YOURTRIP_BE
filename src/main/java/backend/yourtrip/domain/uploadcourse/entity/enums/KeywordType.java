@@ -1,7 +1,5 @@
 package backend.yourtrip.domain.uploadcourse.entity.enums;
 
-import backend.yourtrip.global.exception.BusinessException;
-import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonFormat.Shape;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -76,8 +74,13 @@ public enum KeywordType {
     public static String buildKeywordsJson(List<KeywordType> selectedKeywords) {
         ObjectMapper objectMapper = new ObjectMapper();
 
-        // 선택된 키워드를 빠르게 조회하기 위한 Set 생성
-        Set<KeywordType> selectedSet = new HashSet<>(selectedKeywords);
+        // 선택된 키워드를 빠르게 조회하기 위한 Set 생성.
+        // null 가드가 필요한 이유: AICourseCreateRequest에 @NotEmpty를 걸었지만, 그 검증을
+        // 거치지 않는 호출부(벤치마크 하네스 등)가 있다. new HashSet<>(null)은 생성자 안에서
+        // 즉시 NPE를 던지는데 이를 받는 핸들러가 없어 원시 500이 된다.
+        Set<KeywordType> selectedSet = selectedKeywords == null
+            ? Set.of()
+            : new HashSet<>(selectedKeywords);
 
         Map<String, List<String>> result = new LinkedHashMap<>();
 
@@ -97,8 +100,11 @@ public enum KeywordType {
             return objectMapper.writerWithDefaultPrettyPrinter()
                 .writeValueAsString(result);
         } catch (JsonProcessingException e) {
-            log.error("ekeywords JSON 변환 실패: {}, 변환 map: {}", e.getMessage(), result);
-            throw new BusinessException(MyCourseErrorCode.JSON_TRANSFORMATION_FAILED);
+            // 사용자 대면 BusinessException을 던지지 않는 이유 (ROADMAP 7-2): result는
+            // Map<String, List<String>>라 직렬화가 실패할 현실적인 경로가 없다 — 도달 불가능한
+            // 자리에 사용자 대면 ErrorCode를 두면, 만에 하나 터졌을 때 거짓 메시지를 낸다.
+            // (과거의 JSON_TRANSFORMATION_FAILED(503)는 8-4에서 호출자 0이 되어 삭제됐다.)
+            throw new IllegalStateException("keywords JSON 변환에 실패했다: " + result, e);
         }
     }
 

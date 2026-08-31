@@ -1,0 +1,76 @@
+{
+  "title": "영주 미식과 문화, 액티비티 3일 여행",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "부석사",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "부석사식당",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "소수서원",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "선비촌",
+          "startTime": "16:00"
+        },
+        {
+          "placeName": "영주한우프라자",
+          "startTime": "19:00"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "풍기인삼시장",
+          "startTime": "10:00"
+        },
+        {
+          "placeName": "풍기인삼뚝배기",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "무섬마을",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "카페 그랜드",
+          "startTime": "17:00"
+        },
+        {
+          "placeName": "고려정",
+          "startTime": "19:30"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "영주 레일바이크",
+          "startTime": "10:00"
+        },
+        {
+          "placeName": "나드리",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "후생시장",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "카페 148 아트스페이스",
+          "startTime": "16:00"
+        }
+      ]
+    }
+  ]
+}

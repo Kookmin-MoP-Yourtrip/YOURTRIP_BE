@@ -7,8 +7,8 @@ import lombok.Builder;
 public record PlaceCreateResponse(
     Long placeId,
     String placeName,
-    double latitude,
-    double longitude,
+    Double latitude,
+    Double longitude,
     String placeUrl,
     String placeLocation,
     String memo,

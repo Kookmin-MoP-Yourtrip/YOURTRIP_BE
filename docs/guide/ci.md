@@ -23,9 +23,9 @@
 
 **`@Tag("benchmark")` 테스트는 돌지 않는다.** [build.gradle](../../build.gradle)의
 `excludeTags 'benchmark'`가 이미 제외하고 있다 — `SigningBenchmarkTest`는 openssl 프로세스
-호출과 12,000회 반복 서명으로 느리고, `AiHallucinationBaselineTest`는 실제 `GEMINI_API_KEY`를
-요구한다. "빠르고 결정적"이라는 CI의 두 조건을 모두 깨므로 `./gradlew benchmarkTest`로만
-명시적으로 돌린다.
+호출과 12,000회 반복 서명으로 느리고, 환각률 측정 하네스와 각 `*ProbeTest`는 OpenAI·네이버·
+TourAPI를 실제로 호출해 과금과 쿼터를 쓴다. "빠르고 결정적"이라는 CI의 두 조건을 모두
+깨므로 `./gradlew benchmarkTest`로만 명시적으로 돌린다.
 
 ## 2. CI가 잡지 못하는 것
 
@@ -58,7 +58,7 @@ GitHub Secrets에 두는 대신 GitHub이 발급한 OIDC 토큰으로 IAM 역할
 없으니 로테이션할 것도, 유출을 걱정할 것도 없다 — 이 저장소가 public이라 특히 중요하다. 비교와
 선정 근거는 [docs/tasks/cd-pipeline/](../tasks/cd-pipeline/README.md)에 있다.
 
-CI에 실제 값을 넣으면 세 가지가 한꺼번에 무너진다. 테스트가 운영 리소스를 건드리고(예: Gemini
+CI에 실제 값을 넣으면 세 가지가 한꺼번에 무너진다. 테스트가 운영 리소스를 건드리고(예: OpenAI
 호출 과금), 외부 상태에 의존해 비결정적이 되며, 워크플로를 수정할 수 있는 사람 모두에게 값이
 노출된다. **CI가 시크릿을 요구하게 되는 순간이 곧 설계가 틀어진 신호다.**
 

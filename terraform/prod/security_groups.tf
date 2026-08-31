@@ -111,7 +111,7 @@ resource "aws_security_group_rule" "app_ingress_ssh_from_dev" {
   description       = "SSH (break-glass)"
 }
 
-# 앱이 S3·CloudFront·Gemini·Kakao·SMTP로 나가야 하고, 부팅 시 dnf·SSM·S3도 호출한다.
+# 앱이 S3·CloudFront·OpenAI·Kakao·네이버·TourAPI·SMTP로 나가야 하고, 부팅 시 dnf·SSM·S3도 호출한다.
 resource "aws_security_group_rule" "app_egress_all" {
   type              = "egress"
   security_group_id = aws_security_group.app.id

@@ -71,6 +71,29 @@ spring:
           # max-wait 기본값은 무한대기이므로 반드시 명시한다.
           max-wait: 1000ms
 
+  ai:
+    # spring-ai-starter-model-openai는 chat 하나가 아니라 OpenAI의 모든 모델 타입(embedding,
+    # image, moderation, audio speech/transcription)을 자동 구성하고, 그 전부가 기동 시점에
+    # API 키를 요구한다. 키가 없으면 openAiAudioSpeechModel 빈 생성에서 컨텍스트가 통째로
+    # 깨진다(실제로 확인함). 이 파이프라인이 쓰는 것은 chat 뿐이므로 나머지는 전부 끈다.
+    model:
+      embedding: none
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
+      # chat도 끈 채로 둔다. 2단계에서 이걸 openai로 켜는 대신, OpenAiLlmClient 어댑터가
+      # OpenAiApi/OpenAiChatModel을 직접 조립하는 쪽을 택했다. 근거는 셋이다.
+      #   ① auto-config를 켜면 spring.ai.openai.api-key가 기동 필수가 되어, 키 없는 환경에서
+      #      bootRun이 실패한다 — AI 경로를 건드리지 않는 2단계가 동작 변화를 만들게 된다.
+      #   ② 이 파이프라인은 agent마다 model/temperature/max-tokens/스키마가 다르다.
+      #      auto-config의 defaultOptions 하나로는 표현되지 않아 어차피 호출마다 옵션을 만든다.
+      #   ③ baseUrl을 주입할 수 있어야 WireMock으로 어댑터를 테스트할 수 있다
+      #      (0-3 검증 테스트가 이미 이 방식으로 스키마 전송 경로를 확인했다).
+      # 결과적으로 LLM 설정 표면이 spring.ai.*와 llm.* 두 곳으로 갈리지 않고 llm.* 하나로 모인다.
+      chat: none
+
 jwt:
   secret: ${JWT_SECRET}
 
@@ -89,6 +112,25 @@ kakao:
   api-key: ${KAKAO_API_KEY}
   local:
     base-url: "https://dapi.kakao.com"
+
+# 네이버 지역검색 — AI 코스 생성의 후보 공급(인기 축). NAVER API HUB 경유.
+# 키는 비어도 기동에 성공해야 한다: 후보 공급은 fail-open이라 키가 없으면 시드 후보만 빠지고
+# 코스 생성은 계속된다(llm.openai.api-key 가 세운 관례와 같다).
+naver:
+  client-id: ${NAVER_CLIENT_ID:}
+  client-secret: ${NAVER_CLIENT_SECRET:}
+  local:
+    # 검색 API가 developers.naver.com 에서 NAVER API HUB 로 이관되며 호스트와 경로가 둘 다 바뀌었다.
+    # 경로는 클라이언트가 갖는다(/search/v1/local) — 레거시 /v1/search/local.json 은 404다(ROADMAP 4-2).
+    base-url: "https://naverapihub.apigw.ntruss.com"
+
+# 한국관광공사 TourAPI (관광 슬롯의 커버리지·분류 축, ROADMAP 4-7)
+tour:
+  # KorService1 은 2025-08-10 부로 중지됐다. 오퍼레이션 경로는 클라이언트가 갖는다.
+  base-url: "https://apis.data.go.kr/B551011/KorService2"
+  # Encoding / Decoding 어느 형태로 발급받아도 된다 — TourApiConfig 가 하나로 정규화한다.
+  # 후보 공급은 fail-open 이라 비어 있어도 기동은 성공한다(호출만 403 으로 실패한다).
+  service-key: ${TOUR_API_KEY:}
 
 server:
   forward-headers-strategy: framework
@@ -123,8 +165,90 @@ cloudfront:
   # 깨지는 UX 문제를 일으킬 수 있어서다.
   signed-url-ttl-minutes: 60
 
-gemini:
-  api-key: ${GEMINI_API_KEY}
+# AI 코스 생성 파이프라인 전체 설정 (AiCourseProperties).
+ai:
+  course:
+    # 요청 하나의 하드 데드라인(CourseDeadline). llm.timeout-ms 와 재는 대상이 다르다 —
+    # 그쪽은 호출 1건의 상한이고 이쪽은 요청 전체의 상한이라, 항상 이쪽이 더 커야 한다.
+    #
+    # 30초는 설계 지연 예산의 p95 상단(17~24초) 위에 여유를 둔 값이다. 이 값이 p95보다
+    # 낮으면 정상 요청이 504가 되고, 너무 높으면 데드라인이 사실상 없는 것과 같아진다
+    # (CallerRunsPolicy 를 유지한 채 "무한정 느린 성공"을 막는 것이 이 값의 목적이다).
+    # 8단계 E2E 실측 뒤 조정한다.
+    budget-ms: 30000
+
+# AI 코스 생성의 LLM 호출 설정 (AiLlmProperties).
+# 8단계 스위치 전까지 이 설정을 읽는 어댑터는 프로덕션 경로에서 호출되지 않는다 —
+# 지금은 테스트와 환각률 측정 하네스만 사용한다.
+llm:
+  # 비우면 OpenAiLlmClient 빈이 뜨지 않는다. 어댑터를 통째로 끄는 스위치다.
+  provider: openai
+
+  # 호출 1건의 상한. 설계 지연 예산에서 LLM 단일 호출은 3~10초를 잡았고, p95를 크게 넘는
+  # 호출은 기다려봐야 파이프라인 전체 데드라인(지연 예산)을 잠식할 뿐이다.
+  timeout-ms: 20000
+
+  # OpenAI RPM/TPM 티어를 아직 모르는 상태의 보수적 초기값이다. 2로 두면 day별 Curator 3개가
+  # 2라운드로 나뉘어 실행된다(+3~6초) — 429가 나는 대신 느려질 뿐이다.
+  # 2-6 baseline 재측정에서 429 빈도를 실측해 조정한다.
+  max-concurrent-calls: 2
+
+  retry:
+    # 전송 계층(429/5xx). 이 값이 실제 HTTP 시도 횟수와 정확히 일치해야 한다 —
+    # Spring AI의 RetryTemplate과 HTTP 클라이언트의 자체 재시도를 모두 끈 이유가 그것이다.
+    attempts: 3
+    # 의미 계층(200인데 깨진 응답). 초회 + 보정 1회.
+    # 2-6 baseline 측정에서는 재시도가 파싱 실패를 가리지 않도록 1로 내려 잰다.
+    semantic-attempts: 2
+    initial-delay-seconds: 0.5
+    max-delay-seconds: 4.0
+    # 여러 요청이 429를 동시에 맞았을 때 재시도가 같은 시각에 몰리는 것을 흩는다.
+    jitter: 0.3
+
+  # 에이전트별 모델 배치는 "추론 난이도"가 아니라 "틀렸을 때의 파급 ÷ 토큰량"으로 골랐다.
+  # 근거와 단가 계산은 docs/tasks/ai-course-create/steps/STEP-0-prerequisites.md 참고.
+  # 실제 에이전트 구현은 6·9단계에 생긴다.
+  #
+  # [temperature 를 비워둔 이유] 설계 초안은 agent별 온도 차등을 계획했지만
+  # (Planner 0.7 / Curator 0.9 / PlaceProfile 0.2), 2단계 실호출에서 gpt-5.6-luna 와
+  # gpt-5-nano 가 모두 커스텀 온도를 400으로 거부하는 것이 확인됐다
+  # ("Only the default (1) value is supported"). 값을 넣으면 요청 자체가 실패한다.
+  # 설정 키는 남겨둔다 — 온도를 받는 모델로 바꾸면 값만 채우면 되고, 구조를 지우면
+  # "왜 차등하지 않는가"라는 정보도 함께 사라진다. 경위는 LLM 포트 설계에 정리돼 있다.
+  # [reasoning-effort] 비용 분석의 "Curator와 PlaceProfile은 추론을 쓰지 않는다"를 실행하는
+  # 수단이다 — 두 에이전트는 추론 이득이 적은데 토큰 비중은 가장 크고, 추론 토큰은 출력 요금으로
+  # 과금된다. 안 낮추면 비용만 문제가 아니라 응답 자체가 안 나온다: gpt-5-nano는 기본 설정에서
+  # max-output-tokens 4096을 추론에만 쓰고 본문을 0바이트로 돌려줬다(2-6 스모크 실측).
+  #
+  # 지원값이 모델마다 다르다 — luna는 none/low/medium/high/xhigh, nano는 minimal/low 계열이다.
+  # 각각의 최저값을 쓰되, luna의 none 은 아직 1요청만 확인해 6단계 튜닝 후보로 남긴다.
+  agents:
+    # 권역이 틀리면 그 아래 Curator와 카카오 검색이 전부 오염된다 — 파급이 가장 큰데
+    # 출력은 ~350토큰이라 가장 싸게 투자할 수 있다. 셋 중 추론이 값을 하는 유일한 자리라
+    # reasoning-effort 를 비워 모델 기본값에 맡긴다.
+    planner:
+      model: gpt-5.6-luna
+      max-output-tokens: 2048
+    # 슬롯 5개 × 후보 3개라 출력이 가장 크고, 금액의 62%를 차지한다.
+    # 모델은 2-6 baseline 재측정의 luna/nano 비교로 최종 확정한다.
+    # 원래 의도는 "후보 3개가 서로 비슷하면 대체재로서 의미가 없으므로 온도를 올린다"였는데,
+    # 기본값 1이 이미 높은 쪽이라 의도와 어긋나지는 않는다.
+    curator:
+      model: gpt-5.6-luna
+      max-output-tokens: 4096
+      reasoning-effort: low
+    # 속성 추출이라 창의성이 아니라 충실성이 필요하다. 온도를 못 낮추는 것이 여기서는
+    # 실제 손해이므로, 9단계에서 닫힌 태그 집합과 스키마 강제로 보완해야 한다.
+    place-profile:
+      model: gpt-5-nano
+      max-output-tokens: 2048
+      reasoning-effort: minimal
+
+  openai:
+    # 기본값을 비워둔다 — 키가 없어도 기동은 성공하고, 실제 호출 시점에만 실패한다.
+    # 2단계는 이 어댑터를 프로덕션 경로에서 부르지 않으므로 이것이 "동작 변화 없음"의 조건이다.
+    api-key: ${OPENAI_API_KEY:}
+    base-url: "https://api.openai.com"
 
 management:
   endpoints:

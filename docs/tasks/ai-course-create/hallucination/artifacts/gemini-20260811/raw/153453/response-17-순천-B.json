@@ -1,0 +1,76 @@
+{
+  "title": "순천 자연 속 가족 힐링 여행",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "순천만국가정원",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "순천만가든",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "순천만습지",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "낙안읍성민속마을",
+          "startTime": "17:30"
+        },
+        {
+          "placeName": "낙안읍성식당",
+          "startTime": "19:00"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "선암사",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "선암사전통찻집",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "순천드라마촬영장",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "순천문화의거리",
+          "startTime": "17:00"
+        },
+        {
+          "placeName": "건봉국밥",
+          "startTime": "19:00"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "동천",
+          "startTime": "10:00"
+        },
+        {
+          "placeName": "순천아랫장",
+          "startTime": "12:00"
+        },
+        {
+          "placeName": "순천아랫장국밥거리",
+          "startTime": "13:00"
+        },
+        {
+          "placeName": "카페 꼼마",
+          "startTime": "15:00"
+        }
+      ]
+    }
+  ]
+}

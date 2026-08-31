@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "daySchedules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "integer"
+          },
+          "places": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "placeName": {
+                  "type": "string"
+                },
+                "startTime": {
+                  "type": "string",
+                  "description": "HH:mm 24시간 표기"
+                }
+              },
+              "required": ["placeName", "startTime"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["day", "places"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["title", "daySchedules"],
+  "additionalProperties": false
+}

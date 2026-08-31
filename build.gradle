@@ -71,6 +71,19 @@ dependencies {
     testImplementation 'org.springframework.security:spring-security-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
+    // 외부 API(카카오/네이버/OpenAI) 스텁 서버. AI 파이프라인은 요청 하나가 외부 호출 수십 건으로
+    // fan-out되는 구조라, 실제 API를 때리지 않고 부분 장애("네이버만 죽은 상황") 같은 시나리오를
+    // 재현할 수단이 필요하다.
+    //
+    // 일반 'org.wiremock:wiremock'이 아니라 셰이딩된 standalone을 쓰는 이유: 이 레포의
+    // testRuntimeClasspath에는 이미 jackson-databind(2.12.6.1/2.16.2/2.17.2 -> 2.19.2)와
+    // guava(29.0/30.1.1/33.4.0-android -> 33.4.0-jre)가 여러 버전으로 경합 중이다. WireMock이
+    // 자기 Jackson/Guava를 들고 들어와 이 해석에 끼어들면, 캐시 직렬화(GenericJackson2JsonRedisSerializer)
+    // 처럼 Jackson 버전에 민감한 지점에서 테스트와 운영이 다르게 동작할 수 있다. standalone은
+    // 의존성을 전부 셰이딩해 버전 해석에 아예 참여하지 않는다.
+    // (Jetty 충돌은 이 레포에선 문제가 아니다 — 서블릿 컨테이너로 Tomcat을 쓰고 있어 Jetty가 없다.)
+    testImplementation 'org.wiremock:wiremock-standalone:3.13.1'
+
     // 테스트는 H2 인메모리 DB를 쓴다(src/test/resources/application-test.yml). 그 전까지는
     // @SpringBootTest가 .env의 개발용 PostgreSQL에 그대로 붙었고, DB_DDL_AUTO=create 탓에
     // 테스트를 돌릴 때마다 개발 DB의 테이블 13개가 drop/create 됐다(실측으로 확인).
@@ -82,7 +95,15 @@ dependencies {
     implementation platform('software.amazon.awssdk:bom:2.51.0') // 최신 안정판으로 맞추기
     implementation 'software.amazon.awssdk:s3'
     implementation 'software.amazon.awssdk:cloudfront' // CloudFrontUtilities (Signed URL 발급), CloudFrontClient (invalidation)
-    implementation 'com.google.genai:google-genai:1.28.0'
+
+    // AI 코스 생성 멀티 에이전트 파이프라인용 LLM 전송 계층.
+    // 2.0.x가 아니라 1.1.x인 이유: Spring AI 2.0은 Spring Boot 4.0/4.1을 요구하는데 이 레포는
+    // Boot 3.5.7이다. 1.1.x는 Boot 3.4/3.5를 지원하고, 이번 설계가 Spring AI에 요구하는 유일한
+    // 기능(JSON 스키마를 프롬프트 텍스트가 아니라 response_format.json_schema API 필드로 전송)이
+    // 1.1.x에 이미 들어 있어 기능 손해가 없다.
+    // Boot 4 이전은 별도 작업으로 분리했다 (docs/tasks/ai-course-create/ROADMAP.md 참고).
+    implementation platform('org.springframework.ai:spring-ai-bom:1.1.8')
+    implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 }
 
 compileJava {
@@ -129,8 +150,11 @@ tasks.register('generateTestCloudFrontKey') {
 tasks.named('test') {
     dependsOn 'generateTestCloudFrontKey'
 
-    // test/presigned-url-bottleneck: SigningBenchmarkTest(@Tag("benchmark"))는 openssl 프로세스
-    // 호출과 12,000회 반복 서명을 포함해 일반 빌드에 넣기엔 느리다 — 일반 빌드/CI에서는 제외하고,
+    // @Tag("benchmark")가 붙는 이유는 두 가지이고, 둘 다 일반 빌드/CI에 넣으면 안 되는 사유다.
+    //   ① 느리다 — SigningBenchmarkTest는 openssl 프로세스 호출과 12,000회 반복 서명을,
+    //      RouteOptimizerBenchmarkTest는 순열 수만큼의 반복 측정을 포함한다.
+    //   ② 돈과 쿼터를 쓴다 — AiHallucinationBaselineTest와 SpringAiStructuredOutputVerificationTest의
+    //      실 API 케이스는 OpenAI를 실제로 호출한다. CI가 매 푸시마다 돌리면 안 된다.
     // 아래 `benchmarkTest` 태스크(`./gradlew benchmarkTest`)로만 명시적으로 돌린다.
     useJUnitPlatform {
         excludeTags 'benchmark'
@@ -157,7 +181,7 @@ tasks.register('contextSwitchBenchmarkJar', Jar) {
 }
 
 tasks.register('benchmarkTest', Test) {
-    description = 'presign/CloudFront 서명 1회 비용 마이크로벤치마크만 실행한다 (test/presigned-url-bottleneck)'
+    description = '@Tag("benchmark") 테스트만 실행한다 — 마이크로벤치마크와 외부 API 실호출 측정'
     group = 'verification'
     dependsOn 'generateTestCloudFrontKey'
     testClassesDirs = sourceSets.test.output.classesDirs

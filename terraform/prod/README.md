@@ -20,7 +20,7 @@
 
 이유는 두 가지다.
 
-- **user_data는 인스턴스 안에서 인증 없이 읽힌다**(`http://169.254.169.254/latest/user-data`). 이 앱은 Kakao·Gemini로 아웃바운드 HTTP를 하므로 SSRF 표면이 실재하고, 운영은 `0.0.0.0/0`에 노출된다. 부하테스트 환경은 개발자 IP만 열린 일회성이라 감수할 수 있었지만 여기서는 아니다.
+- **user_data는 인스턴스 안에서 인증 없이 읽힌다**(`http://169.254.169.254/latest/user-data`). 이 앱은 Kakao·OpenAI·네이버·TourAPI로 아웃바운드 HTTP를 하므로 SSRF 표면이 실재하고, 운영은 `0.0.0.0/0`에 노출된다. 부하테스트 환경은 개발자 IP만 열린 일회성이라 감수할 수 있었지만 여기서는 아니다.
 - **terraform 밖에 두면 `destroy`가 지우지 않는다.** 온디맨드로 다시 apply할 때 시크릿을 재입력할 필요가 없다.
 
 `aws_ssm_parameter` **리소스로 만들면 안 된다** — 값이 tfstate에 평문으로 돌아와 지금 없애려는 문제 그 자체가 된다. 아래처럼 CLI로 1회 등록한다.
@@ -34,11 +34,17 @@
 | `/yourtrip/prod/artifact_key` | 인스턴스가 내려받을 JAR의 S3 키. **비밀이 아니라 `String`이다** |
 | `/yourtrip/prod/grafana/<이름>` | Grafana Cloud 접속 정보와 토큰(#121). **URL·숫자 ID는 `String`, 토큰만 `SecureString`** |
 
+**AI 코스 생성 키 4개는 누락 시 증상이 다르다.** `OPENAI_API_KEY`가 없으면 앱은 정상 기동하고
+헬스체크도 통과한 뒤 **코스 생성 요청만 실패한다** — 배포는 초록불로 끝나므로 가장 늦게 발견된다.
+나머지 셋(네이버·TourAPI)은 fail-open이라 후보 공급 품질만 떨어지고 생성은 계속된다.
+`GEMINI_API_KEY`는 더 이상 쓰지 않으므로 남아 있으면 지운다.
+
 ```bash
 export AWS_PROFILE=terraform-admin
 
 for k in DB_PASSWORD JWT_SECRET MAIL_EMAIL MAIL_PASSWORD KAKAO_API_KEY \
-         AWS_ACCESS_KEY AWS_SECRET_KEY GEMINI_API_KEY; do
+         AWS_ACCESS_KEY AWS_SECRET_KEY OPENAI_API_KEY \
+         NAVER_CLIENT_ID NAVER_CLIENT_SECRET TOUR_API_KEY; do
   read -rsp "$k: " v && echo
   aws ssm put-parameter --name "/yourtrip/prod/env/$k" --type SecureString --value "$v" --overwrite
 done
@@ -83,7 +89,7 @@ unset v
 aws ssm get-parameters-by-path --path /yourtrip/prod --recursive --query 'Parameters[].Name' --output text
 ```
 
-`env/` 아래 8개, `cloudfront_private_key`·`artifact_key` 각 1개, `grafana/` 아래 5개 — 합쳐 **15개**가 나와야 한다.
+`env/` 아래 11개, `cloudfront_private_key`·`artifact_key` 각 1개, `grafana/` 아래 5개 — 합쳐 **18개**가 나와야 한다.
 
 > **`grafana/` 5개가 없으면 `plan`이 실패한다.** `artifact_key`와 같은 장치를 걸어 뒀다([asg.tf](asg.tf)의 `data.aws_ssm_parameter.grafana_cloud_prometheus_url`). 등록을 빠뜨려도 인스턴스는 정상적으로 뜨고 **관측만 조용히 비기 때문에**, 대시보드가 왜 빈지 찾아 user-data 로그를 뒤지는 상황을 막는다. 다섯 개 중 URL 하나만 읽는 이유는 `data` 소스가 읽은 값이 tfstate에 남기 때문이다 — 토큰을 읽으면 시크릿을 SSM으로 옮긴 의미가 사라진다.
 
@@ -207,7 +213,7 @@ aws ssm send-command --instance-ids <id> --document-name AWS-RunShellScript \
   --parameters 'commands=["grep -oE \"^[A-Z_]+\" /opt/app/.env | sort | tr \"\\n\" \" \"","journalctl -u yourtrip-app -n 40 --no-pager"]'
 ```
 
-`.env`에 시크릿 8개가 있는지부터 본다. 없으면 user-data의 SSM 조회 구간이 실패한 것이다.
+`.env`에 시크릿 11개가 있는지부터 본다. 없으면 user-data의 SSM 조회 구간이 실패한 것이다.
 
 ### `artifact_key`가 없어서 plan·destroy가 막힌다
 

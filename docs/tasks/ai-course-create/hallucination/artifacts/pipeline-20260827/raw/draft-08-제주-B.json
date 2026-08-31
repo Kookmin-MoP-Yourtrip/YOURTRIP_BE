@@ -1,0 +1,254 @@
+{
+  "title" : "바람과 숲 사이, 제주 가족 삼일",
+  "concept" : "자차로 제주 동부·남부·서부의 자연 권역을 나누어 여유롭게 둘러보는 가족 여행",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "09:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "제주 글라스하우스",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 33.4291280857,
+        "longitude" : 126.9340141417,
+        "address" : "제주특별자치도 서귀포시 성산읍 고성리 46",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:30:00",
+      "stayMinutes" : 45
+    }, {
+      "place" : {
+        "name" : "서귀피안 베이커리",
+        "slotType" : "CAFE",
+        "latitude" : 33.4352519,
+        "longitude" : 126.9219377,
+        "address" : "제주특별자치도 서귀포시 성산읍 신양로122번길 17 1층 ~ 3층",
+        "placeUrl" : "http://place.map.kakao.com/231488419",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:25:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "코코마마 성산점",
+        "slotType" : "MEAL",
+        "latitude" : 33.4610411,
+        "longitude" : 126.9342912,
+        "address" : "제주특별자치도 서귀포시 성산읍 일출로 258-11 1층 cocomama",
+        "placeUrl" : "http://place.map.kakao.com/787179341",
+        "source" : "SEEDED",
+        "matchedModifier" : "PARKING_AVAILABLE"
+      },
+      "startTime" : "11:40:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "성산일출봉",
+        "slotType" : "ATTRACTION",
+        "latitude" : 33.4588826,
+        "longitude" : 126.9408234,
+        "address" : "제주특별자치도 서귀포시 성산읍 성산리 1",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "13:15:00",
+      "stayMinutes" : 150
+    }, {
+      "place" : {
+        "name" : "식산봉",
+        "slotType" : "STROLL",
+        "latitude" : 33.4656811,
+        "longitude" : 126.9199394,
+        "address" : "제주특별자치도 서귀포시 성산읍 오조리 318-4",
+        "placeUrl" : "http://place.map.kakao.com/25297842",
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "15:55:00",
+      "stayMinutes" : 89
+    }, {
+      "place" : {
+        "name" : "성산포 자연산 회센타",
+        "slotType" : "MEAL",
+        "latitude" : 33.4683043,
+        "longitude" : 126.9153198,
+        "address" : "제주특별자치도 서귀포시 성산읍 한도로 67 1층, 성산포자연산회센타",
+        "placeUrl" : "http://place.map.kakao.com/22924862",
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "대포해안",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 33.2380216246,
+        "longitude" : 126.4260597168,
+        "address" : "제주특별자치도 서귀포시 이어도로 36-30 (중문동)",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 58
+    }, {
+      "place" : {
+        "name" : "대포주상절리",
+        "slotType" : "ATTRACTION",
+        "latitude" : 33.2389326421,
+        "longitude" : 126.4264985478,
+        "address" : "제주특별자치도 서귀포시 이어도로 36-24 (중문동)",
+        "placeUrl" : "http://place.map.kakao.com/10793668",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:05:00",
+      "stayMinutes" : 140
+    }, {
+      "place" : {
+        "name" : "자연임실치즈피자 중문점",
+        "slotType" : "MEAL",
+        "latitude" : 33.2508069,
+        "longitude" : 126.4307453,
+        "address" : "제주특별자치도 서귀포시 천제연로 242",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "12:35:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "중문별장",
+        "slotType" : "CAFE",
+        "latitude" : 33.2523395,
+        "longitude" : 126.4402143,
+        "address" : "제주특별자치도 서귀포시 천제연로 337 중문별장",
+        "placeUrl" : "http://place.map.kakao.com/2145770450",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:15:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "엉덩물계곡",
+        "slotType" : "STROLL",
+        "latitude" : 33.2479286727,
+        "longitude" : 126.4139105501,
+        "address" : "제주특별자치도 서귀포시 색달동",
+        "placeUrl" : "http://place.map.kakao.com/27548967",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:55:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "까망돼지 중문점",
+        "slotType" : "MEAL",
+        "latitude" : 33.2574311,
+        "longitude" : 126.413421,
+        "address" : "제주특별자치도 서귀포시 색달중앙로 21 여미지하우스 1층 까망돼지 본점",
+        "placeUrl" : "http://place.map.kakao.com/24325071",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "09:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "해거름전망대",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 33.3702664,
+        "longitude" : 126.2062312,
+        "address" : "제주특별자치도 제주시 한경면 판포리 1608",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:30:00",
+      "stayMinutes" : 51
+    }, {
+      "place" : {
+        "name" : "한림공원",
+        "slotType" : "ATTRACTION",
+        "latitude" : 33.3886659647,
+        "longitude" : 126.2415557152,
+        "address" : "제주특별자치도 제주시 한림읍 한림로 300",
+        "placeUrl" : "http://place.map.kakao.com/10941032",
+        "source" : "LISTED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "10:40:00",
+      "stayMinutes" : 114
+    }, {
+      "place" : {
+        "name" : "제주 정직한돈 한림협재점",
+        "slotType" : "MEAL",
+        "latitude" : 33.3891153,
+        "longitude" : 126.2503389,
+        "address" : "제주특별자치도 제주시 한림읍 일주서로 5083 2층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:40:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "협재해수욕장",
+        "slotType" : "STROLL",
+        "latitude" : 33.393776477,
+        "longitude" : 126.239441896,
+        "address" : "제주특별자치도 제주시 한림읍 한림로 329-10",
+        "placeUrl" : "http://place.map.kakao.com/8159415",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:15:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "호텔샌드",
+        "slotType" : "CAFE",
+        "latitude" : 33.3939524,
+        "longitude" : 126.2405259,
+        "address" : "제주특별자치도 제주시 한림읍 한림로 339",
+        "placeUrl" : "http://place.map.kakao.com/1500112810",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:55:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "옹포바다횟집",
+        "slotType" : "MEAL",
+        "latitude" : 33.4038518,
+        "longitude" : 126.2517055,
+        "address" : "제주특별자치도 제주시 한림읍 옹포1길 24 옹포바다횟집",
+        "placeUrl" : "http://place.map.kakao.com/1582336126",
+        "source" : "SEEDED",
+        "matchedModifier" : "NATURE"
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  } ]
+}

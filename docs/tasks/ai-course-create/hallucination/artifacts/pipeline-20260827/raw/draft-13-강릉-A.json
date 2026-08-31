@@ -1,0 +1,254 @@
+{
+  "title" : "파도와 골목 사이, 강릉에서의 사흘",
+  "concept" : "걷기 좋은 해변과 골목을 따라 연인과 천천히 쉬어 가는 가성비 감성 여행",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "20:00:00",
+    "places" : [ {
+      "place" : {
+        "name" : "강릉 오금집",
+        "slotType" : "STROLL",
+        "latitude" : 37.7563708685,
+        "longitude" : 128.8940418219,
+        "address" : "강원특별자치도 강릉시 강릉대로210번길 23-9 (임당동)",
+        "placeUrl" : "http://place.map.kakao.com/1074295820",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 77
+    }, {
+      "place" : {
+        "name" : "배니닭강정",
+        "slotType" : "MEAL",
+        "latitude" : 37.7542324,
+        "longitude" : 128.8991435,
+        "address" : "강원특별자치도 강릉시 금성로13번길 3-1 (성남동)",
+        "placeUrl" : "http://place.map.kakao.com/19660110",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 89
+    }, {
+      "place" : {
+        "name" : "월화거리",
+        "slotType" : "ATTRACTION",
+        "latitude" : 37.7560515,
+        "longitude" : 128.8973035,
+        "address" : "강원특별자치도 강릉시 경강로 2111",
+        "placeUrl" : "http://place.map.kakao.com/2058461010",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:15:00",
+      "stayMinutes" : 146
+    }, {
+      "place" : {
+        "name" : "책뜰",
+        "slotType" : "SHOPPING",
+        "latitude" : 37.7581508,
+        "longitude" : 128.9057561,
+        "address" : "강원특별자치도 강릉시 수문길 59 101호",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "15:55:00",
+      "stayMinutes" : 87
+    }, {
+      "place" : {
+        "name" : "나이슬리",
+        "slotType" : "MEAL",
+        "latitude" : 37.7601983,
+        "longitude" : 128.9050948,
+        "address" : "강원특별자치도 강릉시 용지로110번길 10",
+        "placeUrl" : "http://place.map.kakao.com/441407566",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "구공커피",
+        "slotType" : "CAFE",
+        "latitude" : 37.7640484,
+        "longitude" : 128.9032762,
+        "address" : "강원특별자치도 강릉시 남구길29번길 19 1층 구공커피",
+        "placeUrl" : "http://place.map.kakao.com/1218816840",
+        "source" : "SEEDED",
+        "matchedModifier" : "ROOFTOP"
+      },
+      "startTime" : "19:00:00",
+      "stayMinutes" : 60
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "사근진해변",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 37.8128825,
+        "longitude" : 128.8990719,
+        "address" : "강원특별자치도 강릉시 해안로604번길 16",
+        "placeUrl" : "http://place.map.kakao.com/8398420",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 51
+    }, {
+      "place" : {
+        "name" : "경포해변",
+        "slotType" : "ATTRACTION",
+        "latitude" : 37.8054952,
+        "longitude" : 128.9082081,
+        "address" : "강원특별자치도 강릉시 강문동 산1 -1,",
+        "placeUrl" : "http://place.map.kakao.com/26935806",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:10:00",
+      "stayMinutes" : 110
+    }, {
+      "place" : {
+        "name" : "강릉짬뽕순두부 동화가든 본점",
+        "slotType" : "MEAL",
+        "latitude" : 37.7911711,
+        "longitude" : 128.9146711,
+        "address" : "강원특별자치도 강릉시 초당순두부길77번길 15 동화가든",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:20:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "카페 툇마루",
+        "slotType" : "CAFE",
+        "latitude" : 37.7928911,
+        "longitude" : 128.9144756,
+        "address" : "강원특별자치도 강릉시 난설헌로 232 카페 툇마루",
+        "placeUrl" : "http://place.map.kakao.com/401540066",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "14:00:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "경포호",
+        "slotType" : "STROLL",
+        "latitude" : 37.797933,
+        "longitude" : 128.9048623,
+        "address" : "강원특별자치도 강릉시 저동",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:45:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "초당비스트로",
+        "slotType" : "MEAL",
+        "latitude" : 37.7878908,
+        "longitude" : 128.9104834,
+        "address" : "강원특별자치도 강릉시 초당순두부길 19 초당비스트로",
+        "placeUrl" : "http://place.map.kakao.com/1572181856",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "09:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "사천진항",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 37.8368418022,
+        "longitude" : 128.8782046462,
+        "address" : "강원특별자치도 강릉시 사천면 진리해변길 68-23",
+        "placeUrl" : "http://place.map.kakao.com/26260120",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:30:00",
+      "stayMinutes" : 45
+    }, {
+      "place" : {
+        "name" : "주문진 방파제",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 37.8796220881,
+        "longitude" : 128.8335906768,
+        "address" : "강원특별자치도 강릉시 주문진읍 해안로 1609",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:00:00",
+      "stayMinutes" : 120
+    }, {
+      "place" : {
+        "name" : "주문활게",
+        "slotType" : "MEAL",
+        "latitude" : 37.8895285,
+        "longitude" : 128.8285032,
+        "address" : "강원특별자치도 강릉시 주문진읍 해안로 1730 강릉시수협 1층",
+        "placeUrl" : "http://place.map.kakao.com/195031889",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:15:00",
+      "stayMinutes" : 78
+    }, {
+      "place" : {
+        "name" : "아들바위공원",
+        "slotType" : "STROLL",
+        "latitude" : 37.9057595,
+        "longitude" : 128.8302371,
+        "address" : "강원특별자치도 강릉시 주문진읍 주문리 791-47",
+        "placeUrl" : "http://place.map.kakao.com/8416134",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:50:00",
+      "stayMinutes" : 65
+    }, {
+      "place" : {
+        "name" : "카페하월지",
+        "slotType" : "CAFE",
+        "latitude" : 37.8948306,
+        "longitude" : 128.828027,
+        "address" : "강원특별자치도 강릉시 주문진읍 주문로 123-4 동양빌딩 뒷편 카페하월지",
+        "placeUrl" : "http://place.map.kakao.com/1930197989",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "16:15:00",
+      "stayMinutes" : 65
+    }, {
+      "place" : {
+        "name" : "강릉최대게 본점",
+        "slotType" : "MEAL",
+        "latitude" : 37.8894424,
+        "longitude" : 128.8281253,
+        "address" : "강원특별자치도 강릉시 주문진읍 해안로 1729 1~2층",
+        "placeUrl" : "http://place.map.kakao.com/1261976338",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  } ]
+}

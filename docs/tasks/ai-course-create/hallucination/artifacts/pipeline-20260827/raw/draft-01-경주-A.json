@@ -1,0 +1,228 @@
+{
+  "title" : "천년의 골목, 느린 마음",
+  "concept" : "걸어서 이어지는 고즈넉한 풍경과 감성적인 골목을 중심으로, 연인과 부담 없이 즐기는 경주 3일 힐링 여행",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "경주 동부 사적지대",
+        "slotType" : "STROLL",
+        "latitude" : 35.8354105128,
+        "longitude" : 129.2179617281,
+        "address" : "경상북도 경주시 황남동",
+        "placeUrl" : "http://place.map.kakao.com/12629551",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "경주 황남리 고분군",
+        "slotType" : "ATTRACTION",
+        "latitude" : 35.8395463,
+        "longitude" : 129.2118202,
+        "address" : "경상북도 경주시 황남동",
+        "placeUrl" : "http://place.map.kakao.com/8179016",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:15:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "고도리",
+        "slotType" : "MEAL",
+        "latitude" : 35.8367571,
+        "longitude" : 129.2097755,
+        "address" : "경상북도 경주시 포석로 1074 2층",
+        "placeUrl" : "http://place.map.kakao.com/349223979",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "13:00:00",
+      "stayMinutes" : 84
+    }, {
+      "place" : {
+        "name" : "무궁미가",
+        "slotType" : "SHOPPING",
+        "latitude" : 35.8388103,
+        "longitude" : 129.2092704,
+        "address" : "경상북도 경주시 포석로1095번길 6 초록색 창문",
+        "placeUrl" : "http://place.map.kakao.com/1900128504",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:35:00",
+      "stayMinutes" : 78
+    }, {
+      "place" : {
+        "name" : "양지다방",
+        "slotType" : "CAFE",
+        "latitude" : 35.8372696,
+        "longitude" : 129.2092062,
+        "address" : "경상북도 경주시 사정로57번길 7-2 양지다방",
+        "placeUrl" : "http://place.map.kakao.com/599889357",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "16:05:00",
+      "stayMinutes" : 77
+    }, {
+      "place" : {
+        "name" : "큰기와 황리단길 본점",
+        "slotType" : "MEAL",
+        "latitude" : 35.8349813,
+        "longitude" : 129.2079072,
+        "address" : "경상북도 경주시 첨성로49번길 22 1층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:30:00",
+    "endTime" : "15:40:00",
+    "places" : [ {
+      "place" : {
+        "name" : "월정교",
+        "slotType" : "ATTRACTION",
+        "latitude" : 35.8293658,
+        "longitude" : 129.2173527,
+        "address" : "경상북도 경주시 교동 274",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:30:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "교촌마을",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 35.8302886,
+        "longitude" : 129.2164809,
+        "address" : "경상북도 경주시 교촌길 39-2",
+        "placeUrl" : "http://place.map.kakao.com/25182534",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:15:00",
+      "stayMinutes" : 120
+    }, {
+      "place" : {
+        "name" : "경주계림",
+        "slotType" : "STROLL",
+        "latitude" : 35.8326213,
+        "longitude" : 129.2189879,
+        "address" : "경상북도 경주시",
+        "placeUrl" : "http://place.map.kakao.com/8183204",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:25:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "황남빵",
+        "slotType" : "CAFE",
+        "latitude" : 35.8408903,
+        "longitude" : 129.2136375,
+        "address" : "경상북도 경주시 태종로 783",
+        "placeUrl" : "http://place.map.kakao.com/26519092",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "14:40:00",
+      "stayMinutes" : 60
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "08:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "신라왕경숲",
+        "slotType" : "VIEWPOINT",
+        "latitude" : 35.8399687258,
+        "longitude" : 129.2388625445,
+        "address" : "경상북도 경주시 구황동 885-6",
+        "placeUrl" : "http://place.map.kakao.com/27572563",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "08:30:00",
+      "stayMinutes" : 59
+    }, {
+      "place" : {
+        "name" : "경주동궁원",
+        "slotType" : "STROLL",
+        "latitude" : 35.8497687,
+        "longitude" : 129.2627204,
+        "address" : "경상북도 경주시 보문로 74-14",
+        "placeUrl" : "http://place.map.kakao.com/19464673",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:55:00",
+      "stayMinutes" : 87
+    }, {
+      "place" : {
+        "name" : "맷돌순두부",
+        "slotType" : "MEAL",
+        "latitude" : 35.8515229,
+        "longitude" : 129.262825,
+        "address" : "경상북도 경주시 북군길 7 맷돌순두부",
+        "placeUrl" : "http://place.map.kakao.com/10341223",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 83
+    }, {
+      "place" : {
+        "name" : "경주레저",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 35.8490616,
+        "longitude" : 129.2654073,
+        "address" : "경상북도 경주시 보문로 4-71",
+        "placeUrl" : "http://place.map.kakao.com/19760587",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:05:00",
+      "stayMinutes" : 150
+    }, {
+      "place" : {
+        "name" : "아덴",
+        "slotType" : "CAFE",
+        "latitude" : 35.8431367,
+        "longitude" : 129.2836246,
+        "address" : "경상북도 경주시 한국관광1번로 34 아덴카페",
+        "placeUrl" : "http://place.map.kakao.com/425270187",
+        "source" : "SEEDED",
+        "matchedModifier" : "QUIET"
+      },
+      "startTime" : "15:55:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "낙지마실",
+        "slotType" : "MEAL",
+        "latitude" : 35.8516092,
+        "longitude" : 129.2629585,
+        "address" : "경상북도 경주시 북군길 9",
+        "placeUrl" : "http://place.map.kakao.com/9729398",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  } ]
+}

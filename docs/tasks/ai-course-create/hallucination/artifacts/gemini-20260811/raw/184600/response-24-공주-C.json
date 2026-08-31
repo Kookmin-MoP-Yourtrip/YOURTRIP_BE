@@ -1,0 +1,84 @@
+{
+  "title": "공주 미식 탐험과 역사 속 친구 여행",
+  "daySchedules": [
+    {
+      "day": 1,
+      "places": [
+        {
+          "placeName": "공산성",
+          "startTime": "10:00"
+        },
+        {
+          "placeName": "밤꽃",
+          "startTime": "12:30"
+        },
+        {
+          "placeName": "공주 한옥마을",
+          "startTime": "14:30"
+        },
+        {
+          "placeName": "제민천",
+          "startTime": "16:30"
+        },
+        {
+          "placeName": "명가",
+          "startTime": "18:30"
+        }
+      ]
+    },
+    {
+      "day": 2,
+      "places": [
+        {
+          "placeName": "송산리고분군",
+          "startTime": "09:30"
+        },
+        {
+          "placeName": "국립공주박물관",
+          "startTime": "11:30"
+        },
+        {
+          "placeName": "이학식당",
+          "startTime": "13:00"
+        },
+        {
+          "placeName": "공주풀꽃문학관",
+          "startTime": "15:00"
+        },
+        {
+          "placeName": "황새바위성지",
+          "startTime": "17:00"
+        },
+        {
+          "placeName": "한일식당",
+          "startTime": "19:00"
+        }
+      ]
+    },
+    {
+      "day": 3,
+      "places": [
+        {
+          "placeName": "공주역사영상관",
+          "startTime": "10:00"
+        },
+        {
+          "placeName": "공주하숙마을",
+          "startTime": "11:30"
+        },
+        {
+          "placeName": "고마나루",
+          "startTime": "13:00"
+        },
+        {
+          "placeName": "루치아의뜰",
+          "startTime": "15:00"
+        },
+        {
+          "placeName": "공주산성시장",
+          "startTime": "16:30"
+        }
+      ]
+    }
+  ]
+}

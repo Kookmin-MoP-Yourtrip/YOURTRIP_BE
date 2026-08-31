@@ -1,0 +1,254 @@
+{
+  "title" : "골목마다 다른 맛, 서울에서 노는 사흘",
+  "concept" : "도보로 이어지는 서울의 개성 강한 권역을 누비며 활동적인 체험과 프리미엄 미식 탐방을 즐긴다.",
+  "days" : [ {
+    "day" : 1,
+    "startTime" : "10:00:00",
+    "endTime" : "19:25:00",
+    "places" : [ {
+      "place" : {
+        "name" : "서울월드컵경기장",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 37.5683414708,
+        "longitude" : 126.8972867075,
+        "address" : "서울특별시 마포구 월드컵로 240 (성산동)",
+        "placeUrl" : "http://place.map.kakao.com/11512288",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "10:00:00",
+      "stayMinutes" : 120
+    }, {
+      "place" : {
+        "name" : "홍대 육지",
+        "slotType" : "MEAL",
+        "latitude" : 37.5497425,
+        "longitude" : 126.9174273,
+        "address" : "서울특별시 마포구 독막로3길 34 1F",
+        "placeUrl" : "http://place.map.kakao.com/931881312",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "12:25:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "경의선숲길",
+        "slotType" : "ATTRACTION",
+        "latitude" : 37.5619568,
+        "longitude" : 126.9229824,
+        "address" : "서울특별시 마포구 연남동",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:00:00",
+      "stayMinutes" : 90
+    }, {
+      "place" : {
+        "name" : "카카오프렌즈 홍대플래그십 스토어",
+        "slotType" : "SHOPPING",
+        "latitude" : 37.5565115,
+        "longitude" : 126.9237918,
+        "address" : "서울특별시 마포구 양화로 162 좋은사람들빌딩 1~3층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "15:45:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "베이글랜드 홍대점",
+        "slotType" : "CAFE",
+        "latitude" : 37.5554909,
+        "longitude" : 126.9259638,
+        "address" : "서울특별시 마포구 와우산로29바길 19 삼이빌딩 1층",
+        "placeUrl" : "http://place.map.kakao.com/1685707673",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "16:55:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "이츠야",
+        "slotType" : "MEAL",
+        "latitude" : 37.5487338,
+        "longitude" : 126.9199539,
+        "address" : "서울특별시 마포구 양화로6길 99-9",
+        "placeUrl" : "http://place.map.kakao.com/1709251572",
+        "source" : "SEEDED",
+        "matchedModifier" : "EXPENSIVE"
+      },
+      "startTime" : "18:10:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 2,
+    "startTime" : "09:30:00",
+    "endTime" : "18:45:00",
+    "places" : [ {
+      "place" : {
+        "name" : "서울숲",
+        "slotType" : "STROLL",
+        "latitude" : 37.5419644,
+        "longitude" : 127.0385663,
+        "address" : "서울특별시 성동구 뚝섬로 273",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:30:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "플레이즈라운지",
+        "slotType" : "CAFE",
+        "latitude" : 37.5457261,
+        "longitude" : 127.0423333,
+        "address" : "서울특별시 성동구 서울숲2길 32-14 갤러리아포레 더몰 B104",
+        "placeUrl" : "http://place.map.kakao.com/836149932",
+        "source" : "SEEDED",
+        "matchedModifier" : "EXPENSIVE"
+      },
+      "startTime" : "10:45:00",
+      "stayMinutes" : 60
+    }, {
+      "place" : {
+        "name" : "카츠메",
+        "slotType" : "MEAL",
+        "latitude" : 37.5460555,
+        "longitude" : 127.0434078,
+        "address" : "서울특별시 성동구 서울숲2길 46-12 지하1층",
+        "placeUrl" : "http://place.map.kakao.com/1816285015",
+        "source" : "SEEDED",
+        "matchedModifier" : "EXPENSIVE"
+      },
+      "startTime" : "11:55:00",
+      "stayMinutes" : 81
+    }, {
+      "place" : {
+        "name" : "반스 성수점",
+        "slotType" : "SHOPPING",
+        "latitude" : 37.5443233,
+        "longitude" : 127.0530237,
+        "address" : "서울특별시 성동구 연무장5길 14 1층",
+        "placeUrl" : "http://place.map.kakao.com/414022048",
+        "source" : "SEEDED",
+        "matchedModifier" : "EXPENSIVE"
+      },
+      "startTime" : "13:30:00",
+      "stayMinutes" : 71
+    }, {
+      "place" : {
+        "name" : "클라이밍파크 성수점",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 37.5422683,
+        "longitude" : 127.0581487,
+        "address" : "서울특별시 성동구 연무장13길 7 매니아빌딩",
+        "placeUrl" : "http://place.map.kakao.com/662485726",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "14:55:00",
+      "stayMinutes" : 141
+    }, {
+      "place" : {
+        "name" : "프리미엄 직원식당 성수점",
+        "slotType" : "MEAL",
+        "latitude" : 37.5469,
+        "longitude" : 127.0659794,
+        "address" : "서울특별시 성동구 아차산로17길 48 성수 SK V1센터1 지하1층",
+        "placeUrl" : "http://place.map.kakao.com/1055909315",
+        "source" : "SEEDED",
+        "matchedModifier" : "EXPENSIVE"
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    } ]
+  }, {
+    "day" : 3,
+    "startTime" : "09:00:00",
+    "endTime" : "20:00:00",
+    "places" : [ {
+      "place" : {
+        "name" : "건청궁",
+        "slotType" : "ATTRACTION",
+        "latitude" : 37.5760836609,
+        "longitude" : 126.9767375783,
+        "address" : "서울특별시 종로구 사직로 161 (세종로)",
+        "placeUrl" : null,
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "09:00:00",
+      "stayMinutes" : 135
+    }, {
+      "place" : {
+        "name" : "낙동강",
+        "slotType" : "MEAL",
+        "latitude" : 37.567605,
+        "longitude" : 126.9798345,
+        "address" : "서울특별시 중구 을지로1길 34 낙동강",
+        "placeUrl" : "http://place.map.kakao.com/11020585",
+        "source" : "SEEDED",
+        "matchedModifier" : "EXPENSIVE"
+      },
+      "startTime" : "11:30:00",
+      "stayMinutes" : 85
+    }, {
+      "place" : {
+        "name" : "런닝맨 인사동점",
+        "slotType" : "EXPERIENCE",
+        "latitude" : 37.5718987,
+        "longitude" : 126.9872482,
+        "address" : "서울특별시 종로구 인사동길 12 대일빌딩 지하1층",
+        "placeUrl" : "http://place.map.kakao.com/649534068",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "13:10:00",
+      "stayMinutes" : 158
+    }, {
+      "place" : {
+        "name" : "익선동 한옥거리",
+        "slotType" : "STROLL",
+        "latitude" : 37.5737675037,
+        "longitude" : 126.9901419773,
+        "address" : "서울시 종로구 익선동",
+        "placeUrl" : "http://place.map.kakao.com/467710256",
+        "source" : "LISTED",
+        "matchedModifier" : null
+      },
+      "startTime" : "16:00:00",
+      "stayMinutes" : 79
+    }, {
+      "place" : {
+        "name" : "익선잡방",
+        "slotType" : "MEAL",
+        "latitude" : 37.573398,
+        "longitude" : 126.9894722,
+        "address" : "서울특별시 종로구 수표로28길 17-21 익선잡방",
+        "placeUrl" : "http://place.map.kakao.com/2078910428",
+        "source" : "SEEDED",
+        "matchedModifier" : null
+      },
+      "startTime" : "17:30:00",
+      "stayMinutes" : 75
+    }, {
+      "place" : {
+        "name" : "빙동댕 프리미엄 빙수카페 종로점",
+        "slotType" : "CAFE",
+        "latitude" : 37.5728164,
+        "longitude" : 126.9990045,
+        "address" : "서울특별시 종로구 종로31길 46-1 1층",
+        "placeUrl" : null,
+        "source" : "SEEDED",
+        "matchedModifier" : "EXPENSIVE"
+      },
+      "startTime" : "19:00:00",
+      "stayMinutes" : 60
+    } ]
+  } ]
+}

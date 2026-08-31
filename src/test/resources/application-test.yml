@@ -1,13 +1,22 @@
 # 테스트 전용 프로필. @ActiveProfiles("test")를 붙인 테스트에서만 적용된다.
 #
-# 이 파일이 없으면 @SpringBootTest가 spring.profiles.default에 걸려 local 프로필로 뜬다.
-# local은 앱 패키지 DEBUG + SQL/바인딩 파라미터 전량 로깅이라, 테스트 출력이 SQL로 뒤덮여
-# 정작 실패 원인을 찾기 어려워진다(실측: 기동만으로 DEBUG 70줄 + TRACE 24줄이 추가된다).
+# 이 프로필은 테스트를 **개발자 로컬 환경(.env)에서 떼어내는** 것이 목적이고, 세 가지를 한다.
+#
+#   1) DB를 H2 인메모리로 바꾼다. 그 전까지 @SpringBootTest는 .env의 개발용 PostgreSQL에
+#      그대로 붙었고, DB_DDL_AUTO=create 탓에 테스트를 돌릴 때마다 개발 DB의 테이블 13개가
+#      drop/create 됐다(실측으로 확인).
+#   2) 외부 API 자격증명을 더미로 덮어쓰고, base-url을 WireMock 스텁 서버로 바꿔 끼울 수 있게
+#      한다. 그 전까지는 테스트가 로컬 .env의 실제 API 키를 읽어 외부 API를 때릴 수 있었다.
+#   3) 로깅 레벨을 조인다. 이 파일이 없으면 @SpringBootTest가 spring.profiles.default에 걸려
+#      local 프로필로 뜨는데, local은 앱 패키지 DEBUG + SQL/바인딩 파라미터 전량 로깅이라
+#      테스트 출력이 SQL로 뒤덮인다(실측: 기동만으로 DEBUG 70줄 + TRACE 24줄이 추가된다).
 #
 # 로깅 레벨을 application-prod.yml과 동일하게 맞춘 것은 의도적이다. 테스트 출력이 조용해질 뿐
 # 아니라, 배포 환경이 실제로 남길 로그를 테스트에서 미리 보게 된다. 값이 겹친다고 prod 프로필을
-# 테스트에 그대로 쓰지는 않는다 - 이 프로필은 로깅 외에 외부 API 스텁 같은 테스트 전용 설정도
-# 함께 담는 자리이기 때문이다.
+# 테스트에 그대로 쓰지는 않는다 - 이 프로필은 로깅 외에 DB·외부 API 스텁 같은 테스트 전용
+# 설정도 함께 담는 자리이기 때문이다.
+#
+# Redis는 아직 실제 인스턴스를 쓴다.
 
 spring:
   datasource:
@@ -56,6 +65,27 @@ spring:
       # 동작하는 테스트가 된다. 연결 실패는 RedisCacheErrorHandler가 DB 폴백으로 처리하며
       # connect-timeout 1000ms가 대기 상한이라 테스트가 늘어지지 않는다.
       port: 63799
+
+# 외부 API — 자격증명은 더미로, base-url은 WireMock 스텁으로.
+# WireMock 포트는 테스트마다 달라질 수 있으므로, 실제 테스트에서는 @DynamicPropertySource로
+# 주입해 아래 기본값을 덮어쓴다. 여기 적힌 8089는 WireMock 기본 포트다.
+kakao:
+  api-key: test-kakao-api-key
+  local:
+    base-url: http://localhost:8089
+
+# 카카오 블록과 대칭. 실제 WireMock 포트는 테스트마다 달라지므로 클라이언트를 손으로 조립하는
+# 테스트가 baseUrl 을 직접 넘긴다(NaverConfig.buildNaverWebClient) — 이 값은 컨텍스트를 띄우는
+# 테스트가 프로퍼티 누락으로 기동 실패하지 않게 하는 자리표시자다.
+naver:
+  client-id: test-naver-client-id
+  client-secret: test-naver-client-secret
+  local:
+    base-url: http://localhost:8090
+
+tour:
+  base-url: http://localhost:8091
+  service-key: test-tour-service-key
 
 logging:
   level:
@@ -113,8 +143,8 @@ cloudfront:
   # 경로가 상대경로인 것은 Gradle test 태스크의 작업 디렉터리가 프로젝트 루트이기 때문이다.
   private-key-path: build/test-keys/cloudfront-test-key.pem
 
-kakao:
-  api-key: test-kakao-api-key
+# kakao 더미는 위 "외부 API" 블록이 이미 제공한다 — 여기에 다시 쓰면 YAML 중복 키가 되어
+# 뒤엣것이 앞을 덮어쓰고 WireMock base-url 이 조용히 사라진다.
 
 gemini:
   api-key: test-gemini-api-key
