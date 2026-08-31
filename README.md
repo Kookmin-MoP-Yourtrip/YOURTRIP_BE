@@ -70,7 +70,7 @@ YOURTRIP은 사용자가 여행을 계획할 때 겪는
 ### 3️⃣ AI 기반 코스 추천
 
 - 여행 기간, 동행 인원, 선호 스타일 등 간단 정보만 입력하면
-  → 조건에 맞는 **AI 추천 코스** 자동 생성(Gemini + Kakao 장소 검색 보정)
+  → 조건에 맞는 **AI 추천 코스** 자동 생성(OpenAI 멀티 에이전트 + 네이버·TourAPI 후보 공급 + Kakao 장소 보정)
 - 추천된 코스를 기반으로 세부 일정만 수정해서 사용
 
 ### 4️⃣ 코스 공유 & Fork
@@ -130,8 +130,8 @@ YOURTRIP은 사용자가 여행을 계획할 때 겪는
 - **DB**: PostgreSQL + Spring Data JPA(Hibernate) — 테스트만 H2 인메모리(PostgreSQL 호환 모드)
 - **캐시**: Redis(Spring Data Redis + Lettuce) — 인기 코스 목록/상세 캐싱, 조회수 카운터, 랭킹 갱신 분산 락
 - **모니터링**: Spring Boot Actuator + Micrometer — 로컬은 docker-compose(Prometheus·Grafana), 운영은 Grafana Alloy 단일 에이전트 → Grafana Cloud(Prometheus·Loki)
-- **AI**: Gemini(`com.google.genai:google-genai` 1.28.0) — 코스 추천 생성
-- **외부 연동**: Kakao(장소 검색 전용, 로그인은 미사용), AWS SDK v2(S3 + CloudFront Signed URL), Spring Mail
+- **AI**: OpenAI(`org.springframework.ai:spring-ai-bom` 1.1.8, `gpt-5.6-luna`/`gpt-5-nano`) — Planner·Curator 멀티 에이전트 코스 생성 파이프라인
+- **외부 연동**: Kakao(장소 검색 전용, 로그인은 미사용), 네이버 지역검색·한국관광공사 TourAPI(AI 코스 후보 공급), AWS SDK v2(S3 + CloudFront Signed URL), Spring Mail
 - **문서화**: springdoc-openapi 2.6.0 (Swagger UI: `/swagger-ui.html`)
 - **Infra**: AWS ALB + Auto Scaling Group(EC2), RDS(PostgreSQL), ElastiCache(Redis), S3, CloudFront, Route 53 — IaC는 Terraform(수명 기준 모듈 분리)
 - **CI/CD**: GitHub Actions — CI는 `dev` 대상 PR·push에서 빌드·테스트, CD는 OIDC 임시 자격증명으로 S3 업로드 + ASG 무중단 교체
@@ -171,14 +171,17 @@ YOURTRIP_BE/
     │   ├── uploadcourse/          # 업로드(공개)된 코스, fork/좋아요/조회수 등
     │   └── user/                  # 이메일 회원가입/로그인/JWT 발급
     └── global/
+        ├── ai/                    # AI 코스 생성 멀티 에이전트 파이프라인
+        │                          #   (에이전트·후보 공급·그라운딩·경로 최적화·OpenAI 어댑터)
         ├── cloudfront/            # CloudFront Signed URL 발급·무효화
         ├── config/                # SecurityConfig, SwaggerConfig, WebConfig, RedisConfig 등
         ├── exception/             # BusinessException, GlobalExceptionHandler
-        ├── gemini/                # Gemini AI 코스 추천 연동
         ├── jwt/                   # JwtAuthenticationFilter, JwtTokenProvider
         ├── kakao/                 # 카카오 지도/장소 검색 클라이언트(AI 코스 생성 시 장소 보정용)
         ├── mail/                  # 이메일 인증 발송
-        └── s3/                    # AWS S3 업로드/다운로드
+        ├── naver/                 # 네이버 지역검색 클라이언트(AI 코스 후보 공급 — 인기 축)
+        ├── s3/                    # AWS S3 업로드/다운로드
+        └── tour/                  # 한국관광공사 TourAPI 클라이언트(AI 코스 후보 공급 — 커버리지 축)
 ```
 
 **표준 레이어링 패턴**: `controller` → `service`(인터페이스 + `*ServiceImpl`) → `repository`(Spring Data JPA) → `entity`, 그 옆에 `dto/request`·`dto/response`, `mapper`(entity↔DTO 변환).
@@ -210,7 +213,8 @@ docker compose up -d redis
    - KAKAO_API_KEY (장소 검색 전용, 로그인 미사용)
    - S3_BUCKET, AWS_ACCESS_KEY, AWS_SECRET_KEY
    - CLOUDFRONT_DOMAIN, CLOUDFRONT_KEY_PAIR_ID, CLOUDFRONT_PRIVATE_KEY_PATH, CLOUDFRONT_DISTRIBUTION_ID
-   - GEMINI_API_KEY
+   - OPENAI_API_KEY (AI 코스 생성 — 비어 있어도 기동은 되지만 코스 생성이 실패한다)
+   - NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, TOUR_API_KEY (AI 코스 후보 공급, fail-open)
    - REDIS_HOST, REDIS_PORT
   3. Redis가 떠 있지 않으면 캐시 경로가 DB 폴백으로 동작한다(앱은 뜨지만 WARN 로그가 쌓인다).
   4. 기본 포트는 8080, Swagger는 /swagger-ui.html
