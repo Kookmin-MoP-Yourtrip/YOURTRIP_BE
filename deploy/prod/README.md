@@ -1,6 +1,6 @@
-# 운영 배포 설정 — JVM 기동 옵션
+# 운영 배포 설정
 
-운영 서버(`yourtrip.cloud`)의 **JVM 기동 옵션을 버전관리하는 곳**이다.
+운영 서버(`yourtrip.cloud`)의 구성 중 **저장소가 근거와 함께 들고 있어야 하는 것**을 모아 둔 곳이다. JVM 기동 옵션과 systemd 유닛은 인스턴스가 부팅할 때 그대로 주입받고, instance refresh 조건은 terraform과 CD가 함께 읽는다.
 
 ## 왜 이 디렉터리가 필요한가
 
@@ -16,6 +16,8 @@
 |---|---|
 | [jvm-opts.env](jvm-opts.env) | **JVM 옵션의 정본.** 값과 산정 근거가 함께 있다. systemd `EnvironmentFile`로 읽힌다 |
 | [yourtrip-app.service](yourtrip-app.service) | systemd 유닛. 부하테스트에서 검증된 구조를 옮긴 것이다 |
+| [instance-refresh-preferences.json](instance-refresh-preferences.json) | **인스턴스 교체 조건의 정본.** terraform과 CD 워크플로가 **같은 파일을 읽는다** — 아래 참고 |
+| [config.alloy](config.alloy) | **Grafana Alloy 설정의 정본.** 앱 지표(`localhost:8080/actuator/prometheus`)·호스트 지표·journald 로그를 Grafana Cloud로 보낸다. user-data가 `/etc/alloy/config.alloy`로 주입한다 |
 
 **JVM 옵션을 별도 파일로 나눈 이유**는 `/opt/app/.env`가 DB 비밀번호·API 키를 담고 있어 git 밖에 있어야 하기 때문이다. JVM 옵션은 비밀이 아니라 **근거를 남겨야 하는 설정**이므로 반대로 저장소가 들고 있어야 한다. systemd는 `EnvironmentFile=`을 여러 줄 쓸 수 있어 둘을 나란히 읽을 수 있다.
 
@@ -31,7 +33,17 @@ JVM_OPTS=-Xmx768m -Xss512k
 
 ## 적용
 
-**앱을 재기동하므로 서비스 중단이 발생한다.** 트래픽이 적은 시간에 한다.
+**정상 경로는 `terraform apply`다.** user-data가 이 디렉터리의 파일을 `file()`로 읽어 인스턴스에 넣으므로, 파일을 고치고 apply하면 Launch Template이 새 버전이 되고 ASG가 롤링으로 교체한다. 먼저 띄우고 나중에 죽이므로 **서비스 중단이 없다.**
+
+```bash
+terraform -chdir=terraform/prod plan -out=tfplan && terraform -chdir=terraform/prod apply tfplan
+```
+
+> **JAR을 바꾸는 것과는 경로가 다르다.** 새 코드 배포는 `dev` 머지로 CD가 처리하며 terraform을 거치지 않는다([docs/guide/cd.md](../../docs/guide/cd.md)). 이 디렉터리의 파일은 **인스턴스의 형상**이라 terraform이, JAR은 **배포 대상**이라 CD가 담당한다. 그래서 여기를 고치면 `apply`가 필요하고, 코드를 고치면 머지만으로 나간다.
+
+### 이미 떠 있는 서버를 손으로 고칠 때
+
+**앱을 재기동하므로 서비스 중단이 발생한다.** 게다가 다음 인스턴스 교체 때 사라지는 임시 변경이다 — 항구적으로 반영하려면 위 절차를 쓴다.
 
 ```bash
 scp deploy/prod/jvm-opts.env ec2-user@<운영 서버>:/tmp/jvm-opts.env
@@ -73,6 +85,30 @@ curl -sf http://localhost:8080/actuator/prometheus | awk '/^jvm_memory_max_bytes
 sudo journalctl -u yourtrip-app -n 200 --no-pager | grep -i profile
 ```
 
+**(3) Alloy가 실제로 관측하고 있는가**
+
+에이전트가 살아 있는 것과 지표·로그가 실제로 나가는 것은 다르다. 두 가지를 따로 본다.
+
+```bash
+systemctl is-active alloy && systemctl show -p NRestarts --value alloy
+```
+
+`active`와 `0`이 나와야 한다. 재시작 횟수가 쌓이고 있으면 OOM이거나 설정 오류다.
+
+```bash
+curl -s localhost:12345/metrics | grep -c loki_source_journal_target_lines_total
+```
+
+**`0`이면 로그를 한 줄도 못 읽고 있다.** `loki.source.journal`은 빌드 태그(`promtail_journal_enabled`) 뒤에 있어서, 태그가 없는 빌드에서는 컴포넌트가 **오류 없이 등록만 되고 아무것도 하지 않는다.** 로그가 안 올라오는데 `systemctl status`는 멀쩡한 상황이 이것이다. 공식 RPM은 태그를 켜므로 정상이면 1 이상이 나온다.
+
+**설정 파일을 고쳤다면 커밋 전에 확인한다.** `config.alloy`는 terraform이 `templatefile()`로 읽으므로, 달러나 퍼센트 뒤에 중괄호가 오는 표기가 하나라도 있으면 **apply가 그 자리에서 깨진다**(주석 안이라도 마찬가지다).
+
+```bash
+grep -n '[$%]{' deploy/prod/config.alloy
+```
+
+아무것도 출력되지 않아야 한다.
+
 ## 스펙을 바꾸면 이 값은 무효다
 
 `-Xmx768m`은 **t3.small(2GB) 전용**이다. 인스턴스를 바꿨다면 그대로 쓰지 않는다.
@@ -83,9 +119,10 @@ sudo journalctl -u yourtrip-app -n 200 --no-pager | grep -i profile
 ## 한계
 
 - **`-Xmx768m`의 근거가 되는 실측은 부하테스트 환경에서 이뤄졌다.** 같은 t3.small이지만 운영 트래픽 패턴(AI 코스 생성 등 할당이 큰 경로)은 재지 않았다. 힙 밖 항목 중 메타스페이스·심볼은 로드되는 클래스 수에 따라 더 자랄 수 있다.
-- **빌드와 업로드는 여전히 수동이다.** `./gradlew bootJar` 후 S3에 올리는 것은 사람이 한다. 다만 **교체는 자동화됐다** — 새 JAR을 올리고 `app_artifact_key`만 바꿔 apply하면 ASG의 instance refresh가 무중단으로 굴린다(먼저 띄우고 나중에 죽인다). 완전한 CD는 후속 과제다.
 
-> 이전에 여기 적혀 있던 한계 하나는 #119로 해소됐다 — "이 유닛 파일은 운영 서버의 실제 구성을 확인하고 쓴 것이 아니다"는 더 이상 사실이 아니다. [terraform/prod/](../../terraform/prod/README.md)의 user-data가 이 파일을 `file()`로 읽어 그대로 인스턴스에 넣으므로, **이 파일이 곧 운영 구성이다.** 손으로 복제한 사본이 아니라서 한쪽만 고쳐 어긋날 일도 없다.
+> 이전에 여기 적혀 있던 한계 하나는 #120으로 해소됐다 — "빌드와 업로드는 여전히 수동이다"는 더 이상 사실이 아니다. `dev`에 머지하면 CD가 빌드·업로드·교체까지 수행한다([docs/guide/cd.md](../../docs/guide/cd.md)). 그 과정에서 배포할 JAR의 키가 `terraform.tfvars`에서 SSM 파라미터로 옮겨졌으므로, **이 저장소에서 "지금 무엇이 배포돼 있나"는 tfvars가 아니라 `terraform output current_artifact_key`로 확인한다.**
+
+> 또 다른 한계 하나는 #119로 해소됐다 — "이 유닛 파일은 운영 서버의 실제 구성을 확인하고 쓴 것이 아니다"는 더 이상 사실이 아니다. [terraform/prod/](../../terraform/prod/README.md)의 user-data가 이 파일을 `file()`로 읽어 그대로 인스턴스에 넣으므로, **이 파일이 곧 운영 구성이다.** 손으로 복제한 사본이 아니라서 한쪽만 고쳐 어긋날 일도 없다.
 
 ## 참고 문서
 
@@ -95,4 +132,5 @@ sudo journalctl -u yourtrip-app -n 200 --no-pager | grep -i profile
 | [docs/tasks/jvm-heap-sizing/memory-map.md](../../docs/tasks/jvm-heap-sizing/memory-map.md) | 힙 밖 165MB의 NMT 분해, GC 판단 |
 | [docs/tasks/jvm-heap-sizing/ab-measurement.md](../../docs/tasks/jvm-heap-sizing/ab-measurement.md) | 448/768/1024 A/B 실측과 채택 판정 |
 | [docs/guide/profile.md](../../docs/guide/profile.md) | 배포 서버 프로필 적용·확인 절차 |
+| [docs/guide/cd.md](../../docs/guide/cd.md) | 배포·롤백 절차. instance-refresh-preferences.json을 CD가 어떻게 쓰는지 |
 | [.env.example](../../.env.example) | 앱이 필요로 하는 환경변수의 정본 |

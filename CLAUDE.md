@@ -103,6 +103,17 @@ docker compose up -d redis
 
 `dev` 대상 PR과 `dev` push에서 GitHub Actions가 `./gradlew build`(테스트 + JAR 빌드)를 자동 검증한다([.github/workflows/ci.yml](.github/workflows/ci.yml)). 시크릿을 전혀 쓰지 않고 배포 환경과도 무관하게 돈다. 책임 범위와 한계는 [docs/guide/ci.md](docs/guide/ci.md)에 있다.
 
+### CD
+
+`dev`에 머지하면 JAR이 빌드돼 S3에 올라가고, 운영 ASG가 떠 있으면 instance refresh로 무중단 교체된다([.github/workflows/deploy.yml](.github/workflows/deploy.yml)). 서버가 내려가 있는 평시에는 업로드까지만 하고 정상 종료한다.
+
+- **배포할 JAR은 SSM 파라미터 `/yourtrip/prod/artifact_key`가 가리킨다.** `terraform.tfvars`가 아니다 — 지금 무엇이 배포돼 있는지는 `terraform -chdir=terraform/prod output -raw current_artifact_key`로 본다.
+- **Launch Template은 배포로 바뀌지 않는다.** 그래서 CD가 terraform state를 만질 필요가 없고 drift도 생기지 않는다.
+- **롤백은 이전 SHA를 다시 배포하는 것이고, 반드시 `dev` 브랜치에서 워크플로를 수동 실행한다**(OIDC 신뢰 정책이 브랜치로 제한돼 있다).
+- **AWS 자격증명은 GitHub에 저장하지 않는다.** OIDC로 실행마다 임시 자격증명을 받는다.
+
+절차는 [docs/guide/cd.md](docs/guide/cd.md), 설계 근거는 [docs/tasks/cd-pipeline/](docs/tasks/cd-pipeline/README.md)에 있다.
+
 ## 애플리케이션 프로필
 
 설정은 **공통(`application.yml`) + 프로필별 파일**로 나뉜다. 프로필은 `local`(기본) / `prod`(배포) / `test`(테스트, H2 인메모리 DB) 셋이며, `local`·`prod`는 `src/main/resources/`, `test`는 `src/test/resources/`에 있다.
@@ -145,12 +156,12 @@ docker compose up -d redis
 
 ## 인프라(terraform) 변경 규칙
 
-terraform 모듈은 **수명 기준으로 4개**이고 각각 별도 state를 가진다. 전부 원격 backend 없이 **로컬 `terraform.tfstate` 하나가 유일한 진실 공급원**이다.
+terraform 모듈은 **수명 기준으로 4개**이고 각각 별도 state를 가진다. state는 전부 **S3 원격 backend**(`yourtrip-tfstate-520426835144`, 모듈별 key)에 있고, 잠금은 S3 native lockfile이다(#157).
 
 | 모듈 | 담는 것 | destroy 대상인가 |
 |---|---|---|
 | `terraform/` | S3 미디어 버킷, CloudFront, 앱용 IAM | **아니다** |
-| `terraform/prod-permanent/` | 도메인 호스티드존, ACM 인증서, 배포 아티팩트 버킷 | **아니다** — 지우면 네임서버 위임부터 다시 해야 한다 |
+| `terraform/prod-permanent/` | 도메인 호스티드존, ACM 인증서, 배포 아티팩트 버킷, GitHub Actions OIDC 역할 | **아니다** — 지우면 네임서버 위임부터 다시 해야 한다 |
 | `terraform/prod/` | ALB, ASG, RDS, ElastiCache, DNS 레코드 | **그렇다** — 데모·측정이 끝나면 내린다 |
 | `terraform/loadtest/` | 부하테스트용 EC2·RDS·ElastiCache | **그렇다** |
 
@@ -159,9 +170,11 @@ terraform 모듈은 **수명 기준으로 4개**이고 각각 별도 state를 �
 - **리소스의 형상을 콘솔이나 AWS CLI로 직접 바꾸지 않는다.** `terraform.tfvars`/`.tf`를 고치고 `plan`으로 영향(특히 `must be replaced`)을 확인한 뒤 `apply`한다. terraform을 우회한 변경은 state에 남지 않아, 나중에 `destroy`해도 실제 리소스가 지워지지 않고 과금이 계속되는 drift가 된다(실제 발생 사례가 README에 있다).
 - **실행 상태만 바꾸는 조작은 CLI로 해도 된다** — 인스턴스 start/stop, 측정용 임시 보안그룹 규칙(끝나면 회수). 형상이 아니라서 drift가 생기지 않는다.
 - **이미 어긋났다면 `terraform import`로 정합화한다.** 리소스를 살려둔 채 state만 맞추므로 배포물·시드가 보존된다. 단 `plan` 확인은 인스턴스가 **running일 때** 해야 한다(stopped면 퍼블릭 IP 해제 때문에 불필요한 `replace`가 뜬다).
-- `terraform.tfstate`·`terraform.tfvars`는 `.gitignore` 대상이므로, worktree에서 바뀌었으면 위 worktree 규칙에 따라 메인 워킹트리 사본도 갱신한다.
+- **새 worktree에서는 `terraform init`을 한 번 돌려야 한다.** state가 원격에 있고 `.terraform/`은 복사 대상이 아니라서, init 전에는 `plan`도 `state list`도 동작하지 않는다. 반대로 state 파일을 손으로 복사할 일은 없어졌다.
+- **`terraform.tfvars`는 여전히 `.gitignore` 대상이다.** worktree에서 바뀌었으면 위 worktree 규칙에 따라 메인 워킹트리 사본도 갱신한다. state가 원격으로 갔다고 이 규칙이 사라진 것은 아니다 — tfvars·SSH 키페어·`secrets.local`은 그대로 복사 대상이다.
+- **AWS 자격증명 없이는 `plan`조차 돌지 않는다.** 예전에는 로컬 state를 읽어 `state list` 정도는 됐지만, 이제 backend 초기화 자체가 S3 접근을 요구한다.
 
-자세한 절차와 실제 사고 사례는 [terraform/loadtest/README.md](terraform/loadtest/README.md)의 "인프라 변경은 반드시 terraform을 거친다" 절에 있다. 운영 모듈의 실행·철거 절차와 트러블슈팅(네트워크 순단으로 정상 리소스가 tainted되는 경우 등)은 [terraform/prod/README.md](terraform/prod/README.md)에 있다.
+자세한 절차와 실제 사고 사례는 [terraform/loadtest/README.md](terraform/loadtest/README.md)의 "인프라 변경은 반드시 terraform을 거친다" 절에 있다. 운영 모듈의 실행·철거 절차와 트러블슈팅(네트워크 순단으로 정상 리소스가 tainted되는 경우 등)은 [terraform/prod/README.md](terraform/prod/README.md)에 있다. state를 원격 backend로 옮긴 근거와 실측은 [docs/tasks/tfstate-remote-backend/](docs/tasks/tfstate-remote-backend/README.md)에 있다.
 
 ## 작업 방식 (포트폴리오 저장소 특성)
 

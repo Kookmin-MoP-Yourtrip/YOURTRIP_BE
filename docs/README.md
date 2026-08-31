@@ -13,6 +13,7 @@
 | 문서 | 내용 |
 |---|---|
 | [ci.md](guide/ci.md) | GitHub Actions CI — 검증 범위와 한계, 시크릿을 쓰지 않는 이유, 실패 시 재현·대응 |
+| [cd.md](guide/cd.md) | 배포·롤백 절차 — SSM 포인터와 instance refresh, 서버가 내려가 있을 때의 동작, 실패 시 진단 |
 | [profile.md](guide/profile.md) | Spring 프로필(`local`/`prod`/`test`) 구성 원칙, 배포 서버 적용·확인 절차 |
 | [worktree.md](guide/worktree.md) | `git worktree`에서 gitignore된 파일을 다루는 법, `.worktreeinclude` 메커니즘 |
 | [monitoring.md](guide/monitoring.md) | Prometheus·Grafana 구축과 사용 |
@@ -46,7 +47,9 @@
 
 | 문서 | 내용 |
 |---|---|
+| [tasks/cd-pipeline/](tasks/cd-pipeline/README.md) | 빌드·업로드·교체를 잇는 CD 구축 — 배포 대상 JAR을 Launch Template에서 SSM으로 빼 terraform apply 없이 배포하고, GitHub OIDC로 저장된 시크릿을 0개로 만든다 |
 | [tasks/prod-infra-iac/](tasks/prod-infra-iac/README.md) | 운영 인프라를 ALB + ASG + RDS + ElastiCache로 IaC화 — 수명 기준 state 분리, 시크릿의 SSM 이관, 요청 수 기반 스케일 임계값 산정. 사전 등록한 판정 기준 12개를 실측으로 전부 통과([verification.md](tasks/prod-infra-iac/verification.md))하고 스케일아웃까지 실증 |
+| [tasks/monitoring-config/](tasks/monitoring-config/README.md) | 운영 지표·로그 수집 경로 구축 — Grafana Cloud free + Alloy 단일 에이전트를 채택하고 CloudWatch Agent를 제거. 앱이 노출하는 시리즈 471개 실측(`uri` 정규화로 카디널리티 폭발 없음)으로 세 방식을 비교. **판정 프록시가 틀린 것을 재고 있었음을 발견해 계측기를 갈아 끼웠다** — 같은 박스 동시 실측에서 `ps` RSS 차이 109MB가 시스템이 실제로 잃는 양으로는 12.9MB였다([verification.md](tasks/monitoring-config/verification.md)) |
 
 ### 커넥션 풀 / presigned URL 병목
 

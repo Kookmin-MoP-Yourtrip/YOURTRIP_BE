@@ -155,11 +155,6 @@ variable "app_ami_id" {
   default     = ""
 }
 
-variable "app_artifact_key" {
-  description = "아티팩트 버킷 안의 JAR 키. 커밋 SHA로 고정한다(예: app/1b2ed0b.jar) — app/app.jar 같은 가변 키를 쓰면 배포 중 스케일아웃이 일어났을 때 새 인스턴스가 다른 바이트를 받아 혼종 fleet이 된다."
-  type        = string
-}
-
 variable "app_root_volume_size" {
   description = "루트 EBS 크기(GB). JAR + JVM + 로그만 올리므로 작게 잡는다."
   type        = number
@@ -216,6 +211,22 @@ variable "enable_detailed_monitoring" {
   description = "EC2 상세 모니터링(1분 간격). 기본 5분 간격은 스케일 반응과 실측 분석 양쪽에 너무 성기다."
   type        = bool
   default     = true
+}
+
+variable "alloy_version" {
+  description = <<-EOT
+    설치할 Grafana Alloy의 RPM 버전(NEVRA의 version-release 부분).
+
+    핀하는 이유는 재현성이다 — 핀하지 않으면 같은 커밋을 다른 날 apply했을 때 다른
+    에이전트가 떠서 메모리 실측(docs/tasks/monitoring-config/의 P2)의 비교 대상이 사라진다.
+    app_ami_id를 핀할 수 있게 해 둔 것과 같은 이유다.
+
+    기본값이 1.18.1인 이유: 로컬 검증(L1~L4)을 이 버전으로 돌렸다. 검증한 것과 다른 버전을
+    배포하면 그 검증이 무의미해진다. 올릴 때는 로컬 검증부터 다시 한다.
+    인스턴스에서 정확한 NEVRA를 확인하려면 `dnf --showduplicates list alloy`.
+  EOT
+  type        = string
+  default     = "1.18.1-1"
 }
 
 # ============================================================

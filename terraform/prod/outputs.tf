@@ -57,3 +57,8 @@ output "app_ami_id" {
   description = "이번 apply가 실제로 사용한 AMI. 환경을 고정해야 하는 측정·데모에서는 이 값을 tfvars의 app_ami_id에 박아 재현성을 확보한다."
   value       = local.app_ami_id
 }
+
+output "current_artifact_key" {
+  description = "다음에 뜨는 인스턴스가 내려받을 JAR 키(SSM에서 읽는다). CD가 배포마다 이 값을 갱신하므로 apply 없이도 바뀐다 — plan에 'Changes to Outputs'만 뜨는 것은 drift가 아니라 마지막 배포의 흔적이다."
+  value       = nonsensitive(data.aws_ssm_parameter.artifact_key.value)
+}

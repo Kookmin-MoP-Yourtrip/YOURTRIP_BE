@@ -94,15 +94,24 @@ terraform output -raw cloudfront_key_pair_id
 
 ## 트레이드오프 — 알고 있어야 할 것
 
-이 구성은 Terraform state를 **로컬 파일**로 관리하기로 결정했다(remote backend 없음,
-1인/소규모 포트폴리오 프로젝트 특성상 채택). 이에 따른 트레이드오프:
+Terraform state는 S3 원격 backend에 있다(#157, `yourtrip-tfstate-520426835144`의 `root/`).
+아래는 그와 별개로 이 모듈이 발급하는 IAM 자격증명에 따라오는 트레이드오프다:
 
-- `aws_iam_access_key.app`이 발급하는 IAM secret access key가 로컬 `terraform.tfstate`
-  파일에 **평문으로 저장**된다. `terraform.tfstate*`는 `.gitignore`로 git 추적에서
-  제외되지만, 로컬 디스크에는 평문으로 남아있다는 점을 인지하고 있어야 한다.
-- 포트폴리오를 공개 시연한 뒤에는 `terraform taint aws_iam_access_key.app` 실행 후
-  다시 `apply`해 access key를 재발급(rotate)하는 것을 권장한다.
-- `terraform output -raw iam_user_secret_access_key`로 시크릿을 터미널에 출력하면
+- `aws_iam_access_key.app`이 **새로 발급되는 순간** 그 secret access key가 로컬
+  `terraform.tfstate`에 평문으로 저장된다. `terraform.tfstate*`는 `.gitignore`로 git 추적에서
+  제외되지만, 로컬 디스크에는 평문으로 남는다는 점을 인지하고 있어야 한다.
+- **다만 현재 state에는 그 값이 없다** — `secret`·`encrypted_secret`·`iam_user_secret_access_key`
+  output이 모두 비어 있고, 남아 있는 것은 access key ID(`AKIA…`)뿐이다. 키 리소스가 어느 시점에
+  import된 것으로 보이며, AWS API는 **생성 시점 이후로 secret을 돌려주지 않아** 한 번 잃으면
+  복구되지 않는다. 따라서:
+  - `terraform output -raw iam_user_secret_access_key`는 **지금 실행하면 실패한다.** 운영 중인
+    값의 유일한 사본은 `.env`에 있다.
+  - 아래의 재발급을 하면 새 secret이 state에 실리므로, 위 첫 줄의 트레이드오프가 그 시점부터
+    다시 유효해진다.
+- 포트폴리오를 공개 시연한 뒤에는 `terraform apply -replace=aws_iam_access_key.app`으로
+  access key를 재발급(rotate)하는 것을 권장한다(`terraform taint`는 0.15.2에서 deprecated됐다).
+  재발급하면 **`.env`의 값도 함께 갱신해야 한다** — 앱은 이 정적 자격증명으로만 S3에 접근한다.
+- 재발급 후 `terraform output -raw iam_user_secret_access_key`로 시크릿을 터미널에 출력하면
   쉘 히스토리/스크롤백에도 남을 수 있으므로, 값을 `.env`에 옮긴 뒤에는 터미널을
   정리하는 것을 권장한다.
 

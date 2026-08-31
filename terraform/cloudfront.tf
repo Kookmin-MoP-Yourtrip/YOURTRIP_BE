@@ -27,7 +27,18 @@ resource "aws_cloudfront_origin_access_control" "media" {
 # 삭제되어 무중단으로 로테이션된다.
 resource "aws_cloudfront_public_key" "signer" {
   name_prefix = "${var.bucket_name}-signer-key-"
-  encoded_key = file(var.cloudfront_public_key_path)
+
+  # 줄바꿈을 LF로 정규화한 뒤 넘긴다. Windows에서 만들어지거나 편집된 .pem은 CRLF가 되는데,
+  # state에는 최초 apply 당시의 LF 값이 들어 있어 키 내용이 같아도 encoded_key가 달라 보인다.
+  # 그러면 plan이 "forces replacement"를 걸고, 그대로 apply하면 서명 키가 교체돼 이미 발급된
+  # Signed URL이 전부 무효화된다. 실제로 이 워킹트리의 .pem이 182바이트(CRLF 4개)여서
+  # state의 178바이트와 어긋나 있었다.
+  #
+  # .pem 파일 자체를 LF로 고치지 않고 여기서 정규화하는 이유: .pem은 .gitignore 대상이라
+  # 파일 수정은 그 워킹트리에만 남고 커밋으로 전파되지 않는다. worktree마다 사본이 따로 있어
+  # 한 곳을 고쳐도 나머지에서 같은 plan이 다시 뜨고, 키를 새로 만들면 또 재발한다. 코드에서
+  # 정규화하면 파일이 어떤 줄바꿈이든 결과가 같아진다.
+  encoded_key = replace(file(var.cloudfront_public_key_path), "\r\n", "\n")
   comment     = "mycourse 비공개 장소 이미지 Signed URL 검증용 공개키"
 
   lifecycle {

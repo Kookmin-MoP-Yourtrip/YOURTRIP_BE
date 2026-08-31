@@ -16,3 +16,7 @@ artifact_bucket_name = ""
 # aws_region                    = "ap-northeast-2"   # terraform/prod/와 반드시 일치해야 한다
 # name_prefix                   = "yourtrip-prod"
 # artifact_bucket_force_destroy = false
+#
+# tfstate_bucket_name은 여기에 두지 않는다 — 네 모듈의 backend.tf에 같은 값이 하드코딩돼
+# 있어(backend 블록은 변수를 못 쓴다) 두 곳에서 관리하면 어긋난다. 바꿔야 한다면
+# variables.tf의 기본값과 backend.tf 네 개를 함께 고친다.

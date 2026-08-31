@@ -37,3 +37,35 @@ variable "artifact_bucket_force_destroy" {
   type        = bool
   default     = false
 }
+
+# ============================================================
+# terraform state 버킷 — 네 루트 모듈의 원격 backend (#157)
+# ============================================================
+
+variable "tfstate_bucket_name" {
+  description = "네 루트 모듈의 terraform state를 담는 S3 버킷 이름. 다른 버킷 변수와 달리 기본값을 박아 둔다 — backend 블록은 변수를 쓸 수 없어 이 이름이 각 모듈 backend.tf에 하드코딩되는데, tfvars에도 두면 어긋날 수 있는 이중 관리가 되기 때문이다. 바꾸려면 이 기본값과 네 개의 backend.tf를 함께 고쳐야 한다."
+  type        = string
+  default     = "yourtrip-tfstate-520426835144"
+}
+
+# ============================================================
+# GitHub Actions — CD가 OIDC로 임시 자격증명을 받는 경로 (#120)
+# ============================================================
+
+variable "github_repository" {
+  description = "CD 워크플로가 사는 저장소(<org>/<repo>). OIDC 신뢰 정책의 sub 조건에 그대로 들어가므로, 오타가 있으면 AssumeRole이 조용히 거부된다."
+  type        = string
+  default     = "Kookmin-MoP-Yourtrip/YOURTRIP_BE"
+}
+
+variable "github_oidc_provider_arn" {
+  description = "이미 이 계정에 GitHub OIDC provider가 있을 때 그 ARN을 넣으면 새로 만들지 않고 재사용한다. 계정당 URL 하나만 존재할 수 있어, 비워두고 apply했다가 EntityAlreadyExists가 나면 기존 ARN을 여기 채운다."
+  type        = string
+  default     = ""
+}
+
+variable "ssm_parameter_path" {
+  description = "앱 설정이 사는 SSM 경로 접두사. terraform/prod/의 같은 이름 변수와 반드시 일치해야 한다 — CD 역할이 갱신할 <path>/artifact_key를 여기서 조립한다."
+  type        = string
+  default     = "/yourtrip/prod"
+}
