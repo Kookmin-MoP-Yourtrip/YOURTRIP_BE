@@ -2,7 +2,7 @@
 #
 # 이 워크플로에 secrets도 env도 하나 없는 것은 의도적이다. 테스트에 필요한 설정은
 # test 프로필이 자급하므로(src/test/resources/application-test.yml) 외부 준비물이 없고,
-# 실제 자격증명을 넣으면 테스트가 운영 리소스를 건드리며(예: Gemini 호출 과금) 외부 상태에
+# 실제 자격증명을 넣으면 테스트가 운영 리소스를 건드리며(예: OpenAI 호출 과금) 외부 상태에
 # 의존해 비결정적이 된다. CI가 시크릿을 요구하게 되는 순간이 설계가 틀어진 신호다.
 #
 # 배포 환경과도 무관하다. 이 프로젝트의 운영 서버는 데모·측정 시에만 올리는 온디맨드
@@ -46,8 +46,8 @@ jobs:
       # 확인해야 하므로 test만 돌리지 않는다.
       #
       # @Tag("benchmark") 테스트는 build.gradle의 excludeTags로 이미 제외된다 — openssl
-      # 프로세스 호출과 12,000회 반복 서명으로 느린 데다, AiHallucinationBaselineTest는
-      # 실제 GEMINI_API_KEY를 요구해서 CI의 "빠르고 결정적" 조건을 둘 다 깬다.
+      # 프로세스 호출과 12,000회 반복 서명으로 느린 데다, 환각률 측정 하네스와 *ProbeTest는
+      # OpenAI·네이버·TourAPI를 실제로 호출해서 CI의 "빠르고 결정적" 조건을 둘 다 깬다.
       - name: Build
         run: ./gradlew build
 

@@ -23,9 +23,9 @@
 
 **`@Tag("benchmark")` 테스트는 돌지 않는다.** [build.gradle](../../build.gradle)의
 `excludeTags 'benchmark'`가 이미 제외하고 있다 — `SigningBenchmarkTest`는 openssl 프로세스
-호출과 12,000회 반복 서명으로 느리고, `AiHallucinationBaselineTest`는 실제 `GEMINI_API_KEY`를
-요구한다. "빠르고 결정적"이라는 CI의 두 조건을 모두 깨므로 `./gradlew benchmarkTest`로만
-명시적으로 돌린다.
+호출과 12,000회 반복 서명으로 느리고, 환각률 측정 하네스와 각 `*ProbeTest`는 OpenAI·네이버·
+TourAPI를 실제로 호출해 과금과 쿼터를 쓴다. "빠르고 결정적"이라는 CI의 두 조건을 모두
+깨므로 `./gradlew benchmarkTest`로만 명시적으로 돌린다.
 
 ## 2. CI가 잡지 못하는 것
 
