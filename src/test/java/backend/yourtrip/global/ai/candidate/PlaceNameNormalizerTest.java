@@ -150,4 +150,85 @@ class PlaceNameNormalizerTest {
                 .isTrue();
         }
     }
+
+    @Nested
+    @DisplayName("부속 이름 판정 (이슈 #164)")
+    class SubordinateName {
+
+        /**
+         * 8-6 환각률 측정의 수동 검증에서 {@code WRONG_MATCH}로 판정된 실제 쌍이다. 값을 바꾸려면
+         * 그 판정을 뒤집는 근거가 있어야 하므로 문구까지 산출물 그대로 둔다
+         * ({@code artifacts/gemini-rescore-20260825/verdicts.csv}).
+         */
+        @Test
+        @DisplayName("본체 이름 뒤에 시설명이 붙으면 부속이다 — 실측 WRONG_MATCH 전건")
+        void detectsMeasuredWrongMatches() {
+            assertThat(PlaceNameNormalizer.isSubordinateName("해운대시장 공영주차장", "해운대 시장"))
+                .isTrue();
+            assertThat(PlaceNameNormalizer
+                .isSubordinateName("SEA LIFE 부산아쿠아리움 주차장", "SEA LIFE 부산 아쿠아리움"))
+                .isTrue();
+            assertThat(PlaceNameNormalizer.isSubordinateName("계룡산동학사 자동차야영장", "계룡산 동학사"))
+                .isTrue();
+            assertThat(PlaceNameNormalizer.isSubordinateName("통영중앙시장사업협동조합", "통영 중앙시장"))
+                .isTrue();
+            assertThat(PlaceNameNormalizer.isSubordinateName("광안리해변테마거리", "광안리 해변"))
+                .isTrue();
+            assertThat(PlaceNameNormalizer
+                .isSubordinateName("부산 기장 해동용궁사 도깨비 방앗간 한옥카페", "해동용궁사"))
+                .isTrue();
+            assertThat(PlaceNameNormalizer.isSubordinateName("환선굴휴게실가든", "환선굴")).isTrue();
+        }
+
+        @Test
+        @DisplayName("앞에 다른 상호가 붙어도 뒤에 잔여가 있으면 부속이다")
+        void detectsPrefixedBrandWithSuffix() {
+            assertThat(PlaceNameNormalizer.isSubordinateName("스타벅스 경주대릉원점", "대릉원"))
+                .as("1-2가 지목한 그 케이스다 — 대릉원이 아니라 그 안의 카페다")
+                .isTrue();
+            assertThat(PlaceNameNormalizer.isSubordinateName("리정원 경의선숲길 대흥점", "경의선숲길"))
+                .isTrue();
+        }
+
+        @Test
+        @DisplayName("접두만 다르면 부속이 아니다 — 지역명·정식명칭이 앞에 붙은 같은 장소다")
+        void acceptsPrefixOnlyDifference() {
+            assertThat(PlaceNameNormalizer.isSubordinateName("공주 고마나루", "고마나루")).isFalse();
+            assertThat(PlaceNameNormalizer.isSubordinateName("경주 동궁과월지", "동궁과 월지")).isFalse();
+            assertThat(PlaceNameNormalizer.isSubordinateName("영주랜떡", "랜떡"))
+                .as("지역명이 상호에 붙은 경우까지 부속으로 보면 정상 매칭을 잃는다")
+                .isFalse();
+        }
+
+        @Test
+        @DisplayName("완전 일치는 부속이 아니다 — 정규화하면 같아지는 표기도 마찬가지다")
+        void rejectsExactMatch() {
+            assertThat(PlaceNameNormalizer.isSubordinateName("환선굴", "환선굴")).isFalse();
+            assertThat(PlaceNameNormalizer.isSubordinateName("동궁과월지", "동궁과 월지")).isFalse();
+        }
+
+        @Test
+        @DisplayName("포함 관계가 아니면 부속이 아니다 — 게이트가 이미 거를 몫이다")
+        void rejectsDisjointNames() {
+            assertThat(PlaceNameNormalizer.isSubordinateName("해운대전통시장", "해운대 시장"))
+                .as("중간 삽입어는 포함 관계가 아니다 — 이건 게이트 거짓 음성이지 부속이 아니다")
+                .isFalse();
+            assertThat(PlaceNameNormalizer.isSubordinateName("개미집 국제시장본점직영점", "해운대 시장"))
+                .isFalse();
+        }
+
+        @Test
+        @DisplayName("반대 방향은 부속이 아니다 — 요청 쪽이 더 길면 지점 수식어가 붙은 것이다")
+        void rejectsReversedDirection() {
+            assertThat(PlaceNameNormalizer.isSubordinateName("칠돈가", "칠돈가 제주본점")).isFalse();
+        }
+
+        @Test
+        @DisplayName("비교할 이름이 없으면 부속이라고 하지 않는다")
+        void refusesEmptyNames() {
+            assertThat(PlaceNameNormalizer.isSubordinateName("", "환선굴")).isFalse();
+            assertThat(PlaceNameNormalizer.isSubordinateName("환선굴 매표소", null)).isFalse();
+            assertThat(PlaceNameNormalizer.isSubordinateName("  ", "환선굴")).isFalse();
+        }
+    }
 }

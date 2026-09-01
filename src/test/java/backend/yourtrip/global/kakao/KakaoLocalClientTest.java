@@ -94,6 +94,63 @@ class KakaoLocalClientTest {
         }
 
         @Test
+        @DisplayName("본체와 부속이 함께 오면 점수가 낮아도 본체를 고른다 (이슈 #164)")
+        void prefersHostOverSubordinateEvenWithLowerScore() {
+            // 실측 그대로다 — 부속(카페)은 카테고리 가점 +2가 붙어 10점, 본체(사찰)는 8점이라
+            // 점수만 보면 부속이 이긴다. 8-6 수동 검증이 이 쌍을 WRONG_MATCH 로 판정했다.
+            stubDocuments(
+                document("해동용궁사", "부산 기장군 기장읍 용궁길 86", null),
+                document("부산 기장 해동용궁사 도깨비 방앗간 한옥카페",
+                    "부산 기장군 기장읍 용궁길 49", "CE7"));
+
+            assertThat(kakaoLocalClient.lookupBestPlace("해동용궁사", "부산"))
+                .isInstanceOfSatisfying(PlaceLookup.Found.class, found ->
+                    assertThat(found.document().place_name()).isEqualTo("해동용궁사"));
+        }
+
+        @Test
+        @DisplayName("부속밖에 없으면 그래도 그것을 고른다 — 강등이지 탈락이 아니다 (이슈 #164)")
+        void stillPicksSubordinateWhenNoHostExists() {
+            // 공주 "계룡산 동학사"의 실제 응답이다. 게이트를 통과한 셋이 전부 부속이었다 —
+            // 하드 탈락이었다면 이 검색어는 장소를 통째로 잃는다.
+            stubDocuments(
+                document("계룡산동학사 자동차야영장", "충남 공주시 반포면 동학사2로 115-16", "AT4"),
+                document("계룡산동학사펜션", "충남 공주시 반포면 동학사2로 100", null),
+                document("계룡산동학사오토캠핑장", "충남 공주시 반포면 동학사2로 120", null));
+
+            assertThat(kakaoLocalClient.lookupBestPlace("계룡산 동학사", "공주"))
+                .as("부속뿐이라도 무결과로 떨어뜨리지 않는다")
+                .isInstanceOfSatisfying(PlaceLookup.Found.class, found ->
+                    assertThat(found.document().place_name()).isEqualTo("계룡산동학사 자동차야영장"));
+        }
+
+        @Test
+        @DisplayName("접두만 다른 후보는 부속이 아니다 — 지역명이 붙은 같은 장소다 (이슈 #164)")
+        void doesNotDemoteCandidateWithOnlyPrefixDifference() {
+            // "영주 랜떡"으로 검색하면 상호가 "영주랜떡"으로 온다. 이것까지 부속으로 밀면
+            // 뒤에 있는 다른 가게가 올라와 정상 매칭을 잃는다.
+            stubDocuments(
+                document("영주랜떡", "경북 영주시 광복로 23", "FD6"),
+                document("랜떡", "경북 영주시 대학로 100", null));
+
+            assertThat(kakaoLocalClient.lookupBestPlace("랜떡", "영주"))
+                .isInstanceOfSatisfying(PlaceLookup.Found.class, found ->
+                    assertThat(found.document().place_name()).isEqualTo("영주랜떡"));
+        }
+
+        @Test
+        @DisplayName("부속 여부와 점수가 같으면 카카오 순위가 남는다 — 이 변경 전과 같은 성질이다")
+        void keepsKakaoOrderOnTie() {
+            stubDocuments(
+                document("환선굴 매표소", "강원 삼척시 신기면 환선로 800", null),
+                document("환선굴 모노레일 승강장", "강원 삼척시 신기면 환선로 810", null));
+
+            assertThat(kakaoLocalClient.lookupBestPlace("환선굴", "삼척"))
+                .isInstanceOfSatisfying(PlaceLookup.Found.class, found ->
+                    assertThat(found.document().place_name()).isEqualTo("환선굴 매표소"));
+        }
+
+        @Test
         @DisplayName("AI가 준 장소명이 비어 있으면 어떤 후보도 통과시키지 않는다")
         void rejectsBlankPlaceName() {
             stubDocuments(document("아무가게", "경북 경주시 원화로 102", "FD6"));

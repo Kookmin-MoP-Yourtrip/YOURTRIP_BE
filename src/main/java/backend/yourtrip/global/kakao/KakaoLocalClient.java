@@ -57,8 +57,40 @@ public class KakaoLocalClient {
             // 필터가 max()보다 앞에 있어야 한다 — 순서가 반대면 이름이 전혀 안 맞는 후보가
             // 주소·카테고리 가점만으로 1등이 되어 그대로 선택된다.
             .filter(doc -> nameMatches(doc, placeName))
-            .max(Comparator.comparingInt(
-                doc -> PlaceMatchScorer.score(doc, placeName, placeLocation))));
+            .max(bestCandidateOrder(placeName, placeLocation)));
+    }
+
+    /**
+     * 게이트를 통과한 후보들의 우선순위. <b>부속 POI를 뒤로 미는 것이 1순위 키다</b> (이슈 #164).
+     *
+     * <h2>왜 점수가 아니라 별도 키인가</h2>
+     * {@code 해운대시장 공영주차장}·{@code 환선굴휴게실가든}처럼 본체 이름을 통째로 품은 부속
+     * 시설은 <b>이름 가점(+5)을 본체와 똑같이 받고</b> 업종 덕에 카테고리 가점(+2)까지 붙어
+     * 본체보다 높은 점수가 나온다. 실제로 {@code 환선굴}(8점)이 {@code 환선굴휴게실가든}(10점)에게
+     * 졌다. <b>점수 안에서는 해결되지 않는 역전</b>이라 순위 키를 하나 위에 얹는다.
+     *
+     * <p>{@link PlaceMatchScorer#score}에 감점을 넣지 않은 이유도 여기 적어 둔다. 그 점수는
+     * 환각률 하네스의 <b>층화 추출 축</b>이라(그 클래스 javadoc의 경고) 값이 바뀌면 측정 간 구간
+     * 기록이 어긋난다. 순위 키를 밖에 두면 점수 함수는 한 글자도 바뀌지 않는다.
+     *
+     * <h2>탈락이 아니라 강등이다 — 손실이 구조적으로 0이다</h2>
+     * 게이트에서 걸러내지 않으므로 <b>부속밖에 없으면 현행과 똑같이 그것을 고른다.</b> 공주
+     * {@code 계룡산 동학사}가 실제로 그렇다 — 게이트를 통과한 셋이 자동차야영장·펜션·오토캠핑장
+     * 전부 부속이었다. 탈락시켰다면 그 장소를 통째로 잃는다.
+     *
+     * <p>후보 덤프 실측(389행 기준 29건, 파이프라인 525행 기준 19건)에서 선택이 바뀐 건은 전부
+     * 본체 쪽으로 갔다({@code 스타벅스 경주대릉원점} → {@code 대릉원},
+     * {@code 리정원 경의선숲길 대흥점} → {@code 경의선숲길}).
+     *
+     * <p><b>동률이면 카카오 순위가 남는다.</b> {@code Stream.max}는 비교가 클 때만 교체하므로
+     * 부속 여부도 점수도 같으면 앞선 후보가 유지된다 — 이 변경 전과 같은 성질이다.
+     */
+    private static Comparator<Document> bestCandidateOrder(String placeName,
+        String placeLocation) {
+        return Comparator
+            .comparingInt((Document doc) ->
+                PlaceNameNormalizer.isSubordinateName(doc.place_name(), placeName) ? 0 : 1)
+            .thenComparingInt(doc -> PlaceMatchScorer.score(doc, placeName, placeLocation));
     }
 
     /**
