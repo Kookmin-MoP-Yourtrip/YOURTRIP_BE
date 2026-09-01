@@ -283,7 +283,7 @@
   ```bash
   ./gradlew benchmarkTest --tests '*AiHallucinationBaselineTest*' --rerun
   ```
-- **동일 입력 세트(지역 10곳 × 스타일 3조합 = 30요청, 여행 일수 3일 고정)를 유지해야** 측정점이 비교 가능하다. 카카오 검증은 **프로덕션 `lookupBestPlace()` 호출**이므로 프로덕션과 함께 움직인다 — 검증 로직을 바꾸면 `BASELINE_RESCORE_FROM` 재채점 모드로 before 값을 같은 기준으로 다시 만들 수 있다
+- **동일 입력 세트(지역 10곳 × 스타일 3조합 = 30요청, 여행 일수 3일 고정)를 유지해야** 측정점이 비교 가능하다. 카카오 검증은 **프로덕션 `lookupBestPlace()` 호출**이므로 프로덕션과 함께 움직인다 — 검증 로직을 바꾸면 `BASELINE_RESCORE_FROM` 재채점 모드로 before 값을 같은 기준으로 다시 만들 수 있다(#164에서 실제로 그렇게 했다 — 세 측정점 중 재현 가능한 둘을 새 검증 함수로 다시 쟀고 자동 지표는 불변이었다. STEP-8 판정 5)
 - **지표의 산출 정의를 고정한다** — 아래 절차를 그대로 따라야 측정점이 같은 것을 재게 된다. 근거·한계·재현 조건은 [AI-HALLUCINATION-GEMINI.md](hallucination/AI-HALLUCINATION-GEMINI.md)의 "지표의 정의"와 "재측정 재현 조건"에 있다. **8-6 착수 전에 그 두 절을 먼저 읽는다**
 
   ```
