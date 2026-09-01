@@ -25,6 +25,11 @@ artifacts/
 ├── pipeline-20260827/        ③ 파이프라인 측정 (ROADMAP 8-6)
 │   ├── places.csv  requests.csv  verdicts.csv
 │   └── raw/                  초안 원본 30건
+├── subordinate-poi-20260831/ ④ 부속 POI 강등 (이슈 #164) — 규칙 선택 근거 + 전후 재채점
+│   ├── candidates-baseline.csv   후보 5건 전수 덤프 (기준선 장소명 307키)
+│   ├── candidates-pipeline.csv   후보 5건 전수 덤프 (파이프라인 장소명 439키)
+│   ├── rescore-baseline-places.csv   389행 재채점 (after)
+│   └── rescore-pipeline-places.csv   525행 재채점 (after)
 └── scripts/                  merge3.py · fix_shifted.py
 ```
 
@@ -104,6 +109,30 @@ artifacts/
 - 예산은 운영값(30초)이 아니라 **180초**로 두고 쟀다 — 최대 지연 28.0초가 예산에 붙어 있어 운영값으로 재면 일부 요청이 504로 잘리고 그 장소가 환각률 분모에서 통째로 빠진다. 대신 `elapsedMs`로 역산한다(p50 22.3초 · p95 29.4초 · max 30.1초 · 30초 초과 1건)
 
 **읽을 때 주의** — `NO_RESULT` 밴드의 뜻이 baseline과 다르다. `SEEDED`·`LISTED`는 `GroundingStage`의 승계 분기에서 카카오를 **한 번도 부르지 않고** 통과하므로, 카카오에 없어도 네이버·TourAPI 좌표와 함께 코스에 실린다. baseline에서 `NO_RESULT`는 "좌표를 못 얻음"이었지만 여기서는 "카카오 링크만 없음"이다. **baseline과 직접 비교할 수 있는 축은 `SUGGESTED` 8건뿐이고, 전수 판정 결과 8건 모두 실존했다.**
+
+### 부속 POI 강등 (2026-08-31) — `subordinate-poi-20260831/` · 이슈 #164
+
+이름 게이트가 **부속 시설을 본체 대신 매칭하던 것**(`해운대시장` → `해운대시장 공영주차장`)을 고치면서
+만든 산출물이다. 앞의 셋과 성격이 다르다 — **측정점이 아니라 처방의 근거와 그 효과**다.
+
+| 파일 | 규모 | 근거가 되는 것 |
+|---|---|---|
+| `candidates-baseline.csv` | 999행 | **판별 규칙 선택의 유일한 근거.** 검색 1회당 후보 5건을 전부 담는다. `places.csv`에는 선택된 후보만 남아 "부속을 밀어내면 그 자리에 본체가 올라오는가"를 물을 수 없는데, 이 덤프가 그 질문에 답한다 |
+| `candidates-pipeline.csv` | 915행 | 같은 덤프의 파이프라인 장소명(439키) 판. 규칙이 한 표본에만 맞는 것이 아님을 확인한 쪽 |
+| `rescore-baseline-places.csv` | 389행 | 강등 적용 **후** 기준선 재채점. `gemini-rescore-20260825/places.csv`와 행 단위로 대조해 회수·손실을 낸다 |
+| `rescore-pipeline-places.csv` | 525행 | 강등 적용 **후** 파이프라인 재채점. `pipeline-20260827/places.csv`가 대조군이다 |
+
+**수동 판정 워크시트가 없다.** 이 변경은 `WRONG_MATCH`(정의상 환각에서 제외되는 항목)만 건드리므로
+지어냄률을 움직일 이유가 없고, 실제로 **자동 지표 3종이 양쪽 모두 한 자리도 바뀌지 않았다.** 그래서
+층화를 다시 뽑아 재판정하는 대신 **기존 워크시트와 장소 키로 조인해 대조만** 했다(경위는
+[STEP-8](../../steps/STEP-8-switch.md) 판정 5).
+
+덤프는 `KakaoCandidateDumpProbeTest`로 만든다 — `lookupBestPlace`를 부르지 않고 `searchPlace`만
+부르므로 프로덕션 판정 경로를 건드리지 않는다.
+
+```bash
+CANDIDATE_DUMP_FROM=docs/tasks/ai-course-create/hallucination/artifacts/gemini-20260811/places.csv   ./gradlew benchmarkTest --tests '*KakaoCandidateDumpProbeTest*' --rerun
+```
 
 ### LLM 원본 응답 — `gemini-20260811/raw/` 17건
 

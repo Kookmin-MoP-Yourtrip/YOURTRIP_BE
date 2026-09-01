@@ -91,4 +91,52 @@ public final class PlaceNameNormalizer {
         }
         return a.contains(b) || b.contains(a);
     }
+
+    /**
+     * 후보 이름이 기준 이름을 품은 채 <b>뒤에 말이 더 붙었는지</b> 판정한다 (이슈 #164).
+     * 부속 POI가 본체 대신 매칭되는 것을 막는 데 쓴다.
+     *
+     * <h3>왜 접미에만 걸리는가 — 실측이 갈랐다</h3>
+     * 8-6 환각률 측정의 {@code WRONG_MATCH}는 형태가 하나였다. <b>본체 이름을 통째로 품고 뒤에
+     * 시설명이 붙는다</b>({@code 해운대시장}+{@code 공영주차장}, {@code 환선굴}+{@code 휴게실가든},
+     * {@code 계룡산동학사}+{@code 자동차야영장}).
+     *
+     * <p>반면 <b>접두만 다른 것은 같은 장소다</b> — {@code 공주 고마나루} · {@code 경주 동궁과월지}
+     * 처럼 지역명이나 정식 명칭이 앞에 붙었을 뿐이다. 그래서 {@link #properlyContains}에 방향
+     * 제한만 걸면 후보 389건 중 79건이 걸려 정상 매칭까지 흔들리는데, <b>접미 잔여를 요구하면
+     * 그 셋이 자동으로 빠진다.</b> 지역명 사전 같은 것을 따로 둘 필요가 없다.
+     *
+     * <p>구현이 {@code endsWith} 한 줄인 것은 그 때문이다 — "품고 있는데 그것으로 끝나지 않는다"가
+     * 곧 "뒤에 뭔가 붙었다"이다.
+     *
+     * <h3>어휘 사전을 쓰지 않는 이유 — 덤프에서 손실이 나왔다</h3>
+     * {@code 주차장}·{@code 야영장} 같은 부속 시설 어휘 목록으로 좁히는 안을 후보 덤프 위에서 함께
+     * 재어 봤는데, <b>사전이 못 잡는 유형을 상대적으로 우대해</b> 더 나쁜 후보가 올라왔다
+     * ({@code 이호테우해변입구교차로} → {@code CU 이호테우해변점}, {@code 서래마을카페거리} →
+     * {@code 육갑식당 서래마을 직영점}). 접미 잔여가 있으면 전부 같게 다루면 그 비대칭이 없다.
+     *
+     * <h3>{@link CandidateMatcher#isSubordinate}와 다르다</h3>
+     * 그쪽은 이 판정에 <b>거리 300m를 AND로</b> 묶는다. 여기서는 그럴 수 없다 —
+     * <b>좌표를 얻으려고 검색하는 중이라 비교할 좌표가 아직 없다.</b> 그래서 거리 대신 접미 잔여
+     * 조건으로 범위를 좁힌다. 두 함수가 같은 이름을 쓰지 않는 것은 그 차이를 감추지 않기 위해서다.
+     *
+     * <p><b>이 판정은 후보를 지우는 데 쓰지 않는다.</b> {@code KakaoLocalClient}는 이것을 순위
+     * 강등에만 쓴다 — 부속밖에 없는 검색어가 실제로 있어서(공주 {@code 계룡산 동학사}는 게이트를
+     * 통과한 셋이 전부 부속이었다) 탈락시키면 장소를 통째로 잃는다.
+     *
+     * @param candidateName 카카오가 준 상호명
+     * @param baseName      AI가 준 장소명
+     * @return 정규화 후 완전 일치거나, 포함 관계가 아니거나, 비교할 이름이 없으면 {@code false}
+     */
+    public static boolean isSubordinateName(String candidateName, String baseName) {
+        String candidate = normalize(candidateName);
+        String base = normalize(baseName);
+        if (candidate.isEmpty() || base.isEmpty() || candidate.equals(base)) {
+            return false;
+        }
+        if (!candidate.contains(base)) {
+            return false;
+        }
+        return !candidate.endsWith(base);
+    }
 }

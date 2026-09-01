@@ -101,6 +101,13 @@ public final class CandidateMatcher {
      * <p><b>이 판정만으로 후보를 지우지 않는다.</b> 어느 쪽이 본체인지는 호출자
      * ({@link CandidateMerger#collapseSubordinates})가 정하고, 버리는 쪽의 정보는 흡수된다.
      *
+     * <h3>카카오 검증(이슈 #164)은 이 함수를 쓸 수 없다</h3>
+     * 거기서도 부속 POI가 본체 대신 매칭되는 같은 증상이 나왔지만, <b>거리 조건을 평가할 수 없다</b> —
+     * 좌표를 얻으려고 카카오를 부르는 중이라 비교할 좌표가 아직 없기 때문이다. 그래서 그쪽은 거리
+     * 대신 <b>접미 잔여</b>로 범위를 좁히는 {@link PlaceNameNormalizer#isSubordinateName}을 따로 쓴다.
+     * 두 함수를 하나로 합치지 않은 것은 <b>쓸 수 있는 재료가 다르기</b> 때문이고, 이 클래스가
+     * {@link #dedupeKey}와 {@link #isSamePlace}를 나눠 둔 것과 같은 이유다.
+     *
      * @return 진포함 <b>이고</b> 거리 ≤ {@link #PROXIMITY_THRESHOLD_KM}일 때만 {@code true}
      */
     public static boolean isSubordinate(String nameA, double latitudeA, double longitudeA,
