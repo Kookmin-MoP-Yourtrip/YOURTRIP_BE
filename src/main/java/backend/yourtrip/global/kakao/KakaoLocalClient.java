@@ -140,8 +140,12 @@ public class KakaoLocalClient {
      *
      * <p>접두사가 비었을 때 {@code " 경주시"}처럼 앞에 공백이 붙지 않게 갈라 둔다 —
      * 캐스케이드의 마지막 단계는 {@code location} 하나만 던지기 때문이다.
+     *
+     * <p><b>package-private인 이유</b>: 이슈 #164의 후보 덤프 프로브가 같은 키워드로 검색해야
+     * 한다. 프로브가 조립을 복제하면 그쪽 덤프와 프로덕션 검색이 다른 질문을 던지게 되고,
+     * 그 덤프 위에서 고른 규칙은 <b>실제로 오는 후보와 무관한 근거</b>가 된다.
      */
-    private static String buildKeyword(String placeName, String placeLocation) {
+    static String buildKeyword(String placeName, String placeLocation) {
         String name = placeName == null ? "" : placeName;
         if (placeLocation == null || placeLocation.isBlank()) {
             return name.strip();
