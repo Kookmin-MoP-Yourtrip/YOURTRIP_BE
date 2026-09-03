@@ -284,6 +284,20 @@ class AiCourseStagesStubIntegrationTest {
             assertThat(counter(AiCourseMetrics.GROUNDING_MATCH,
                 "result", "failed", "source", "suggested")).isEqualTo(2.0);
         }
+
+        @Test
+        @DisplayName("후보가 전멸하면 그 슬롯이 공석으로 남는다 — 지금까지 어떤 지표에도 없던 값이다 (이슈 #149)")
+        void emptySlotIsCounted() {
+            stubKakaoDocuments();
+
+            List<GroundedDay> days = groundingStage.ground("경주",
+                List.of(curated(SlotType.MEAL, suggested("있을리없는집"))),
+                CandidatePool.empty(), CourseDeadline.unbounded());
+
+            assertThat(days.get(0).slots().get(0).isEmpty()).isTrue();
+            assertThat(counter(AiCourseMetrics.SLOT_VACANT,
+                "reason", "grounding", "slot", "meal")).isEqualTo(1.0);
+        }
     }
 
     @Nested

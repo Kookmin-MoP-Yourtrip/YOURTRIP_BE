@@ -58,6 +58,18 @@ import org.springframework.stereotype.Component;
  * day3의 저녁이 통째로 비는 일이 실측됐다 — <b>차순위가 없을 때는 "차순위가 올라온다"가 성립하지
  * 않는다.</b> 무조건 완화가 아니라 최후 구제인 것이 요지이고, 몇 건이나 그렇게 살렸는지는
  * {@code ai.grounding.relaxed} 가 따로 센다.
+ *
+ * <h2>채우지 못한 슬롯을 여기서 센다 (이슈 #149)</h2>
+ * 후보가 전멸한 슬롯은 {@code AiCoursePipeline} 이 {@code continue} 로 건너뛰는데 <b>로그도
+ * 메트릭도 없었다</b> — 그래서 "저녁 없는 하루"가 나가도 운영 지표는 전부 정상으로 보였다.
+ *
+ * <p><b>셀 수 없던 것이 아니라 셀 수 있는 형태가 아니었다.</b> 조립부가
+ * {@code place().filter(placed::add).ifPresent(...)} 한 줄이라 <b>"장소가 없어 못 실었다"와
+ * "중복이라 못 실었다"가 같은 빈 {@code Optional} 로 뭉개졌다</b> — 처방이 정반대인 두 사건인데도
+ * 그렇다. 체인을 편 뒤에야 사유별 카운터를 붙일 자리가 생겼다.
+ *
+ * <p>발화 지점이 여기인 것은 <b>사유·day·슬롯 타입을 모두 아는 유일한 자리</b>이기 때문이다.
+ * 파이프라인은 "비었다"만 알고 왜 비었는지는 모른다.
  */
 @Component
 @Slf4j
@@ -141,6 +153,11 @@ public class GroundingStage {
         Set<String> placed = new LinkedHashSet<>();
         Map<Tally, Integer> tally = new LinkedHashMap<>();
         Map<GroundingRelaxation, Integer> relaxations = new EnumMap<>(GroundingRelaxation.class);
+        // 검증은 통과했는데 앞 day 가 이미 써서 버린 건수 (이슈 #149). tally 는 이것도 hit 으로
+        // 세므로, 이 값을 빼야 그 출처가 실제로 코스에 실은 수가 나온다.
+        Map<CandidateSourceType, Integer> duplicates = new EnumMap<>(CandidateSourceType.class);
+        // 빈 슬롯은 day 까지 있어야 사후 추적이 되므로 맵으로 뭉치지 않는다 (이슈 #149).
+        List<SlotVacancy> vacancies = new ArrayList<>();
 
         List<GroundedDay> days = new ArrayList<>(curatedDays.size());
         for (CuratedDay day : curatedDays) {
@@ -149,6 +166,10 @@ public class GroundingStage {
                 List<GroundedPlace> survivors = new ArrayList<>(slot.choices().size());
                 // 업종이 어긋난 후보를 버리지 않고 세워 둔다 — 슬롯이 전멸했을 때만 꺼낸다.
                 List<GroundedPlace> rescuable = new ArrayList<>(slot.choices().size());
+                // 슬롯이 비었을 때 사유를 가르는 두 축. 살아남은 후보는 여기 오지 않으므로
+                // 둘 다 0이면 곧 후보가 하나도 없었다는 뜻이다 (이슈 #149).
+                int duplicateKills = 0;
+                int groundingKills = 0;
                 for (CuratedPlace choice : slot.choices()) {
                     Resolution resolution = resolve(pool, lookups, day.day(), slot, choice);
                     tally.merge(new Tally(resolution.outcome(), resolution.source()), 1,
@@ -156,20 +177,47 @@ public class GroundingStage {
                     if (resolution.outcome() == GroundingOutcome.CATEGORY_MISMATCH) {
                         // 중복 제거를 여기서 걸면 안 된다 — 쓰지도 않을 후보가 placed 를 선점해
                         // 다른 day 의 같은 장소를 죽인다. 구제가 확정된 뒤에 건다.
-                        resolution.place().ifPresent(rescuable::add);
+                        if (resolution.place().isPresent()) {
+                            rescuable.add(resolution.place().get());
+                        } else {
+                            // 현 코드상 도달하지 않는다(업종 판정은 좌표를 확보한 뒤에 선다).
+                            // 그래도 세지 않으면 후보가 있었는데 no_candidate 로 오분류된다.
+                            groundingKills++;
+                        }
                         continue;
                     }
-                    resolution.place()
-                        .filter(place -> placed.add(
-                            CandidateMatcher.dedupeKey(place.name(), place.address())))
-                        .ifPresent(survivors::add);
+                    // filter 체인을 편 것은 계측 때문이다 (이슈 #149) — 그 형태로는 "장소가 없어
+                    // 못 실었다" 와 "중복이라 못 실었다" 가 같은 빈 Optional 로 뭉개져, 버린 쪽에
+                    // 카운터를 붙일 자리가 없었다.
+                    Optional<GroundedPlace> resolved = resolution.place();
+                    if (resolved.isEmpty()) {
+                        groundingKills++;
+                        continue;
+                    }
+                    GroundedPlace place = resolved.get();
+                    if (placed.add(CandidateMatcher.dedupeKey(place.name(), place.address()))) {
+                        survivors.add(place);
+                    } else {
+                        duplicateKills++;
+                        duplicates.merge(resolution.source(), 1, Integer::sum);
+                    }
                 }
                 if (survivors.isEmpty()) {
-                    rescue(rescuable, placed).ifPresent(place -> {
-                        survivors.add(place);
+                    // rescue 는 첫 성공에서 멈춘다 — 빈손이면 보류 후보 전원이 앞 day 와
+                    // 겹쳤다는 뜻이고, 그 슬롯을 죽인 것은 업종이 아니라 중복이다(이슈 #149).
+                    int held = rescuable.size();
+                    Optional<GroundedPlace> rescued = rescue(rescuable, placed);
+                    if (rescued.isPresent()) {
+                        survivors.add(rescued.get());
                         relaxations.merge(GroundingRelaxation.CATEGORY_LAST_RESORT, 1,
                             Integer::sum);
-                    });
+                    } else {
+                        duplicateKills += held;
+                    }
+                }
+                if (survivors.isEmpty()) {
+                    vacancies.add(new SlotVacancy(day.day(), slot.slotType(),
+                        SlotVacancyReason.of(duplicateKills, groundingKills)));
                 }
                 slots.add(new GroundedSlot(slot.slotType(), survivors));
             }
@@ -182,7 +230,17 @@ public class GroundingStage {
         // 완화는 결말과 나란히 오른다 — 결말을 hit 으로 바꿔치기하면 5-3 의 업종 제약이 무엇을
         // 걸렀는지 못 재고, 완화가 환각을 몇 건 들였는지도 되짚을 수 없다(이슈 #147).
         relaxations.forEach(metrics::groundingRelaxed);
-        log.debug("그라운딩 결과: {} (완화 {})", tally, relaxations);
+        // 결말과 나란히 오른다 — 이쪽도 hit 을 뒤집지 않는다(이슈 #149). 완화가 "검증이 탈락시킨
+        // 것을 우리가 살렸다" 라면 이쪽은 "검증이 통과시킨 것을 우리가 버렸다" 이고, 둘이 대칭이다.
+        duplicates.forEach(metrics::groundingDuplicate);
+        vacancies.forEach(vacancy -> metrics.slotVacant(vacancy.reason(), vacancy.slotType()));
+        log.debug("그라운딩 결과: {} (완화 {}, 중복 폐기 {})", tally, relaxations, duplicates);
+        if (!vacancies.isEmpty()) {
+            // warn 인 이유는 이것이 degrade 이기 때문이다 — 응답은 200 이고 코스는 멀쩡해 보이는데
+            // 하루의 저녁이 통째로 빠져 나간다. 운영 프로필이 INFO 라 debug 로 두면 정확히 #149 가
+            // 문제 삼은 상태("어떤 지표에도 잡히지 않는다")로 되돌아간다. 요청당 한 줄이다.
+            log.warn("장소를 채우지 못한 슬롯 {}개 (이슈 #149): {}", vacancies.size(), vacancies);
+        }
         return days;
     }
 
@@ -375,6 +433,20 @@ public class GroundingStage {
     }
 
     /** 메트릭 집계 키. 같은 (결말, 출처)를 모아 한 번에 올린다. */
+    /**
+     * 장소를 못 채운 슬롯 하나 (이슈 #149).
+     *
+     * <p>{@code day}는 <b>태그가 아니라 로그로</b> 나간다 — 태그로 두면 카디널리티가 요청마다 늘고,
+     * "day2 가 day1 보다 잘 빈다"에 답할 운영 질문이 지금 없다.
+     */
+    private record SlotVacancy(int day, SlotType slotType, SlotVacancyReason reason) {
+
+        @Override
+        public String toString() {
+            return "day%d/%s/%s".formatted(day, slotType, reason);
+        }
+    }
+
     private record Tally(GroundingOutcome outcome, CandidateSourceType source) {
     }
 }

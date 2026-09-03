@@ -24,6 +24,7 @@ import backend.yourtrip.global.common.ApiFailureCause;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
 import backend.yourtrip.global.kakao.PlaceLookup;
 import backend.yourtrip.global.kakao.dto.KakaoSearchResponse.Document;
+import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.Set;
@@ -69,6 +70,22 @@ class GroundingStageTest {
     private double relaxed(String reason) {
         return meterRegistry.get(AiCourseMetrics.GROUNDING_RELAXED)
             .tags("reason", reason).counter().count();
+    }
+
+    private double duplicated(String source) {
+        return meterRegistry.get(AiCourseMetrics.GROUNDING_DUPLICATE)
+            .tags("source", source).counter().count();
+    }
+
+    private double vacant(String reason, String slot) {
+        return meterRegistry.get(AiCourseMetrics.SLOT_VACANT)
+            .tags("reason", reason, "slot", slot).counter().count();
+    }
+
+    /** 네 사유의 합. 어느 갈래에도 안 들어간 빈 슬롯이 있으면 이 값이 실제보다 작아진다. */
+    private double vacantTotal() {
+        return meterRegistry.find(AiCourseMetrics.SLOT_VACANT).counters().stream()
+            .mapToDouble(Counter::count).sum();
     }
 
     private static PlaceCandidate seededCafe(String name, String address) {
@@ -445,6 +462,11 @@ class GroundingStageTest {
 
             assertThat(days.get(0).slots().get(0).survivors()).hasSize(1);
             assertThat(days.get(1).slots().get(0).isEmpty()).isTrue();
+            // 결말은 그대로 hit 이다 — 카카오 검증(여기서는 목록 승계)은 실제로 통과했고,
+            // duplicate 로 바꿔치면 환각률 프록시의 분모가 이동해 5·8단계와 비교가 깨진다.
+            // 둘을 나누면 "hit 2건 중 1건은 코스에 못 실렸다" 가 그대로 나온다 (이슈 #149).
+            assertThat(counted("hit", "seeded")).isEqualTo(2);
+            assertThat(duplicated("seeded")).isEqualTo(1);
         }
 
         @Test
@@ -461,6 +483,172 @@ class GroundingStageTest {
             ), pool, CourseDeadline.unbounded());
 
             assertThat(days.get(0).slots().get(0).survivors()).hasSize(2);
+        }
+    }
+
+    @Nested
+    @DisplayName("채우지 못한 슬롯 (이슈 #149) — 사유가 처방을 가른다")
+    class Vacancy {
+
+        @Test
+        @DisplayName("후보가 전부 검증에서 죽으면 grounding 이다 — 고칠 곳은 검증 로직이다")
+        void classifiesAsGroundingWhenAllVerificationsFail() {
+            when(kakaoLocalClient.lookupBestPlace(eq("없는집"), anyString()))
+                .thenReturn(new PlaceLookup.NoResult());
+            when(kakaoLocalClient.lookupBestPlace(eq("있을리없는집"), anyString()))
+                .thenReturn(new PlaceLookup.NameMismatch("전혀다른가게"));
+
+            List<GroundedDay> days = stage.ground("경주",
+                List.of(curated(suggested("없는집"), suggested("있을리없는집"))),
+                CandidatePool.empty(), CourseDeadline.unbounded());
+
+            assertThat(days.get(0).slots().get(0).isEmpty()).isTrue();
+            assertThat(vacant("grounding", "cafe")).isEqualTo(1);
+            assertThat(vacant("duplicate", "cafe")).isZero();
+            assertThat(vacant("mixed", "cafe")).isZero();
+            assertThat(vacant("no_candidate", "cafe")).isZero();
+        }
+
+        @Test
+        @DisplayName("앞 day 가 다 선점하면 duplicate 다 — 고칠 곳은 후보 공급이다")
+        void classifiesAsDuplicateWhenEarlierDayTookAll() {
+            CandidatePool pool = new CandidatePool(List.of(
+                new CandidateSlot(1, SlotType.CAFE,
+                    List.of(seededCafe("커피플레이스", "경북 경주시 포석로 1080"))),
+                new CandidateSlot(2, SlotType.CAFE,
+                    List.of(seededCafe("커피플레이스", "경북 경주시 포석로 1080")))));
+
+            List<GroundedDay> days = stage.ground("경주", List.of(
+                new CuratedDay(1, List.of(
+                    new CuratedSlot(SlotType.CAFE, List.of(fromList(0, "커피플레이스"))))),
+                new CuratedDay(2, List.of(
+                    new CuratedSlot(SlotType.CAFE, List.of(fromList(0, "커피플레이스")))))
+            ), pool, CourseDeadline.unbounded());
+
+            assertThat(days.get(1).slots().get(0).isEmpty()).isTrue();
+            assertThat(vacant("duplicate", "cafe")).isEqualTo(1);
+            assertThat(vacant("grounding", "cafe")).isZero();
+            // 결말은 여전히 hit 2건이다. 셋을 같이 보면 "검증은 둘 다 통과했는데 하나만 실렸다"
+            // 가 그대로 읽힌다 — 이것이 두 지표를 나눠 둔 이유다.
+            assertThat(counted("hit", "seeded")).isEqualTo(2);
+            assertThat(duplicated("seeded")).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("중복과 검증 실패가 섞이면 mixed 다 — 어느 쪽도 단독 원인이 아니다")
+        void classifiesAsMixedWhenBothCausesAppear() {
+            when(kakaoLocalClient.lookupBestPlace(eq("있을리없는집"), anyString()))
+                .thenReturn(new PlaceLookup.NameMismatch("전혀다른가게"));
+            CandidatePool pool = new CandidatePool(List.of(
+                new CandidateSlot(1, SlotType.CAFE,
+                    List.of(seededCafe("커피플레이스", "경북 경주시 포석로 1080"))),
+                new CandidateSlot(2, SlotType.CAFE,
+                    List.of(seededCafe("커피플레이스", "경북 경주시 포석로 1080")))));
+
+            List<GroundedDay> days = stage.ground("경주", List.of(
+                new CuratedDay(1, List.of(
+                    new CuratedSlot(SlotType.CAFE, List.of(fromList(0, "커피플레이스"))))),
+                new CuratedDay(2, List.of(new CuratedSlot(SlotType.CAFE,
+                    List.of(fromList(0, "커피플레이스"), suggested("있을리없는집")))))
+            ), pool, CourseDeadline.unbounded());
+
+            assertThat(days.get(1).slots().get(0).isEmpty()).isTrue();
+            assertThat(vacant("mixed", "cafe")).isEqualTo(1);
+            assertThat(vacant("duplicate", "cafe")).isZero();
+            assertThat(vacant("grounding", "cafe")).isZero();
+        }
+
+        @Test
+        @DisplayName("후보 자체가 없으면 no_candidate 다 — 그라운딩은 아무 일도 하지 않았다")
+        void classifiesAsNoCandidateWhenChoicesAreEmpty() {
+            List<GroundedDay> days = stage.ground("경주",
+                List.of(new CuratedDay(1, List.of(new CuratedSlot(SlotType.CAFE, List.of())))),
+                CandidatePool.empty(), CourseDeadline.unbounded());
+
+            assertThat(days.get(0).slots().get(0).isEmpty()).isTrue();
+            assertThat(vacant("no_candidate", "cafe")).isEqualTo(1);
+            verifyNoInteractions(kakaoLocalClient);
+        }
+
+        @Test
+        @DisplayName("구제가 중복으로 실패한 슬롯은 duplicate 다 — 업종은 #147 이 이미 무력화한 사유다")
+        void classifiesRescueBlockedByDuplicateAsDuplicate() {
+            when(kakaoLocalClient.lookupBestPlace(anyString(), anyString()))
+                .thenReturn(new PlaceLookup.Found(
+                    document("황남국밥", "129.21", "35.83", "FD6")));
+
+            List<GroundedDay> days = stage.ground("경주",
+                List.of(curated(1, SlotType.CAFE, suggested("황남국밥")),
+                    curated(2, SlotType.CAFE, suggested("황남국밥"))),
+                CandidatePool.empty(), CourseDeadline.unbounded());
+
+            assertThat(days.get(1).slots().get(0).isEmpty()).isTrue();
+            assertThat(vacant("duplicate", "cafe")).isEqualTo(1);
+            assertThat(vacant("mixed", "cafe")).isZero();
+            assertThat(vacant("grounding", "cafe")).isZero();
+            // 구제 경로의 중복은 후보 카운터에 세지 않는다 — 그 후보의 결말은 hit 이 아니라
+            // category_mismatch 라, 섞으면 match{hit} - duplicate 뺄셈이 깨진다.
+            assertThat(duplicated("suggested")).isZero();
+        }
+
+        @Test
+        @DisplayName("구제로 살아난 슬롯은 공석으로 세지 않는다")
+        void rescuedSlotIsNotVacant() {
+            when(kakaoLocalClient.lookupBestPlace(anyString(), anyString()))
+                .thenReturn(new PlaceLookup.Found(
+                    document("흑돼지거리", "126.52", "33.51", "AT4")));
+
+            stage.ground("제주", List.of(curated(1, SlotType.MEAL, suggested("흑돼지거리"))),
+                CandidatePool.empty(), CourseDeadline.unbounded());
+
+            assertThat(relaxed("category_last_resort")).isEqualTo(1);
+            assertThat(vacantTotal()).isZero();
+        }
+
+        @Test
+        @DisplayName("슬롯 타입이 태그로 갈린다 — 저녁이 빠진 것과 산책이 빠진 것은 다른 사건이다")
+        void tagsSlotType() {
+            when(kakaoLocalClient.lookupBestPlace(anyString(), anyString()))
+                .thenReturn(new PlaceLookup.NoResult());
+
+            stage.ground("경주", List.of(curated(1, SlotType.MEAL, suggested("없는집"))),
+                CandidatePool.empty(), CourseDeadline.unbounded());
+
+            assertThat(vacant("grounding", "meal")).isEqualTo(1);
+            assertThat(vacant("grounding", "cafe")).isZero();
+        }
+
+        @Test
+        @DisplayName("합계가 새지 않는다 — 채운 슬롯 + 공석 = 전체 슬롯")
+        void vacancyTotalAccountsForEverySlot() {
+            when(kakaoLocalClient.lookupBestPlace(eq("없는집"), anyString()))
+                .thenReturn(new PlaceLookup.NoResult());
+            CandidatePool pool = new CandidatePool(List.of(
+                new CandidateSlot(1, SlotType.CAFE,
+                    List.of(seededCafe("커피플레이스", "경북 경주시 포석로 1080"))),
+                new CandidateSlot(2, SlotType.CAFE,
+                    List.of(seededCafe("커피플레이스", "경북 경주시 포석로 1080")))));
+
+            // 슬롯 4개 — day1 채움 / day1 검증실패 / day2 중복 / day2 후보없음
+            List<GroundedDay> days = stage.ground("경주", List.of(
+                new CuratedDay(1, List.of(
+                    new CuratedSlot(SlotType.CAFE, List.of(fromList(0, "커피플레이스"))),
+                    new CuratedSlot(SlotType.MEAL, List.of(suggested("없는집"))))),
+                new CuratedDay(2, List.of(
+                    new CuratedSlot(SlotType.CAFE, List.of(fromList(0, "커피플레이스"))),
+                    new CuratedSlot(SlotType.STROLL, List.of())))
+            ), pool, CourseDeadline.unbounded());
+
+            long totalSlots = days.stream().mapToLong(day -> day.slots().size()).sum();
+            long filled = days.stream().flatMap(day -> day.slots().stream())
+                .filter(slot -> !slot.isEmpty()).count();
+
+            assertThat(totalSlots).isEqualTo(4);
+            assertThat(filled).isEqualTo(1);
+            assertThat(vacantTotal()).isEqualTo(totalSlots - filled);
+            assertThat(vacant("grounding", "meal")).isEqualTo(1);
+            assertThat(vacant("duplicate", "cafe")).isEqualTo(1);
+            assertThat(vacant("no_candidate", "stroll")).isEqualTo(1);
         }
     }
 }

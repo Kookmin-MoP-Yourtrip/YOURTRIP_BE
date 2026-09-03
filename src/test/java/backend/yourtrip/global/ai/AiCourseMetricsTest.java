@@ -112,6 +112,17 @@ class AiCourseMetricsTest {
         }
 
         @Test
+        @DisplayName("중복 폐기가 없어도 출처별 시계열이 존재한다 — hit 의 보정항이라 기준선이 0으로 찍혀야 한다 (이슈 #149)")
+        void registersGroundingDuplicateSeries() {
+            String scrape = registry.scrape();
+
+            assertThat(scrape).contains("ai_grounding_duplicate_total");
+            assertThat(scrape).contains("source=\"seeded\"");
+            assertThat(scrape).contains("source=\"listed\"");
+            assertThat(scrape).contains("source=\"suggested\"");
+        }
+
+        @Test
         @DisplayName("탈락이 없어도 사유별 시계열이 소스 두 축으로 존재한다 (이슈 #134)")
         void candidateDroppedIsRegistered() {
             // 0 등록이 없으면 "탈락이 없었다"와 "그 조합을 한 번도 안 만들었다"가 구분되지 않는다.

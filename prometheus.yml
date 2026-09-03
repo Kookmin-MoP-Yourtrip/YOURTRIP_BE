@@ -10,9 +10,9 @@ scrape_configs:
   - job_name: 'presign'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      # 호스트 OS(로컬)에서 실행 중인 Spring Boot 8080 포트를 도커 내부에서 참조하기 위해 host.docker.internal 사용
-      - targets: ['host.docker.internal:8080']
+      # Prometheus 를 네이티브로 띄우므로 앱과 같은 호스트다 — 도커에서 쓰던 host.docker.internal 별칭은 컨테이너 밖에 없다
+      - targets: ['localhost:8080']
   - job_name: 'cloudfront'
     metrics_path: '/actuator/prometheus'
     static_configs:
-      - targets: ['host.docker.internal:8081']
+      - targets: ['localhost:8081']
