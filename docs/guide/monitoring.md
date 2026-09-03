@@ -127,6 +127,27 @@ Grafana 커뮤니티에 공개된 완성도 높은 스프링 부트 대시보드
 
 > **미리 만들어 둔 대시보드도 있다**: `test/presigned-url-bottleneck`이 `scripts/grafana/provisioning`에 **Presign CPU Bottleneck** 대시보드를 남겨 뒀다. 도커로 돌리면 `docker-compose.yml`이 그 디렉터리를 볼륨 마운트해 기동 즉시 **Dashboards → Bottleneck Test 폴더**에 준비되지만, **네이티브에서는 자동으로 실리지 않는다** — Grafana의 대시보드 화면에서 `presign-bottleneck.json`을 수동 import 하거나, 설치 경로의 `conf/provisioning/` 아래로 복사한다. CPU 사용률/HikariCP 커넥션 점유·대기/Tomcat 스레드/GC/로그 발생률/Hibernate 쿼리 실행률 8패널이며, `$arm` 변수로 `presign`/`cloudfront` job을 전환해 본다. 자세한 내용은 [PRESIGN-BOTTLENECK.md](../tasks/connection-pool-bottleneck/PRESIGN-BOTTLENECK.md) 참고.
 
+### AI 코스 — 슬롯 결핍 관측 대시보드 (#149)
+
+[`scripts/grafana/dashboards/ai-course-slot-vacancy.json`](../../scripts/grafana/dashboards/ai-course-slot-vacancy.json)을
+**Dashboards → New → Import**에서 붙여넣고, `Prometheus` 변수에 위에서 만든 데이터소스를 고른다.
+
+패널은 세 구역이다.
+
+| 구역 | 무엇을 보나 |
+|---|---|
+| **결핍** | 빈 슬롯 합계 · **사유별**(무엇을 고쳐야 하는가) · **슬롯 타입별**(저녁이 얼마나 자주 빠지는가) · 발생 추이 |
+| **보정** | 출처별 `hit` vs 중복 폐기 vs **실제 배치**(뺄셈이 표로 보인다) · 그라운딩 결말 분포 |
+| **교차 검증** | `no_candidate == unfilled` · `채운 슬롯 + 공석 = 전체`. **차이값을 표시하고 0이 아니면 배경이 빨개진다** |
+
+**아무 요청도 없는 상태에서 "No data"가 아니라 0이 떠야 정상이다** — 발생 가능한 태그 조합을 기동
+시점에 0으로 등록하기 때문이고(`AiCourseMetrics`), 그래야 "결핍이 없다"와 "그 조합을 한 번도 만들지
+않았다"가 구분된다.
+
+**데이터소스 UID를 JSON에 박지 않았다.** 로컬 스택은 provisioning으로 UID를 고정할 수 있지만, 이
+대시보드가 참조할 UID가 하필 `prometheus-presign-bottleneck`(병목 테스트가 만든 이름)이라 의미가
+어긋난다. 운영 대시보드와 같이 `ds_prom` **데이터소스 변수**로 뺐다.
+
 ---
 
 ## 5. 부하 테스트 시 추천 모니터링 시나리오
