@@ -629,6 +629,61 @@ return candidate.contains(base) && !candidate.endsWith(base);
 | 0 등록 | `/actuator/prometheus`에 **31개 시계열**(28 + 3)이 전부 `0.0`으로 노출 |
 | 스크레이프 | Prometheus 3.14 네이티브에서 `presign` job **UP**, PromQL `count(ai_slot_vacant_total)` = **28** |
 
+### 로컬 E2E 실측 — 첫 실행에서 세 갈래가 모두 나왔다
+
+영주 3일(`2026-10-05~07`, `FOOD·WALK·HEALING`) 한 건. **후보 풀이 좁아 중복이 잘 나는 소도시**를
+고른 것이고, 계획 단계의 예상은 *"#147 구제 이후라 빈 슬롯이 0건일 수 있다"*였는데 **정반대 결과가
+나왔다.**
+
+```
+WARN GroundingStage : 장소를 채우지 못한 슬롯 3개 (이슈 #149):
+     [day1/MEAL/GROUNDING, day2/MEAL/MIXED, day3/MEAL/DUPLICATE]
+```
+
+| | 값 |
+|---|---|
+| 슬롯 | 18개 (`curator` 12 · `fallback` 6) |
+| 코스에 실린 장소 | 15곳 (day당 5곳) |
+| **빈 슬롯** | **3개 — `GROUNDING` 1 · `MIXED` 1 · `DUPLICATE` 1, 전부 `MEAL`** |
+| 검증 후보 | 54건 (18슬롯 × 3) — `hit` 46(`seeded` 28·`listed` 18) / `failed` 8 |
+| **중복 폐기** | **12건** (`seeded` 7 · `listed` 5) |
+
+**4갈래로 나눈 판단이 첫 실행에서 값을 받았다.** 세 사유가 각각 하나씩 나왔으므로, 뭉쳤다면
+"빈 슬롯 3개"까지만 알고 세 처방(후보 공급 / 검증 로직 / 둘 다) 중 무엇도 고를 수 없었다.
+
+**판정 2의 영주 사례가 그대로 재현됐다.** 그때 기록은 *"영주 day1만 저녁이 남고 day2·3이
+잃었다"*였는데, 이번에도 **day1만 저녁(본죽 17:30)이 남고 day2는 13:45, day3은 16:35에 끝났다.**
+빠진 셋이 전부 `MEAL`인 것은 [`TourApiSource`](../../../../src/main/java/backend/yourtrip/global/ai/candidate/TourApiSource.java)가
+`MEAL`·`CAFE`·`SHOPPING`을 다루지 않아 **식사 슬롯만 소스가 네이버 하나**이고, 5-9 실측에서 그
+슬롯의 평균 확보가 6.5건(관광 25.0)이었던 구조와 맞는다.
+
+**검산식 둘 다 성립했다** — 이슈가 요구한 "역산값과 새 메트릭의 일치"가 이것이다.
+
+| 식 | 실측 |
+|---|---|
+| `adopted + slot.vacant == curation.slot` | 15 + 3 = **18** vs **18** ✅ |
+| `slot.vacant{no_candidate} == curation.slot{unfilled}` | 0 vs 0 ✅ |
+
+**`hit`이 실렸다는 뜻이 아니라는 것도 값으로 나왔다** — 검증을 통과한 12건이 중복으로 코스에
+못 들어갔다. 기존 지표만 보면 46건 전부 성공으로 보인다.
+
+Grafana 대시보드([`ai-course-slot-vacancy.json`](../../../../scripts/grafana/dashboards/ai-course-slot-vacancy.json))의
+교차 검증 패널 두 개도 차이값 0으로 초록이었다.
+
+### [정정] `hit − duplicate`는 배치 수가 아니다
+
+이 실측이 **문서의 오류를 하나 잡았다.** 구현 당시 `AiCourseMetrics` javadoc과 관측 표에
+*"`match{hit,X} − duplicate{X}`가 그 출처의 실제 배치 수"*라고 적었는데 **틀렸다** —
+46 − 12 = 34인데 실제 배치는 15였다.
+
+`ai.grounding.match` 계열은 **후보** 단위(슬롯당 최대 3)이고 배치는 **슬롯당 하나**(`preferred`)라
+단위가 다르다. 정확히는 **중복 제거를 통과해 슬롯의 `survivors`에 남은 후보 수**이고, 그중 1순위만
+코스에 실린다. 슬롯 단위로 아귀가 맞는 등식은 위 검산식 표의 `adopted + vacant = curation.slot`
+쪽이다. javadoc·관측 표·대시보드 패널 이름을 함께 고쳤다.
+
+**단위가 다른 지표를 한 등식에 넣으면 안 된다**는 것이 이 정정의 교훈이고, 계획 단계에서 이미 한 번
+같은 실수를 했다가 바로잡은 자리이기도 하다.
+
 **전후 비교 기준선은 이 브랜치가 아니다.** #147(PR 152)·#164(PR 171)가 이미 구제를 넣어 빈 슬롯을
 줄였으므로, 판정 2의 5건을 이 지표의 "before"로 쓰면 안 된다 — PR 152 본문이 그 점을 직접 경고했다.
 이 계측의 목적은 **전후 비교가 아니라 지금부터의 결핍을 보이게 만드는 것**이다.

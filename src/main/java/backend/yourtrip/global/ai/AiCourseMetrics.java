@@ -93,8 +93,13 @@ public class AiCourseMetrics {
      *
      * <p>{@code GroundingStage}는 후보를 판정하는 즉시 결말을 세고, <b>그 다음에</b> 전 day 중복을
      * 거른다. 그래서 중복으로 버려진 후보가 집계상 {@code hit}으로 남는다 — 8단계 병합 검증에서
-     * 검증 성공 109건과 실제 저장 104개가 어긋난 원인이 이것이다. 이 값이 그 차액을 설명한다:
-     * <b>{@code match{hit,X} − duplicate{X}}가 그 출처의 실제 배치 수</b>다.
+     * 검증 성공 109건과 실제 저장 104개가 어긋난 원인이 이것이다. 이 값이 그 차액을 설명한다 —
+     * <b>{@code match{hit,X} − duplicate{X}}가 중복 제거를 통과해 슬롯에 남은 후보 수</b>다.
+     *
+     * <p><b>그것이 곧 코스에 실린 장소 수는 아니다.</b> 이 계열은 <b>후보</b> 단위(슬롯당 최대 3)이고
+     * 배치는 슬롯당 하나({@code preferred})라 단위가 다르다 — 영주 3일 실측에서 {@code hit} 46 −
+     * {@code duplicate} 12 = 34인데 실제 배치는 15였다. 슬롯 단위로 아귀가 맞는 등식은
+     * {@link #CANDIDATE_ADOPTED} + {@code ai.slot.vacant} = {@link #CURATION_SLOT} 쪽이다.
      *
      * <p><b>{@code hit}을 {@code duplicate}로 바꿔치지 않는 이유</b>는 {@link #GROUNDING_RELAXED}와
      * 같다 — 카카오 검증은 실제로 통과했고, 결말을 뒤집으면 {@code GroundingOutcome}의 의미가
