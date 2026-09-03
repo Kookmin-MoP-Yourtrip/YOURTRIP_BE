@@ -8,8 +8,10 @@ import backend.yourtrip.global.ai.candidate.GeocodeOutcome;
 import backend.yourtrip.global.ai.grounding.GroundingOutcome;
 import backend.yourtrip.global.ai.grounding.GroundingRelaxation;
 import backend.yourtrip.global.ai.grounding.PlaceUrlOutcome;
+import backend.yourtrip.global.ai.grounding.SlotVacancyReason;
 import backend.yourtrip.global.ai.pipeline.PipelineStage;
 import backend.yourtrip.global.ai.pipeline.SlotFillOutcome;
+import backend.yourtrip.global.ai.route.SlotType;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -206,6 +208,27 @@ public class AiCourseMetrics {
      */
     public static final String CURATION_SLOT = "ai.curation.slot";
 
+    /**
+     * <b>슬롯이 장소를 하나도 채우지 못한 사건</b> (이슈 #149). 지금까지 <b>어떤 지표에도 잡히지
+     * 않던 결핍</b>이다.
+     *
+     * <p>{@code AiCoursePipeline}이 빈 슬롯을 {@code continue}로 건너뛰는데 로그도 메트릭도 없었고,
+     * {@link #CURATION_SLOT}은 Curator 응답 기준이라 그 슬롯을 채워진 것으로 세며,
+     * {@link #GROUNDING_MATCH}는 중복으로 버린 후보를 {@code hit}으로 셌다. 그래서 <b>"저녁 없는
+     * 하루"가 나가도 운영 지표는 전부 정상으로 보였다</b> — 실제로 영주 day2·day3, 제주 day3 의
+     * 저녁이 그렇게 사라졌고, 슬롯 109개 중 5개라는 값조차 역산으로만 얻었다.
+     *
+     * <p><b>{@code slot} 축이 실린 이유.</b> 문제 삼은 것은 "슬롯이 비었다"가 아니라 <b>"저녁이
+     * 빠졌다"</b>이다. {@code meal} 결손은 사용자에게 보이고 {@code stroll} 결손은 거의 안 보인다 —
+     * 뭉치면 심각도를 잴 수 없고 어느 슬롯의 후보 풀을 넓혀야 하는지도 나오지 않는다.
+     *
+     * <p><b>{@code day} 축은 두지 않는다.</b> 카디널리티가 요청마다 늘고, "day2 가 day1 보다 잘
+     * 빈다"에 답할 운영 질문이 지금 없다. day 는 로그 줄에 싣는다.
+     *
+     * <p><b>분모를 따로 두지 않는다</b> — {@link #CURATION_SLOT} 세 값의 합이 곧 전체 슬롯 수다.
+     */
+    public static final String SLOT_VACANT = "ai.slot.vacant";
+
     /** 네이버 지역검색 시더 (전 슬롯의 인기 축). */
     public static final String SOURCE_NAVER_LOCAL = "naver_local";
 
@@ -283,6 +306,11 @@ public class AiCourseMetrics {
         }
         for (SlotFillOutcome outcome : SlotFillOutcome.values()) {
             curationSlotCounter(outcome);
+        }
+        for (SlotVacancyReason reason : SlotVacancyReason.values()) {
+            for (SlotType slotType : SlotType.values()) {
+                slotVacantCounter(reason, slotType);
+            }
         }
     }
 
@@ -415,6 +443,24 @@ public class AiCourseMetrics {
         if (count > 0) {
             curationSlotCounter(outcome).increment(count);
         }
+    }
+
+    /**
+     * 장소를 채우지 못한 슬롯 하나를 사유·타입별로 올린다 (이슈 #149).
+     *
+     * <p><b>{@code count} 인자가 없는 것이 의도다.</b> 빈 슬롯은 day 와 함께 로그로 나가야 뜻이
+     * 사는데, 맵으로 뭉치려면 키에 day 가 들어가야 하고 day 는 태그가 아니다. 그래서 발생할 때마다
+     * 하나씩 올린다({@link #geocode}와 같은 형태).
+     */
+    public void slotVacant(SlotVacancyReason reason, SlotType slotType) {
+        slotVacantCounter(reason, slotType).increment();
+    }
+
+    private Counter slotVacantCounter(SlotVacancyReason reason, SlotType slotType) {
+        return Counter.builder(SLOT_VACANT)
+            .tag("reason", tag(reason.name()))
+            .tag("slot", tag(slotType.name()))
+            .register(registry);
     }
 
     private Counter curationSlotCounter(SlotFillOutcome outcome) {
