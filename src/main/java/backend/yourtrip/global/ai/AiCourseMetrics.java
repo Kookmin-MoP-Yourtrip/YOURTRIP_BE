@@ -86,6 +86,32 @@ public class AiCourseMetrics {
     public static final String GROUNDING_RELAXED = "ai.grounding.relaxed";
 
     /**
+     * <b>검증은 통과했는데 전 day 중복이라 버린 건수</b> (이슈 #149). {@link #GROUNDING_MATCH}의
+     * <b>보정항</b>이다.
+     *
+     * <p>{@code GroundingStage}는 후보를 판정하는 즉시 결말을 세고, <b>그 다음에</b> 전 day 중복을
+     * 거른다. 그래서 중복으로 버려진 후보가 집계상 {@code hit}으로 남는다 — 8단계 병합 검증에서
+     * 검증 성공 109건과 실제 저장 104개가 어긋난 원인이 이것이다. 이 값이 그 차액을 설명한다:
+     * <b>{@code match{hit,X} − duplicate{X}}가 그 출처의 실제 배치 수</b>다.
+     *
+     * <p><b>{@code hit}을 {@code duplicate}로 바꿔치지 않는 이유</b>는 {@link #GROUNDING_RELAXED}와
+     * 같다 — 카카오 검증은 실제로 통과했고, 결말을 뒤집으면 {@code GroundingOutcome}의 의미가
+     * "검증이 무엇이라 답했는가"에서 "코스에 실렸는가"로 바뀐다. 환각률 프록시의 분모가 이동해
+     * 5·8단계의 과거 측정값과 직접 비교가 깨진다(3점 비교의 전제).
+     *
+     * <p><b>{@code source} 축을 두는 이유</b>는 분모가 그 축에 있기 때문이다. 알고 싶은 값은 절대
+     * 건수가 아니라 <b>{@code hit} 대비 중복 폐기율</b>인데 {@link #GROUNDING_MATCH}가 출처별로
+     * 갈려 있다. 실제로 발생률도 출처마다 다를 것으로 본다 — 네이버 시드는 인기순이라 day마다 같은
+     * 상위 장소가 뽑히기 쉽고, LLM 제안은 day별로 흩어질 여지가 있다.
+     *
+     * <p><b>업종 불일치 최후 구제({@link GroundingRelaxation})의 중복은 여기 세지 않는다.</b> 그
+     * 후보의 결말은 {@code hit}이 아니라 {@code category_mismatch}라, 섞으면 위의 뺄셈이 깨진다 —
+     * 그 뺄셈이 이 지표의 유일한 존재 이유다. 사건이 사라지지도 않는다 — 그렇게 채우지 못한
+     * 슬롯은 이슈 #149의 슬롯 단위 지표가 따로 센다.
+     */
+    public static final String GROUNDING_DUPLICATE = "ai.grounding.duplicate";
+
+    /**
      * <b>Curator 가 목록 참조를 위조한 빈도</b> (ROADMAP 6-7). {@code SEEDED}·{@code LISTED} 가
      * 카카오 검증을 생략하는 근거는 "목록에 있는 것은 실존이 확인됐다"인데, 이 값이 크면 그 전제가
      * 실제로 얼마나 자주 깨지는지를 말해 준다.
@@ -234,6 +260,9 @@ public class AiCourseMetrics {
                 groundingCounter(outcome, source);
             }
         }
+        for (CandidateSourceType source : CandidateSourceType.values()) {
+            groundingDuplicateCounter(source);
+        }
         for (GroundingRelaxation reason : GroundingRelaxation.values()) {
             groundingRelaxedCounter(reason);
         }
@@ -293,6 +322,18 @@ public class AiCourseMetrics {
     public void groundingRelaxed(GroundingRelaxation reason, int count) {
         if (count > 0) {
             groundingRelaxedCounter(reason).increment(count);
+        }
+    }
+
+    /**
+     * 검증을 통과하고도 전 day 중복이라 버린 건수를 출처별로 올린다 (이슈 #149).
+     *
+     * <p>{@link #groundingMatch}와 <b>같이 오른다</b> — 결말은 여전히 {@code hit}이다. 둘을 빼면
+     * 그 출처가 실제로 코스에 실은 수가 나온다. 근거는 {@link #GROUNDING_DUPLICATE} 참고.
+     */
+    public void groundingDuplicate(CandidateSourceType source, int count) {
+        if (count > 0) {
+            groundingDuplicateCounter(source).increment(count);
         }
     }
 
@@ -429,6 +470,12 @@ public class AiCourseMetrics {
     private Counter groundingCounter(GroundingOutcome outcome, CandidateSourceType source) {
         return Counter.builder(GROUNDING_MATCH)
             .tag("result", tag(outcome.name()))
+            .tag("source", tag(source.name()))
+            .register(registry);
+    }
+
+    private Counter groundingDuplicateCounter(CandidateSourceType source) {
+        return Counter.builder(GROUNDING_DUPLICATE)
             .tag("source", tag(source.name()))
             .register(registry);
     }

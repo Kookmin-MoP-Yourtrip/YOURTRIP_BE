@@ -71,6 +71,11 @@ class GroundingStageTest {
             .tags("reason", reason).counter().count();
     }
 
+    private double duplicated(String source) {
+        return meterRegistry.get(AiCourseMetrics.GROUNDING_DUPLICATE)
+            .tags("source", source).counter().count();
+    }
+
     private static PlaceCandidate seededCafe(String name, String address) {
         return new PlaceCandidate(CandidateSourceType.SEEDED, name, address, LAT, LON,
             SlotType.CAFE, Set.of(StyleTag.ROOFTOP), 1, StyleTag.ROOFTOP, 0.4,
@@ -445,6 +450,11 @@ class GroundingStageTest {
 
             assertThat(days.get(0).slots().get(0).survivors()).hasSize(1);
             assertThat(days.get(1).slots().get(0).isEmpty()).isTrue();
+            // 결말은 그대로 hit 이다 — 카카오 검증(여기서는 목록 승계)은 실제로 통과했고,
+            // duplicate 로 바꿔치면 환각률 프록시의 분모가 이동해 5·8단계와 비교가 깨진다.
+            // 둘을 나누면 "hit 2건 중 1건은 코스에 못 실렸다" 가 그대로 나온다 (이슈 #149).
+            assertThat(counted("hit", "seeded")).isEqualTo(2);
+            assertThat(duplicated("seeded")).isEqualTo(1);
         }
 
         @Test

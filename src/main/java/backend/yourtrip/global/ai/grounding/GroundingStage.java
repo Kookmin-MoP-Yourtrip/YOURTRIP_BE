@@ -141,6 +141,9 @@ public class GroundingStage {
         Set<String> placed = new LinkedHashSet<>();
         Map<Tally, Integer> tally = new LinkedHashMap<>();
         Map<GroundingRelaxation, Integer> relaxations = new EnumMap<>(GroundingRelaxation.class);
+        // 검증은 통과했는데 앞 day 가 이미 써서 버린 건수 (이슈 #149). tally 는 이것도 hit 으로
+        // 세므로, 이 값을 빼야 그 출처가 실제로 코스에 실은 수가 나온다.
+        Map<CandidateSourceType, Integer> duplicates = new EnumMap<>(CandidateSourceType.class);
 
         List<GroundedDay> days = new ArrayList<>(curatedDays.size());
         for (CuratedDay day : curatedDays) {
@@ -159,10 +162,19 @@ public class GroundingStage {
                         resolution.place().ifPresent(rescuable::add);
                         continue;
                     }
-                    resolution.place()
-                        .filter(place -> placed.add(
-                            CandidateMatcher.dedupeKey(place.name(), place.address())))
-                        .ifPresent(survivors::add);
+                    // filter 체인을 편 것은 계측 때문이다 (이슈 #149) — 그 형태로는 "장소가 없어
+                    // 못 실었다" 와 "중복이라 못 실었다" 가 같은 빈 Optional 로 뭉개져, 버린 쪽에
+                    // 카운터를 붙일 자리가 없었다.
+                    Optional<GroundedPlace> resolved = resolution.place();
+                    if (resolved.isEmpty()) {
+                        continue;
+                    }
+                    GroundedPlace place = resolved.get();
+                    if (placed.add(CandidateMatcher.dedupeKey(place.name(), place.address()))) {
+                        survivors.add(place);
+                    } else {
+                        duplicates.merge(resolution.source(), 1, Integer::sum);
+                    }
                 }
                 if (survivors.isEmpty()) {
                     rescue(rescuable, placed).ifPresent(place -> {
@@ -182,7 +194,10 @@ public class GroundingStage {
         // 완화는 결말과 나란히 오른다 — 결말을 hit 으로 바꿔치기하면 5-3 의 업종 제약이 무엇을
         // 걸렀는지 못 재고, 완화가 환각을 몇 건 들였는지도 되짚을 수 없다(이슈 #147).
         relaxations.forEach(metrics::groundingRelaxed);
-        log.debug("그라운딩 결과: {} (완화 {})", tally, relaxations);
+        // 결말과 나란히 오른다 — 이쪽도 hit 을 뒤집지 않는다(이슈 #149). 완화가 "검증이 탈락시킨
+        // 것을 우리가 살렸다" 라면 이쪽은 "검증이 통과시킨 것을 우리가 버렸다" 이고, 둘이 대칭이다.
+        duplicates.forEach(metrics::groundingDuplicate);
+        log.debug("그라운딩 결과: {} (완화 {}, 중복 폐기 {})", tally, relaxations, duplicates);
         return days;
     }
 
