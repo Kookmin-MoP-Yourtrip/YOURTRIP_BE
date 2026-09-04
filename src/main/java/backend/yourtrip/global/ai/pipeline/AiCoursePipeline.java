@@ -232,6 +232,9 @@ public class AiCoursePipeline {
                 // 2·3순위가 올라오기 위한 것이고, 그 승격은 GroundingStage 에서 이미 끝났다.
                 Optional<GroundedPlace> preferred = slot.preferred();
                 if (preferred.isEmpty()) {
+                    // 여기서 다시 세지 않는다 — 이 결손은 GroundingStage 가 사유·슬롯타입과 함께
+                    // ai.slot.vacant 로 이미 기록했다(이슈 #149). 사유를 아는 것은 그쪽뿐이고,
+                    // 양쪽에서 세면 이중 집계가 된다.
                     continue;
                 }
                 GroundedPlace place = preferred.get();

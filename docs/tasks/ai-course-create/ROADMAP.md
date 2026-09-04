@@ -179,7 +179,7 @@
 
 - [x] 7-1. `AiCoursePipeline` — Planner → **CandidateRetrieval** → Curator → Grounding(SUGGESTED만) → RouteOptimizer → **PlaceUrlEnricher** 조립. LLM 호출 `1 + days`회, PlaceSignal 없음. 입력은 `CourseBrief`, 출력은 `AiCourseDraft`(파이프라인은 `domain`을 모른다 — `ResolvedDay` 변환은 8-1이 한다). 요청 전체 예산은 **새 `ai.course.budget-ms`(기본 30초)**이고 `llm.timeout-ms`와 같은 곳에 두지 않는다(재는 대상이 호출 1건 대 요청 전체로 다르다). **로드맵에 없던 결함을 하나 닫았다** — 사용자가 고른 `WALK`/`CAR` 키워드가 `TravelMode`로 옮겨지는 자리가 없어 뚜벅이 여행도 시속 15km로 계산되고 있었다([STEP-7](steps/STEP-7-pipeline.md) 판정 8)
 - [x] 7-2. `AiCourseErrorCode` 신설 — **다섯이 아니라 둘이다.** `AI_GROUNDING_FAILED`(503) / `AI_COURSE_TIMEOUT`(504, 5-5 데드라인)만 만들었다. `AI_PLAN_FAILED`·`AI_RESPONSE_INVALID`는 7-3의 degrade가 흡수해 도달 경로가 없고, `AI_COURSE_BUSY`는 세마포어 포화가 다른 전송 실패와 **같은 `LlmTransportException` 타입**이라 구분 자체가 안 되며 구분해도 같은 degrade에 먹힌다. **발화하지 않는 상수를 두면 이 enum이 동작의 기록이 아니라 설계 의도의 기록이 된다.** `ErrorCode` 구현이라 `GlobalExceptionHandler`는 수정하지 않았다 + `JSON_TRANSFORMATION_FAILED` 오용 정리는 **키워드 직렬화 쪽만** 했다(`IllegalStateException`으로 강등) — 응답 역직렬화 쪽은 8-4가 경로째로 지운다
-- [x] 7-3. **degrade, don't fail** 폴백 — Planner 실패 시 결정론적 기본 플랜(`DefaultPlannerPlans`), **후보 공급 실패 시 빈 목록으로 진행(초안 구조로 degrade)**, Curator가 비운 자리는 **후보 목록 상위 3으로 결정론적 채움**(`DeterministicCuration`). 후보 개별 탈락·네이버 fail-open은 이미 스테이지가 소유한다. ~~목록이 없으면 카카오 카테고리 검색 폴백~~·~~슬롯 전멸 시 보충~~ → **보류했다** — 5-9 실측에서 빈 슬롯이 0%라 같은 성격의 폴백이 이미 조건 미발동으로 기각된 선례가 있고, 이 폴백은 **장애 상황에서 외부 호출을 늘리는 방향**이다(채택한 폴백은 `SEEDED`/`LISTED`라 카카오를 한 번도 부르지 않는다). 근거는 [STEP-7](steps/STEP-7-pipeline.md) 판정 3
+- [x] 7-3. **degrade, don't fail** 폴백 — Planner 실패 시 결정론적 기본 플랜(`DefaultPlannerPlans`), **후보 공급 실패 시 빈 목록으로 진행(초안 구조로 degrade)**, Curator가 비운 자리는 **후보 목록 상위 3으로 결정론적 채움**(`DeterministicCuration`). 후보 개별 탈락·네이버 fail-open은 이미 스테이지가 소유한다. ~~목록이 없으면 카카오 카테고리 검색 폴백~~·~~슬롯 전멸 시 보충~~ → **보류했다** — 5-9 실측에서 빈 슬롯이 0%라 같은 성격의 폴백이 이미 조건 미발동으로 기각된 선례가 있고, 이 폴백은 **장애 상황에서 외부 호출을 늘리는 방향**이다(채택한 폴백은 `SEEDED`/`LISTED`라 카카오를 한 번도 부르지 않는다). 근거는 [STEP-7](steps/STEP-7-pipeline.md) 판정 3. **[정정] 그 기각 근거는 다른 사건을 가리키고 있었다** — 5-9의 "빈 슬롯"은 **후보 공급 단계**(목록이 비었나)이고 여기서 보충하려던 것은 **그라운딩 이후**(장소가 0개인가)다. 후자는 8단계 실측에서 109개 중 5개로 실재했고 #149가 계측했다. 재검토하려면 그 지표의 운영 데이터가 먼저다 — 순서를 뒤집으면 같은 실수를 반복한다
 - [x] 7-4. **hard fail은 전 day 장소 0개 하나뿐**(`AI_GROUNDING_FAILED` 503). 좌표 없는 코스는 이 기능의 핵심 가치를 잃는다 — **지금 코드가 `0.0/0.0`으로 저장해 성공을 위장하는 것이 정확히 그 실수다**. **`AI_COURSE_TIMEOUT`(504)은 같은 지점에서 갈린다** — 장소가 0개인 원인이 예산 소진이면 이쪽이다. 만료를 앞에서 따로 검사하지 않는 이유는 스테이지들이 이미 만료를 degrade로 흡수해, **만료가 실제로 해가 된 경우에만** 판정하는 것이 정확하기 때문이다. day 하나만 비는 부분 실패는 통과시킨다
 - [x] 7-5. `ai.course.pipeline.duration{stage}` 메트릭 (202 전환 판단의 근거가 된다) + **`ai.candidate.adopted{source, modifier}`** — 5-8이 여기로 넘긴 것이다(배치 확정 시점이 7단계에서 처음 생긴다). **설계의 4축을 2축으로 줄였다** — 카카오가 후보 공급에서 빠지면서 `seeded`·`official`이 `source`의 재표현이 됐다. 8-7 삭제 로그와 태그 축이 같아야 출처별 삭제율이 계산된다. **관측 두 건을 더 붙였다**: ① 두 Timer(`pipeline.duration`·`ai.llm.call`)에 **히스토그램 버킷** — 기본값은 count·sum·max뿐이라 11-2가 요구하는 p95를 낼 수 없었고, 배치 측정이라 롤링 윈도우 기반 `publishPercentiles`는 값이 감쇠한다 ② **`ai.curation.slot{result=curator|fallback|unfilled}`** — 7-3 폴백은 응답을 200으로 유지해 Curator가 전 day 죽어도 어떤 지표에도 안 잡히는데, 폴백이 채운 장소는 환각률이 구조적으로 0에 가까워 **8-6 측정을 조용히 오염시킨다**. 근거는 [STEP-7](steps/STEP-7-pipeline.md) 판정 12·13
 - [x] 7-6. 폴백 경로별 테스트 (708 → **754개**, 46개 추가). 목 기반 `AiCoursePipelineTest`(분기)와 WireMock 기반 `AiCourseStagesStubIntegrationTest$FullPipeline`(실제 응답)을 둘 다 갖는다. **"Planner 실패 → 기본 플랜"을 재현한 것이 폴백 경로에서만 터지는 NPE를 잡았다** — `Stream.findFirst()`는 첫 원소가 `null`이면 예외를 던지는데 기본 플랜의 `dayStartTime`이 `null`이다([STEP-7](steps/STEP-7-pipeline.md) 판정 10)
@@ -200,6 +200,14 @@
 > 완화는 **되돌렸다** — 하네스가 검증에 그대로 쓰는 함수라 기준선 389개를 재채점했는데 회수가
 > 0건이었다([STEP-8](steps/STEP-8-switch.md) 판정 3). 그래서 `lookupBestPlace`는 손대지 않았고,
 > 3점 비교의 전제 조건 1이 **구성으로** 유지된다.
+>
+> 판정 2가 남긴 관측 공백 — *"빈 슬롯 5개를 지표가 아니라 역산으로 얻었다"* — 은
+> [#149](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/149)에서 닫았다.
+> `ai.slot.vacant{reason, slot}`가 사유(중복 전멸 / 검증 전멸 / 혼합 / 후보 없음)와 슬롯 타입으로
+> 갈라 세고, `ai.grounding.duplicate{source}`가 `match{hit}`의 과대 집계를 보정한다. **원인은
+> 조립부 한 줄이었다** — `filter(placed::add)` 체인이 "장소가 없어 못 실었다"와 "중복이라 못
+> 실었다"를 같은 빈 `Optional`로 뭉개, 처방이 정반대인 두 사건에 카운터를 붙일 자리가 없었다
+> ([STEP-8](steps/STEP-8-switch.md) 판정 6).
 
 - [x] 8-1. `createAICourse`를 파이프라인 호출로 교체. `userId`를 요청 스레드에서 **미리 확보해 명시적으로 넘긴다** — `getCurrentUserId()`는 `SecurityContextHolder`를 읽는데 파이프라인이 다른 스레드에서 돌면 `SecurityContext`가 전파되지 않아 인증 정보가 사라진다
 - [x] 8-2. `AiCoursePersister` 분리 확정 (1-5에서 이미 도입했다면 파이프라인 결과를 받도록 조정)

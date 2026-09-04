@@ -83,6 +83,8 @@ docker compose up -d redis
 
 **Redis가 떠 있지 않으면** 캐시 경로가 전부 실패해 DB 폴백으로 동작한다(앱은 뜨지만 `WARN`이 대량으로 쌓인다). 모니터링까지 함께 보려면 `docker compose up -d`로 Prometheus/Grafana도 띄운다.
 
+**로컬 스택을 네이티브로 돌려도 된다**(Redis·Prometheus·Grafana). 그때 바뀌는 것은 주소뿐이다 — `.env`의 `REDIS_PORT`를 도커 매핑값 `6479`에서 기본 포트 `6379`로 바꾸고, `prometheus.yml`과 Grafana 데이터소스는 이미 `localhost` 기준이라 그대로 쓴다. 애플리케이션 코드는 `${REDIS_PORT}`를 읽을 뿐이라 소스 변경이 없다. 절차는 [monitoring.md](docs/guide/monitoring.md) 1부 참고.
+
 필수 환경변수는 **[.env.example](.env.example)이 정본**이다(DB·JWT·Mail·S3·CloudFront·Kakao·OpenAI·네이버·TourAPI·Redis 계열). 이 파일을 복사해 레포 루트에 `.env`를 만들면, `spring-dotenv`가 자동으로 읽어 주입하므로 셸에서 `export`할 필요 없이 `./gradlew bootRun`이 바로 동작한다(실제 OS 환경변수가 있으면 그 값이 항상 우선). 기본 포트는 8080.
 
 `src/main/resources/data.sql`은 로컬 개발용 시드 데이터(사용자/코스/일정/장소 샘플)이며 현재 git에 커밋되지 않은 상태다.

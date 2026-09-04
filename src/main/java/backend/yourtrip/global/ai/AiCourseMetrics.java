@@ -8,8 +8,10 @@ import backend.yourtrip.global.ai.candidate.GeocodeOutcome;
 import backend.yourtrip.global.ai.grounding.GroundingOutcome;
 import backend.yourtrip.global.ai.grounding.GroundingRelaxation;
 import backend.yourtrip.global.ai.grounding.PlaceUrlOutcome;
+import backend.yourtrip.global.ai.grounding.SlotVacancyReason;
 import backend.yourtrip.global.ai.pipeline.PipelineStage;
 import backend.yourtrip.global.ai.pipeline.SlotFillOutcome;
+import backend.yourtrip.global.ai.route.SlotType;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -84,6 +86,37 @@ public class AiCourseMetrics {
      * 5-3의 업종 제약이 실제로 무엇을 걸렀는지도 함께 못 재게 된다.
      */
     public static final String GROUNDING_RELAXED = "ai.grounding.relaxed";
+
+    /**
+     * <b>검증은 통과했는데 전 day 중복이라 버린 건수</b> (이슈 #149). {@link #GROUNDING_MATCH}의
+     * <b>보정항</b>이다.
+     *
+     * <p>{@code GroundingStage}는 후보를 판정하는 즉시 결말을 세고, <b>그 다음에</b> 전 day 중복을
+     * 거른다. 그래서 중복으로 버려진 후보가 집계상 {@code hit}으로 남는다 — 8단계 병합 검증에서
+     * 검증 성공 109건과 실제 저장 104개가 어긋난 원인이 이것이다. 이 값이 그 차액을 설명한다 —
+     * <b>{@code match{hit,X} − duplicate{X}}가 중복 제거를 통과해 슬롯에 남은 후보 수</b>다.
+     *
+     * <p><b>그것이 곧 코스에 실린 장소 수는 아니다.</b> 이 계열은 <b>후보</b> 단위(슬롯당 최대 3)이고
+     * 배치는 슬롯당 하나({@code preferred})라 단위가 다르다 — 영주 3일 실측에서 {@code hit} 46 −
+     * {@code duplicate} 12 = 34인데 실제 배치는 15였다. 슬롯 단위로 아귀가 맞는 등식은
+     * {@link #CANDIDATE_ADOPTED} + {@code ai.slot.vacant} = {@link #CURATION_SLOT} 쪽이다.
+     *
+     * <p><b>{@code hit}을 {@code duplicate}로 바꿔치지 않는 이유</b>는 {@link #GROUNDING_RELAXED}와
+     * 같다 — 카카오 검증은 실제로 통과했고, 결말을 뒤집으면 {@code GroundingOutcome}의 의미가
+     * "검증이 무엇이라 답했는가"에서 "코스에 실렸는가"로 바뀐다. 환각률 프록시의 분모가 이동해
+     * 5·8단계의 과거 측정값과 직접 비교가 깨진다(3점 비교의 전제).
+     *
+     * <p><b>{@code source} 축을 두는 이유</b>는 분모가 그 축에 있기 때문이다. 알고 싶은 값은 절대
+     * 건수가 아니라 <b>{@code hit} 대비 중복 폐기율</b>인데 {@link #GROUNDING_MATCH}가 출처별로
+     * 갈려 있다. 실제로 발생률도 출처마다 다를 것으로 본다 — 네이버 시드는 인기순이라 day마다 같은
+     * 상위 장소가 뽑히기 쉽고, LLM 제안은 day별로 흩어질 여지가 있다.
+     *
+     * <p><b>업종 불일치 최후 구제({@link GroundingRelaxation})의 중복은 여기 세지 않는다.</b> 그
+     * 후보의 결말은 {@code hit}이 아니라 {@code category_mismatch}라, 섞으면 위의 뺄셈이 깨진다 —
+     * 그 뺄셈이 이 지표의 유일한 존재 이유다. 사건이 사라지지도 않는다 — 그렇게 채우지 못한
+     * 슬롯은 이슈 #149의 슬롯 단위 지표가 따로 센다.
+     */
+    public static final String GROUNDING_DUPLICATE = "ai.grounding.duplicate";
 
     /**
      * <b>Curator 가 목록 참조를 위조한 빈도</b> (ROADMAP 6-7). {@code SEEDED}·{@code LISTED} 가
@@ -180,6 +213,27 @@ public class AiCourseMetrics {
      */
     public static final String CURATION_SLOT = "ai.curation.slot";
 
+    /**
+     * <b>슬롯이 장소를 하나도 채우지 못한 사건</b> (이슈 #149). 지금까지 <b>어떤 지표에도 잡히지
+     * 않던 결핍</b>이다.
+     *
+     * <p>{@code AiCoursePipeline}이 빈 슬롯을 {@code continue}로 건너뛰는데 로그도 메트릭도 없었고,
+     * {@link #CURATION_SLOT}은 Curator 응답 기준이라 그 슬롯을 채워진 것으로 세며,
+     * {@link #GROUNDING_MATCH}는 중복으로 버린 후보를 {@code hit}으로 셌다. 그래서 <b>"저녁 없는
+     * 하루"가 나가도 운영 지표는 전부 정상으로 보였다</b> — 실제로 영주 day2·day3, 제주 day3 의
+     * 저녁이 그렇게 사라졌고, 슬롯 109개 중 5개라는 값조차 역산으로만 얻었다.
+     *
+     * <p><b>{@code slot} 축이 실린 이유.</b> 문제 삼은 것은 "슬롯이 비었다"가 아니라 <b>"저녁이
+     * 빠졌다"</b>이다. {@code meal} 결손은 사용자에게 보이고 {@code stroll} 결손은 거의 안 보인다 —
+     * 뭉치면 심각도를 잴 수 없고 어느 슬롯의 후보 풀을 넓혀야 하는지도 나오지 않는다.
+     *
+     * <p><b>{@code day} 축은 두지 않는다.</b> 카디널리티가 요청마다 늘고, "day2 가 day1 보다 잘
+     * 빈다"에 답할 운영 질문이 지금 없다. day 는 로그 줄에 싣는다.
+     *
+     * <p><b>분모를 따로 두지 않는다</b> — {@link #CURATION_SLOT} 세 값의 합이 곧 전체 슬롯 수다.
+     */
+    public static final String SLOT_VACANT = "ai.slot.vacant";
+
     /** 네이버 지역검색 시더 (전 슬롯의 인기 축). */
     public static final String SOURCE_NAVER_LOCAL = "naver_local";
 
@@ -234,6 +288,9 @@ public class AiCourseMetrics {
                 groundingCounter(outcome, source);
             }
         }
+        for (CandidateSourceType source : CandidateSourceType.values()) {
+            groundingDuplicateCounter(source);
+        }
         for (GroundingRelaxation reason : GroundingRelaxation.values()) {
             groundingRelaxedCounter(reason);
         }
@@ -254,6 +311,11 @@ public class AiCourseMetrics {
         }
         for (SlotFillOutcome outcome : SlotFillOutcome.values()) {
             curationSlotCounter(outcome);
+        }
+        for (SlotVacancyReason reason : SlotVacancyReason.values()) {
+            for (SlotType slotType : SlotType.values()) {
+                slotVacantCounter(reason, slotType);
+            }
         }
     }
 
@@ -293,6 +355,18 @@ public class AiCourseMetrics {
     public void groundingRelaxed(GroundingRelaxation reason, int count) {
         if (count > 0) {
             groundingRelaxedCounter(reason).increment(count);
+        }
+    }
+
+    /**
+     * 검증을 통과하고도 전 day 중복이라 버린 건수를 출처별로 올린다 (이슈 #149).
+     *
+     * <p>{@link #groundingMatch}와 <b>같이 오른다</b> — 결말은 여전히 {@code hit}이다. 둘을 빼면
+     * 그 출처가 실제로 코스에 실은 수가 나온다. 근거는 {@link #GROUNDING_DUPLICATE} 참고.
+     */
+    public void groundingDuplicate(CandidateSourceType source, int count) {
+        if (count > 0) {
+            groundingDuplicateCounter(source).increment(count);
         }
     }
 
@@ -376,6 +450,24 @@ public class AiCourseMetrics {
         }
     }
 
+    /**
+     * 장소를 채우지 못한 슬롯 하나를 사유·타입별로 올린다 (이슈 #149).
+     *
+     * <p><b>{@code count} 인자가 없는 것이 의도다.</b> 빈 슬롯은 day 와 함께 로그로 나가야 뜻이
+     * 사는데, 맵으로 뭉치려면 키에 day 가 들어가야 하고 day 는 태그가 아니다. 그래서 발생할 때마다
+     * 하나씩 올린다({@link #geocode}와 같은 형태).
+     */
+    public void slotVacant(SlotVacancyReason reason, SlotType slotType) {
+        slotVacantCounter(reason, slotType).increment();
+    }
+
+    private Counter slotVacantCounter(SlotVacancyReason reason, SlotType slotType) {
+        return Counter.builder(SLOT_VACANT)
+            .tag("reason", tag(reason.name()))
+            .tag("slot", tag(slotType.name()))
+            .register(registry);
+    }
+
     private Counter curationSlotCounter(SlotFillOutcome outcome) {
         return Counter.builder(CURATION_SLOT)
             .tag("result", tag(outcome.name()))
@@ -429,6 +521,12 @@ public class AiCourseMetrics {
     private Counter groundingCounter(GroundingOutcome outcome, CandidateSourceType source) {
         return Counter.builder(GROUNDING_MATCH)
             .tag("result", tag(outcome.name()))
+            .tag("source", tag(source.name()))
+            .register(registry);
+    }
+
+    private Counter groundingDuplicateCounter(CandidateSourceType source) {
+        return Counter.builder(GROUNDING_DUPLICATE)
             .tag("source", tag(source.name()))
             .register(registry);
     }
