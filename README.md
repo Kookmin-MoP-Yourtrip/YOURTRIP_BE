@@ -25,18 +25,6 @@ AI 추천과 코스 공유 기능으로 여행 계획의 번거로움을 줄여�
 
 ---
 
-## 👥 팀 소개
-
-| 이름      | 역할              | GitHub                                           | 주요 담당 |
-|--------  |--------------      |--------------------------------------------------|----------|
-| 김태환   | Leader / BE / FE   | [@KimTaeHwan21](https://github.com/KimTaeHwan21) | 서버 구축 및 에러 수정, 기본 회원가입/로그인/비밀번호 변경 , 마이페이지, 인증/인가, 프론트 마이페이지 UI / 프로필 편집 |
-| 남지은   | BE /FE             | [@zie-ning](https://github.com/zie-ning)         | 여행 코스 생성 및 일차별 일정 관리(BE), 코스 업로드 및 fork 로직(BE), AI 코스 생성 플로우 UI(FE) |
-| 최서구   | BE / FE            | [@choiseogu](https://github.com/choiseogu)       | 여행 피드 CRUD API 개발(BE), 피드에 대한 댓글 CRUD API 개발(BE), 나의 업로드 코스 및 피드 조회 플로우 기능 개발(FE) |
-| 이다은   | FE                 | [@dani0910](https://github.com/dani0910)         | 회원가입/로그인/비밀번호 찾기, 스플래시, 나의 코스 생성/편집/업로드 전체 플로우 개발, 로그아웃, 네트워크/모델 구조 정의, FE 전반적인 UI와 기능 개선|
-| 조혜원   | FE                 | [@agunggung22](https://github.com/agunggung22)   |UI/UX 설계, **홈/피드** 전체 화면 개발, 공통 View 컴포넌트 개발 및 프론트 구조 설계 |
-
----
-
 ## ✨ 프로젝트 소개
 
 YOURTRIP은 사용자가 여행을 계획할 때 겪는
@@ -121,23 +109,6 @@ YOURTRIP은 사용자가 여행을 계획할 때 겪는
 
 ---
 
-## 🛠 기술 스택 (Backend)
-
-- **Language**: Java 21
-- **Framework**: Spring Boot 3.5.7, Spring MVC, Spring WebFlux(WebClient 용도 — 리액티브 컨트롤러 아님)
-- **Build**: Gradle 8.14.3 (wrapper 포함)
-- **Security**: Spring Security + JWT(`io.jsonwebtoken:jjwt` 0.11.5) 기반 인증/인가
-- **DB**: PostgreSQL + Spring Data JPA(Hibernate) — 테스트만 H2 인메모리(PostgreSQL 호환 모드)
-- **캐시**: Redis(Spring Data Redis + Lettuce) — 인기 코스 목록/상세 캐싱, 조회수 카운터, 랭킹 갱신 분산 락
-- **모니터링**: Spring Boot Actuator + Micrometer — 로컬은 docker-compose(Prometheus·Grafana), 운영은 Grafana Alloy 단일 에이전트 → Grafana Cloud(Prometheus·Loki)
-- **AI**: OpenAI(`org.springframework.ai:spring-ai-bom` 1.1.8, `gpt-5.6-luna`/`gpt-5-nano`) — Planner·Curator 멀티 에이전트 코스 생성 파이프라인
-- **외부 연동**: Kakao(장소 검색 전용, 로그인은 미사용), 네이버 지역검색·한국관광공사 TourAPI(AI 코스 후보 공급), AWS SDK v2(S3 + CloudFront Signed URL), Spring Mail
-- **문서화**: springdoc-openapi 2.6.0 (Swagger UI: `/swagger-ui.html`)
-- **Infra**: AWS ALB + Auto Scaling Group(EC2), RDS(PostgreSQL), ElastiCache(Redis), S3, CloudFront, Route 53 — IaC는 Terraform(수명 기준 모듈 분리)
-- **CI/CD**: GitHub Actions — CI는 `dev` 대상 PR·push에서 빌드·테스트, CD는 OIDC 임시 자격증명으로 S3 업로드 + ASG 무중단 교체
-
----
-
 ## 🏗 아키텍처
 
 <p align="center">
@@ -155,78 +126,15 @@ YOURTRIP은 사용자가 여행을 계획할 때 겪는
 
 ---
 
-## 📂 프로젝트 구조
+## 👥 팀 소개
 
-### 🛠 BE – Spring Boot
-
-```bash
-YOURTRIP_BE/
-├── build.gradle
-├── docker-compose.yml            # 로컬 Redis + Prometheus + Grafana
-└── src/main/java/backend/yourtrip/
-    ├── domain/
-    │   ├── feed/                 # 피드(여행 사진/후기) CRUD, 댓글, 좋아요, 해시태그
-    │   ├── mycourse/              # 내가 만든 코스(day별 일정, 장소) CRUD
-    │   ├── mypage/                # 마이페이지 — user 도메인 entity/repository 재사용
-    │   ├── uploadcourse/          # 업로드(공개)된 코스, fork/좋아요/조회수 등
-    │   └── user/                  # 이메일 회원가입/로그인/JWT 발급
-    └── global/
-        ├── ai/                    # AI 코스 생성 멀티 에이전트 파이프라인
-        │                          #   (에이전트·후보 공급·그라운딩·경로 최적화·OpenAI 어댑터)
-        ├── cloudfront/            # CloudFront Signed URL 발급·무효화
-        ├── config/                # SecurityConfig, SwaggerConfig, WebConfig, RedisConfig 등
-        ├── exception/             # BusinessException, GlobalExceptionHandler
-        ├── jwt/                   # JwtAuthenticationFilter, JwtTokenProvider
-        ├── kakao/                 # 카카오 지도/장소 검색 클라이언트(AI 코스 생성 시 장소 보정용)
-        ├── mail/                  # 이메일 인증 발송
-        ├── naver/                 # 네이버 지역검색 클라이언트(AI 코스 후보 공급 — 인기 축)
-        ├── s3/                    # AWS S3 업로드/다운로드
-        └── tour/                  # 한국관광공사 TourAPI 클라이언트(AI 코스 후보 공급 — 커버리지 축)
-```
-
-**표준 레이어링 패턴**: `controller` → `service`(인터페이스 + `*ServiceImpl`) → `repository`(Spring Data JPA) → `entity`, 그 옆에 `dto/request`·`dto/response`, `mapper`(entity↔DTO 변환).
-
-### ⚙️ 설정 파일 구성
-
-설정은 **공통(`application.yml`) + 프로필별 파일**로 나뉜다. 프로필은 `local`(기본, 로컬 개발) / `prod`(배포) / `test`(테스트, H2 인메모리 DB)이며, 필요한 환경변수 전체 목록은 [.env.example](.env.example)이 정본이다.
-
----
-
-## 🚀 실행 방법
-
-### 🛠 BE – Spring Boot
-
-```bash
-git clone https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE.git
-cd YOURTRIP_BE
-docker compose up -d redis
-./gradlew bootRun
-```
-
-- 실행 참고 사항
-  ```bash
-  1. Java 21 필요 (build.gradle의 toolchain 지정)
-  2. 환경변수 설정 필수 — .env.example을 복사해 .env로 저장하면 spring-dotenv가 자동으로 읽는다.
-   - DB_URL, DB_USERNAME, DB_PASSWORD, DB_DDL_AUTO
-   - JWT_SECRET
-   - MAIL_EMAIL, MAIL_PASSWORD
-   - KAKAO_API_KEY (장소 검색 전용, 로그인 미사용)
-   - S3_BUCKET, AWS_ACCESS_KEY, AWS_SECRET_KEY
-   - CLOUDFRONT_DOMAIN, CLOUDFRONT_KEY_PAIR_ID, CLOUDFRONT_PRIVATE_KEY_PATH, CLOUDFRONT_DISTRIBUTION_ID
-   - OPENAI_API_KEY (AI 코스 생성 — 비어 있어도 기동은 되지만 코스 생성이 실패한다)
-   - NAVER_CLIENT_ID, NAVER_CLIENT_SECRET, TOUR_API_KEY (AI 코스 후보 공급, fail-open)
-   - REDIS_HOST, REDIS_PORT
-  3. Redis가 떠 있지 않으면 캐시 경로가 DB 폴백으로 동작한다(앱은 뜨지만 WARN 로그가 쌓인다).
-  4. 기본 포트는 8080, Swagger는 /swagger-ui.html
-  ```
-
-### 테스트
-
-```bash
-./gradlew test
-```
-
-테스트는 H2 인메모리 DB와 `test` 프로필의 더미 설정으로 동작하므로 `.env`나 로컬 PostgreSQL/Redis 없이도 실행된다.
+| 이름      | 역할              | GitHub                                           | 주요 담당 |
+|--------  |--------------      |--------------------------------------------------|----------|
+| 김태환   | Leader / BE / FE   | [@KimTaeHwan21](https://github.com/KimTaeHwan21) | 서버 구축 및 에러 수정, 기본 회원가입/로그인/비밀번호 변경 , 마이페이지, 인증/인가, 프론트 마이페이지 UI / 프로필 편집 |
+| 남지은   | BE /FE             | [@zie-ning](https://github.com/zie-ning)         | 여행 코스 생성 및 일차별 일정 관리(BE), 코스 업로드 및 fork 로직(BE), AI 코스 생성 플로우 UI(FE) |
+| 최서구   | BE / FE            | [@choiseogu](https://github.com/choiseogu)       | 여행 피드 CRUD API 개발(BE), 피드에 대한 댓글 CRUD API 개발(BE), 나의 업로드 코스 및 피드 조회 플로우 기능 개발(FE) |
+| 이다은   | FE                 | [@dani0910](https://github.com/dani0910)         | 회원가입/로그인/비밀번호 찾기, 스플래시, 나의 코스 생성/편집/업로드 전체 플로우 개발, 로그아웃, 네트워크/모델 구조 정의, FE 전반적인 UI와 기능 개선|
+| 조혜원   | FE                 | [@agunggung22](https://github.com/agunggung22)   |UI/UX 설계, **홈/피드** 전체 화면 개발, 공통 View 컴포넌트 개발 및 프론트 구조 설계 |
 
 ---
 
@@ -241,7 +149,5 @@ docker compose up -d redis
 #### 🎥 피그마 링크: (https://www.figma.com/design/YcCdV6Eqf486kKcZOK6mUm)
 
 #### 🎥 피그잼 링크: (https://www.figma.com/board/TjRf47J8qvnVRsg2dXcSy9/)
-
-#### 🎥 Swagger 링크: (https://yourtrip.cloud/swagger-ui/index.html)
 
 #### 🎥 ERD 링크: (https://www.erdcloud.com/d/FvCG4hazXKR4vL8aq)
