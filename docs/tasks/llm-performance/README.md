@@ -8,7 +8,7 @@
 
 | 단계 | 내용 | 성격 | 상태 | 이슈 · 기록 |
 |---|---|---|---|---|
-| 0 | OpenAI 티어(RPM/TPM) 확인 + 호출당 토큰 실측 | 사전 조사·계측 | ✅ 서버당 상한 4~8 도출 (프로젝트 한도 미확인) | [#174](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/174) · [STEP-0](steps/STEP-0-token-usage.md) |
+| 0 | OpenAI 티어(RPM/TPM) 확인 + 호출당 토큰 실측 | 사전 조사·계측 | ✅ 서버당 상한 4~8 도출 | [#174](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/174) · [STEP-0](steps/STEP-0-token-usage.md) |
 | 1 | 슬롯 대기 지표 추가 | 계측 | ✅ 구현·E2E 완료, PR 대기 | [#173](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/173) · [STEP-1](steps/STEP-1-permit-wait.md) |
 | 2 | 기준선 측정 | 측정 | ⬜ **← 다음** | [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108)의 "개선 전" 측정으로 겸함 |
 | 3 | 마감 뒤 남는 호출 정리 | 안정성 | ⬜ | 이슈 없음 |
@@ -95,9 +95,10 @@ LLM이 먼저 포화된다(서버당 제대로 처리 가능한 양 ≈ 분당 5
 
 **결론.** 서버 한 대당 동시 호출 상한은 **보수적으로 4, 실사용 기준으로 8**이다. 지금의 2는 한도의 절반 이하만 쓰고 있고, 4단계에서 **2 → 3 → 4**로 올려 보는 범위는 보수적 기준으로도 한도 안이다.
 
+**프로젝트 한도 확인 ✅** (Project Settings → Limits → Rate limits) — `gpt-5.6-luna` **500,000 TPM / 500 RPM**으로 조직 한도와 같다(오버라이드 없음). 공유 한도 그룹(Shared limits)에는 `gpt-5.6-luna` 자신만 있다. 즉 **Planner와 Curator가 한 한도 풀을 나눠 쓰고**, `gpt-5-nano`(PlaceProfile, 현재 미사용)는 이 풀과 무관하다.
+
 **미확인**
 
-- **프로젝트 한도** — 위 값은 조직 한도다. API 키가 속한 프로젝트에 더 낮은 한도가 걸려 있으면 그쪽이 실제 한도다(Settings → Project → Limits, 또는 응답 헤더 `x-ratelimit-limit-*`)
 - **TPM의 `max_completion_tokens` 반영 여부** — 반영된다면 보수적 기준이 맞고, 출력 상한(Curator 4,096)을 실제 출력(최대 876)에 맞게 낮추는 것만으로 한도 여유가 커진다. 5 이상으로 올리기 전에 확인한다
 - **표본 1건** — Curator 입력은 후보 목록 길이에 따라 다르다. 2단계 기준선 측정에서 분포로 보완한다
 
@@ -161,6 +162,6 @@ LLM이 먼저 포화된다(서버당 제대로 처리 가능한 양 ≈ 분당 5
 
 ## 열린 질문
 
-- 프로젝트 한도, TPM 계산의 `max_completion_tokens` 반영 여부, 캐시 적중 토큰의 TPM 할인 여부 (0단계 미확인 항목)
+- TPM 계산의 `max_completion_tokens` 반영 여부, 캐시 적중 토큰의 TPM 할인 여부 (0단계 미확인 항목)
 - FE `BASE_URL`(`yourtrip.site`)과 Swagger 안내 도메인(`yourtrip.cloud`)이 다르다 — 구 도메인 잔존 여부 미확인
 - 배포 중 instance refresh(`deregistration_delay` 30초)가 진행 중인 AI 요청을 자르는 빈도 — 202 전환 시 워커 유실 문제와 직결된다
