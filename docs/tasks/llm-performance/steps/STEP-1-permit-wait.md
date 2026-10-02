@@ -1,8 +1,8 @@
 # LLM 동시 호출 슬롯 대기 계측 — "모델이 느린가, 슬롯이 좁은가"를 가른다
 
-> [#173](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/173)의 설계·진행 기록이다. [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108)(`llm.max-concurrent-calls` 재실측)의 전제 조건이며, #108 자체는 이 작업의 범위가 아니다.
+> [LLM 호출 경로 성능·안정성 로드맵](../README.md)의 1단계이며, [#173](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/173)의 설계·진행 기록이다. [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108)(`llm.max-concurrent-calls` 재실측)의 전제 조건이며, #108 자체는 이 작업의 범위가 아니다.
 >
-> **왜 하는가**: AI 코스 생성의 실측 지연(p50 22.3초 · p95 29.4초, [STEP-8](../ai-course-create/steps/STEP-8-switch.md))이 설계 추정(p95 17~24초)을 크게 넘고 30초 예산에 붙어 있다. 원인 후보 1순위는 서버 전체가 공유하는 LLM 동시 호출 슬롯 2개(`llm.max-concurrent-calls: 2`)다. 그런데 **이 가설을 확인할 지표가 없었다.**
+> **왜 하는가**: AI 코스 생성의 실측 지연(p50 22.3초 · p95 29.4초, [STEP-8](../../ai-course-create/steps/STEP-8-switch.md))이 설계 추정(p95 17~24초)을 크게 넘고 30초 예산에 붙어 있다. 원인 후보 1순위는 서버 전체가 공유하는 LLM 동시 호출 슬롯 2개(`llm.max-concurrent-calls: 2`)다. 그런데 **이 가설을 확인할 지표가 없었다.**
 
 ## 무엇이 비어 있었나
 
@@ -106,8 +106,4 @@ in_use=1 waiting=0   ×  8   ← 세 번째 Curator 단독 실행
 
 ## 다음 단계
 
-이 지표가 쌓이면 다음 작업의 전후 비교 근거가 된다. 각각 별도 이슈로 진행한다.
-
-1. #108 — 같은 E2E 세트로 `max-concurrent-calls`를 2 → 3 → 4로 올려 가며 대기·429·Curator 지연을 비교한다 (상한은 OpenAI 티어 ÷ 최대 인스턴스 수)
-2. 예산이 끝난 뒤에도 남아 슬롯을 쥐고 있는 LLM 호출 정리 — 재시도 전 남은 예산 확인, 진행 중인 호출 취소
-3. AI 요청 동시 입장 제한 — 슬롯 용량을 넘는 요청이 Tomcat 스레드(운영 32개)를 30초씩 쥐지 않게 한다
+이 지표가 이후 모든 단계의 전후 비교 근거가 된다. 순서와 진행 상태는 [로드맵](../README.md)에서 관리한다.
