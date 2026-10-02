@@ -132,6 +132,9 @@ public class OpenAiLlmClient implements LlmClient {
         this.metrics = metrics;
         this.chatModel = chatModel;
         this.concurrencyGate = new Semaphore(properties.maxConcurrentCalls());
+        // 게이트를 만든 자리에서 계측을 붙인다 — agent 목록과 슬롯 수를 아는 곳이 여기뿐이다.
+        metrics.registerLlmPermitSeries(properties.agents().keySet());
+        metrics.bindLlmPermitGauges(concurrencyGate, properties.maxConcurrentCalls());
 
         // 어느 모델이 살아 있는지를 기동 로그에서 바로 볼 수 있게 한다. 이 어댑터는 조건부 빈이라
         // 기동 성공만으로는 활성 여부가 드러나지 않고, agent별 모델은 설정 파일을 열어야 알 수 있다.
@@ -429,15 +432,25 @@ public class OpenAiLlmClient implements LlmClient {
      * <p>무한 대기하지 않고 {@code timeout-ms}에서 잘라내는 이유는, 앞선 호출들이 전부 느려졌을 때
      * 뒤에 쌓인 요청이 <b>호출도 못 해보고 스레드만 붙잡는</b> 상태를 막기 위해서다. 이 저장소는
      * 커넥션이 오래 묶이는 것이 어떤 결과를 내는지 이미 실측한 이력이 있다.
+     *
+     * <p>기다린 시간은 결과와 무관하게 {@code ai.llm.permit.wait}로 남긴다(이슈 #173) —
+     * {@code ai.llm.call}이 이 대기를 빼고 재므로, 여기서 재지 않으면 어디에도 잡히지 않는다.
      */
     private void acquirePermit(String agentName) {
+        long waitStartedAt = System.nanoTime();
         try {
             if (!concurrencyGate.tryAcquire(properties.timeoutMs(), TimeUnit.MILLISECONDS)) {
+                metrics.llmPermitWait(agentName, AiCourseMetrics.PERMIT_TIMEOUT,
+                    System.nanoTime() - waitStartedAt);
                 throw new LlmTransportException(agentName, 0,
                     "LLM 동시 호출 슬롯(%d)을 %dms 안에 얻지 못했다"
                         .formatted(properties.maxConcurrentCalls(), properties.timeoutMs()), null);
             }
+            metrics.llmPermitWait(agentName, AiCourseMetrics.PERMIT_ACQUIRED,
+                System.nanoTime() - waitStartedAt);
         } catch (InterruptedException e) {
+            metrics.llmPermitWait(agentName, AiCourseMetrics.PERMIT_INTERRUPTED,
+                System.nanoTime() - waitStartedAt);
             Thread.currentThread().interrupt();
             throw new LlmTransportException(agentName, 0, "LLM 호출 슬롯 대기 중 인터럽트됐다", e);
         }

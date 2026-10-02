@@ -13,10 +13,13 @@ import backend.yourtrip.global.ai.pipeline.PipelineStage;
 import backend.yourtrip.global.ai.pipeline.SlotFillOutcome;
 import backend.yourtrip.global.ai.route.SlotType;
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
+import java.util.Collection;
 import java.util.Locale;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Component;
 
@@ -155,6 +158,46 @@ public class AiCourseMetrics {
     public static final String LLM_OUTCOME_ERROR = "error";
 
     /**
+     * <b>LLM 동시 호출 슬롯({@code llm.max-concurrent-calls})을 얻기까지 기다린 시간</b> (이슈 #173).
+     *
+     * <p>{@link #LLM_CALL}은 이 대기를 <b>일부러 빼고</b> 잰다 — 섞으면 "모델이 느려졌다"와
+     * "슬롯이 좁다"를 구분할 수 없기 때문이다. 그 결정의 대가로 대기 자체는 어디에도 잡히지
+     * 않았고, 그래서 지연(p95 29.4초)이 설계 추정을 넘는 원인이 슬롯인지 확인할 방법이 없었다.
+     * 이 값이 그 빈자리를 채운다 — <b>둘을 따로 재야 둘 다 해석된다.</b>
+     *
+     * <p>{@code result}를 나누는 이유는 {@link #llmCall}이 결말을 나누는 이유와 같다 — 정상 대기의
+     * 분포와 "슬롯을 끝내 못 얻은 사건"이 섞이면 꼬리가 무엇 때문인지 가를 수 없다.
+     *
+     * <p>{@code agent} 태그가 설정에서 오지만 <b>0 등록에서 빠지지 않는다</b> — 어댑터가 생성 시점에
+     * 설정된 agent 목록을 알기 때문이다({@link #registerLlmPermitSeries}). #108 재실측에서
+     * "타임아웃 0건"과 "시계열 없음"을 갈라야 한다.
+     */
+    public static final String LLM_PERMIT_WAIT = "ai.llm.permit.wait";
+
+    /** 슬롯을 얻었다. 대기 시간이 0에 가까우면 슬롯이 남아 있었다는 뜻이다. */
+    public static final String PERMIT_ACQUIRED = "acquired";
+
+    /** {@code llm.timeout-ms} 안에 슬롯을 얻지 못해 호출을 시작조차 못 했다. */
+    public static final String PERMIT_TIMEOUT = "timeout";
+
+    /** 대기 중 인터럽트됐다. 용량 신호가 아니므로 {@link #PERMIT_TIMEOUT}과 섞지 않는다. */
+    public static final String PERMIT_INTERRUPTED = "interrupted";
+
+    /**
+     * 지금 쥐고 있는 슬롯 수. {@code max-concurrent-calls}에 붙어 있는 시간이 길수록 포화다.
+     *
+     * <p>타이머만으로는 "지금 막혀 있는가"를 볼 수 없다 — 대기는 끝난 뒤에야 기록되므로 20초짜리
+     * 대기는 20초 뒤에야 보인다. 게이지는 그 순간의 상태를 바로 보여 준다.
+     */
+    public static final String LLM_PERMITS_IN_USE = "ai.llm.permits.in_use";
+
+    /**
+     * 슬롯을 기다리는 스레드 수. {@link java.util.concurrent.Semaphore#getQueueLength()}는
+     * javadoc상 근사값이지만 모니터링 용도로는 충분하다.
+     */
+    public static final String LLM_PERMITS_WAITING = "ai.llm.permits.waiting";
+
+    /**
      * <b>단계별 지연 분포</b> (ROADMAP 7-5). 이 값이 202 Accepted 전환 여부의 근거가 된다 —
      * 설계는 그 판단을 "먼저 완성해 실측하고, p95가 목표를 넘는 것을 데이터로 확인한 뒤"로 미뤄뒀다.
      *
@@ -253,8 +296,11 @@ public class AiCourseMetrics {
     private static final Duration PIPELINE_LATENCY_MAX = Duration.ofSeconds(30);
 
     /**
-     * LLM 호출 1건의 상한. 세마포어 대기({@code llm.timeout-ms})와 호출({@code llm.timeout-ms})이
-     * 겹치는 최악을 20 + 20초로 보고 여유를 뒀다.
+     * LLM 호출 1건의 상한. HTTP 시도 1회의 상한({@code llm.timeout-ms}, 20초) 위에 재시도·백오프가
+     * 겹치는 경우를 보고 여유를 뒀다.
+     *
+     * <p><b>세마포어 대기는 이 값에 들어가지 않는다</b> — {@code ai.llm.call}은 슬롯을 얻은 뒤부터
+     * 잰다. 대기는 {@link #LLM_PERMIT_WAIT}가 따로 잰다(이슈 #173에서 이 주석의 옛 서술을 정정했다).
      */
     private static final Duration LLM_LATENCY_MAX = Duration.ofSeconds(45);
 
@@ -407,6 +453,41 @@ public class AiCourseMetrics {
     }
 
     /**
+     * 슬롯 대기 하나를 기록한다 (이슈 #173). 결과와 무관하게 기록한다 — 타임아웃으로 끝난 대기도
+     * 그만큼 예산을 먹었다.
+     */
+    public void llmPermitWait(String agent, String result, long durationNanos) {
+        permitWaitTimer(agent, result).record(durationNanos, TimeUnit.NANOSECONDS);
+    }
+
+    /**
+     * 설정된 agent마다 대기 시계열을 0으로 등록한다 (이슈 #173).
+     *
+     * <p>{@link #registerZeroSeries}에 넣지 못하는 이유는 이 클래스가 agent 목록을 모르기 때문이다.
+     * 목록을 아는 어댑터가 생성 시점에 부른다.
+     */
+    public void registerLlmPermitSeries(Collection<String> agents) {
+        for (String agent : agents) {
+            for (String result : new String[]{PERMIT_ACQUIRED, PERMIT_TIMEOUT, PERMIT_INTERRUPTED}) {
+                permitWaitTimer(agent, result);
+            }
+        }
+    }
+
+    /**
+     * 슬롯 게이트의 현재 상태를 게이지로 연결한다 (이슈 #173).
+     *
+     * <p>Micrometer 게이지는 대상을 약한 참조로 쥔다 — 세마포어는 어댑터가 필드로 쥐고 있어
+     * 수거되지 않는다.
+     */
+    public void bindLlmPermitGauges(Semaphore gate, int maxPermits) {
+        Gauge.builder(LLM_PERMITS_IN_USE, gate, g -> maxPermits - g.availablePermits())
+            .register(registry);
+        Gauge.builder(LLM_PERMITS_WAITING, gate, Semaphore::getQueueLength)
+            .register(registry);
+    }
+
+    /**
      * 스테이지 하나의 경과 시간 (ROADMAP 7-5).
      *
      * <p>실패해도 기록한다 — degrade로 끝난 스테이지도 그만큼 시간을 썼고, 그 시간이 예산을
@@ -477,6 +558,17 @@ public class AiCourseMetrics {
     private Timer pipelineTimer(PipelineStage stage) {
         return Timer.builder(PIPELINE_DURATION)
             .tag("stage", tag(stage.name()))
+            .publishPercentileHistogram()
+            .minimumExpectedValue(LATENCY_MIN)
+            .maximumExpectedValue(PIPELINE_LATENCY_MAX)
+            .register(registry);
+    }
+
+    /** 상한은 요청 예산과 같다 — 예산보다 오래 기다리는 대기는 그 자체로 의미가 없다. */
+    private Timer permitWaitTimer(String agent, String result) {
+        return Timer.builder(LLM_PERMIT_WAIT)
+            .tag("agent", agent)
+            .tag("result", result)
             .publishPercentileHistogram()
             .minimumExpectedValue(LATENCY_MIN)
             .maximumExpectedValue(PIPELINE_LATENCY_MAX)

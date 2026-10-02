@@ -351,6 +351,87 @@ class OpenAiLlmClientTest {
         }
     }
 
+    @Nested
+    @DisplayName("슬롯 대기 메트릭 (이슈 #173)")
+    class PermitWaitMetrics {
+
+        @Test
+        @DisplayName("호출이 없어도 설정된 agent 의 대기 시계열이 결과별로 0으로 존재한다")
+        void registersZeroSeriesForConfiguredAgents() {
+            client();
+
+            // 0 등록이 없으면 #108 재실측에서 "타임아웃 0건"과 "시계열 없음"이 구분되지 않는다.
+            for (String result : List.of(AiCourseMetrics.PERMIT_ACQUIRED,
+                AiCourseMetrics.PERMIT_TIMEOUT, AiCourseMetrics.PERMIT_INTERRUPTED)) {
+                assertThat(permitWaitTimer(result)).as(result).isNotNull();
+                assertThat(permitWaitTimer(result).count()).as(result).isZero();
+            }
+        }
+
+        @Test
+        @DisplayName("슬롯이 차 있으면 뒤 호출의 대기 시간이 acquired 로 잡힌다 — ai.llm.call 에는 섞이지 않는다")
+        void recordsWaitWhenSlotIsBusy() {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .willReturn(okJson(completion("{\\\"title\\\":\\\"t\\\"}", "stop"))
+                    .withFixedDelay(300)));
+            OpenAiLlmClient client = clientWith(properties(1, new Retry(3, 2, 0.01, 0.02, 0.0)));
+
+            runConcurrently(() -> client.generate(call(SCHEMA)), () -> client.generate(call(SCHEMA)));
+
+            io.micrometer.core.instrument.Timer acquired = permitWaitTimer(AiCourseMetrics.PERMIT_ACQUIRED);
+            assertThat(acquired.count()).isEqualTo(2);
+            // 한 건은 즉시 얻고, 다른 한 건은 앞 호출의 응답(300ms)이 끝날 때까지 기다린다.
+            assertThat(acquired.max(java.util.concurrent.TimeUnit.MILLISECONDS))
+                .as("슬롯이 1개면 뒤 호출은 앞 호출이 끝날 때까지 기다려야 한다")
+                .isGreaterThanOrEqualTo(250);
+        }
+
+        @Test
+        @DisplayName("재시도 중인 호출이 슬롯을 쥐고 있으면 뒤 호출은 timeout 으로 실패하고 그 대기도 기록된다")
+        void recordsTimeoutWhileRetryHoldsSlot() {
+            // 응답 지연이 아니라 "재시도·백오프"로 슬롯 점유 시간을 만든다 — timeout-ms 가 HTTP
+            // 읽기 타임아웃과 공유돼서다. 실제 운영에서 429 가 슬롯을 묶는 모습 그대로이기도 하다.
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .willReturn(aResponse().withStatus(429)));
+            OpenAiLlmClient client = clientWith(
+                properties(300, 1, new Retry(3, 2, 0.3, 0.3, 0.0)));
+
+            Thread holder = Thread.ofPlatform().start(() -> {
+                try {
+                    client.generate(call(SCHEMA));
+                } catch (LlmTransportException expected) {
+                    // 429 가 계속되므로 첫 호출도 결국 실패한다. 이 테스트의 관심사는 그동안의 점유다.
+                }
+            });
+            awaitPermitsInUse(1);
+
+            assertThatThrownBy(() -> client.generate(call(SCHEMA)))
+                .isInstanceOf(LlmTransportException.class)
+                .hasMessageContaining("슬롯");
+            join(holder);
+
+            io.micrometer.core.instrument.Timer timeout = permitWaitTimer(AiCourseMetrics.PERMIT_TIMEOUT);
+            assertThat(timeout.count()).isEqualTo(1);
+            assertThat(timeout.max(java.util.concurrent.TimeUnit.MILLISECONDS))
+                .as("timeout-ms(300ms)만큼 기다린 뒤 포기했어야 한다")
+                .isGreaterThanOrEqualTo(250);
+        }
+
+        @Test
+        @DisplayName("호출이 끝나면 사용 중 슬롯 게이지가 0으로 돌아온다 — 실패해도 슬롯을 반납한다")
+        void releasesPermitGaugeAfterCalls() {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .willReturn(aResponse().withStatus(500)));
+            OpenAiLlmClient client = client();
+
+            assertThatThrownBy(() -> client.generate(call(SCHEMA)))
+                .isInstanceOf(LlmTransportException.class);
+
+            assertThat(gauge(AiCourseMetrics.LLM_PERMITS_IN_USE)).isZero();
+            assertThat(gauge(AiCourseMetrics.LLM_PERMITS_WAITING)).isZero();
+        }
+    }
+
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
     private OpenAiLlmClient client() {
@@ -383,8 +464,48 @@ class OpenAiLlmClientTest {
         return timer == null ? 0L : timer.count();
     }
 
+    private io.micrometer.core.instrument.Timer permitWaitTimer(String result) {
+        return meterRegistry.find(AiCourseMetrics.LLM_PERMIT_WAIT)
+            .tags("agent", AGENT, "result", result)
+            .timer();
+    }
+
+    private double gauge(String name) {
+        return meterRegistry.get(name).gauge().value();
+    }
+
+    /** 다른 스레드의 호출이 슬롯을 실제로 쥘 때까지 기다린다. 시작 순서를 sleep 으로 추측하지 않는다. */
+    private void awaitPermitsInUse(int expected) {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while (gauge(AiCourseMetrics.LLM_PERMITS_IN_USE) < expected) {
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError("5초 안에 슬롯 " + expected + "개가 점유되지 않았다");
+            }
+            Thread.onSpinWait();
+        }
+    }
+
+    private static void runConcurrently(Runnable... tasks) {
+        java.util.Arrays.stream(tasks)
+            .map(task -> Thread.ofPlatform().start(task))
+            .toList()
+            .forEach(OpenAiLlmClientTest::join);
+    }
+
+    private static void join(Thread thread) {
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private static AiLlmProperties properties(int maxConcurrentCalls, Retry retry) {
-        return new AiLlmProperties("openai", 5_000, maxConcurrentCalls, retry,
+        return properties(5_000, maxConcurrentCalls, retry);
+    }
+
+    private static AiLlmProperties properties(int timeoutMs, int maxConcurrentCalls, Retry retry) {
+        return new AiLlmProperties("openai", timeoutMs, maxConcurrentCalls, retry,
             Map.of(AGENT, new Agent("gpt-5.6-luna", 0.7, 2048, null)),
             new OpenAi("test-api-key", "http://localhost"));
     }
