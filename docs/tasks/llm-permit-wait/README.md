@@ -76,9 +76,33 @@ ai_llm_permits_waiting
 
 `AiCourseMetricsTest`: Prometheus 스크레이프에 `ai_llm_permit_wait_seconds_bucket`이 실린다. `SimpleMeterRegistry`로는 버킷 유무를 확인할 수 없어 실제 Prometheus 레지스트리로 확인한다.
 
-## 로컬 E2E 확인
+## 로컬 E2E 확인 — 세 번째 Curator가 8.1초를 기다렸다
 
-> **미실시.** 실제 OpenAI를 호출해 비용이 들고 로컬 스택(PostgreSQL·Redis)이 필요해서 별도로 진행한다. 확인할 것: 3일 코스 1회 생성 후 `ai_llm_permit_wait_seconds_count{agent="curator",result="acquired"}`가 3이고, 대기 합이 0보다 큰가 — 슬롯 2개라 세 번째 Curator가 기다린다는 가설의 첫 확인이다.
+로컬(앱·PostgreSQL·Redis 모두 `localhost`, 실제 OpenAI 호출)에서 3일 코스를 1회 생성했다. 요청 중 0.5초 간격으로 게이지를 함께 폴링했다. 인증은 이전 E2E와 같은 방식으로, 로컬 DB에 임시 유저를 시딩해 받았다(`DB_DDL_AUTO=create`라 재기동하면 사라진다).
+
+- 요청: `경주`, 3일, `WALK`·`FRIENDS`·`FOOD` → **201**, 22.4초, Curator 선택 18/18 슬롯(폴백 0)
+- 기동 직후 `planner`·`curator`·`place-profile` × 3결과 = **9개 시계열이 0으로 존재**했다 (0 등록 확인)
+
+| 지표 | 값 |
+|---|---|
+| 요청 전체 (`ai.course.request.duration`) | 22.19초 |
+| Planner 단계 / 호출 | 7.45초 / 7.44초 (대기 0.00002초) |
+| **Curator 단계** | **13.34초** |
+| Curator 호출 3건 (`ai.llm.call`) | 합 21.58초, 최대 8.25초 |
+| **Curator 슬롯 대기** (`ai.llm.permit.wait`) | **3건 중 합 8.09초, 최대 8.09초** — 두 건은 즉시 얻고 한 건이 8.1초 기다렸다 |
+
+게이지 폴링(0.5초 간격, 35회)에서도 같은 모습이 보였다.
+
+```
+in_use=1 waiting=0   × 12   ← Planner 호출 중
+in_use=0 waiting=0   ×  2   ← 후보 공급 (LLM 미사용)
+in_use=2 waiting=1   × 13   ← Curator 2건 실행 + 1건 대기
+in_use=1 waiting=0   ×  8   ← 세 번째 Curator 단독 실행
+```
+
+**해석.** 설계가 추정한 "슬롯 2개면 Curator 3개가 두 번에 나뉘어 +3~6초"가 실제로 일어났고, 이번 표본에서는 그 대가가 **8.1초**였다. Curator 단계 13.3초는 "가장 느린 호출 8.3초"가 아니라 "먼저 끝난 호출(≈8.1초) + 세 번째 호출(≈5.3초)"의 직렬 합에 가깝다. 세 호출이 동시에 나갔다면 단계 시간은 가장 느린 호출 근처(≈8.3초)까지 줄어들 여지가 있다 — **요청 전체(22.2초)의 약 1/4이다.**
+
+**한계.** 표본 1건이고 단일 요청이라 다른 요청과의 슬롯 경합은 없다(경합이 있으면 대기는 더 길어진다). 슬롯을 늘렸을 때 429가 나는지는 이 측정으로 알 수 없다 — 그 판단이 #108의 몫이다. 게이지 폴링은 스크레이프 자체에 시간이 걸려 0.5초보다 성기게 찍혔으므로, 대기 길이는 타이머 값(8.09초)을 기준으로 삼는다.
 
 ## 다음 단계
 
