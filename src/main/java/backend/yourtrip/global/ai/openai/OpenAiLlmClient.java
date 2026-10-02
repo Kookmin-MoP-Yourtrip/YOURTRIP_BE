@@ -134,6 +134,7 @@ public class OpenAiLlmClient implements LlmClient {
         this.concurrencyGate = new Semaphore(properties.maxConcurrentCalls());
         // 게이트를 만든 자리에서 계측을 붙인다 — agent 목록과 슬롯 수를 아는 곳이 여기뿐이다.
         metrics.registerLlmPermitSeries(properties.agents().keySet());
+        metrics.registerLlmTokenSeries(properties.agents().keySet());
         metrics.bindLlmPermitGauges(concurrencyGate, properties.maxConcurrentCalls());
 
         // 어느 모델이 살아 있는지를 기동 로그에서 바로 볼 수 있게 한다. 이 어댑터는 조건부 빈이라
@@ -255,6 +256,8 @@ public class OpenAiLlmClient implements LlmClient {
     private <T> T callOnce(LlmCall<T> call, boolean correcting) {
         Prompt prompt = buildPrompt(call, correcting);
         ChatResponse response = callTransport(call.agentName(), prompt);
+        // 판정보다 먼저 센다 — 절단·선택지 없음·스키마 위반으로 끝나는 응답도 토큰은 이미 썼다.
+        recordTokenUsage(call.agentName(), response);
 
         Generation generation = requireGeneration(call, response);
         String finishReason = generation.getMetadata().getFinishReason();
@@ -267,6 +270,31 @@ public class OpenAiLlmClient implements LlmClient {
         }
 
         return responseParser.parse(call.agentName(), text, call.responseType());
+    }
+
+    /**
+     * 응답의 {@code usage}를 지표로 남긴다 (이슈 #174).
+     *
+     * <p><b>벤더 중립 {@code Usage}가 아니라 벤더 원본({@link OpenAiApi.Usage})만 읽는다.</b>
+     * Spring AI는 응답에 {@code usage}가 없어도 0으로 채운 객체를 넘겨 주는데, 그걸 그대로 쓰면
+     * "모른다"가 "0 토큰"으로 기록돼 호출당 평균이 내려간다 — 테스트가 이 경우를 실제로 잡았다.
+     * 원본이 있을 때만 응답에 usage가 실려 왔다는 뜻이므로 그것을 판정 기준으로 삼는다.
+     * 추론·캐시 토큰도 원본에만 있다. 벤더 타입을 여기서 읽는 것은 이 파일이 Spring AI가 등장하는
+     * 유일한 곳이라는 경계 안이다.
+     */
+    private void recordTokenUsage(String agentName, ChatResponse response) {
+        if (response == null || response.getMetadata() == null
+            || response.getMetadata().getUsage() == null
+            || !(response.getMetadata().getUsage().getNativeUsage()
+                instanceof OpenAiApi.Usage usage)) {
+            return;
+        }
+        Integer reasoning = usage.completionTokenDetails() == null
+            ? null : usage.completionTokenDetails().reasoningTokens();
+        Integer cached = usage.promptTokensDetails() == null
+            ? null : usage.promptTokensDetails().cachedTokens();
+        metrics.llmTokens(agentName, usage.promptTokens(), usage.completionTokens(),
+            reasoning, cached);
     }
 
     private <T> Prompt buildPrompt(LlmCall<T> call, boolean correcting) {

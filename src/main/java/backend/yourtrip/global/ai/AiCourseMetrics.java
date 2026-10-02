@@ -13,6 +13,7 @@ import backend.yourtrip.global.ai.pipeline.PipelineStage;
 import backend.yourtrip.global.ai.pipeline.SlotFillOutcome;
 import backend.yourtrip.global.ai.route.SlotType;
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -184,6 +185,34 @@ public class AiCourseMetrics {
     public static final String PERMIT_INTERRUPTED = "interrupted";
 
     /**
+     * <b>응답 하나가 쓴 토큰 수</b> (이슈 #174).
+     *
+     * <p>OpenAI 한도의 실제 병목은 RPM이 아니라 TPM인데(Tier 1: 500K TPM / 500 RPM), TPM을
+     * {@code max-concurrent-calls} 상한으로 환산하려면 <b>호출당 토큰 수</b>가 필요하다. 응답의
+     * {@code usage}를 읽는 곳이 없어 그 값이 어디에도 남지 않았다.
+     *
+     * <p><b>호출이 아니라 HTTP 응답 단위로 센다.</b> 의미 재시도는 한 호출 안에서 응답을 두 번
+     * 받고, 절단된 응답도 토큰을 다 쓴다 — 둘 다 TPM을 소모하므로 빠뜨리면 한도 계산이 낙관적이 된다.
+     * 그래서 이 값의 {@code count}는 {@link #LLM_CALL}의 {@code count}보다 클 수 있다.
+     *
+     * <p>{@code type}의 관계: {@code input}은 {@code cached}를 포함하고, {@code output}은
+     * {@code reasoning}을 포함한다(OpenAI {@code usage} 정의 그대로). 더하면 이중 계산이다.
+     */
+    public static final String LLM_TOKENS = "ai.llm.tokens";
+
+    /** 입력(프롬프트) 토큰. 캐시 적중분을 포함한다. */
+    public static final String TOKEN_INPUT = "input";
+
+    /** 출력 토큰. 추론 토큰을 포함한다. */
+    public static final String TOKEN_OUTPUT = "output";
+
+    /** 출력 중 추론에 쓴 토큰. 보이지 않지만 출력 요금으로 과금되고 TPM도 소모한다. */
+    public static final String TOKEN_REASONING = "reasoning";
+
+    /** 입력 중 프롬프트 캐시에 적중한 토큰. system 프롬프트를 분리한 효과가 여기서 보인다. */
+    public static final String TOKEN_CACHED = "cached";
+
+    /**
      * 지금 쥐고 있는 슬롯 수. {@code max-concurrent-calls}에 붙어 있는 시간이 길수록 포화다.
      *
      * <p>타이머만으로는 "지금 막혀 있는가"를 볼 수 없다 — 대기는 끝난 뒤에야 기록되므로 20초짜리
@@ -303,6 +332,12 @@ public class AiCourseMetrics {
      * 잰다. 대기는 {@link #LLM_PERMIT_WAIT}가 따로 잰다(이슈 #173에서 이 주석의 옛 서술을 정정했다).
      */
     private static final Duration LLM_LATENCY_MAX = Duration.ofSeconds(45);
+
+    /**
+     * 토큰 히스토그램의 상한. 모델 컨텍스트 한계가 아니라 <b>이 앱의 호출이 닿을 법한 크기</b>다 —
+     * Curator 입력(후보 목록 포함)이 가장 크고, 그 위는 {@code +Inf}로 모여도 판단에 지장이 없다.
+     */
+    private static final double TOKENS_MAX = 100_000;
 
     private final MeterRegistry registry;
 
@@ -472,6 +507,48 @@ public class AiCourseMetrics {
                 permitWaitTimer(agent, result);
             }
         }
+    }
+
+    /**
+     * 응답 하나의 토큰 사용량을 기록한다 (이슈 #174). 응답에 값이 없는 종류는 건너뛴다 —
+     * 0으로 기록하면 "안 썼다"와 "모른다"가 섞여 평균이 내려간다.
+     */
+    public void llmTokens(String agent, Integer input, Integer output, Integer reasoning,
+        Integer cached) {
+        recordTokens(agent, TOKEN_INPUT, input);
+        recordTokens(agent, TOKEN_OUTPUT, output);
+        recordTokens(agent, TOKEN_REASONING, reasoning);
+        recordTokens(agent, TOKEN_CACHED, cached);
+    }
+
+    /** 설정된 agent마다 토큰 시계열을 0으로 등록한다 (이슈 #174). 근거는 {@link #registerLlmPermitSeries}와 같다. */
+    public void registerLlmTokenSeries(Collection<String> agents) {
+        for (String agent : agents) {
+            for (String type : new String[]{TOKEN_INPUT, TOKEN_OUTPUT, TOKEN_REASONING, TOKEN_CACHED}) {
+                tokenSummary(agent, type);
+            }
+        }
+    }
+
+    private void recordTokens(String agent, String type, Integer tokens) {
+        if (tokens != null) {
+            tokenSummary(agent, type).record(tokens);
+        }
+    }
+
+    /**
+     * 히스토그램으로 낸다 — 한도 계산에 필요한 것은 평균만이 아니라 <b>큰 호출의 크기</b>다.
+     * 후보 목록을 싣는 Curator 는 day 마다 입력 길이가 다르다.
+     */
+    private DistributionSummary tokenSummary(String agent, String type) {
+        return DistributionSummary.builder(LLM_TOKENS)
+            .baseUnit("tokens")
+            .tag("agent", agent)
+            .tag("type", type)
+            .publishPercentileHistogram()
+            .minimumExpectedValue(1.0)
+            .maximumExpectedValue(TOKENS_MAX)
+            .register(registry);
     }
 
     /**

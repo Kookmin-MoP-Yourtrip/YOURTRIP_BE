@@ -432,7 +432,107 @@ class OpenAiLlmClientTest {
         }
     }
 
+    @Nested
+    @DisplayName("토큰 사용량 메트릭 (이슈 #174)")
+    class TokenMetrics {
+
+        @Test
+        @DisplayName("호출이 없어도 설정된 agent 의 토큰 시계열이 종류별로 0으로 존재한다")
+        void registersZeroSeriesForConfiguredAgents() {
+            client();
+
+            for (String type : List.of(AiCourseMetrics.TOKEN_INPUT, AiCourseMetrics.TOKEN_OUTPUT,
+                AiCourseMetrics.TOKEN_REASONING, AiCourseMetrics.TOKEN_CACHED)) {
+                assertThat(tokenSummary(type)).as(type).isNotNull();
+                assertThat(tokenSummary(type).count()).as(type).isZero();
+            }
+        }
+
+        @Test
+        @DisplayName("응답의 usage 에서 입력·출력·추론·캐시 토큰을 읽어 기록한다")
+        void recordsUsageIncludingDetails() {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .willReturn(okJson(completionWithUsage("{\\\"title\\\":\\\"t\\\"}", "stop",
+                    """
+                    "usage": {
+                      "prompt_tokens": 1200, "completion_tokens": 300, "total_tokens": 1500,
+                      "prompt_tokens_details": { "cached_tokens": 1024 },
+                      "completion_tokens_details": { "reasoning_tokens": 180 }
+                    }"""))));
+
+            client().generate(call(SCHEMA));
+
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_INPUT).totalAmount()).isEqualTo(1200);
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_OUTPUT).totalAmount()).isEqualTo(300);
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_REASONING).totalAmount()).isEqualTo(180);
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_CACHED).totalAmount()).isEqualTo(1024);
+        }
+
+        @Test
+        @DisplayName("세부 항목이 없는 응답이면 추론·캐시는 기록하지 않는다 — 0과 '모름'을 섞지 않는다")
+        void skipsMissingDetails() {
+            stubSuccess("{\\\"title\\\":\\\"t\\\"}", "stop");
+
+            client().generate(call(SCHEMA));
+
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_INPUT).count()).isEqualTo(1);
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_REASONING).count()).isZero();
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_CACHED).count()).isZero();
+        }
+
+        @Test
+        @DisplayName("usage 가 아예 없는 응답이면 아무것도 기록하지 않는다")
+        void skipsResponseWithoutUsage() {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .willReturn(okJson(completionWithUsage("{\\\"title\\\":\\\"t\\\"}", "stop", null))));
+
+            client().generate(call(SCHEMA));
+
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_INPUT).count())
+                .as("usage 가 없는데 0을 기록하면 호출당 평균이 내려간다")
+                .isZero();
+        }
+
+        @Test
+        @DisplayName("의미 재시도의 두 응답을 모두 센다 — 둘 다 TPM 을 소모한다")
+        void countsEverySemanticAttempt() {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .inScenario("broken").whenScenarioStateIs("Started")
+                .willReturn(okJson(completion("이건 JSON이 아니다", "stop")))
+                .willSetStateTo("corrected"));
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .inScenario("broken").whenScenarioStateIs("corrected")
+                .willReturn(okJson(completion("{\\\"title\\\":\\\"고쳐짐\\\"}", "stop"))));
+
+            client().generate(call(SCHEMA));
+
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_INPUT).count()).isEqualTo(2);
+            assertThat(llmCallCount(AiCourseMetrics.LLM_OUTCOME_SUCCESS))
+                .as("호출은 하나지만 응답은 둘이다")
+                .isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("절단으로 실패한 응답도 토큰은 센다 — 절단은 의미 재시도 대상이라 응답이 둘이다")
+        void countsTruncatedResponses() {
+            stubSuccess("{\\\"title\\\":\\\"경주 야", "length");
+
+            assertThatThrownBy(() -> client().generate(call(SCHEMA)))
+                .isInstanceOf(LlmTruncatedResponseException.class);
+
+            // 초회 + 보정 1회가 모두 잘렸다. 성공 응답이 하나도 없어도 TPM 은 두 번 소모됐다.
+            assertThat(requestCount()).isEqualTo(2);
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_OUTPUT).count()).isEqualTo(2);
+        }
+    }
+
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
+
+    private io.micrometer.core.instrument.DistributionSummary tokenSummary(String type) {
+        return meterRegistry.find(AiCourseMetrics.LLM_TOKENS)
+            .tags("agent", AGENT, "type", type)
+            .summary();
+    }
 
     private OpenAiLlmClient client() {
         // 백오프를 짧게 둬 테스트가 실제로 몇 초씩 자지 않게 한다. 백오프 값 자체의 정확성은
@@ -523,6 +623,30 @@ class OpenAiLlmClientTest {
         return aResponse().withStatus(200)
             .withHeader("Content-Type", "application/json")
             .withBody(body);
+    }
+
+    /**
+     * {@link #completion}과 같되 {@code usage} 블록을 직접 넣는다.
+     *
+     * @param usageJson {@code "usage": {...}} 형태의 조각. {@code null}이면 usage 를 싣지 않는다
+     */
+    private static String completionWithUsage(String escapedContent, String finishReason,
+        String usageJson) {
+        return """
+            {
+              "id": "chatcmpl-test",
+              "object": "chat.completion",
+              "created": 1700000000,
+              "model": "gpt-5.6-luna",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": { "role": "assistant", "content": "%s" },
+                  "finish_reason": "%s"
+                }
+              ]%s
+            }
+            """.formatted(escapedContent, finishReason, usageJson == null ? "" : ",\n" + usageJson);
     }
 
     /** @param escapedContent JSON 문자열 안에 들어갈 형태로 이스케이프된 응답 본문 */
