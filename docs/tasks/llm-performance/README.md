@@ -11,7 +11,7 @@
 | 0 | OpenAI 티어(RPM/TPM) 확인 + 호출당 토큰 실측 | 사전 조사·계측 | ✅ 서버당 상한 4~8 도출 | [#174](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/174) · [STEP-0](steps/STEP-0-token-usage.md) |
 | 1 | 슬롯 대기 지표 추가 | 계측 | ✅ 구현·E2E 완료, PR 대기 | [#173](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/173) · [STEP-1](steps/STEP-1-permit-wait.md) |
 | 2 | 기준선 측정 | 측정 | ✅ 단일 p95 24.1초·대기 매회 5~8초, 동시 3명 폴백 42% | [#175](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/175) · [STEP-2](steps/STEP-2-baseline.md) (#108 개선 전) |
-| 3 | 마감 뒤 남는 호출 정리 | 안정성 | ⬜ **← 다음** | [#176](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/176) |
+| 3 | 마감 뒤 남는 호출 정리 | 안정성 | 🔄 조사 완료 — 인터럽트로 멈출 수 있음 **← 진행 중** | [#176](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/176) · [STEP-3](steps/STEP-3-late-calls.md) |
 | 4 | `max-concurrent-calls` 조정 | 성능 | ⬜ | [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108) |
 | 5 | Planner 단계 상한 | 안정성 | 데이터 확인 후 결정 | 이슈 없음 |
 | 6 | 30초 예산 재조정 + 시간 제한 관계 문서화 | 정리 | ⬜ | 이슈 없음 |
