@@ -177,7 +177,7 @@ class LlmCallCancellationLearningTest {
 
         System.out.printf("[Q2-1] 예외 체인: %s, 인터럽트 표시: %s%n", chain(thrown.get()), flag.get());
         assertThat(hasCause(thrown.get(), java.io.IOException.class))
-            .as("어댑터의 isRetriable 은 IOException 을 재시도 대상으로 본다 — 인터럽트가 재시도로 오분류된다")
+            .as("번역 형태를 고정한다 — isRetriable 이 IOException 규칙보다 인터럽트를 먼저 걸러야 하는 이유다")
             .isTrue();
         assertThat(flag.get()).as("인터럽트 표시가 살아 있어야 다음 백오프 sleep 이 즉시 깨진다").isTrue();
     }

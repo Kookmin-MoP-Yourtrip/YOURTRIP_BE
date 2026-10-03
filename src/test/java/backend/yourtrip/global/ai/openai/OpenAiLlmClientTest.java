@@ -218,6 +218,51 @@ class OpenAiLlmClientTest {
 
             assertThat(requestCount()).as("백오프를 태우지 않아야 한다").isEqualTo(1);
         }
+
+        @Test
+        @DisplayName("HTTP 대기 중 인터럽트되면 재시도하지 않는다 — IOException 으로 번역돼도 재시도 대상이 아니다 (이슈 #176)")
+        void doesNotRetryWhenInterrupted() throws Exception {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .willReturn(okJson(completion("{\\\"title\\\":\\\"t\\\"}", "stop"))
+                    .withFixedDelay(3_000)));
+            // 백오프가 실제로 자지 않게 한다. 실제 sleep 이면 살아 있는 인터럽트 표시가 첫 백오프에서
+            // 바로 터져 재시도 루프가 우연히 끊긴다(학습 테스트 Q2) — 분류의 결함이 가려진다.
+            AiLlmProperties properties = properties(10_000, 1, new Retry(3, 1, 0.01, 0.02, 0.0));
+            meterRegistry = new SimpleMeterRegistry();
+            OpenAiLlmClient client = new OpenAiLlmClient(properties,
+                new LlmResponseParser(new ObjectMapper()),
+                new LlmRetryExecutor(properties, millis -> { }),
+                new AiCourseMetrics(meterRegistry),
+                OpenAiLlmClient.buildChatModel(wireMock.baseUrl(), "test-api-key", 10_000));
+
+            java.util.concurrent.atomic.AtomicReference<Throwable> thrown =
+                new java.util.concurrent.atomic.AtomicReference<>();
+            Thread worker = Thread.ofPlatform().start(() -> {
+                try {
+                    client.generate(call(SCHEMA));
+                } catch (Throwable t) {
+                    thrown.set(t);
+                }
+            });
+            // 슬롯 점유가 아니라 "요청이 서버에 도착했는가"를 기다린다. JVM 첫 호출은 연결 수립에
+            // 수백 ms 가 걸려, 고정 지연 뒤에 인터럽트하면 요청이 나가기도 전에 끊길 수 있다.
+            long limit = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+            while (requestCount() < 1 && System.nanoTime() < limit) {
+                Thread.sleep(10);
+            }
+            assertThat(requestCount()).as("요청이 서버에 도착하지 않았다").isEqualTo(1);
+            worker.interrupt();
+            worker.join(10_000);
+
+            // 오분류되면 남은 시도가 인터럽트 표시 때문에 서버에 닿지도 못하고 즉시 실패하며 루프를
+            // 끝까지 돈다 — 요청은 1건뿐인데 "전송 재시도 3회를 모두 소진했다"로 보고돼, 취소가
+            // 네트워크 장애처럼 기록된다.
+            assertThat(thrown.get())
+                .isInstanceOf(LlmTransportException.class)
+                .satisfies(t -> assertThat(((LlmTransportException) t).getAttempts())
+                    .as("취소된 호출은 첫 시도에서 멈춰야 한다").isEqualTo(1));
+            assertThat(requestCount()).isEqualTo(1);
+        }
     }
 
     @Nested

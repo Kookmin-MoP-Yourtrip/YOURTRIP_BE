@@ -388,8 +388,18 @@ public class OpenAiLlmClient implements LlmClient {
      *
      * <p>그래서 {@link OpenAiErrorHandler}로 분류를 직접 소유한다. 메시지 문자열에서 "429"를 찾는
      * 방식(기존 벤치마크 하네스가 쓰던 방법)은 벤더가 문구를 바꾸면 조용히 깨지므로 택하지 않았다.
+     *
+     * <p><b>인터럽트는 어떤 모양으로 와도 재시도하지 않는다</b>(이슈 #176). reactor-netty 는 대기 중
+     * 인터럽트된 요청을 {@code IOException ← InterruptedException}으로 번역하는데, 아래 체인 순회는
+     * {@code IOException}을 먼저 만나 재시도 대상으로 판정한다. 그러면 남은 시도가 살아 있는 인터럽트
+     * 표시 때문에 서버에 닿지도 못하고 즉시 실패하며 루프를 끝까지 돌아, <b>취소가 "전송 재시도 N회
+     * 소진"으로 보고된다</b>(학습 테스트 {@code LlmCallCancellationLearningTest} Q2-1). 그래서 체인
+     * 순회보다 먼저 거른다.
      */
     private static boolean isRetriable(RuntimeException e) {
+        if (Thread.currentThread().isInterrupted() || hasCause(e, InterruptedException.class)) {
+            return false;
+        }
         for (Throwable current = e; current != null && current != current.getCause();
             current = current.getCause()) {
             if (current instanceof OpenAiHttpException http) {
@@ -401,6 +411,16 @@ public class OpenAiLlmClient implements LlmClient {
             }
             // 우리가 핸들러를 못 끼운 경로로 5xx가 올라온 경우의 안전망.
             if (current instanceof TransientAiException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasCause(Throwable e, Class<? extends Throwable> type) {
+        for (Throwable current = e; current != null; current =
+            current.getCause() == current ? null : current.getCause()) {
+            if (type.isInstance(current)) {
                 return true;
             }
         }
