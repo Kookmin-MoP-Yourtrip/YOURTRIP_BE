@@ -90,6 +90,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * 전체 측정: ./gradlew benchmarkTest --tests '*AiCourseLatencyBaselineTest*' --rerun
  * 스모크:    LATENCY_BASELINE_REQUEST_LIMIT=2 ./gradlew ... --rerun
  * 이어서:    LATENCY_BASELINE_REQUEST_FROM=15 LATENCY_BASELINE_WARMUP=0 ./gradlew ... --rerun
+ * 4단계:     LATENCY_BASELINE_MAX_CONCURRENT_CALLS=4 ./gradlew ... --rerun
  * </pre>
  *
  * <p>30요청 + 웜업 1건이면 LLM 약 124회 · TourAPI ≤ 279(일 1,000 한도) · 네이버·카카오는 파이프라인
@@ -98,12 +99,18 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 @org.junit.jupiter.api.Tag("benchmark")
 class AiCourseLatencyBaselineTest {
 
+    /** 운영 설정({@code application.yml})의 동시 호출 수. 기준선(2단계)은 이 값으로 쟀다. */
+    private static final int PRODUCTION_MAX_CONCURRENT_CALLS = 2;
+
     /**
-     * 운영 설정({@code application.yml})과 같다. 4단계에서는 세 번째 값만 바꾼다.
-     * 값을 바꾸면 이 하네스의 산출물은 더 이상 "운영 기준선"이 아니다.
+     * 예산·LLM 상한은 운영값으로 고정하고, <b>동시 호출 수만 환경변수로 바꾼다</b>(4단계, #108).
+     * 코드를 고쳐 바꾸지 않는 이유 — 기준선과 개선 측정이 같은 커밋의 같은 하네스에서 나와야
+     * 전후 차이를 그 한 값에 귀속할 수 있다. 산출물 파일명에 값이 실려 섞이지 않는다.
      */
     private static final PipelineBenchmarkWiring.Limits LIMITS =
-        new PipelineBenchmarkWiring.Limits(30_000, 20_000, 2);
+        new PipelineBenchmarkWiring.Limits(30_000, 20_000, (int) setting(
+            "latency.baseline.maxConcurrentCalls", "LATENCY_BASELINE_MAX_CONCURRENT_CALLS",
+            PRODUCTION_MAX_CONCURRENT_CALLS));
 
     /** 요청 간 휴지. 슬롯이 빈 뒤에도 두는 것은 RPM·외부 API 쿼터에 대한 예의다. */
     private static final long DEFAULT_DELAY_MS = 5_000L;
@@ -175,8 +182,10 @@ class AiCourseLatencyBaselineTest {
 
         System.out.printf("%n=== LLM 호출 경로 기준선: 요청 %d~%d (%d건), 여행 %d일 ===%n",
             startIndex + 1, endIndex, inputSet.size(), BaselineInputSet.TRIP_DAYS);
-        System.out.printf("    예산 %,dms · LLM 상한 %,dms · 동시 호출 %d (운영값) · 요청 간 휴지 %,dms%n",
-            LIMITS.budgetMs(), LIMITS.llmTimeoutMs(), LIMITS.maxConcurrentCalls(), delayMs);
+        System.out.printf("    예산 %,dms · LLM 상한 %,dms · 동시 호출 %d%s · 요청 간 휴지 %,dms%n",
+            LIMITS.budgetMs(), LIMITS.llmTimeoutMs(), LIMITS.maxConcurrentCalls(),
+            LIMITS.maxConcurrentCalls() == PRODUCTION_MAX_CONCURRENT_CALLS ? " (운영값)" : " (운영값 아님)",
+            delayMs);
 
         List<RequestRow> rows = new ArrayList<>();
         try {
@@ -414,7 +423,7 @@ class AiCourseLatencyBaselineTest {
                 .append(r.curationCurator()).append(',').append(r.curationFallback()).append(',')
                 .append(r.curationUnfilled()).append(',').append(r.totalPlaces()).append('\n');
         }
-        writeUtf8Bom(RESULTS_DIR.resolve("latency-baseline-" + runTag + ".csv"), sb.toString());
+        writeUtf8Bom(RESULTS_DIR.resolve(outputName(runTag)), sb.toString());
     }
 
     // ── 리포트 ────────────────────────────────────────────────────────────────
@@ -479,7 +488,7 @@ class AiCourseLatencyBaselineTest {
         long calls = rows.stream().mapToLong(RequestRow::llmCalls).sum();
         System.out.printf("  응답 %d개 / 호출 %d회 — 차이는 의미 재시도·절단이다%n", responses, calls);
 
-        System.out.printf("%n=== 산출물 ===%n  results/latency-baseline-%s.csv%n", runTag);
+        System.out.printf("%n=== 산출물 ===%n  results/%s%n", outputName(runTag));
     }
 
     private static void printDistribution(String label, List<RequestRow> rows,
@@ -501,6 +510,11 @@ class AiCourseLatencyBaselineTest {
     private static long percentile(List<Long> sorted, int p) {
         int index = (int) Math.ceil(p / 100.0 * sorted.size()) - 1;
         return sorted.get(Math.min(Math.max(index, 0), sorted.size() - 1));
+    }
+
+    /** 동시 호출 수를 파일명에 싣는다 — 기준선(c2)과 4단계 측정이 같은 디렉터리에 쌓인다. */
+    private static String outputName(String runTag) {
+        return "latency-baseline-c" + LIMITS.maxConcurrentCalls() + "-" + runTag + ".csv";
     }
 
     private static long elapsedMs(long startNanos) {
