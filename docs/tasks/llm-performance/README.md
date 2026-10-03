@@ -11,8 +11,8 @@
 | 0 | OpenAI 티어(RPM/TPM) 확인 + 호출당 토큰 실측 | 사전 조사·계측 | ✅ 서버당 상한 4~8 도출 | [#174](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/174) · [STEP-0](steps/STEP-0-token-usage.md) |
 | 1 | 슬롯 대기 지표 추가 | 계측 | ✅ 구현·E2E 완료, PR 대기 | [#173](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/173) · [STEP-1](steps/STEP-1-permit-wait.md) |
 | 2 | 기준선 측정 | 측정 | ✅ 단일 p95 24.1초·대기 매회 5~8초, 동시 3명 폴백 42% | [#175](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/175) · [STEP-2](steps/STEP-2-baseline.md) (#108 개선 전) |
-| 3 | 마감 뒤 남는 호출 정리 | 안정성 | 🔄 조사 완료 — 인터럽트로 멈출 수 있음 **← 진행 중** | [#176](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/176) · [STEP-3](steps/STEP-3-late-calls.md) |
-| 4 | `max-concurrent-calls` 조정 | 성능 | ⬜ | [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108) |
+| 3 | 마감 뒤 남는 호출 정리 | 안정성 | ⏸ 조사 완료, 구현은 4단계 측정 뒤 판단 | [#176](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/176) · [STEP-3](steps/STEP-3-late-calls.md) |
+| 4 | `max-concurrent-calls` 조정 | 성능 | ⬜ **← 다음** | [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108) |
 | 5 | Planner 단계 상한 | 안정성 | 데이터 확인 후 결정 | 이슈 없음 |
 | 6 | 30초 예산 재조정 + 시간 제한 관계 문서화 | 정리 | ⬜ | 이슈 없음 |
 | 별도 | AI 동시 입장 제한 | 안정성 | ⬜ | 이슈 없음 |
@@ -124,7 +124,10 @@ LLM이 먼저 포화된다(서버당 제대로 처리 가능한 양 ≈ 분당 5
 
 - **재시도 전 남은 예산 확인** — 재시도 루프(`LlmRetryExecutor`·의미 재시도)가 `CourseDeadline`을 모른다. 예산이 없으면 재시도·백오프를 하지 않게 한다
 - **진행 중인 호출 취소** — 단, `cancel`이 reactor-netty의 실제 HTTP 요청까지 끊는지 **조사가 먼저다**(체크리스트 첫 항목)
-- **4단계보다 먼저인 이유**: 버려진 호출이 슬롯을 쥔 상태에서 동시 호출 수를 조정하면 측정값에 그 점유가 섞여 해석할 수 없다
+- ~~**4단계보다 먼저인 이유**: 버려진 호출이 슬롯을 쥔 상태에서 동시 호출 수를 조정하면 측정값에 그 점유가 섞여 해석할 수 없다~~
+- **순서를 4단계 뒤로 바꿨다(2026-10-03).** 위 근거는 측정 구조상 약했다 — 단일 요청 측정에서는 남는 호출이 0건이었고, 동시 측정은 라운드 간격 90초라 남는 호출이 다음 라운드로 넘어가지 않는다. 라운드 안에서 생기는 남는 호출은 오염이 아니라 운영에서도 일어나는 현상의 일부다
+- **구현 여부는 4단계 측정으로 정한다.** 남는 호출의 해악은 과부하 구간(슬롯 시간 수요 > 공급)에서만 크다. 슬롯을 늘려 그 구간이 동시 5명 밖으로 밀려나면 이 단계의 가치가 작아진다. 동시 5명에서 폴백이 크게 남으면 구현하고, 작으면 #176 을 보류한다
+- 조사 결과(인터럽트로 슬롯 대기·HTTP·백오프를 모두 멈출 수 있다, 인터럽트가 재시도 대상으로 오분류된다)는 [STEP-3](steps/STEP-3-late-calls.md)에 있다
 
 ### 4. `max-concurrent-calls` 조정 (#108)
 
