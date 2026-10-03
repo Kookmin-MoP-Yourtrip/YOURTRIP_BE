@@ -1,5 +1,6 @@
 package backend.yourtrip.global.config;
 
+import backend.yourtrip.global.ai.config.AiLlmProperties;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -51,14 +52,45 @@ public class AsyncConfig {
      * 느려질 때 그 대기가 LLM 슬롯을 잠식한다.
      *
      * <p>동시 호출의 실질 상한은 이 풀이 아니라 {@code llm.max-concurrent-calls} 세마포어가 정한다
-     * (OpenAI RPM/TPM 티어 보호). 풀은 그보다 넉넉해야 세마포어 대기가 큐잉으로 바뀌지 않는다.
+     * (OpenAI RPM/TPM 티어 보호). 풀은 그보다 넉넉해야 대기가 큐가 아니라 <b>세마포어 앞</b>에 선다.
+     * 세마포어 대기는 {@code llm.timeout-ms}에서 끊기고 {@code ai.llm.permit.wait}·{@code waiting}에
+     * 잡히지만, 큐 대기는 상한도 지표도 없이 마감 뒤에도 차례가 오면 호출을 끝까지 실행한다.
+     *
+     * <p><b>크기를 슬롯 수에서 유도한다(#177).</b> 예전에는 core 4 / max 8 고정이었는데,
+     * {@code ThreadPoolExecutor}는 큐 50칸이 다 차야 core 를 넘겨 스레드를 늘리므로 max 8 은 쓰이지
+     * 않았다. 슬롯을 4로 올리자 스레드 수와 같아져 세마포어는 할 일이 없어지고 줄이 큐로 옮겨갔다
+     * (STEP-4 실측: 동시 5명에서 슬롯 대기 0, 큐 최대 11). 두 값을 따로 두면 슬롯만 바꾸고 풀을 잊는
+     * 일이 또 생기므로 손잡이를 슬롯 하나로 묶었다.
+     *
+     * <p>근거: {@code docs/tasks/llm-performance/steps/STEP-4-1-executor-sizing.md}
      */
     @Bean(name = "aiAgentExecutor")
-    public ThreadPoolTaskExecutor aiAgentExecutor() {
+    public ThreadPoolTaskExecutor aiAgentExecutor(AiLlmProperties llmProperties) {
+        return agentExecutorFor(llmProperties.maxConcurrentCalls());
+    }
+
+    /**
+     * 슬롯 하나 뒤에서 대기 상한 안에 차례가 오는 작업 수(호출 중 1 + 대기).
+     *
+     * <p>Curator 호출은 슬롯을 약 9초 쥔다(STEP-4 p50 8.7초). 대기 상한 20초 동안 슬롯 하나가 약
+     * 2.3번 비므로 슬롯당 3.3개가 "쓸모 있게 기다릴 수 있는" 한계이고, 그 위의 스레드는 세마포어
+     * 앞에서 20초를 채우고 포기할 뿐이다. 3.3을 올려 4로 둔다. 정밀할 필요는 없다 — 많으면 스레드
+     * 몇 개를 더 쓸 뿐이지만, 적으면 줄이 다시 큐로 넘어간다.
+     */
+    static final int THREADS_PER_PERMIT = 4;
+
+    /**
+     * {@code aiAgentExecutor}의 실제 구성. 스프링 컨텍스트 없이 운영과 같은 풀이 필요한 벤치마크
+     * 하네스가 슬롯 수만 넘겨 쓴다.
+     */
+    public static ThreadPoolTaskExecutor agentExecutorFor(int maxConcurrentCalls) {
+        int threads = maxConcurrentCalls * THREADS_PER_PERMIT;
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(4);
-        executor.setMaxPoolSize(8);
-        // 큐가 짧다 — LLM 호출이 큐에서 오래 기다리면 그 요청은 어차피 데드라인을 넘긴다.
+        // core = max — ThreadPoolExecutor 는 큐가 다 차야 core 를 넘기므로 max 를 따로 두는 것은 의미가 없다.
+        executor.setCorePoolSize(threads);
+        executor.setMaxPoolSize(threads);
+        // 스레드가 모두 찬 뒤(동시 작업이 슬롯 × 4 를 넘을 때)의 넘침 동작은 #177 이전과 같다.
+        // 바꾸면 전후 측정의 차이를 어느 변경의 효과로 볼지 가를 수 없다.
         executor.setQueueCapacity(50);
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.setThreadNamePrefix("ai-agent-");

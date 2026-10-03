@@ -45,9 +45,9 @@ class AgentExecutorSizingLearningTest {
     }
 
     @Test
-    @DisplayName("Q1. 운영 설정(core 4 / max 8 / 큐 50) — 스레드는 4개에서 늘지 않고 줄은 큐에 선다")
-    void productionConfigQueuesInExecutor() throws Exception {
-        ThreadPoolTaskExecutor executor = track(new AsyncConfig().aiAgentExecutor());
+    @DisplayName("Q1. #177 이전 운영 설정(core 4 / max 8 / 큐 50) — 스레드는 4개에서 늘지 않고 줄은 큐에 선다")
+    void previousConfigQueuesInExecutor() throws Exception {
+        ThreadPoolTaskExecutor executor = track(executor(4, 8, 50));
 
         Run run = submitAll(executor);
 

@@ -234,7 +234,7 @@ class AiPipelineHallucinationBenchmarkTest {
 
         // 운영 배선을 그대로 쓴다 — PipelineBenchmarkWiring javadoc "실행기는 운영 것을 쓴다" 참고.
         AsyncConfig asyncConfig = new AsyncConfig();
-        ThreadPoolTaskExecutor agentExecutor = asyncConfig.aiAgentExecutor();
+        ThreadPoolTaskExecutor agentExecutor = AsyncConfig.agentExecutorFor(MAX_CONCURRENT_CALLS);
         ThreadPoolTaskExecutor groundingExecutor = asyncConfig.placeGroundingExecutor();
 
         AiCoursePipeline pipeline = PipelineBenchmarkWiring.pipeline(registry, kakaoClient,

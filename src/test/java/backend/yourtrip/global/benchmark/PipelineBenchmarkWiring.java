@@ -60,7 +60,9 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * 스모크에서 41.9초 / 38.0초가 나왔는데 E2E 실측(운영 배선)은 22.6초 / 28.0초였다.
  *
  * <p>그래서 호출자가 {@link AsyncConfig}를 직접 인스턴스화해 <b>운영과 같은 풀 설정</b>(aiAgent
- * core 4 / placeGrounding core 8, 둘 다 {@code CallerRunsPolicy})을 넘긴다. Spring 컨텍스트 없이도
+ * 슬롯 × 4 / placeGrounding core 8, 둘 다 {@code CallerRunsPolicy})을 넘긴다. aiAgent 풀은
+ * {@link AsyncConfig#agentExecutorFor}에 하네스의 슬롯 수를 넘겨 만든다 — 운영과 같은 규칙으로
+ * 슬롯을 따라가야 슬롯 수를 바꿔 잰 값이 운영에 그대로 옮겨진다. Spring 컨텍스트 없이도
  * 그 메서드는 평범한 팩토리라 그대로 부를 수 있고, 설정이 바뀌면 하네스가 자동으로 따라간다 —
  * 값을 복사하면 운영만 바뀌고 벤치마크는 조용히 구식이 된다.
  */
