@@ -56,4 +56,5 @@
 - 로컬 개발 머신 단일 인스턴스다. 운영(t3.small vCPU 2, ASG 최대 2대, 계정 단위 TPM 공유)의 CPU·인스턴스 간 경합은 재현하지 않았다
 - 동시 시나리오의 "응답 뒤 남은 호출"은 HTTP 경로라 요청별로 귀속하지 못했다(하네스의 `drainMs`는 단일 요청에서 전부 0)
 - 표본: 동시 N별 6~15건. 폴백 비율의 경향은 뚜렷하지만 소수점 정밀도는 없다
+- **동시 요청의 대기를 과소평가했다.** "Curator 대기"는 세마포어 앞의 대기만 센다. `aiAgentExecutor`(core 4) 큐에서 스레드를 기다린 시간(N=5 에서 큐 최대 11)은 빠져 있다 — 4단계에서 발견했다([STEP-4](STEP-4-concurrent-calls.md))
 - 산출물(`results/`)은 git 대상이 아니다: `latency-baseline-20261002-141423.csv`, `ai-concurrent/c{2,3,5}*.{log,json,txt}`, `ai-concurrent/summary.md`

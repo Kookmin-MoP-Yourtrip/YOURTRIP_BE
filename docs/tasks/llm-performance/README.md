@@ -12,7 +12,7 @@
 | 1 | 슬롯 대기 지표 추가 | 계측 | ✅ 구현·E2E 완료, PR 대기 | [#173](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/173) · [STEP-1](steps/STEP-1-permit-wait.md) |
 | 2 | 기준선 측정 | 측정 | ✅ 단일 p95 24.1초·대기 매회 5~8초, 동시 3명 폴백 42% | [#175](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/175) · [STEP-2](steps/STEP-2-baseline.md) (#108 개선 전) |
 | 3 | 마감 뒤 남는 호출 정리 | 안정성 | ⏸ 조사 완료, 구현은 4단계 측정 뒤 판단 | [#176](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/176) · [STEP-3](steps/STEP-3-late-calls.md) |
-| 4 | `max-concurrent-calls` 조정 | 성능 | ⬜ **← 다음** | [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108) |
+| 4 | `max-concurrent-calls` 조정 | 성능 | 🔄 4 측정 완료 — 단일 p95 18.6초, 동시 5명 폴백 38%, 병목이 스레드 풀로 이동 · [STEP-4](steps/STEP-4-concurrent-calls.md) | [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108) |
 | 5 | Planner 단계 상한 | 안정성 | 데이터 확인 후 결정 | 이슈 없음 |
 | 6 | 30초 예산 재조정 + 시간 제한 관계 문서화 | 정리 | ⬜ | 이슈 없음 |
 | 별도 | AI 동시 입장 제한 | 안정성 | ⬜ | 이슈 없음 |
@@ -131,7 +131,9 @@ LLM이 먼저 포화된다(서버당 제대로 처리 가능한 양 ≈ 분당 5
 
 ### 4. `max-concurrent-calls` 조정 (#108)
 
-- 0단계 상한(서버당 보수적 4 · 실사용 8) 안에서 2 → 3 → 4로 올리며 2단계와 같은 세트로 매번 잰다
+- 0단계 상한(서버당 보수적 4 · 실사용 8) 안에서 올리며 2단계와 같은 세트로 잰다. **4 를 먼저 쟀다**(3 은 생략 — STEP-4 한계 참고)
+- **4 결과**: 단일 요청 Curator 대기 0, p95 24.1 → 18.6초. 동시 3명 폴백 42 → 7%, 동시 5명 74 → 38%. 동시 5명에서 슬롯 대기는 0인데 `aiAgentExecutor`(core 4) 큐가 최대 11 — **실질 상한이 스레드 풀 4라 세마포어가 더 이상 병목이 아니다**([STEP-4](steps/STEP-4-concurrent-calls.md))
+- **5 이상은 조건부다.** ① 한도 여유 확보 — TPM 이 `max_completion_tokens`를 세는지 확인하거나 Curator 출력 상한을 실측(최대 876)에 맞게 낮춘다(4,096 → 약 1,500 이면 보수적 상한이 약 6) ② 스레드 풀이 슬롯 수만큼 실제로 동시에 돌게 조정한다 — 별개 변경이라 따로 잰다. 둘 다 없이 올리면 효과가 없거나 운영 2대에서 429 위험만 생긴다
 - 볼 것: Curator 단계 지연, 슬롯 대기, 429 빈도, 요청 전체 p95
 - 정한 값과 근거(티어 ÷ 인스턴스 수)를 `application.yml` 주석에 남긴다
 - 1단계 E2E 기준 기대 효과: Curator 단계 약 5초 단축(요청 전체의 약 1/4) — 2단계 분포로 확정한다
