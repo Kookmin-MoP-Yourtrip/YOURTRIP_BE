@@ -11,6 +11,7 @@ import backend.yourtrip.global.naver.config.NaverConfig;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.github.tomakehurst.wiremock.verification.LoggedRequest;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -304,6 +305,57 @@ class NaverLocalClientTest {
                 .isEqualTo(ApiFailureCause.QUOTA_EXCEEDED);
             assertThat(NaverLocalClient.classifyTooManyRequests("{\"errorCode\":\"999\"}"))
                 .isEqualTo(ApiFailureCause.QUOTA_EXCEEDED);
+        }
+    }
+
+    @Nested
+    @DisplayName("호출 속도 제한 (#185)")
+    class Throttle {
+
+        /** 초당 1건 · 버스트 1 · 대기 0 — 첫 호출만 통과하고 곧바로 온 두 번째는 반드시 거절된다. */
+        private NaverLocalClient throttled(SimpleMeterRegistry registry) {
+            return new NaverLocalClient(
+                NaverConfig.buildNaverWebClient(wireMock.baseUrl(), "test-id", "test-secret"),
+                new NaverRateLimiter(1, 1, 0), registry);
+        }
+
+        @Test
+        @DisplayName("대기 상한을 넘긴 호출은 네이버에 보내지 않고 RATE_LIMITED 로 돌려준다")
+        void 거절된_호출은_보내지_않는다() {
+            stubBody(twoItems());
+            SimpleMeterRegistry registry = new SimpleMeterRegistry();
+            NaverLocalClient client = throttled(registry);
+
+            assertThat(client.search("경주 카페", 5)).isInstanceOf(NaverLocalResult.Found.class);
+            NaverLocalResult second = client.search("경주 맛집", 5);
+
+            assertThat(second).isInstanceOf(NaverLocalResult.Failed.class);
+            assertThat(((NaverLocalResult.Failed) second).cause())
+                .as("429 를 맞은 것과 같은 fail-open 경로를 타야 한다")
+                .isEqualTo(ApiFailureCause.RATE_LIMITED);
+            assertThat(wireMock.findAll(getRequestedFor(urlPathEqualTo("/search/v1/local"))))
+                .as("거절된 호출이 나갔다면 제한기가 한도를 지키지 못한 것이다")
+                .hasSize(1);
+        }
+
+        @Test
+        @DisplayName("통과·거절을 대기 지표로 갈라 센다 — 거절 0건과 시계열 없음을 구분한다")
+        void 대기_지표를_남긴다() {
+            stubBody(twoItems());
+            SimpleMeterRegistry registry = new SimpleMeterRegistry();
+            NaverLocalClient client = throttled(registry);
+
+            assertThat(registry.get(NaverLocalClient.THROTTLE_WAIT)
+                .tag("result", NaverLocalClient.THROTTLE_REJECTED).timer().count())
+                .as("호출 전에도 0으로 존재해야 한다").isZero();
+
+            client.search("경주 카페", 5);
+            client.search("경주 맛집", 5);
+
+            assertThat(registry.get(NaverLocalClient.THROTTLE_WAIT)
+                .tag("result", NaverLocalClient.THROTTLE_ACQUIRED).timer().count()).isEqualTo(1);
+            assertThat(registry.get(NaverLocalClient.THROTTLE_WAIT)
+                .tag("result", NaverLocalClient.THROTTLE_REJECTED).timer().count()).isEqualTo(1);
         }
     }
 

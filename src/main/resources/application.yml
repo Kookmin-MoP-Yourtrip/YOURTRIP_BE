@@ -123,6 +123,18 @@ naver:
     # 검색 API가 developers.naver.com 에서 NAVER API HUB 로 이관되며 호스트와 경로가 둘 다 바뀌었다.
     # 경로는 클라이언트가 갖는다(/search/v1/local) — 레거시 /v1/search/local.json 은 404다(ROADMAP 4-2).
     base-url: "https://naverapihub.apigw.ntruss.com"
+  # 서버 단위 호출 속도 제한(#185). 한도는 API 키당 초당 50건이고 운영 2대가 키 하나를 같이 쓴다.
+  # - 평균은 문제가 아니다(동시 8명도 초당 약 8건). 요청 1건이 약 31건을 1~2초에 몰아 보내고 여러 요청이
+  #   겹칠 때만 넘는다 — LLM 슬롯을 4 → 5 로 넓히자 동시 5명 실패가 1.0% → 14.4% 로 뛰었다(STEP-4-4).
+  # - permits-per-second 25: 한도의 절반이라 두 서버가 동시에 몰려도 지속 속도는 한도 안이다.
+  # - burst 15: 쉬던 뒤 즉시 나가는 건수. 단일 요청의 기본 질의(3일 × 5종)가 기다리지 않게 하는 값이다.
+  #   임의의 1초 창 상한은 서버당 burst + rate = 40건이다.
+  # - max-wait-ms 2000: 이보다 오래 기다려야 하면 그 질의를 포기한다(429 와 같은 fail-open). 대기는
+  #   grounding 풀 스레드를 쥐고, 후보 공급 단계는 요청의 남은 예산 전체를 기다리므로 Curator 몫을 먹는다.
+  rate-limit:
+    permits-per-second: 25
+    burst: 15
+    max-wait-ms: 2000
 
 # 한국관광공사 TourAPI (관광 슬롯의 커버리지·분류 축, ROADMAP 4-7)
 tour:
