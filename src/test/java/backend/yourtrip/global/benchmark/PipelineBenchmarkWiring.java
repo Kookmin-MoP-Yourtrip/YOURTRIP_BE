@@ -130,7 +130,7 @@ final class PipelineBenchmarkWiring {
         return new PlannerAgent(llmClient, new PromptLoader(), executor);
     }
 
-    /** 운영 설정({@code application.yml})과 같은 모델·추론 강도·재시도를 쓴다 — 3-7 과 같은 값이다. */
+    /** 운영 설정({@code application.yml})과 같은 모델·추론 강도·출력 상한·재시도를 쓴다 — 3-7 과 같은 값이고, Curator 상한은 #182 의 2,048 이다. */
     private static AiLlmProperties llmProperties(String apiKey, Limits limits) {
         return new AiLlmProperties(
             "openai",
@@ -141,7 +141,7 @@ final class PipelineBenchmarkWiring {
                 PlannerAgent.AGENT_NAME,
                 new AiLlmProperties.Agent("gpt-5.6-luna", null, 2048, null),
                 CuratorAgent.AGENT_NAME,
-                new AiLlmProperties.Agent("gpt-5.6-luna", null, 4096, "low")),
+                new AiLlmProperties.Agent("gpt-5.6-luna", null, 2048, "low")),
             new AiLlmProperties.OpenAi(apiKey, "https://api.openai.com"));
     }
 }

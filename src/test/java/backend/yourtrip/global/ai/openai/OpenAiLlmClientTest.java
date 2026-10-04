@@ -571,6 +571,73 @@ class OpenAiLlmClientTest {
         }
     }
 
+    @Nested
+    @DisplayName("응답 절단 메트릭 (이슈 #182)")
+    class TruncationMetrics {
+
+        @Test
+        @DisplayName("호출이 없어도 설정된 agent 의 절단 시계열이 사유별로 0으로 존재한다")
+        void registersZeroSeriesForConfiguredAgents() {
+            client();
+
+            for (String reason : List.of(AiCourseMetrics.TRUNCATION_LENGTH,
+                AiCourseMetrics.TRUNCATION_CONTENT_FILTER, AiCourseMetrics.TRUNCATION_NO_CHOICE,
+                AiCourseMetrics.TRUNCATION_OTHER)) {
+                assertThat(truncatedCount(reason)).as(reason).isZero();
+            }
+        }
+
+        @Test
+        @DisplayName("초회가 잘리고 보정 시도가 성공해도 절단을 센다 — 호출 결말은 success 라 거기엔 흔적이 없다")
+        void countsTruncationHiddenBySemanticRetry() {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .inScenario("cut").whenScenarioStateIs("Started")
+                .willReturn(okJson(completion("{\\\"title\\\":\\\"경주 야", "length")))
+                .willSetStateTo("recovered"));
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .inScenario("cut").whenScenarioStateIs("recovered")
+                .willReturn(okJson(completion("{\\\"title\\\":\\\"경주 야경\\\"}", "stop"))));
+
+            assertThat(client().generate(call(SCHEMA)).title()).isEqualTo("경주 야경");
+
+            assertThat(llmCallCount(AiCourseMetrics.LLM_OUTCOME_SUCCESS)).isEqualTo(1);
+            assertThat(llmCallCount(AiCourseMetrics.LLM_OUTCOME_TRUNCATED)).isZero();
+            assertThat(truncatedCount(AiCourseMetrics.TRUNCATION_LENGTH))
+                .as("출력 상한을 낮춘 대가가 바로 이 경우라, 여기서 0이면 상한 조정을 평가할 수 없다")
+                .isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("두 시도가 모두 잘리면 응답 단위로 두 번 센다 — 호출 결말은 truncated 한 번이다")
+        void countsEveryTruncatedResponse() {
+            stubSuccess("{\\\"title\\\":\\\"경주 야", "length");
+
+            assertThatThrownBy(() -> client().generate(call(SCHEMA)))
+                .isInstanceOf(LlmTruncatedResponseException.class);
+
+            assertThat(truncatedCount(AiCourseMetrics.TRUNCATION_LENGTH)).isEqualTo(2);
+            assertThat(llmCallCount(AiCourseMetrics.LLM_OUTCOME_TRUNCATED)).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("콘텐츠 필터는 상한과 무관하므로 length 와 갈라 센다")
+        void separatesContentFilter() {
+            stubSuccess("", "content_filter");
+
+            assertThatThrownBy(() -> client().generate(call(SCHEMA)))
+                .isInstanceOf(LlmTruncatedResponseException.class);
+
+            assertThat(truncatedCount(AiCourseMetrics.TRUNCATION_CONTENT_FILTER)).isEqualTo(2);
+            assertThat(truncatedCount(AiCourseMetrics.TRUNCATION_LENGTH)).isZero();
+        }
+
+        private double truncatedCount(String reason) {
+            return meterRegistry.get(AiCourseMetrics.LLM_TRUNCATED)
+                .tags("agent", AGENT, "reason", reason)
+                .counter().count();
+        }
+    }
+
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
 
     private io.micrometer.core.instrument.DistributionSummary tokenSummary(String type) {

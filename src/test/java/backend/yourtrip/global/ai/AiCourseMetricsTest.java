@@ -160,4 +160,29 @@ class AiCourseMetricsTest {
             assertThat(scrape).contains("source=\"tour_api\"");
         }
     }
+
+    @Nested
+    @DisplayName("응답 절단 (이슈 #182)")
+    class Truncation {
+
+        @Test
+        @DisplayName("벤더 종료 사유를 대소문자 무관하게 닫힌 값으로 줄인다 — 원문을 태그에 실으면 시계열이 늘어난다")
+        void normalizesFinishReason() {
+            metrics.llmTruncated("curator", "LENGTH");
+            metrics.llmTruncated("curator", "content_filter");
+            metrics.llmTruncated("curator", "TOOL_CALLS");
+            metrics.llmTruncated("curator", null);
+
+            assertThat(count("curator", AiCourseMetrics.TRUNCATION_LENGTH)).isEqualTo(1);
+            assertThat(count("curator", AiCourseMetrics.TRUNCATION_CONTENT_FILTER)).isEqualTo(1);
+            assertThat(count("curator", AiCourseMetrics.TRUNCATION_OTHER)).isEqualTo(2);
+            assertThat(registry.scrape()).doesNotContain("reason=\"TOOL_CALLS\"");
+        }
+
+        private double count(String agent, String reason) {
+            return registry.get(AiCourseMetrics.LLM_TRUNCATED)
+                .tags("agent", agent, "reason", reason)
+                .counter().count();
+        }
+    }
 }
