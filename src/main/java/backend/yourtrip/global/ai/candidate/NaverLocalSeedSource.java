@@ -108,17 +108,48 @@ public class NaverLocalSeedSource {
      */
     public CandidateBatch fetch(String area, List<Fallback> fallbacks, SlotType slotType,
         StyleTag modifier, Double anchorLatitude, Double anchorLongitude) {
+        return search(area, fallbacks, slotType, modifier, anchorLatitude, anchorLongitude)
+            .batch();
+    }
+
+    /**
+     * 기본 질의(수식어 없음)의 결과와 <b>첫 응답이 꽉 찼는지</b> (이슈 #179).
+     *
+     * <p>스테이지가 이 값으로 같은 슬롯의 수식어 질의를 보낼지 정한다. 질의 감사(기준선 30요청)에서
+     * 기본 질의 첫 응답이 5건에 못 미친 칸의 수식어 질의는 <b>100회 중 새 후보 0건</b>이었다 —
+     * 데이터가 얇은 권역에서는 수식어를 붙여도 기본 질의가 이미 찾은 곳만 다시 나온다.
+     *
+     * <p><b>필터 전 건수로 판단한다.</b> 업종·거리 필터 뒤의 수는 "우리가 버린 것"까지 섞여, 네이버가
+     * 그 권역에 데이터를 얼마나 갖고 있는지를 말하지 못한다. 재질의 결과도 보지 않는다 — 넓힌 지명의
+     * 결과는 이 권역의 두께가 아니다.
+     */
+    public BaseSeed fetchBase(String area, List<Fallback> fallbacks, SlotType slotType,
+        Double anchorLatitude, Double anchorLongitude) {
+        return search(area, fallbacks, slotType, null, anchorLatitude, anchorLongitude);
+    }
+
+    /**
+     * @param fullPage 첫 응답이 {@link NaverLocalClient#MAX_DISPLAY}건을 꽉 채웠다 — 그 권역에 이
+     *                 업종 데이터가 한 페이지 넘게 있다는 신호다
+     */
+    public record BaseSeed(CandidateBatch batch, boolean fullPage) {
+    }
+
+    private BaseSeed search(String area, List<Fallback> fallbacks, SlotType slotType,
+        StyleTag modifier, Double anchorLatitude, Double anchorLongitude) {
         Set<String> asked = new LinkedHashSet<>();
         String primary = AreaQueryNormalizer.toSearchTerm(area);
         markAsked(asked, primary);
 
-        CandidateBatch batch = searchOnce(primary, slotType, modifier, SeedScope.AREA,
+        Searched first = searchOnce(primary, slotType, modifier, SeedScope.AREA,
             anchorLatitude, anchorLongitude);
+        CandidateBatch batch = first.batch();
+        boolean fullPage = first.returned() >= NaverLocalClient.MAX_DISPLAY;
         if (modifier != null || batch.outcome() == CandidateOutcome.FAILED
             || fallbacks == null || fallbacks.isEmpty()) {
             // FAILED 는 "물어보지 못했다"라 재질의 대상이 아니다 — "물어봤는데 없더라"와 다른
             // 사건이고, 여기에 재질의를 걸면 네이버 장애 때 호출만 배로 늘어난다(4-1).
-            return batch;
+            return new BaseSeed(batch, fullPage);
         }
 
         List<PlaceCandidate> merged =
@@ -135,7 +166,7 @@ public class NaverLocalSeedSource {
                 area, slotType, merged.size(), term);
 
             CandidateBatch next = searchOnce(term, slotType, modifier, fallback.scope(),
-                anchorLatitude, anchorLongitude);
+                anchorLatitude, anchorLongitude).batch();
             if (next.outcome() == CandidateOutcome.FAILED) {
                 // 여기까지 모은 것은 살린다. 실패를 돌려주면 앞 단계의 성과까지 버리게 된다.
                 log.debug("'{}' 재질의가 실패했다 — 지금까지 모은 {}건으로 진행한다", term, merged.size());
@@ -143,7 +174,7 @@ public class NaverLocalSeedSource {
             }
             merged = CandidateMerger.dedupeWithinSource(concat(merged, next.candidates()));
         }
-        return CandidateBatch.of(merged);
+        return new BaseSeed(CandidateBatch.of(merged), fullPage);
     }
 
     /**
@@ -167,16 +198,22 @@ public class NaverLocalSeedSource {
         return all;
     }
 
-    private CandidateBatch searchOnce(String area, SlotType slotType, StyleTag modifier,
+    /** 질의 한 번의 결과와 <b>필터 전에</b> 네이버가 돌려준 건수. */
+    private record Searched(CandidateBatch batch, int returned) {
+    }
+
+    private Searched searchOnce(String area, SlotType slotType, StyleTag modifier,
         SeedScope scope, Double anchorLatitude, Double anchorLongitude) {
         String query = buildQuery(area, slotType, modifier);
         NaverLocalResult result = naverLocalClient.search(query, NaverLocalClient.MAX_DISPLAY);
 
         return switch (result) {
-            case NaverLocalResult.Found found -> CandidateBatch.of(toCandidates(found.places(),
-                slotType, modifier, scope, anchorLatitude, anchorLongitude));
-            case NaverLocalResult.Empty ignored -> CandidateBatch.empty();
-            case NaverLocalResult.Failed failed -> CandidateBatch.failed(failed.cause());
+            case NaverLocalResult.Found found -> new Searched(CandidateBatch.of(toCandidates(
+                found.places(), slotType, modifier, scope, anchorLatitude, anchorLongitude)),
+                found.places().size());
+            case NaverLocalResult.Empty ignored -> new Searched(CandidateBatch.empty(), 0);
+            case NaverLocalResult.Failed failed ->
+                new Searched(CandidateBatch.failed(failed.cause()), 0);
         };
     }
 

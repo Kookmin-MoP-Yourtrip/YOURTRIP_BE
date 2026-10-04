@@ -185,16 +185,34 @@ class NaverQueryAuditProbeTest {
             this.consumed.clear();
         }
 
+        /** 기본 질의는 스테이지가 이쪽으로 부른다(첫 응답이 꽉 찼는지가 함께 온다). */
+        @Override
+        public BaseSeed fetchBase(String area, List<Fallback> fallbacks, SlotType slotType,
+            Double anchorLatitude, Double anchorLongitude) {
+            BaseSeed[] seed = new BaseSeed[1];
+            audit(area, slotType, null, () -> {
+                seed[0] = super.fetchBase(area, fallbacks, slotType, anchorLatitude,
+                    anchorLongitude);
+                return seed[0].batch();
+            });
+            return seed[0];
+        }
+
         @Override
         public CandidateBatch fetch(String area, List<Fallback> fallbacks, SlotType slotType,
             StyleTag modifier, Double anchorLatitude, Double anchorLongitude) {
+            return audit(area, slotType, modifier, () -> super.fetch(area, fallbacks, slotType,
+                modifier, anchorLatitude, anchorLongitude));
+        }
+
+        private CandidateBatch audit(String area, SlotType slotType, StyleTag modifier,
+            java.util.function.Supplier<CandidateBatch> call) {
             int from = client.calls.size();
             double mismatch = dropped("category_mismatch");
             double outOfRegion = dropped("out_of_region");
             double noCoordinates = dropped("no_coordinates");
 
-            CandidateBatch batch = super.fetch(area, fallbacks, slotType, modifier,
-                anchorLatitude, anchorLongitude);
+            CandidateBatch batch = call.get();
 
             String modifierLabel = modifier == null ? BASE : modifier.name();
             rows.add(new SpecRow(request.requestId(), request.region().name(),
