@@ -85,7 +85,7 @@ import org.junit.jupiter.api.Test;
  * {@code CAP_SWEEP}을 그 위로 넓혀 <b>필터 없는 분포를 복원</b>해야 한다 — 지금 그대로 돌리면
  * 이미 걸러진 표본 위에서 상한을 고르게 되어 순환 논증이 된다.
  *
- * <p>호출 규모: 네이버 250~350회(일일 25,000의 1.4% 미만) · 카카오 ~40회 · <b>LLM 0회</b>.
+ * <p>호출 규모: 네이버 250~350회(월 한도 775,000의 0.05% 미만) · 카카오 ~40회 · <b>LLM 0회</b>.
  *
  * <pre>{@code
  * ./gradlew benchmarkTest --tests '*SeedDistanceCapProbeTest*' --rerun

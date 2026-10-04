@@ -75,10 +75,10 @@
 > 검증 방법·판정 결과·근거는 [STEP-0-prerequisites.md](steps/STEP-0-prerequisites.md) 참고.
 
 - [x] 0-1. OpenAI API 키 발급 + 크레딧 충전
-- [x] 0-2. 네이버 검색 API 키 발급 — **NCP 콘솔의 NAVER API HUB**에서. 검색 API가 developers.naver.com에서 이관돼 발급처·엔드포인트·인증 헤더가 바뀌었다(요금은 무료 그대로). **한도 초과 시 429** — 4단계 fail-open 분기의 기준
+- [x] 0-2. 네이버 검색 API 키 발급 — **NCP 콘솔의 NAVER API HUB**에서. 검색 API가 developers.naver.com에서 이관돼 발급처·엔드포인트·인증 헤더가 바뀌었다(요금은 무료 그대로). **한도 초과 시 429** — 4단계 fail-open 분기의 기준. *(정정 #179: 429 는 대부분 **API 키당 초당 50건 제한**이라 1초면 풀리고, 월 한도 소진과는 응답 본문 `errorCode`로 갈린다(`410`·`420` 초당 제한 / `400` 월 한도))*
 - [x] 0-3. **Spring AI 구조화 출력 검증 — 전제 성립.** 스키마가 전부 `response_format.json_schema`에 `strict: true`로 나간다(공식 SDK 폴백 불필요). 실 API에서도 두 모델 다 지원. **단 최상위 배열 스키마는 400으로 거부된다** — 6단계 Curator 스키마의 제약
 - [x] 0-4. 모델 배치 확정 — **Planner·Curator = `gpt-5.6-luna`, PlaceProfile = `gpt-5-nano`**(9단계 조건부). 약 $0.0030/요청
-- [x] 0-5. 쿼터 확인 — 네이버 **일 25,000건**(지역검색 ~18~30회/요청 → 약 830~1,400요청), 카카오 100,000/일(~20~33회), TourAPI **일 1,000건**(≤9회, 격자 캐시). **네이버가 먼저 한계에 닿지만 fail-open이라 서비스는 죽지 않는다**
+- [x] 0-5. 쿼터 확인 — 네이버 **일 25,000건**(지역검색 ~18~30회/요청 → 약 830~1,400요청) *(정정 #179: 실제 한도는 검색 API 통합 **월 775,000건**과 **API 키당 초당 50건**이다. 일 25,000건은 이관 전 기준이고, 먼저 닿은 것은 초당 한도였다)*, 카카오 100,000/일(~20~33회), TourAPI **일 1,000건**(≤9회, 격자 캐시). **네이버가 먼저 한계에 닿지만 fail-open이라 서비스는 죽지 않는다**
 - [x] 0-6. **테스트 인프라 신설** — `src/test/resources` + `application-test.yml`, `wiremock-standalone`(셰이딩판 — 클래스패스에 Jackson·Guava가 이미 경합 중이라)
 - [x] 0-7. `build.gradle`에 Java 21 toolchain 고정
 
