@@ -95,18 +95,20 @@ public class CandidateRetrievalStage {
         // 던질 수 있다. 그래서 두 소스의 호출을 먼저 전부 띄우고 **한 번만** 기다린다.
         // 소스별로 나눠 기다리면 라운드가 둘로 갈려 설계 지연 예산의 "네이버 ∥ TourAPI"가
         // 깨진다(TourAPI 라운드만큼 통째로 늘어난다).
-        List<SeedSpec> seedSpecs = seedSpecs(location, days, geocodes, modifiers);
+        // 시더의 수식어 질의만은 같은 슬롯의 기본 질의 응답을 보고 이어 던진다(이슈 #179) — 기다림은
+        // 여전히 한 번이고, 그 안에서 네이버 왕복 한 번만큼 길어진다.
+        List<SeedGroup> seedGroups = seedGroups(location, days, geocodes, modifiers);
         Map<TourCall, List<Integer>> tourCalls = tourCalls(days, geocodes);
-        List<CompletableFuture<SeedOutcome>> seedFutures = submitSeeds(seedSpecs);
+        List<SubmittedSeeds> seedFutures = submitSeeds(seedGroups, deadline);
         List<CompletableFuture<TourOutcome>> tourFutures = submitTours(tourCalls.keySet());
 
         List<CompletableFuture<?>> pending =
             new ArrayList<>(seedFutures.size() + tourFutures.size());
-        pending.addAll(seedFutures);
+        seedFutures.forEach(submitted -> pending.add(submitted.done()));
         pending.addAll(tourFutures);
         awaitAll(pending, deadline, "후보 공급");
 
-        List<SeedOutcome> seeds = collectSeeds(seedFutures, seedSpecs.size());
+        List<SeedOutcome> seeds = collectSeeds(seedFutures);
         Map<Integer, List<TourOutcome>> tours = collectTours(tourCalls, tourFutures);
 
         return assemble(days, seeds, tours, preferredTags);
@@ -138,29 +140,34 @@ public class CandidateRetrievalStage {
         return geocodes;
     }
 
-    // ── ② 네이버 시더 — (day × 슬롯타입) × (기본 1 + modifier 1~2) ──────────────
+    // ── ② 네이버 시더 — (day × 슬롯타입) × (기본 1 → 꽉 차면 modifier 0~2) ─────────
 
-    private static List<SeedSpec> seedSpecs(String location, List<PlannerDayPlan> days,
+    private static List<SeedGroup> seedGroups(String location, List<PlannerDayPlan> days,
         Map<Integer, GeocodeResult> geocodes, List<StyleTag> modifiers) {
-        List<SeedSpec> specs = new ArrayList<>();
+        List<SeedGroup> groups = new ArrayList<>();
         for (PlannerDayPlan day : days) {
             GeocodeResult geocode = geocodes.get(day.day());
             Double latitude = geocode != null && geocode.hasCoordinate() ? geocode.latitude() : null;
             Double longitude = geocode != null && geocode.hasCoordinate() ? geocode.longitude() : null;
             List<NaverLocalSeedSource.Fallback> fallbacks = fallbackAreas(day, location);
             for (SlotType slotType : distinctSlots(day)) {
-                // 기본 쿼리를 먼저 넣는다 — dedupe 에서 "먼저 만난 쪽이 이긴다"가 곧
-                // "기본 쿼리의 seedRank 가 남는다"가 되게 하려면 이 순서가 계약이다.
-                specs.add(new SeedSpec(day.day(), slotType, day.area(), fallbacks, null,
-                    latitude, longitude));
+                SeedSpec base = new SeedSpec(day.day(), slotType, day.area(), fallbacks, null,
+                    latitude, longitude);
+                List<SeedSpec> modifierSpecs = new ArrayList<>(modifiers.size());
                 for (StyleTag modifier : modifiers) {
-                    specs.add(new SeedSpec(day.day(), slotType, day.area(), fallbacks, modifier,
-                        latitude, longitude));
+                    // 슬롯과 안 맞는 수식어는 던지지 않는다 — "루프탑 산책로" 같은 질의는 84%가
+                    // 빈손이었고, 그 호출이 네이버 초당 한도를 먹었다(이슈 #179).
+                    if (!modifier.appliesTo(slotType)) {
+                        continue;
+                    }
+                    modifierSpecs.add(new SeedSpec(day.day(), slotType, day.area(), fallbacks,
+                        modifier, latitude, longitude));
                 }
+                groups.add(new SeedGroup(base, modifierSpecs));
             }
         }
 
-        return specs;
+        return groups;
     }
 
     /**
@@ -219,20 +226,90 @@ public class CandidateRetrievalStage {
         return List.copyOf(fallbacks);
     }
 
-    private List<CompletableFuture<SeedOutcome>> submitSeeds(List<SeedSpec> specs) {
-        return specs.stream()
-            .map(spec -> submit(() -> new SeedOutcome(spec, naverLocalSeedSource.fetch(
-                spec.area(), spec.fallbackAreas(), spec.slotType(), spec.modifier(),
-                spec.anchorLatitude(), spec.anchorLongitude()))))
-            .toList();
+    /**
+     * 슬롯마다 기본 질의를 먼저 던지고, <b>그 첫 응답이 꽉 찼을 때만</b> 수식어 질의를 이어 던진다
+     * (이슈 #179).
+     *
+     * <h3>왜 기다리는가</h3>
+     * 질의 감사(기준선 30요청)에서 기본 질의 첫 응답이 5건에 못 미친 칸의 수식어 질의는
+     * <b>100회 중 새 후보 0건</b>이었다. 데이터가 얇은 권역에서는 수식어를 붙여도 기본 질의가 이미
+     * 찾은 곳만 다시 나온다. 요청당 약 3회를 아끼고, 잃는 후보는 없다.
+     *
+     * <h3>대가는 네이버 왕복 한 번이다</h3>
+     * 수식어 질의가 기본 질의를 기다리므로 후보 공급이 왕복 한 번(실측 평균 약 0.1초)만큼 길어진다.
+     * 대신 호출이 두 물결로 나뉘어 나가 <b>1초 최대 호출 수가 낮아진다</b> — 키당 50 RPS 에 걸리던
+     * 문제를 직접 누그러뜨리는 방향이다.
+     *
+     * <h3>기다리는 스레드는 없다</h3>
+     * 수식어 질의는 기본 질의가 끝난 콜백에서 제출한다. 그룹 단위 태스크 안에서 순서대로 부르면
+     * 수식어끼리도 직렬이 되고, 작업 스레드가 자식 결과를 기다리는 풀 고갈 구조가 된다(클래스 설명).
+     */
+    private List<SubmittedSeeds> submitSeeds(List<SeedGroup> groups, CourseDeadline deadline) {
+        List<SubmittedSeeds> submitted = new ArrayList<>(groups.size());
+        for (SeedGroup group : groups) {
+            SeedSpec spec = group.base();
+            CompletableFuture<SeedOutcome> base = submit(() -> {
+                NaverLocalSeedSource.BaseSeed seed = naverLocalSeedSource.fetchBase(spec.area(),
+                    spec.fallbackAreas(), spec.slotType(), spec.anchorLatitude(),
+                    spec.anchorLongitude());
+                return new SeedOutcome(spec, seed.batch(), seed.fullPage());
+            });
+            CompletableFuture<List<CompletableFuture<SeedOutcome>>> modifiers =
+                base.thenApply(outcome -> outcome.fullPage() && !deadline.expired()
+                    ? group.modifiers().stream().map(this::submitModifier).toList()
+                    : List.of());
+            CompletableFuture<Void> done = modifiers.thenCompose(futures ->
+                CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)));
+            submitted.add(new SubmittedSeeds(group, base, modifiers, done));
+        }
+        return submitted;
     }
 
-    private List<SeedOutcome> collectSeeds(List<CompletableFuture<SeedOutcome>> futures,
-        int attempted) {
-        List<SeedOutcome> outcomes = collectDone(futures);
+    private CompletableFuture<SeedOutcome> submitModifier(SeedSpec spec) {
+        return submit(() -> new SeedOutcome(spec, naverLocalSeedSource.fetch(spec.area(),
+            spec.fallbackAreas(), spec.slotType(), spec.modifier(), spec.anchorLatitude(),
+            spec.anchorLongitude()), false));
+    }
+
+    /**
+     * 끝난 것만 거둔다. <b>기본 → 수식어 순서를 지킨다</b> — dedupe 에서 "먼저 만난 쪽이 이긴다"가
+     * 곧 "기본 질의의 {@code seedRank}가 남는다"가 되게 하려면 이 순서가 계약이다.
+     *
+     * <p>수식어 질의를 보내지 않은 칸은 {@code skipped}로 센다(기본 질의가 꽉 차지 않았거나 그
+     * 시점에 예산이 끝났다). 기본 질의가 예산에 잘려 돌아오지 못하면 그 수식어는 시도한 적이 없으므로
+     * 어디에도 세지 않는다 — 기본 질의 쪽이 이미 {@code failed}로 잡힌다.
+     */
+    private List<SeedOutcome> collectSeeds(List<SubmittedSeeds> submitted) {
+        List<SeedOutcome> outcomes = new ArrayList<>();
+        int attempted = 0;
+        int skipped = 0;
+        for (SubmittedSeeds seeds : submitted) {
+            attempted++;
+            if (!isHarvestable(seeds.base())) {
+                continue;
+            }
+            outcomes.add(seeds.base().join());
+            if (!isHarvestable(seeds.modifiers())) {
+                continue;
+            }
+            List<CompletableFuture<SeedOutcome>> modifiers = seeds.modifiers().join();
+            if (modifiers.isEmpty()) {
+                skipped += seeds.group().modifiers().size();
+                continue;
+            }
+            attempted += modifiers.size();
+            outcomes.addAll(collectDone(modifiers));
+        }
         record(AiCourseMetrics.SOURCE_NAVER_LOCAL,
             outcomes.stream().map(SeedOutcome::batch).toList(), attempted);
+        for (int i = 0; i < skipped; i++) {
+            metrics.candidateRetrieval(AiCourseMetrics.SOURCE_NAVER_LOCAL, CandidateOutcome.SKIPPED);
+        }
         return outcomes;
+    }
+
+    private static boolean isHarvestable(CompletableFuture<?> future) {
+        return future.isDone() && !future.isCompletedExceptionally() && !future.isCancelled();
     }
 
     // ── ③ TourAPI — (좌표 × contentTypeId) 단위. 슬롯도 day도 아니다 ────────────
@@ -487,7 +564,23 @@ public class CandidateRetrievalStage {
         }
     }
 
-    private record SeedOutcome(SeedSpec spec, CandidateBatch batch) {
+    /**
+     * @param fullPage 기본 질의의 첫 응답이 꽉 찼다. 수식어 질의 결과는 늘 {@code false}다
+     */
+    private record SeedOutcome(SeedSpec spec, CandidateBatch batch, boolean fullPage) {
+    }
+
+    /** (day, 슬롯) 하나의 기본 질의와 그 뒤에 이어 던질 수 있는 수식어 질의들. */
+    private record SeedGroup(SeedSpec base, List<SeedSpec> modifiers) {
+    }
+
+    /**
+     * 제출된 그룹. {@code modifiers}는 기본 질의가 끝난 뒤에야 채워지고, {@code done}은 기본과
+     * 수식어가 모두 끝났을 때 끝난다 — 스테이지는 {@code done}을 기다리되 거둘 때는 조각마다 본다.
+     */
+    private record SubmittedSeeds(SeedGroup group, CompletableFuture<SeedOutcome> base,
+                                  CompletableFuture<List<CompletableFuture<SeedOutcome>>> modifiers,
+                                  CompletableFuture<Void> done) {
     }
 
     /**

@@ -228,11 +228,16 @@ class AiCourseStagesStubIntegrationTest {
             stubNaverStatus(429);
             stubTour(emptyTourBody());
 
-            retrieve(SlotType.ATTRACTION);
+            // 카페 슬롯이라야 수식어가 붙을 자리가 생긴다 — 힐링의 수식어(조용한·숨은)는 가게
+            // 속성이라 관광 슬롯에는 붙지 않는다(이슈 #179).
+            retrieve(SlotType.CAFE);
 
-            // 힐링 키워드의 modifier 2개 + 기본 쿼리 = 3회가 전부 429 다.
+            // 기본 질의가 429 라 첫 응답이 꽉 차지 않았으므로 수식어 2개는 보내지 않는다 — 429 가 나는
+            // 순간에 호출을 더 얹지 않는 것이기도 하다(이슈 #179).
             assertThat(counter(AiCourseMetrics.CANDIDATE_RETRIEVAL, "source",
-                AiCourseMetrics.SOURCE_NAVER_LOCAL, "result", "failed")).isEqualTo(3.0);
+                AiCourseMetrics.SOURCE_NAVER_LOCAL, "result", "failed")).isEqualTo(1.0);
+            assertThat(counter(AiCourseMetrics.CANDIDATE_RETRIEVAL, "source",
+                AiCourseMetrics.SOURCE_NAVER_LOCAL, "result", "skipped")).isEqualTo(2.0);
             assertThat(counter(AiCourseMetrics.CANDIDATE_RETRIEVAL, "source",
                 AiCourseMetrics.SOURCE_NAVER_LOCAL, "result", "empty")).isZero();
         }

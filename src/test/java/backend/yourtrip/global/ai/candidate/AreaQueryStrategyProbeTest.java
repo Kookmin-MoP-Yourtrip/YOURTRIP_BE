@@ -61,7 +61,7 @@ import org.junit.jupiter.api.Test;
  * <p><b>판정용이지 회귀 테스트가 아니다.</b> 단언을 걸지 않고 콘솔 표와 CSV로 덤프해 사람이 읽는다
  * ({@code CandidateRetrievalProbeTest}가 세운 형태).
  *
- * <p>호출 규모: LLM 6회(Planner) · 네이버 216회 · 카카오 24회. 네이버 일일 한도 25,000건의 1% 미만이다.
+ * <p>호출 규모: LLM 6회(Planner) · 네이버 216회 · 카카오 24회. 네이버 월 한도 775,000건에 비하면 무시할 수준이다.
  *
  * <pre>{@code
  * ./gradlew benchmarkTest --tests '*AreaQueryStrategyProbeTest*' --rerun

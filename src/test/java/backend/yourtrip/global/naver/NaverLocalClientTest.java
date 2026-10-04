@@ -193,14 +193,25 @@ class NaverLocalClientTest {
         }
 
         @Test
-        @DisplayName("429는 QUOTA_EXCEEDED 로 갈라진다 — 일일 한도는 시간이 지나야 풀리는 실패다")
-        void 한도_초과를_구분한다() {
-            stubStatus(429);
+        @DisplayName("429 + errorCode 420 은 RATE_LIMITED 다 — 1초면 풀리는 초당 제한이다(#179)")
+        void 초당_제한을_구분한다() {
+            // 동시 요청 측정에서 서버 로그에 실제로 찍힌 본문 그대로다.
+            stubStatus(429, "{\"errorCode\":\"420\",\"message\":\"Rate Limited\"}");
 
             NaverLocalResult result = client.search("경주 카페", 5);
 
             assertThat(result).isInstanceOf(NaverLocalResult.Failed.class);
             assertThat(((NaverLocalResult.Failed) result).cause())
+                .as("월 한도 소진으로 분류하면 1초 뒤 살아날 호출을 버린다 — #179 의 원인")
+                .isEqualTo(ApiFailureCause.RATE_LIMITED);
+        }
+
+        @Test
+        @DisplayName("429 + errorCode 400 은 QUOTA_EXCEEDED 다 — 월 한도는 기다려도 안 풀린다")
+        void 월_한도_소진을_구분한다() {
+            stubStatus(429, "{\"errorCode\":\"400\",\"message\":\"Quota Exceeded\"}");
+
+            assertThat(((NaverLocalResult.Failed) client.search("경주 카페", 5)).cause())
                 .isEqualTo(ApiFailureCause.QUOTA_EXCEEDED);
         }
 
@@ -264,6 +275,38 @@ class NaverLocalClientTest {
      * 테스트는 전부 통과하면서 <b>실 API에서는 모든 호출이 실패</b>했다(4-3 보강 측정에서 발각).
      * 스텁이 실제와 다르면 그 차이만큼 테스트가 거짓말을 한다.
      */
+    @Nested
+    @DisplayName("429 본문 분류 (#179)")
+    class TooManyRequestsBody {
+
+        @Test
+        @DisplayName("410 Throttle Limited 도 초당 제한이다")
+        void 스로틀도_초당_제한이다() {
+            assertThat(NaverLocalClient.classifyTooManyRequests(
+                "{\"errorCode\":\"410\",\"message\":\"Throttle Limited\"}"))
+                .isEqualTo(ApiFailureCause.RATE_LIMITED);
+        }
+
+        @Test
+        @DisplayName("문서 예시처럼 error 로 한 겹 감싼 본문도 읽는다")
+        void 감싼_본문도_읽는다() {
+            assertThat(NaverLocalClient.classifyTooManyRequests(
+                "{\"error\":{\"errorCode\":\"420\",\"message\":\"Rate Limited\"}}"))
+                .isEqualTo(ApiFailureCause.RATE_LIMITED);
+        }
+
+        @Test
+        @DisplayName("코드를 못 읽으면 QUOTA_EXCEEDED 다 — 정체 모를 429 에 재시도를 걸지 않는다")
+        void 못_읽으면_한도_소진으로_둔다() {
+            assertThat(NaverLocalClient.classifyTooManyRequests("")).isEqualTo(
+                ApiFailureCause.QUOTA_EXCEEDED);
+            assertThat(NaverLocalClient.classifyTooManyRequests("<html>Too Many</html>"))
+                .isEqualTo(ApiFailureCause.QUOTA_EXCEEDED);
+            assertThat(NaverLocalClient.classifyTooManyRequests("{\"errorCode\":\"999\"}"))
+                .isEqualTo(ApiFailureCause.QUOTA_EXCEEDED);
+        }
+    }
+
     private void stubBody(String body) {
         wireMock.stubFor(get(urlPathEqualTo("/search/v1/local"))
             .willReturn(aResponse()
@@ -273,11 +316,15 @@ class NaverLocalClientTest {
     }
 
     private void stubStatus(int status) {
+        stubStatus(status, "{\"error\":{\"errorCode\":\"" + status + "\"}}");
+    }
+
+    private void stubStatus(int status, String body) {
         wireMock.stubFor(get(urlPathEqualTo("/search/v1/local"))
             .willReturn(aResponse()
                 .withStatus(status)
                 .withHeader("Content-Type", "application/json;charset=UTF-8")
-                .withBody("{\"error\":{\"errorCode\":\"" + status + "\"}}")));
+                .withBody(body)));
     }
 
     /** 4-2 실호출 응답에서 두 건만 남긴 것. 두 번째 항목에 실제로 &lt;b&gt; 태그가 들어 있었다. */

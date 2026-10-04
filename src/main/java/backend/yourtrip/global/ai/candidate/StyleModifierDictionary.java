@@ -30,8 +30,11 @@ import java.util.Set;
 public final class StyleModifierDictionary {
 
     /**
-     * 쿼리 변주 예산. 슬롯당 기본 1회 + 스타일 1~2회로 코스당 네이버 호출이 18~30회가 된다
-     * (일 25,000건 한도에서 하루 830~1,400코스). <b>이 상수가 곧 쿼터 예산이다.</b>
+     * 쿼리 변주 예산 — 슬롯당 기본 1회에 더해 붙는 스타일 질의 수의 상한.
+     *
+     * <p><b>실제 호출 수는 이 값만으로 정해지지 않는다.</b> 설계 때는 코스당 18~30회로 봤지만
+     * 수식어를 모든 슬롯에 곱해 실측은 요청당 52회(재질의 포함)였다. 지금은 수식어가 맞는 슬롯에만
+     * 붙는다({@link StyleTag#appliesTo}, 이슈 #179).
      */
     public static final int MAX_MODIFIERS = 2;
 
