@@ -2,7 +2,11 @@ package backend.yourtrip.global.naver;
 
 import backend.yourtrip.global.common.ApiFailureCause;
 import backend.yourtrip.global.naver.dto.NaverLocalResponse;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -49,6 +53,12 @@ public class NaverLocalClient {
      * 노출하면 5-8이 페이징으로 풀을 넓히려다 같은 후보를 중복으로 세는 조용한 버그가 된다.
      */
     public static final int MAX_DISPLAY = 5;
+
+    /** 429 본문의 {@code errorCode} 중 초당 제한을 뜻하는 값. 근거는 {@link #classifyTooManyRequests}. */
+    private static final Set<String> RATE_LIMIT_CODES = Set.of("410", "420");
+
+    /** 오류 본문 해석 전용. 성공 응답은 WebClient 디코더가 읽으므로 여기서는 쓰지 않는다. */
+    private static final ObjectMapper ERROR_BODY_READER = new ObjectMapper();
 
     private final WebClient naverWebClient;
 
@@ -103,11 +113,46 @@ public class NaverLocalClient {
     private static ApiFailureCause classify(WebClientResponseException e) {
         int status = e.getStatusCode().value();
         if (status == 429) {
-            return ApiFailureCause.QUOTA_EXCEEDED;
+            return classifyTooManyRequests(e.getResponseBodyAsString());
         }
         if (status == 401 || status == 403) {
             return ApiFailureCause.UNAUTHORIZED;
         }
         return ApiFailureCause.HTTP_ERROR;
+    }
+
+    /**
+     * 429 를 <b>본문의 {@code errorCode}로</b> 가른다(이슈 #179). 상태 코드만으로는 초당 제한과
+     * 월 한도 소진이 같은 429 라 구별되지 않는다.
+     *
+     * <p>코드 표는 NCP API 공통 오류 코드 문서를 따른다 — {@code 400} Quota Exceeded,
+     * {@code 410} Throttle Limited, {@code 420} Rate Limited. 실측에서 받은 429 는 전부
+     * {@code 420}이었다({@code {"errorCode":"420","message":"Rate Limited"}}). 문서 예시는
+     * {@code {"error":{...}}}로 한 겹 감싼 형태라 둘 다 읽는다.
+     *
+     * <p><b>코드를 못 읽으면 {@code QUOTA_EXCEEDED}로 둔다.</b> 이 분류 전의 동작 그대로다 —
+     * 정체를 모르는 429 를 초당 제한으로 보면 월 한도가 끝났을 때 모든 호출이 헛된 재시도를 한 번씩
+     * 더 하고, 그 대기만큼 후보 공급이 늘어진다.
+     */
+    static ApiFailureCause classifyTooManyRequests(String body) {
+        String errorCode = errorCode(body);
+        if (RATE_LIMIT_CODES.contains(errorCode)) {
+            return ApiFailureCause.RATE_LIMITED;
+        }
+        return ApiFailureCause.QUOTA_EXCEEDED;
+    }
+
+    private static String errorCode(String body) {
+        if (body == null || body.isBlank()) {
+            return "";
+        }
+        try {
+            JsonNode root = ERROR_BODY_READER.readTree(body);
+            JsonNode code = root.has("errorCode") ? root.get("errorCode")
+                : root.path("error").path("errorCode");
+            return code.asText("");
+        } catch (JsonProcessingException e) {
+            return "";
+        }
     }
 }
