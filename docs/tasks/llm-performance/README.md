@@ -14,6 +14,7 @@
 | 3 | 마감 뒤 남는 호출 정리 | 안정성 | ⏸ 조사 완료, 구현은 4단계 측정 뒤 판단 | [#176](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/176) · [STEP-3](steps/STEP-3-late-calls.md) |
 | 4 | `max-concurrent-calls` 조정 | 성능 | ✅ **4 확정** — 단일 p95 24.1 → 18.6초, 동시 3명 폴백 42 → 0%(4-1 풀 정렬 뒤). 8(로컬)은 동시 5명 폴백 0%, 5 이상은 출력 상한 조정 뒤 · [STEP-4](steps/STEP-4-concurrent-calls.md) | [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108) |
 | 4-1 | `aiAgentExecutor`를 세마포어보다 넉넉하게 | 성능 | ✅ 풀 = 슬롯 × 4, 동시 5명 큐 11 → 0 · 대기가 세마포어로 이동 | [#177](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/177) · [STEP-4-1](steps/STEP-4-1-executor-sizing.md) |
+| 4-2 | 네이버 지역검색 호출 줄이기 (429) | 성능·품질 | 🔄 질의 감사 → 수식어 적용 슬롯 규칙, 요청당 HTTP 52.2 → 약 34.8회(−33%). 동시 재측정 대기 | [#179](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/179) · [STEP-4-2](steps/STEP-4-2-naver-queries.md) |
 | 5 | Planner 단계 상한 | 안정성 | 데이터 확인 후 결정 | 이슈 없음 |
 | 6 | 30초 예산 재조정 + 시간 제한 관계 문서화 | 정리 | ⬜ | 이슈 없음 |
 | 별도 | AI 동시 입장 제한 | 안정성 | ⬜ | 이슈 없음 |
