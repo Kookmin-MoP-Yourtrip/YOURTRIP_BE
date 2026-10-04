@@ -1,6 +1,9 @@
 package backend.yourtrip.global.ai.candidate;
 
+import backend.yourtrip.global.ai.route.SlotType;
+import java.util.EnumSet;
 import java.util.Optional;
+import java.util.Set;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
@@ -167,5 +170,53 @@ public enum StyleTag {
 
     public Optional<String> searchTerm() {
         return Optional.ofNullable(searchTerm);
+    }
+
+    /**
+     * 가게 속성 수식어를 붙이는 슬롯. 분위기·편의·가격·영업시간은 <b>가게</b>를 수식한다.
+     */
+    private static final Set<SlotType> VENUE_SLOTS =
+        EnumSet.of(SlotType.MEAL, SlotType.CAFE, SlotType.SHOPPING);
+
+    /**
+     * 장소 종류 수식어를 붙이는 슬롯. 가게 슬롯에 관광·산책을 더한다. 체험·전망대는 넣지 않는다 —
+     * 실측에서 {@code 자연}도 거기서는 0건이 64~92%였다.
+     */
+    private static final Set<SlotType> PLACE_KIND_SLOTS = EnumSet.of(SlotType.MEAL,
+        SlotType.CAFE, SlotType.SHOPPING, SlotType.ATTRACTION, SlotType.STROLL);
+
+    /**
+     * 이 수식어로 {@code slotType} 슬롯을 검색할 가치가 있는가 (이슈 #179).
+     *
+     * <h2>왜 필요한가</h2>
+     * 예전에는 수식어를 <b>모든 슬롯에 곱했다</b>. 그래서 {@code "경주 루프탑 산책로"}·
+     * {@code "경주 역세권 전망대"} 같은 질의가 나갔고, 질의 감사(기준선 30요청)에서 수식어 질의의
+     * <b>84%가 쓸 후보 0건</b>으로 끝났다. 요청 1건의 네이버 호출 52회 중 30회가 수식어 질의였고,
+     * 그 호출이 1초 안에 몰려 키당 50 RPS 한도에 걸렸다.
+     *
+     * <h2>세 갈래로 나눈다</h2>
+     * <ul>
+     *   <li><b>가게 속성</b>(기본값) — {@link #VENUE_SLOTS}만. 실측: 카페 순기여 0.72, 식사 0.58인데
+     *       관광 4종은 0.03~0.12였다</li>
+     *   <li><b>장소 종류</b> — {@code 자연}·{@code 역사}·{@code 문화}·{@code 액티비티}·{@code 실내}.
+     *       {@link #PLACE_KIND_SLOTS}. 이 다섯은 TourAPI {@code cat3} 분류에서 온 어휘(4-9)라 업소가
+     *       아니라 <b>장소의 종류</b>를 말한다. 실측: {@code 자연 × 관광명소} 순기여 0.59, 과거 최종
+     *       코스에서 관광 슬롯에 채택된 수식어 후보 18곳 중 16곳이 {@code 자연}이었다</li>
+     *   <li><b>어디에도 붙이지 않는다</b> — {@code 역세권}. 전 슬롯에서 0건이 97~100%였다. 선정
+     *       자체({@link StyleModifierDictionary#modifiersFor})에서는 빼지 않는다 — 빼면 다음 순위
+     *       태그가 자리를 채워 다른 질의가 나가고, 감사로 잰 규칙과 달라진다. 검색어를 고칠지는 별도로
+     *       판단한다</li>
+     * </ul>
+     *
+     * <p><b>실측으로 확인한 태그는 6개다</b> — 조용한·루프탑·주차·프리미엄·자연·역세권(기준선 키워드
+     * 세트가 고르는 것). 나머지는 위 의미 구분으로 분류했다. 특히 {@code 야경}·{@code 한옥}은
+     * 관광 슬롯에서도 통할 여지가 있지만 근거가 없어 가게 속성으로 뒀다 — 넓히는 것은 측정 뒤에 한다.
+     */
+    public boolean appliesTo(SlotType slotType) {
+        return switch (this) {
+            case NEAR_STATION -> false;
+            case NATURE, HISTORY, CULTURE, ACTIVITY, INDOOR -> PLACE_KIND_SLOTS.contains(slotType);
+            default -> VENUE_SLOTS.contains(slotType);
+        };
     }
 }

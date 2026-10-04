@@ -137,6 +137,59 @@ class CandidateRetrievalStageTest {
         }
 
         @Test
+        @DisplayName("가게 속성 수식어는 관광 슬롯에 붙지 않는다 — 질의 84%가 빈손이었다(#179)")
+        void venueModifiersSkipTourismSlots() {
+            geocodeSucceeds();
+            naverReturns();
+            when(tourApiSource.fetch(anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(CandidateBatch.empty());
+
+            stage.retrieve("경주", plan(day(1, SlotType.ATTRACTION, SlotType.STROLL,
+                SlotType.VIEWPOINT, SlotType.EXPERIENCE)), COUPLE, CourseDeadline.unbounded());
+
+            // 야경·루프탑은 가게 속성이라 관광 4종에는 기본 질의만 나간다 = 4회.
+            verify(naverLocalSeedSource, times(4)).fetch(anyString(), any(), any(), isNull(), any(),
+                any());
+            verify(naverLocalSeedSource, times(4)).fetch(anyString(), any(), any(), any(), any(),
+                any());
+        }
+
+        @Test
+        @DisplayName("장소 종류 수식어(자연)는 관광명소에도 붙고 전망대에는 안 붙는다")
+        void placeKindModifierReachesAttraction() {
+            geocodeSucceeds();
+            naverReturns();
+            when(tourApiSource.fetch(anyDouble(), anyDouble(), anyInt()))
+                .thenReturn(CandidateBatch.empty());
+
+            // 자연 키워드 → 자연(장소 종류) · 숨은(가게 속성).
+            stage.retrieve("경주", plan(day(1, SlotType.ATTRACTION, SlotType.VIEWPOINT)),
+                List.of(KeywordType.NATURE), CourseDeadline.unbounded());
+
+            verify(naverLocalSeedSource).fetch(anyString(), any(), eq(SlotType.ATTRACTION),
+                eq(StyleTag.NATURE), any(), any());
+            // 관광명소 기본 + 자연, 전망대 기본 = 3회. 숨은은 어디에도 안 붙는다.
+            verify(naverLocalSeedSource, times(3)).fetch(anyString(), any(), any(), any(), any(),
+                any());
+        }
+
+        @Test
+        @DisplayName("역세권은 어느 슬롯에도 붙지 않는다 — 다음 순위로 대체하지도 않는다")
+        void nearStationIsNeverQueried() {
+            geocodeSucceeds();
+            naverReturns();
+
+            // 도보 키워드 → 역세권 · 역근처. 역세권만 빠지고 역근처는 그대로 나간다.
+            stage.retrieve("경주", plan(day(1, SlotType.CAFE)), List.of(KeywordType.WALK),
+                CourseDeadline.unbounded());
+
+            verify(naverLocalSeedSource, never()).fetch(anyString(), any(), any(),
+                eq(StyleTag.NEAR_STATION), any(), any());
+            verify(naverLocalSeedSource, times(2)).fetch(anyString(), any(), any(), any(), any(),
+                any());
+        }
+
+        @Test
         @DisplayName("TourAPI 는 관광 슬롯이 요구하는 contentTypeId 합집합만큼만 부른다")
         void tourApiCalledOncePerContentType() {
             geocodeSucceeds();

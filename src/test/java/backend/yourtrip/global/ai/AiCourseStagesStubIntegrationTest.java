@@ -228,7 +228,9 @@ class AiCourseStagesStubIntegrationTest {
             stubNaverStatus(429);
             stubTour(emptyTourBody());
 
-            retrieve(SlotType.ATTRACTION);
+            // 카페 슬롯이라야 수식어 질의도 나간다 — 힐링의 수식어(조용한·숨은)는 가게 속성이라
+            // 관광 슬롯에는 붙지 않는다(이슈 #179).
+            retrieve(SlotType.CAFE);
 
             // 힐링 키워드의 modifier 2개 + 기본 쿼리 = 3회가 전부 429 다.
             assertThat(counter(AiCourseMetrics.CANDIDATE_RETRIEVAL, "source",

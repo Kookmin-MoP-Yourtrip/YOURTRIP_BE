@@ -154,6 +154,11 @@ public class CandidateRetrievalStage {
                 specs.add(new SeedSpec(day.day(), slotType, day.area(), fallbacks, null,
                     latitude, longitude));
                 for (StyleTag modifier : modifiers) {
+                    // 슬롯과 안 맞는 수식어는 던지지 않는다 — "루프탑 산책로" 같은 질의는 84%가
+                    // 빈손이었고, 그 호출이 네이버 초당 한도를 먹었다(이슈 #179).
+                    if (!modifier.appliesTo(slotType)) {
+                        continue;
+                    }
                     specs.add(new SeedSpec(day.day(), slotType, day.area(), fallbacks, modifier,
                         latitude, longitude));
                 }
