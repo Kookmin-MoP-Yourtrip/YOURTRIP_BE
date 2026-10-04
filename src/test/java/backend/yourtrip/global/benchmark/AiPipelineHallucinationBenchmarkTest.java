@@ -16,37 +16,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import backend.yourtrip.global.ai.AiCourseMetrics;
-import backend.yourtrip.global.ai.LlmResponseParser;
-import backend.yourtrip.global.ai.LlmRetryExecutor;
-import backend.yourtrip.global.ai.agent.CuratorAgent;
-import backend.yourtrip.global.ai.agent.PlannerAgent;
-import backend.yourtrip.global.ai.candidate.AreaGeocoder;
-import backend.yourtrip.global.ai.candidate.CandidateRetrievalStage;
-import backend.yourtrip.global.ai.candidate.NaverLocalSeedSource;
-import backend.yourtrip.global.ai.candidate.TourApiSource;
-import backend.yourtrip.global.ai.config.AiCourseProperties;
-import backend.yourtrip.global.ai.config.AiLlmProperties;
 import backend.yourtrip.global.ai.grounding.GroundedPlace;
-import backend.yourtrip.global.ai.grounding.GroundingStage;
-import backend.yourtrip.global.ai.grounding.PlaceUrlEnricher;
-import backend.yourtrip.global.ai.openai.OpenAiLlmClient;
 import backend.yourtrip.global.ai.pipeline.AiCourseDay;
 import backend.yourtrip.global.ai.pipeline.AiCourseDraft;
 import backend.yourtrip.global.ai.pipeline.AiCoursePipeline;
 import backend.yourtrip.global.ai.pipeline.AiCoursePlace;
 import backend.yourtrip.global.ai.pipeline.CourseBrief;
-import backend.yourtrip.global.ai.prompt.PromptLoader;
-import backend.yourtrip.global.ai.route.RouteOptimizer;
 import backend.yourtrip.global.config.AsyncConfig;
 import backend.yourtrip.global.benchmark.BaselineInputSet.RegionTier;
 import backend.yourtrip.global.benchmark.BaselineInputSet.RequestSpec;
 import backend.yourtrip.global.benchmark.HallucinationScoring.PlaceRow;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
 import backend.yourtrip.global.kakao.config.KakaoConfig;
-import backend.yourtrip.global.naver.NaverLocalClient;
-import backend.yourtrip.global.naver.config.NaverConfig;
-import backend.yourtrip.global.tour.TourApiClient;
-import backend.yourtrip.global.tour.config.TourApiConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -161,6 +142,15 @@ class AiPipelineHallucinationBenchmarkTest {
      */
     private static final int BUDGET_MS = 180_000;
 
+    /**
+     * LLM 호출 상한. 운영값(20초)이 아니라 60초다 — 예산과 같은 이유로, 표본이 잘리지 않게 한다.
+     * 배선을 공용화하기 전 이 하네스가 쓰던 값을 그대로 옮겼다.
+     */
+    private static final int LLM_TIMEOUT_MS = 60_000;
+
+    /** 운영값과 같다. 환각률은 동시 호출 수의 영향을 받지 않는다. */
+    private static final int MAX_CONCURRENT_CALLS = 2;
+
     /** 역산 기준이 되는 운영 예산({@code ai.course.budget-ms} 기본값). */
     private static final int PRODUCTION_BUDGET_MS = 30_000;
 
@@ -242,13 +232,15 @@ class AiPipelineHallucinationBenchmarkTest {
         KakaoLocalClient kakaoClient = new KakaoLocalClient(
             KakaoConfig.buildKakaoWebClient("https://dapi.kakao.com", kakaoKey));
 
-        // 운영 배선을 그대로 쓴다 — 아래 pipeline() javadoc "실행기는 운영 것을 쓴다" 참고.
+        // 운영 배선을 그대로 쓴다 — PipelineBenchmarkWiring javadoc "실행기는 운영 것을 쓴다" 참고.
         AsyncConfig asyncConfig = new AsyncConfig();
-        ThreadPoolTaskExecutor agentExecutor = asyncConfig.aiAgentExecutor();
+        ThreadPoolTaskExecutor agentExecutor = AsyncConfig.agentExecutorFor(MAX_CONCURRENT_CALLS);
         ThreadPoolTaskExecutor groundingExecutor = asyncConfig.placeGroundingExecutor();
 
-        AiCoursePipeline pipeline = pipeline(registry, kakaoClient, agentExecutor,
-            groundingExecutor, openAiKey, naverId, naverSecret, tourKey);
+        AiCoursePipeline pipeline = PipelineBenchmarkWiring.pipeline(registry, kakaoClient,
+            agentExecutor, groundingExecutor,
+            new PipelineBenchmarkWiring.ApiKeys(openAiKey, naverId, naverSecret, tourKey),
+            new PipelineBenchmarkWiring.Limits(BUDGET_MS, LLM_TIMEOUT_MS, MAX_CONCURRENT_CALLS));
         ObjectMapper draftMapper = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -623,79 +615,5 @@ class AiPipelineHallucinationBenchmarkTest {
 
     private static List<PlaceRow> scoredOf(List<PipelinePlaceRow> rows) {
         return rows.stream().map(PipelinePlaceRow::scored).toList();
-    }
-
-    // ── 배선 — Spring 컨텍스트를 쓰지 않고 손으로 조립한다 (3-7 프로브와 같다) ──
-
-    /**
-     * {@code @SpringBootTest} 부분 컨텍스트를 쓰지 않는 이유: {@code test} 프로필은 {@code .env}
-     * 없이 자급하도록 설계돼 API 키가 전부 더미이고(CI 가 시크릿 없이 서 있는 전제), 컨텍스트를
-     * 띄우면 H2·Redis·JPA 까지 따라와 측정 대상과 무관한 것이 붙는다. 손조립 선례가
-     * {@code AiCourseRouteInputProbeTest}·{@code AiCourseDayShapeProbeTest} 둘 있다.
-     *
-     * <p><b>카카오 클라이언트는 밖에서 만들어 넣는다</b> — 파이프라인과 채점기가 <b>같은 인스턴스</b>를
-     * 써야 커넥션 풀과 타임아웃 조건이 같아진다.
-     *
-     * <h3>실행기는 운영 것을 쓴다 — 다른 프로브와 갈리는 지점</h3>
-     *
-     * <p>3-7·day-shape 프로브는 {@code Executor} 자리에 {@code Runnable::run}(동기 실행)을 넣는다.
-     * 그쪽이 재는 것은 동선과 day 모양이라 실행 방식이 결과를 바꾸지 않기 때문이다.
-     *
-     * <p><b>여기서 그렇게 하면 지연 측정이 무효가 된다.</b> 파이프라인의 병렬 지점(day별 Curator,
-     * 슬롯별 후보 공급, 후보별 그라운딩)이 전부 순차로 퇴화해 운영보다 구조적으로 느려진다 —
-     * 스모크에서 41.9초 / 38.0초가 나왔는데 E2E 실측(운영 배선)은 22.6초 / 28.0초였다.
-     * 8-6 이 지연 재측정과 {@code ai.course.budget-ms} 재검토를 겸하므로 그 값으로는 판단할 수 없다.
-     *
-     * <p>그래서 {@link AsyncConfig}를 직접 인스턴스화해 <b>운영과 같은 풀 설정</b>(aiAgent core 4 /
-     * placeGrounding core 8, 둘 다 {@code CallerRunsPolicy})을 쓴다. Spring 컨텍스트 없이도 그
-     * 메서드는 평범한 팩토리라 그대로 부를 수 있고, 설정이 바뀌면 하네스가 자동으로 따라간다 —
-     * 값을 복사하면 운영만 바뀌고 벤치마크는 조용히 구식이 된다.
-     *
-     * <p>환각률 자체에는 영향이 없다. 실행 순서가 달라져도 같은 후보에서 같은 선별이 일어난다.
-     */
-    private static AiCoursePipeline pipeline(SimpleMeterRegistry registry,
-        KakaoLocalClient kakaoClient, ThreadPoolTaskExecutor agentExecutor,
-        ThreadPoolTaskExecutor groundingExecutor, String openAiKey, String naverId,
-        String naverSecret, String tourKey) {
-
-        AiCourseMetrics metrics = new AiCourseMetrics(registry);
-        AiLlmProperties properties = benchmarkProperties(openAiKey);
-        OpenAiLlmClient llmClient = new OpenAiLlmClient(properties,
-            new LlmResponseParser(new ObjectMapper()), new LlmRetryExecutor(properties), metrics,
-            OpenAiLlmClient.buildChatModel(properties.openai().baseUrl(), openAiKey,
-                properties.timeoutMs()));
-
-        PromptLoader promptLoader = new PromptLoader();
-        NaverLocalClient naverClient = new NaverLocalClient(NaverConfig.buildNaverWebClient(
-            "https://naverapihub.apigw.ntruss.com", naverId, naverSecret));
-        TourApiClient tourClient = new TourApiClient(TourApiConfig.buildTourApiWebClient(
-            "https://apis.data.go.kr/B551011/KorService2"), tourKey);
-
-        return new AiCoursePipeline(
-            new PlannerAgent(llmClient, promptLoader, agentExecutor),
-            new CandidateRetrievalStage(new AreaGeocoder(kakaoClient),
-                new NaverLocalSeedSource(naverClient, metrics), new TourApiSource(tourClient),
-                metrics, groundingExecutor),
-            new CuratorAgent(llmClient, promptLoader, metrics, agentExecutor),
-            new GroundingStage(kakaoClient, metrics, groundingExecutor),
-            new RouteOptimizer(),
-            new PlaceUrlEnricher(kakaoClient, metrics, groundingExecutor),
-            metrics,
-            new AiCourseProperties(BUDGET_MS));
-    }
-
-    /** 운영 설정({@code application.yml})과 같은 모델·추론 강도를 쓴다 — 3-7 과 같은 값이다. */
-    private static AiLlmProperties benchmarkProperties(String apiKey) {
-        return new AiLlmProperties(
-            "openai",
-            60_000,
-            2,
-            new AiLlmProperties.Retry(3, 2, 0.5, 4.0, 0.3),
-            Map.of(
-                PlannerAgent.AGENT_NAME,
-                new AiLlmProperties.Agent("gpt-5.6-luna", null, 2048, null),
-                CuratorAgent.AGENT_NAME,
-                new AiLlmProperties.Agent("gpt-5.6-luna", null, 4096, "low")),
-            new AiLlmProperties.OpenAi(apiKey, "https://api.openai.com"));
     }
 }

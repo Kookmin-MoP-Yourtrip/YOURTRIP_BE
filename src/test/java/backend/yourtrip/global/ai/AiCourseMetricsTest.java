@@ -60,6 +60,30 @@ class AiCourseMetricsTest {
         }
 
         @Test
+        @DisplayName("LLM 슬롯 대기에도 le 버킷이 실린다 — 대기 p95 를 사후에 잘라 볼 수 있어야 한다 (이슈 #173)")
+        void llmPermitWaitHasBuckets() {
+            metrics.llmPermitWait("curator", AiCourseMetrics.PERMIT_ACQUIRED,
+                TimeUnit.SECONDS.toNanos(5));
+
+            assertThat(registry.scrape())
+                .contains("ai_llm_permit_wait_seconds_bucket")
+                .contains("agent=\"curator\"")
+                .contains("result=\"acquired\"");
+        }
+
+        @Test
+        @DisplayName("토큰 사용량에도 le 버킷이 실린다 — 큰 호출의 크기가 한도 계산의 기준이다 (이슈 #174)")
+        void llmTokensHasBuckets() {
+            metrics.llmTokens("curator", 6000, 800, 300, 1024);
+
+            assertThat(registry.scrape())
+                // 이름이 이미 단위(tokens)로 끝나 Prometheus 가 접미사를 덧붙이지 않는다.
+                .contains("ai_llm_tokens_bucket")
+                .contains("type=\"input\"")
+                .contains("type=\"reasoning\"");
+        }
+
+        @Test
         @DisplayName("상한이 요청 예산(30초)이라 그 위는 +Inf 로 모인다 — 그것 자체가 예산 초과라는 답이다")
         void upperBoundIsTheRequestBudget() {
             metrics.pipelineStage(PipelineStage.CURATOR, TimeUnit.SECONDS.toNanos(31));

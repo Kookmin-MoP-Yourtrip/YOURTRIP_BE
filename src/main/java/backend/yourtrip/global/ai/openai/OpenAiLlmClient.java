@@ -132,6 +132,10 @@ public class OpenAiLlmClient implements LlmClient {
         this.metrics = metrics;
         this.chatModel = chatModel;
         this.concurrencyGate = new Semaphore(properties.maxConcurrentCalls());
+        // 게이트를 만든 자리에서 계측을 붙인다 — agent 목록과 슬롯 수를 아는 곳이 여기뿐이다.
+        metrics.registerLlmPermitSeries(properties.agents().keySet());
+        metrics.registerLlmTokenSeries(properties.agents().keySet());
+        metrics.bindLlmPermitGauges(concurrencyGate, properties.maxConcurrentCalls());
 
         // 어느 모델이 살아 있는지를 기동 로그에서 바로 볼 수 있게 한다. 이 어댑터는 조건부 빈이라
         // 기동 성공만으로는 활성 여부가 드러나지 않고, agent별 모델은 설정 파일을 열어야 알 수 있다.
@@ -252,6 +256,8 @@ public class OpenAiLlmClient implements LlmClient {
     private <T> T callOnce(LlmCall<T> call, boolean correcting) {
         Prompt prompt = buildPrompt(call, correcting);
         ChatResponse response = callTransport(call.agentName(), prompt);
+        // 판정보다 먼저 센다 — 절단·선택지 없음·스키마 위반으로 끝나는 응답도 토큰은 이미 썼다.
+        recordTokenUsage(call.agentName(), response);
 
         Generation generation = requireGeneration(call, response);
         String finishReason = generation.getMetadata().getFinishReason();
@@ -264,6 +270,31 @@ public class OpenAiLlmClient implements LlmClient {
         }
 
         return responseParser.parse(call.agentName(), text, call.responseType());
+    }
+
+    /**
+     * 응답의 {@code usage}를 지표로 남긴다 (이슈 #174).
+     *
+     * <p><b>벤더 중립 {@code Usage}가 아니라 벤더 원본({@link OpenAiApi.Usage})만 읽는다.</b>
+     * Spring AI는 응답에 {@code usage}가 없어도 0으로 채운 객체를 넘겨 주는데, 그걸 그대로 쓰면
+     * "모른다"가 "0 토큰"으로 기록돼 호출당 평균이 내려간다 — 테스트가 이 경우를 실제로 잡았다.
+     * 원본이 있을 때만 응답에 usage가 실려 왔다는 뜻이므로 그것을 판정 기준으로 삼는다.
+     * 추론·캐시 토큰도 원본에만 있다. 벤더 타입을 여기서 읽는 것은 이 파일이 Spring AI가 등장하는
+     * 유일한 곳이라는 경계 안이다.
+     */
+    private void recordTokenUsage(String agentName, ChatResponse response) {
+        if (response == null || response.getMetadata() == null
+            || response.getMetadata().getUsage() == null
+            || !(response.getMetadata().getUsage().getNativeUsage()
+                instanceof OpenAiApi.Usage usage)) {
+            return;
+        }
+        Integer reasoning = usage.completionTokenDetails() == null
+            ? null : usage.completionTokenDetails().reasoningTokens();
+        Integer cached = usage.promptTokensDetails() == null
+            ? null : usage.promptTokensDetails().cachedTokens();
+        metrics.llmTokens(agentName, usage.promptTokens(), usage.completionTokens(),
+            reasoning, cached);
     }
 
     private <T> Prompt buildPrompt(LlmCall<T> call, boolean correcting) {
@@ -357,8 +388,18 @@ public class OpenAiLlmClient implements LlmClient {
      *
      * <p>그래서 {@link OpenAiErrorHandler}로 분류를 직접 소유한다. 메시지 문자열에서 "429"를 찾는
      * 방식(기존 벤치마크 하네스가 쓰던 방법)은 벤더가 문구를 바꾸면 조용히 깨지므로 택하지 않았다.
+     *
+     * <p><b>인터럽트는 어떤 모양으로 와도 재시도하지 않는다</b>(이슈 #176). reactor-netty 는 대기 중
+     * 인터럽트된 요청을 {@code IOException ← InterruptedException}으로 번역하는데, 아래 체인 순회는
+     * {@code IOException}을 먼저 만나 재시도 대상으로 판정한다. 그러면 남은 시도가 살아 있는 인터럽트
+     * 표시 때문에 서버에 닿지도 못하고 즉시 실패하며 루프를 끝까지 돌아, <b>취소가 "전송 재시도 N회
+     * 소진"으로 보고된다</b>(학습 테스트 {@code LlmCallCancellationLearningTest} Q2-1). 그래서 체인
+     * 순회보다 먼저 거른다.
      */
     private static boolean isRetriable(RuntimeException e) {
+        if (Thread.currentThread().isInterrupted() || hasCause(e, InterruptedException.class)) {
+            return false;
+        }
         for (Throwable current = e; current != null && current != current.getCause();
             current = current.getCause()) {
             if (current instanceof OpenAiHttpException http) {
@@ -370,6 +411,16 @@ public class OpenAiLlmClient implements LlmClient {
             }
             // 우리가 핸들러를 못 끼운 경로로 5xx가 올라온 경우의 안전망.
             if (current instanceof TransientAiException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasCause(Throwable e, Class<? extends Throwable> type) {
+        for (Throwable current = e; current != null; current =
+            current.getCause() == current ? null : current.getCause()) {
+            if (type.isInstance(current)) {
                 return true;
             }
         }
@@ -429,15 +480,25 @@ public class OpenAiLlmClient implements LlmClient {
      * <p>무한 대기하지 않고 {@code timeout-ms}에서 잘라내는 이유는, 앞선 호출들이 전부 느려졌을 때
      * 뒤에 쌓인 요청이 <b>호출도 못 해보고 스레드만 붙잡는</b> 상태를 막기 위해서다. 이 저장소는
      * 커넥션이 오래 묶이는 것이 어떤 결과를 내는지 이미 실측한 이력이 있다.
+     *
+     * <p>기다린 시간은 결과와 무관하게 {@code ai.llm.permit.wait}로 남긴다(이슈 #173) —
+     * {@code ai.llm.call}이 이 대기를 빼고 재므로, 여기서 재지 않으면 어디에도 잡히지 않는다.
      */
     private void acquirePermit(String agentName) {
+        long waitStartedAt = System.nanoTime();
         try {
             if (!concurrencyGate.tryAcquire(properties.timeoutMs(), TimeUnit.MILLISECONDS)) {
+                metrics.llmPermitWait(agentName, AiCourseMetrics.PERMIT_TIMEOUT,
+                    System.nanoTime() - waitStartedAt);
                 throw new LlmTransportException(agentName, 0,
                     "LLM 동시 호출 슬롯(%d)을 %dms 안에 얻지 못했다"
                         .formatted(properties.maxConcurrentCalls(), properties.timeoutMs()), null);
             }
+            metrics.llmPermitWait(agentName, AiCourseMetrics.PERMIT_ACQUIRED,
+                System.nanoTime() - waitStartedAt);
         } catch (InterruptedException e) {
+            metrics.llmPermitWait(agentName, AiCourseMetrics.PERMIT_INTERRUPTED,
+                System.nanoTime() - waitStartedAt);
             Thread.currentThread().interrupt();
             throw new LlmTransportException(agentName, 0, "LLM 호출 슬롯 대기 중 인터럽트됐다", e);
         }

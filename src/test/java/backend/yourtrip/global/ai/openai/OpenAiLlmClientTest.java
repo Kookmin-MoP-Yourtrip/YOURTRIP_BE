@@ -218,6 +218,51 @@ class OpenAiLlmClientTest {
 
             assertThat(requestCount()).as("백오프를 태우지 않아야 한다").isEqualTo(1);
         }
+
+        @Test
+        @DisplayName("HTTP 대기 중 인터럽트되면 재시도하지 않는다 — IOException 으로 번역돼도 재시도 대상이 아니다 (이슈 #176)")
+        void doesNotRetryWhenInterrupted() throws Exception {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .willReturn(okJson(completion("{\\\"title\\\":\\\"t\\\"}", "stop"))
+                    .withFixedDelay(3_000)));
+            // 백오프가 실제로 자지 않게 한다. 실제 sleep 이면 살아 있는 인터럽트 표시가 첫 백오프에서
+            // 바로 터져 재시도 루프가 우연히 끊긴다(학습 테스트 Q2) — 분류의 결함이 가려진다.
+            AiLlmProperties properties = properties(10_000, 1, new Retry(3, 1, 0.01, 0.02, 0.0));
+            meterRegistry = new SimpleMeterRegistry();
+            OpenAiLlmClient client = new OpenAiLlmClient(properties,
+                new LlmResponseParser(new ObjectMapper()),
+                new LlmRetryExecutor(properties, millis -> { }),
+                new AiCourseMetrics(meterRegistry),
+                OpenAiLlmClient.buildChatModel(wireMock.baseUrl(), "test-api-key", 10_000));
+
+            java.util.concurrent.atomic.AtomicReference<Throwable> thrown =
+                new java.util.concurrent.atomic.AtomicReference<>();
+            Thread worker = Thread.ofPlatform().start(() -> {
+                try {
+                    client.generate(call(SCHEMA));
+                } catch (Throwable t) {
+                    thrown.set(t);
+                }
+            });
+            // 슬롯 점유가 아니라 "요청이 서버에 도착했는가"를 기다린다. JVM 첫 호출은 연결 수립에
+            // 수백 ms 가 걸려, 고정 지연 뒤에 인터럽트하면 요청이 나가기도 전에 끊길 수 있다.
+            long limit = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+            while (requestCount() < 1 && System.nanoTime() < limit) {
+                Thread.sleep(10);
+            }
+            assertThat(requestCount()).as("요청이 서버에 도착하지 않았다").isEqualTo(1);
+            worker.interrupt();
+            worker.join(10_000);
+
+            // 오분류되면 남은 시도가 인터럽트 표시 때문에 서버에 닿지도 못하고 즉시 실패하며 루프를
+            // 끝까지 돈다 — 요청은 1건뿐인데 "전송 재시도 3회를 모두 소진했다"로 보고돼, 취소가
+            // 네트워크 장애처럼 기록된다.
+            assertThat(thrown.get())
+                .isInstanceOf(LlmTransportException.class)
+                .satisfies(t -> assertThat(((LlmTransportException) t).getAttempts())
+                    .as("취소된 호출은 첫 시도에서 멈춰야 한다").isEqualTo(1));
+            assertThat(requestCount()).isEqualTo(1);
+        }
     }
 
     @Nested
@@ -351,7 +396,188 @@ class OpenAiLlmClientTest {
         }
     }
 
+    @Nested
+    @DisplayName("슬롯 대기 메트릭 (이슈 #173)")
+    class PermitWaitMetrics {
+
+        @Test
+        @DisplayName("호출이 없어도 설정된 agent 의 대기 시계열이 결과별로 0으로 존재한다")
+        void registersZeroSeriesForConfiguredAgents() {
+            client();
+
+            // 0 등록이 없으면 #108 재실측에서 "타임아웃 0건"과 "시계열 없음"이 구분되지 않는다.
+            for (String result : List.of(AiCourseMetrics.PERMIT_ACQUIRED,
+                AiCourseMetrics.PERMIT_TIMEOUT, AiCourseMetrics.PERMIT_INTERRUPTED)) {
+                assertThat(permitWaitTimer(result)).as(result).isNotNull();
+                assertThat(permitWaitTimer(result).count()).as(result).isZero();
+            }
+        }
+
+        @Test
+        @DisplayName("슬롯이 차 있으면 뒤 호출의 대기 시간이 acquired 로 잡힌다 — ai.llm.call 에는 섞이지 않는다")
+        void recordsWaitWhenSlotIsBusy() {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .willReturn(okJson(completion("{\\\"title\\\":\\\"t\\\"}", "stop"))
+                    .withFixedDelay(300)));
+            OpenAiLlmClient client = clientWith(properties(1, new Retry(3, 2, 0.01, 0.02, 0.0)));
+
+            runConcurrently(() -> client.generate(call(SCHEMA)), () -> client.generate(call(SCHEMA)));
+
+            io.micrometer.core.instrument.Timer acquired = permitWaitTimer(AiCourseMetrics.PERMIT_ACQUIRED);
+            assertThat(acquired.count()).isEqualTo(2);
+            // 한 건은 즉시 얻고, 다른 한 건은 앞 호출의 응답(300ms)이 끝날 때까지 기다린다.
+            assertThat(acquired.max(java.util.concurrent.TimeUnit.MILLISECONDS))
+                .as("슬롯이 1개면 뒤 호출은 앞 호출이 끝날 때까지 기다려야 한다")
+                .isGreaterThanOrEqualTo(250);
+        }
+
+        @Test
+        @DisplayName("재시도 중인 호출이 슬롯을 쥐고 있으면 뒤 호출은 timeout 으로 실패하고 그 대기도 기록된다")
+        void recordsTimeoutWhileRetryHoldsSlot() {
+            // 응답 지연이 아니라 "재시도·백오프"로 슬롯 점유 시간을 만든다 — timeout-ms 가 HTTP
+            // 읽기 타임아웃과 공유돼서다. 실제 운영에서 429 가 슬롯을 묶는 모습 그대로이기도 하다.
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .willReturn(aResponse().withStatus(429)));
+            OpenAiLlmClient client = clientWith(
+                properties(300, 1, new Retry(3, 2, 0.3, 0.3, 0.0)));
+
+            Thread holder = Thread.ofPlatform().start(() -> {
+                try {
+                    client.generate(call(SCHEMA));
+                } catch (LlmTransportException expected) {
+                    // 429 가 계속되므로 첫 호출도 결국 실패한다. 이 테스트의 관심사는 그동안의 점유다.
+                }
+            });
+            awaitPermitsInUse(1);
+
+            assertThatThrownBy(() -> client.generate(call(SCHEMA)))
+                .isInstanceOf(LlmTransportException.class)
+                .hasMessageContaining("슬롯");
+            join(holder);
+
+            io.micrometer.core.instrument.Timer timeout = permitWaitTimer(AiCourseMetrics.PERMIT_TIMEOUT);
+            assertThat(timeout.count()).isEqualTo(1);
+            assertThat(timeout.max(java.util.concurrent.TimeUnit.MILLISECONDS))
+                .as("timeout-ms(300ms)만큼 기다린 뒤 포기했어야 한다")
+                .isGreaterThanOrEqualTo(250);
+        }
+
+        @Test
+        @DisplayName("호출이 끝나면 사용 중 슬롯 게이지가 0으로 돌아온다 — 실패해도 슬롯을 반납한다")
+        void releasesPermitGaugeAfterCalls() {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .willReturn(aResponse().withStatus(500)));
+            OpenAiLlmClient client = client();
+
+            assertThatThrownBy(() -> client.generate(call(SCHEMA)))
+                .isInstanceOf(LlmTransportException.class);
+
+            assertThat(gauge(AiCourseMetrics.LLM_PERMITS_IN_USE)).isZero();
+            assertThat(gauge(AiCourseMetrics.LLM_PERMITS_WAITING)).isZero();
+        }
+    }
+
+    @Nested
+    @DisplayName("토큰 사용량 메트릭 (이슈 #174)")
+    class TokenMetrics {
+
+        @Test
+        @DisplayName("호출이 없어도 설정된 agent 의 토큰 시계열이 종류별로 0으로 존재한다")
+        void registersZeroSeriesForConfiguredAgents() {
+            client();
+
+            for (String type : List.of(AiCourseMetrics.TOKEN_INPUT, AiCourseMetrics.TOKEN_OUTPUT,
+                AiCourseMetrics.TOKEN_REASONING, AiCourseMetrics.TOKEN_CACHED)) {
+                assertThat(tokenSummary(type)).as(type).isNotNull();
+                assertThat(tokenSummary(type).count()).as(type).isZero();
+            }
+        }
+
+        @Test
+        @DisplayName("응답의 usage 에서 입력·출력·추론·캐시 토큰을 읽어 기록한다")
+        void recordsUsageIncludingDetails() {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .willReturn(okJson(completionWithUsage("{\\\"title\\\":\\\"t\\\"}", "stop",
+                    """
+                    "usage": {
+                      "prompt_tokens": 1200, "completion_tokens": 300, "total_tokens": 1500,
+                      "prompt_tokens_details": { "cached_tokens": 1024 },
+                      "completion_tokens_details": { "reasoning_tokens": 180 }
+                    }"""))));
+
+            client().generate(call(SCHEMA));
+
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_INPUT).totalAmount()).isEqualTo(1200);
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_OUTPUT).totalAmount()).isEqualTo(300);
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_REASONING).totalAmount()).isEqualTo(180);
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_CACHED).totalAmount()).isEqualTo(1024);
+        }
+
+        @Test
+        @DisplayName("세부 항목이 없는 응답이면 추론·캐시는 기록하지 않는다 — 0과 '모름'을 섞지 않는다")
+        void skipsMissingDetails() {
+            stubSuccess("{\\\"title\\\":\\\"t\\\"}", "stop");
+
+            client().generate(call(SCHEMA));
+
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_INPUT).count()).isEqualTo(1);
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_REASONING).count()).isZero();
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_CACHED).count()).isZero();
+        }
+
+        @Test
+        @DisplayName("usage 가 아예 없는 응답이면 아무것도 기록하지 않는다")
+        void skipsResponseWithoutUsage() {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .willReturn(okJson(completionWithUsage("{\\\"title\\\":\\\"t\\\"}", "stop", null))));
+
+            client().generate(call(SCHEMA));
+
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_INPUT).count())
+                .as("usage 가 없는데 0을 기록하면 호출당 평균이 내려간다")
+                .isZero();
+        }
+
+        @Test
+        @DisplayName("의미 재시도의 두 응답을 모두 센다 — 둘 다 TPM 을 소모한다")
+        void countsEverySemanticAttempt() {
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .inScenario("broken").whenScenarioStateIs("Started")
+                .willReturn(okJson(completion("이건 JSON이 아니다", "stop")))
+                .willSetStateTo("corrected"));
+            wireMock.stubFor(post(urlPathEqualTo(COMPLETIONS_PATH))
+                .inScenario("broken").whenScenarioStateIs("corrected")
+                .willReturn(okJson(completion("{\\\"title\\\":\\\"고쳐짐\\\"}", "stop"))));
+
+            client().generate(call(SCHEMA));
+
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_INPUT).count()).isEqualTo(2);
+            assertThat(llmCallCount(AiCourseMetrics.LLM_OUTCOME_SUCCESS))
+                .as("호출은 하나지만 응답은 둘이다")
+                .isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("절단으로 실패한 응답도 토큰은 센다 — 절단은 의미 재시도 대상이라 응답이 둘이다")
+        void countsTruncatedResponses() {
+            stubSuccess("{\\\"title\\\":\\\"경주 야", "length");
+
+            assertThatThrownBy(() -> client().generate(call(SCHEMA)))
+                .isInstanceOf(LlmTruncatedResponseException.class);
+
+            // 초회 + 보정 1회가 모두 잘렸다. 성공 응답이 하나도 없어도 TPM 은 두 번 소모됐다.
+            assertThat(requestCount()).isEqualTo(2);
+            assertThat(tokenSummary(AiCourseMetrics.TOKEN_OUTPUT).count()).isEqualTo(2);
+        }
+    }
+
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
+
+    private io.micrometer.core.instrument.DistributionSummary tokenSummary(String type) {
+        return meterRegistry.find(AiCourseMetrics.LLM_TOKENS)
+            .tags("agent", AGENT, "type", type)
+            .summary();
+    }
 
     private OpenAiLlmClient client() {
         // 백오프를 짧게 둬 테스트가 실제로 몇 초씩 자지 않게 한다. 백오프 값 자체의 정확성은
@@ -383,8 +609,48 @@ class OpenAiLlmClientTest {
         return timer == null ? 0L : timer.count();
     }
 
+    private io.micrometer.core.instrument.Timer permitWaitTimer(String result) {
+        return meterRegistry.find(AiCourseMetrics.LLM_PERMIT_WAIT)
+            .tags("agent", AGENT, "result", result)
+            .timer();
+    }
+
+    private double gauge(String name) {
+        return meterRegistry.get(name).gauge().value();
+    }
+
+    /** 다른 스레드의 호출이 슬롯을 실제로 쥘 때까지 기다린다. 시작 순서를 sleep 으로 추측하지 않는다. */
+    private void awaitPermitsInUse(int expected) {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while (gauge(AiCourseMetrics.LLM_PERMITS_IN_USE) < expected) {
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError("5초 안에 슬롯 " + expected + "개가 점유되지 않았다");
+            }
+            Thread.onSpinWait();
+        }
+    }
+
+    private static void runConcurrently(Runnable... tasks) {
+        java.util.Arrays.stream(tasks)
+            .map(task -> Thread.ofPlatform().start(task))
+            .toList()
+            .forEach(OpenAiLlmClientTest::join);
+    }
+
+    private static void join(Thread thread) {
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     private static AiLlmProperties properties(int maxConcurrentCalls, Retry retry) {
-        return new AiLlmProperties("openai", 5_000, maxConcurrentCalls, retry,
+        return properties(5_000, maxConcurrentCalls, retry);
+    }
+
+    private static AiLlmProperties properties(int timeoutMs, int maxConcurrentCalls, Retry retry) {
+        return new AiLlmProperties("openai", timeoutMs, maxConcurrentCalls, retry,
             Map.of(AGENT, new Agent("gpt-5.6-luna", 0.7, 2048, null)),
             new OpenAi("test-api-key", "http://localhost"));
     }
@@ -402,6 +668,30 @@ class OpenAiLlmClientTest {
         return aResponse().withStatus(200)
             .withHeader("Content-Type", "application/json")
             .withBody(body);
+    }
+
+    /**
+     * {@link #completion}과 같되 {@code usage} 블록을 직접 넣는다.
+     *
+     * @param usageJson {@code "usage": {...}} 형태의 조각. {@code null}이면 usage 를 싣지 않는다
+     */
+    private static String completionWithUsage(String escapedContent, String finishReason,
+        String usageJson) {
+        return """
+            {
+              "id": "chatcmpl-test",
+              "object": "chat.completion",
+              "created": 1700000000,
+              "model": "gpt-5.6-luna",
+              "choices": [
+                {
+                  "index": 0,
+                  "message": { "role": "assistant", "content": "%s" },
+                  "finish_reason": "%s"
+                }
+              ]%s
+            }
+            """.formatted(escapedContent, finishReason, usageJson == null ? "" : ",\n" + usageJson);
     }
 
     /** @param escapedContent JSON 문자열 안에 들어갈 형태로 이스케이프된 응답 본문 */
