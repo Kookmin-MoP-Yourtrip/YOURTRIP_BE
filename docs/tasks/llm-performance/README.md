@@ -12,7 +12,7 @@
 | 1 | 슬롯 대기 지표 추가 | 계측 | ✅ 구현·E2E 완료, PR 대기 | [#173](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/173) · [STEP-1](steps/STEP-1-permit-wait.md) |
 | 2 | 기준선 측정 | 측정 | ✅ 단일 p95 24.1초·대기 매회 5~8초, 동시 3명 폴백 42% | [#175](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/175) · [STEP-2](steps/STEP-2-baseline.md) (#108 개선 전) |
 | 3 | 마감 뒤 남는 호출 정리 | 안정성 | ⏸ 조사 완료, 구현은 4단계 측정 뒤 판단 | [#176](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/176) · [STEP-3](steps/STEP-3-late-calls.md) |
-| 4 | `max-concurrent-calls` 조정 | 성능 | ✅ **4 확정** — 단일 p95 24.1 → 18.6초, 동시 3명 폴백 42 → 0%. 8(로컬)은 동시 5명 폴백 0%, 5 이상은 출력 상한 조정 뒤 · [STEP-4](steps/STEP-4-concurrent-calls.md) | [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108) |
+| 4 | `max-concurrent-calls` 조정 | 성능 | ✅ **4 확정** — 단일 p95 24.1 → 18.6초, 동시 3명 폴백 42 → 0%(4-1 풀 정렬 뒤). 8(로컬)은 동시 5명 폴백 0%, 5 이상은 출력 상한 조정 뒤 · [STEP-4](steps/STEP-4-concurrent-calls.md) | [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108) |
 | 4-1 | `aiAgentExecutor`를 세마포어보다 넉넉하게 | 성능 | ✅ 풀 = 슬롯 × 4, 동시 5명 큐 11 → 0 · 대기가 세마포어로 이동 | [#177](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/177) · [STEP-4-1](steps/STEP-4-1-executor-sizing.md) |
 | 5 | Planner 단계 상한 | 안정성 | 데이터 확인 후 결정 | 이슈 없음 |
 | 6 | 30초 예산 재조정 + 시간 제한 관계 문서화 | 정리 | ⬜ | 이슈 없음 |
@@ -133,7 +133,7 @@ LLM이 먼저 포화된다(서버당 제대로 처리 가능한 양 ≈ 분당 5
 ### 4. `max-concurrent-calls` 조정 (#108)
 
 - 0단계 상한(서버당 보수적 4 · 실사용 8) 안에서 올리며 2단계와 같은 세트로 잰다. **4 를 먼저 쟀다**(3 은 생략 — STEP-4 한계 참고)
-- **4 결과**: 단일 요청 Curator 대기 0, p95 24.1 → 18.6초. 동시 3명 폴백 42 → 7%, 동시 5명 74 → 38%. 동시 5명에서 슬롯 대기는 0인데 `aiAgentExecutor`(core 4) 큐가 최대 11 — **실질 상한이 스레드 풀 4라 세마포어가 더 이상 병목이 아니다**([STEP-4](steps/STEP-4-concurrent-calls.md))
+- **4 결과**: 단일 요청 Curator 대기 0, p95 24.1 → 18.6초. 동시 3명 폴백 42 → 7%, 동시 5명 74 → 38%(풀 4 — 4-1 풀 정렬 전). 동시 5명에서 슬롯 대기는 0인데 `aiAgentExecutor`(core 4) 큐가 최대 11 — **실질 상한이 스레드 풀 4라 세마포어가 더 이상 병목이 아니다**([STEP-4](steps/STEP-4-concurrent-calls.md))
 - **스레드 풀 정렬([#177](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/177)).** 실제 동시 호출 수는 `min(스레드 수, 세마포어)`인데, 풀이 큐 50칸이 차기 전에는 core 4 를 넘지 않아 세마포어 4 와 같아졌다. 의도(`AsyncConfig` 주석)는 "스레드 > 세마포어"로 줄이 항상 세마포어 앞(20초 상한·지표 있음)에서만 서게 하는 것이다. 세마포어는 어느 경로로 부르든 OpenAI 로 나가는 호출을 모두 세는 한도 보호 장치라 없앨 수 없으므로, 풀을 넉넉히 하고 상한 손잡이를 `max-concurrent-calls` 하나로 만든다
 - **4-1 결과**: 풀을 `max-concurrent-calls` × 4(core = max)로 묶었다. 동시 5명에서 풀 큐 11 → 0, 세마포어 `waiting` 0 → 11, 대기 상한 포기 0 → 3회(마감 뒤 호출이 될 작업이 시작 전에 끝남). 폴백은 38 → 33% 로 표본 편차 안이다 — 자리만 옮겼지 처리 능력은 같다([STEP-4-1](steps/STEP-4-1-executor-sizing.md))
 - **8 결과(로컬 1대, 풀 정렬 뒤)**: 동시 5명 폴백 33 → 0%, p95 30.1 → 25.5초. 새 한계는 동시 5~8명 사이. 슬롯을 넓히는 이득은 크다 — 운영에 쓰려면 아래 조건 ①이 필요하다. 측정 중 **네이버 지역 검색 초당 호출 제한(429)** 과 `placeGroundingExecutor`가 #177 이전과 같은 구조라는 점이 드러났다([STEP-4](steps/STEP-4-concurrent-calls.md) 4절)
