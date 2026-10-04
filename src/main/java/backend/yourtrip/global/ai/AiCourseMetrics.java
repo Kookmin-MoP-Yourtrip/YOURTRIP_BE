@@ -200,6 +200,32 @@ public class AiCourseMetrics {
      */
     public static final String LLM_TOKENS = "ai.llm.tokens";
 
+    /**
+     * <b>정상 종료되지 않은 응답 하나</b> (이슈 #182). {@link #LLM_CALL}의 {@code truncated}와 단위가 다르다.
+     *
+     * <p>절단은 의미 재시도 대상이라, <b>초회가 잘리고 보정 시도가 성공하면 호출의 결말은
+     * {@code success}</b>가 된다. 그 절단은 WARN 로그 한 줄로만 남아 "잘림 0건"과 "잘렸지만 재시도가
+     * 가렸다"를 지표로 가를 수 없었다. 출력 상한({@code max-output-tokens})을 실측에 맞춰 낮추면
+     * 바로 그 경우가 생기므로, 상한을 바꾸기 전에 <b>HTTP 응답 단위로</b> 센다 —
+     * {@link #LLM_TOKENS}가 재시도 응답을 따로 세는 것과 같은 이유다.
+     *
+     * <p>{@code reason}은 벤더 원문이 아니라 닫힌 값({@link #TRUNCATION_LENGTH} 등)으로 줄인다.
+     * 원문을 태그에 실으면 벤더가 새 값을 낼 때마다 시계열이 늘어난다.
+     */
+    public static final String LLM_TRUNCATED = "ai.llm.truncated";
+
+    /** 출력 상한에 닿아 잘렸다. {@code max-output-tokens}를 낮춘 대가는 이 값으로 드러난다. */
+    public static final String TRUNCATION_LENGTH = "length";
+
+    /** 콘텐츠 필터가 응답을 막았다. 상한과 무관하다. */
+    public static final String TRUNCATION_CONTENT_FILTER = "content_filter";
+
+    /** 응답에 선택지 자체가 없었다. */
+    public static final String TRUNCATION_NO_CHOICE = "no_choice";
+
+    /** 그 밖의 비정상 종료 사유. */
+    public static final String TRUNCATION_OTHER = "other";
+
     /** 입력(프롬프트) 토큰. 캐시 적중분을 포함한다. */
     public static final String TOKEN_INPUT = "input";
 
@@ -528,6 +554,44 @@ public class AiCourseMetrics {
                 tokenSummary(agent, type);
             }
         }
+    }
+
+    /**
+     * 정상 종료되지 않은 응답 하나를 기록한다 (이슈 #182). 의미 재시도로 결말이 바뀌어도 이미 일어난
+     * 절단이므로 응답을 받은 자리에서 바로 센다.
+     *
+     * @param finishReason 벤더 원문. 대소문자를 가리지 않고 닫힌 값으로 줄인다
+     */
+    public void llmTruncated(String agent, String finishReason) {
+        truncatedCounter(agent, truncationReason(finishReason)).increment();
+    }
+
+    /** 설정된 agent마다 절단 시계열을 0으로 등록한다 (이슈 #182). 근거는 {@link #registerLlmPermitSeries}와 같다. */
+    public void registerLlmTruncationSeries(Collection<String> agents) {
+        for (String agent : agents) {
+            for (String reason : new String[]{TRUNCATION_LENGTH, TRUNCATION_CONTENT_FILTER,
+                TRUNCATION_NO_CHOICE, TRUNCATION_OTHER}) {
+                truncatedCounter(agent, reason);
+            }
+        }
+    }
+
+    private static String truncationReason(String finishReason) {
+        if (finishReason == null) {
+            return TRUNCATION_OTHER;
+        }
+        String normalized = finishReason.toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case TRUNCATION_LENGTH, TRUNCATION_CONTENT_FILTER, TRUNCATION_NO_CHOICE -> normalized;
+            default -> TRUNCATION_OTHER;
+        };
+    }
+
+    private Counter truncatedCounter(String agent, String reason) {
+        return Counter.builder(LLM_TRUNCATED)
+            .tag("agent", agent)
+            .tag("reason", reason)
+            .register(registry);
     }
 
     private void recordTokens(String agent, String type, Integer tokens) {

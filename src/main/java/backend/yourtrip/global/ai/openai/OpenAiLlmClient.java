@@ -135,6 +135,7 @@ public class OpenAiLlmClient implements LlmClient {
         // 게이트를 만든 자리에서 계측을 붙인다 — agent 목록과 슬롯 수를 아는 곳이 여기뿐이다.
         metrics.registerLlmPermitSeries(properties.agents().keySet());
         metrics.registerLlmTokenSeries(properties.agents().keySet());
+        metrics.registerLlmTruncationSeries(properties.agents().keySet());
         metrics.bindLlmPermitGauges(concurrencyGate, properties.maxConcurrentCalls());
 
         // 어느 모델이 살아 있는지를 기동 로그에서 바로 볼 수 있게 한다. 이 어댑터는 조건부 빈이라
@@ -266,7 +267,7 @@ public class OpenAiLlmClient implements LlmClient {
         // 파싱보다 먼저 확인한다. 잘린 JSON을 파싱하면 원인이 "스키마 위반"으로 오분류되고,
         // 그게 정확히 Gemini baseline에서 파싱 실패율의 원인을 몇 달 놓친 경위다.
         if (!isNormalFinish(finishReason)) {
-            throw new LlmTruncatedResponseException(call.agentName(), finishReason, text);
+            throw truncated(call.agentName(), finishReason, text);
         }
 
         return responseParser.parse(call.agentName(), text, call.responseType());
@@ -507,9 +508,19 @@ public class OpenAiLlmClient implements LlmClient {
     private <T> Generation requireGeneration(LlmCall<T> call, ChatResponse response) {
         Generation generation = response == null ? null : response.getResult();
         if (generation == null || generation.getOutput() == null) {
-            throw new LlmTruncatedResponseException(call.agentName(), "no_choice", "");
+            throw truncated(call.agentName(), AiCourseMetrics.TRUNCATION_NO_CHOICE, "");
         }
         return generation;
+    }
+
+    /**
+     * 절단 예외를 만들면서 응답 단위로 센다 (이슈 #182). 던지기 전에 세는 이유는 의미 재시도가 이
+     * 예외를 삼키면 호출 결말({@code ai.llm.call})에는 흔적이 남지 않기 때문이다.
+     */
+    private LlmTruncatedResponseException truncated(String agentName, String finishReason,
+        String text) {
+        metrics.llmTruncated(agentName, finishReason);
+        return new LlmTruncatedResponseException(agentName, finishReason, text);
     }
 
     private static boolean isNormalFinish(String finishReason) {
