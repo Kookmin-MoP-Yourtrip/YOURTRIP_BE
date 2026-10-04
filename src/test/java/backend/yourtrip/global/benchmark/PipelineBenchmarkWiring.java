@@ -113,6 +113,23 @@ final class PipelineBenchmarkWiring {
             new AiCourseProperties(limits.budgetMs()));
     }
 
+    /**
+     * Planner 단독. <b>파이프라인 전체가 아니라 Planner 계획만 필요한 측정용이다</b>(이슈 #179 질의 감사).
+     *
+     * <p>모델·출력 상한을 여기서 따로 적지 않고 {@link #llmProperties}를 그대로 쓴다 — 프로브마다
+     * 사본을 두면 운영 Planner 설정이 바뀔 때 감사가 다른 계획을 보고 다른 질의를 재게 된다.
+     */
+    static PlannerAgent planner(MeterRegistry registry, String openAiKey, Limits limits,
+        java.util.concurrent.Executor executor) {
+        AiLlmProperties properties = llmProperties(openAiKey, limits);
+        OpenAiLlmClient llmClient = new OpenAiLlmClient(properties,
+            new LlmResponseParser(new ObjectMapper()), new LlmRetryExecutor(properties),
+            new AiCourseMetrics(registry),
+            OpenAiLlmClient.buildChatModel(properties.openai().baseUrl(), openAiKey,
+                properties.timeoutMs()));
+        return new PlannerAgent(llmClient, new PromptLoader(), executor);
+    }
+
     /** 운영 설정({@code application.yml})과 같은 모델·추론 강도·재시도를 쓴다 — 3-7 과 같은 값이다. */
     private static AiLlmProperties llmProperties(String apiKey, Limits limits) {
         return new AiLlmProperties(
