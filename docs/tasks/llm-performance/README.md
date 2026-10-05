@@ -47,7 +47,7 @@
 |---|---|---|
 | Android 클라이언트 (OkHttp `readTimeout`) | 60초 | FE `RetrofitClient` — "ai 코스 생성 api 고려" 주석 |
 | ALB `idle_timeout` | 60초 | `terraform/prod/variables.tf` |
-| 서버 요청 예산 (`CourseDeadline`) | 30초 | 모든 스테이지가 남은 예산만큼만 기다린다 |
+| 서버 요청 예산 (`CourseDeadline`) | 30초 → **35초**(6단계) | 모든 스테이지가 남은 예산만큼만 기다린다. 현재 값은 아래 "시간 제한 불변식" |
 | LLM 슬롯 대기 / HTTP 시도 1회 | 각 20초 (`llm.timeout-ms`) | **호출 1건 상한이 아니다** — 전송 재시도 3회 × 의미 재시도 2회가 곱해져 이론상 약 144초 |
 | Tomcat 워커 (운영) | 32개 | 동기 컨트롤러라 AI 요청 하나가 워커 하나를 22~30초 점유 |
 
