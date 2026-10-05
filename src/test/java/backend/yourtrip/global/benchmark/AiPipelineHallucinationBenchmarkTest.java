@@ -148,7 +148,10 @@ class AiPipelineHallucinationBenchmarkTest {
      */
     private static final int LLM_TIMEOUT_MS = 60_000;
 
-    /** 운영값과 같다. 환각률은 동시 호출 수의 영향을 받지 않는다. */
+    /**
+     * 측정 당시 운영값 2를 유지한다(지금 운영값은 5, #184). 환각률은 동시 호출 수의 영향을 받지 않아
+     * 과거 측정과 비교하는 데 지장이 없고, 슬롯이 좁을수록 요청 간 간섭도 적다.
+     */
     private static final int MAX_CONCURRENT_CALLS = 2;
 
     /** 역산 기준이 되는 운영 예산({@code ai.course.budget-ms}). 30초에서 35초로 늘었다(#189). */

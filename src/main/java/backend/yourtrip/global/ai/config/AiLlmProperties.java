@@ -28,9 +28,10 @@ import org.springframework.validation.annotation.Validated;
  * @param timeoutMs          <b>호출 1건의 상한이 아니다.</b> 슬롯(세마포어) 대기 · HTTP 연결 · HTTP 응답
  *                           읽기 공백 세 곳에 각각 걸리고, 그 위에 전송·의미 재시도가 곱해진다(#189,
  *                           {@code STEP-6-budget.md} 1절). 요청 전체 상한은 {@code ai.course.budget-ms}다
- * @param maxConcurrentCalls <b>rate limit 대응의 전부다.</b> 2로 두면 day별 Curator 3개가
- *                           2라운드로 나뉘어 실행된다(+3~6초). 429가 나는 대신 느려질 뿐이고,
- *                           티어 상향은 이 값 한 줄이다. "Curator를 day별 병렬로 만들지 1회
+ * @param maxConcurrentCalls <b>rate limit 대응의 전부다.</b> 서버 전체가 공유하는 상한이라 슬롯보다
+ *                           많은 호출(동시 요청들의 Planner·day별 Curator)은 줄을 서서 라운드로 나뉜다.
+ *                           429가 나는 대신 느려질 뿐이고, 티어 상향은 이 값 한 줄이다(운영 5, 근거는
+ *                           {@code application.yml} 주석). "Curator를 day별 병렬로 만들지 1회
  *                           통합으로 만들지"를 코드 구조로 결정하지 않는 것이 요점이다
  * @param retry              전송 계층 재시도(429/5xx). 의미 계층 재시도는 1회로 고정이라
  *                           설정 대상이 아니다
