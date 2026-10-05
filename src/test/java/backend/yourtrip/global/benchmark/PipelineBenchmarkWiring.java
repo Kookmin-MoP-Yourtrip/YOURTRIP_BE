@@ -20,6 +20,7 @@ import backend.yourtrip.global.ai.route.RouteOptimizer;
 import backend.yourtrip.global.config.AsyncConfig;
 import backend.yourtrip.global.kakao.KakaoLocalClient;
 import backend.yourtrip.global.naver.NaverLocalClient;
+import backend.yourtrip.global.naver.NaverRateLimiter;
 import backend.yourtrip.global.naver.config.NaverConfig;
 import backend.yourtrip.global.tour.TourApiClient;
 import backend.yourtrip.global.tour.config.TourApiConfig;
@@ -68,6 +69,17 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  */
 final class PipelineBenchmarkWiring {
 
+    /**
+     * 네이버 호출 속도 제한 — 운영 설정({@code naver.rate-limit})과 같은 값이다(이슈 #185).
+     *
+     * <p>모델·재시도처럼 측정 사이에 같아야 하는 값이라 {@link Limits}가 아니라 여기 고정한다
+     * ({@link #llmProperties}처럼 운영값을 옮겨 적으므로 yml 을 바꾸면 함께 바꾼다). 빼면 하네스가
+     * 운영과 다른 파이프라인을 잰다 — 단일 요청에서 제한기 비용은 후보 공급 +0.13초다(STEP-4-5).
+     */
+    private static final double NAVER_PERMITS_PER_SECOND = 25;
+    private static final int NAVER_BURST = 15;
+    private static final long NAVER_MAX_WAIT_MS = 2_000;
+
     private PipelineBenchmarkWiring() {
     }
 
@@ -95,8 +107,10 @@ final class PipelineBenchmarkWiring {
                 properties.timeoutMs()));
 
         PromptLoader promptLoader = new PromptLoader();
+        // 제한기 대기 지표(naver.local.throttle.wait)도 하네스 레지스트리에 함께 쌓이게 같은 registry 를 넘긴다.
         NaverLocalClient naverClient = new NaverLocalClient(NaverConfig.buildNaverWebClient(
-            "https://naverapihub.apigw.ntruss.com", keys.naverId(), keys.naverSecret()));
+                "https://naverapihub.apigw.ntruss.com", keys.naverId(), keys.naverSecret()),
+            new NaverRateLimiter(NAVER_PERMITS_PER_SECOND, NAVER_BURST, NAVER_MAX_WAIT_MS), registry);
         TourApiClient tourClient = new TourApiClient(TourApiConfig.buildTourApiWebClient(
             "https://apis.data.go.kr/B551011/KorService2"), keys.tour());
 
