@@ -102,7 +102,7 @@ class NaverQueryAuditProbeTest {
 
     /** 운영 예산·LLM 상한. Planner 만 부르므로 슬롯 수는 의미가 없다. */
     private static final PipelineBenchmarkWiring.Limits LIMITS =
-        new PipelineBenchmarkWiring.Limits(30_000, 20_000, 4);
+        new PipelineBenchmarkWiring.Limits(35_000, 20_000, 4);
 
     /** HTTP 호출 1회. */
     private record Call(String query, String outcome, int raw) {}

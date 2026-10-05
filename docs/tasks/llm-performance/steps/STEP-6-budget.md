@@ -193,3 +193,20 @@ OpenAI 비스트리밍 응답은 생성이 끝날 때까지 바이트를 보내�
 - 운영에서 동시 요청이 낮은데도 `ai.curation.slot{result=fallback}`이 꾸준히 보이면 — 단일 요청 꼬리가 예산에 걸린다는 뜻이다. 예산을 다시 본다
 - `ai.course.request.duration` 최대가 예산에 자주 붙어 있으면 — 몰림이 흔하다는 뜻이다. 예산을 늘리기보다 입장 제한을 먼저 검토한다
 - 서블릿 비동기로 전환하면 — 비동기 요청 타임아웃(설정하지 않으면 Tomcat 기본 30초)을 예산보다 크게 맞춰야 한다
+
+## 4. 반영
+
+| 커밋 | 내용 |
+|---|---|
+| `6a921c8` | `scripts/loadtest/late-calls.py` — 마감 뒤에 끝난 Curator 호출을 세고 예산별 효과를 역산한다. `--budget`으로 측정 때의 예산을 받는다 |
+| `928fce4` | `ai.course.budget-ms` 30 → **35초**와 근거·불변식 주석, `AiCourseMetrics.PIPELINE_LATENCY_MAX` 35초(+ 상한 테스트 입력 36초), `AiCourseProperties` `@param`, Swagger 최대 소요·504 설명 |
+| `1500ea7` | `timeout-ms`를 "호출 1건의 상한"으로 적은 주석 정정(yml 2곳 · `AiLlmProperties` · `PlannerAgent` · `AiCourseProperties`), 벤치마크 3곳의 운영 예산 35초 |
+| `edf8ca5` | 로드맵 README "시간 제한 불변식" 절(정본), `terraform/prod/README.md` 경고 |
+| 이 커밋 | 로드맵 진행 상태·3단계·입장 제한 근거 갱신, 낡은 주석 2곳(`maxConcurrentCalls` javadoc, 환각률 벤치마크의 "운영값과 같다") |
+
+전체 테스트 976건 통과(skip 1). 벤치마크는 컴파일만 확인했다(일반 빌드 제외 대상).
+
+### 범위 밖으로 넘긴 것
+
+- **배포 연결 정리 시간이 예산보다 짧다** — `deregistration_delay` 30초 < 예산 + 후처리 35.3초. 배포 중 진행되던 AI 요청이 잘릴 수 있다. ALB 가 draining 이 끝난 뒤 연결을 실제로 끊는지부터 확인한다 → [#190](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/190)
+- **`CallerRunsPolicy` 경로에서 예산이 걸리지 않는다**(1절 발견 ③) — ROADMAP "별도. AI 동시 입장 제한"의 근거로 넘겼다

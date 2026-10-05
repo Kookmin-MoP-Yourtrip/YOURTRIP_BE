@@ -59,9 +59,9 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * <p>{@link AiPipelineHallucinationBenchmarkTest}는 예산을 180초, LLM 상한을 60초로 늘려 표본이
  * 잘리지 않게 한다. 그쪽이 재는 것이 장소의 실존이라 잘린 요청이 분모에서 빠지면 안 되기 때문이다.
  *
- * <p><b>여기서는 거꾸로 운영값(30초·20초)을 쓴다.</b> 4단계 전후로 비교할 대상이 "사용자가 실제로
+ * <p><b>여기서는 거꾸로 운영값(35초·20초)을 쓴다.</b> 4단계 전후로 비교할 대상이 "사용자가 실제로
  * 받는 결과"이고, 슬롯 대기 포기({@code permit.wait{result=timeout}})·Planner 기본 플랜 대체·
- * Curator 폴백은 운영값에서만 일어난다. 대가로 30초를 넘는 꼬리는 "약 30초"로 눌려 보이므로,
+ * Curator 폴백은 운영값에서만 일어난다. 대가로 예산을 넘는 꼬리는 "약 35초"로 눌려 보이므로,
  * 마감에 닿은 요청 수를 따로 센다.
  *
  * <h2>요청별 귀속 — 증분을 슬롯이 빈 뒤에 뜬다</h2>
@@ -109,9 +109,12 @@ class AiCourseLatencyBaselineTest {
      * 예산·LLM 상한은 운영값으로 고정하고, <b>동시 호출 수만 환경변수로 바꾼다</b>(4단계, #108).
      * 코드를 고쳐 바꾸지 않는 이유 — 기준선과 개선 측정이 같은 커밋의 같은 하네스에서 나와야
      * 전후 차이를 그 한 값에 귀속할 수 있다. 산출물 파일명에 값이 실려 섞이지 않는다.
+     *
+     * <p>예산은 운영값을 따라 35초다(#189). 2·4단계 기준선은 30초에서 쟀으므로, 그 수치와 나란히
+     * 놓을 때는 예산 조건이 다르다는 점을 함께 적는다.
      */
     private static final PipelineBenchmarkWiring.Limits LIMITS =
-        new PipelineBenchmarkWiring.Limits(30_000, 20_000, (int) setting(
+        new PipelineBenchmarkWiring.Limits(35_000, 20_000, (int) setting(
             "latency.baseline.maxConcurrentCalls", "LATENCY_BASELINE_MAX_CONCURRENT_CALLS",
             PRODUCTION_MAX_CONCURRENT_CALLS));
 

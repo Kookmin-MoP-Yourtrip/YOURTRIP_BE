@@ -94,13 +94,13 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * <p>1차 지표인 지어냄률은 이 문제를 타지 않는다. 판정자가 답하는 질문이 "카카오에 있는가"가
  * 아니라 <b>"그 이름이 그 지역에 실존하는가"</b>이기 때문이다.
  *
- * <h2>예산을 운영값(30초)이 아니라 180초로 둔다</h2>
+ * <h2>예산을 운영값(35초)이 아니라 180초로 둔다</h2>
  *
- * <p>병합 후 실측 최대 지연이 28.0초로 운영 예산 30초에 붙어 있어(STEP-8 판정 2), 운영값으로
+ * <p>병합 후 실측 최대 지연이 28.0초로 당시 운영 예산 30초에 붙어 있었고(STEP-8 판정 2), 운영값으로
  * 재면 일부 요청이 504로 잘리고 <b>그 요청의 장소가 환각률 분모에서 통째로 빠진다.</b> 표본이
  * 사라지는 방향의 오염이라 값이 어느 쪽으로 튈지도 알 수 없다.
  *
- * <p>대신 요청별 소요 시간을 CSV 에 남겨 <b>"운영 예산 30초였다면 몇 건이 잘렸을까"를 사후
+ * <p>대신 요청별 소요 시간을 CSV 에 남겨 <b>"운영 예산이었다면 몇 건이 잘렸을까"를 사후
  * 역산</b>한다. 한 번의 실행으로 환각률(오염 없음)과 지연 분포(11-2 · {@code ai.course.budget-ms}
  * 재검토의 근거)를 함께 얻는다.
  *
@@ -148,11 +148,14 @@ class AiPipelineHallucinationBenchmarkTest {
      */
     private static final int LLM_TIMEOUT_MS = 60_000;
 
-    /** 운영값과 같다. 환각률은 동시 호출 수의 영향을 받지 않는다. */
+    /**
+     * 측정 당시 운영값 2를 유지한다(지금 운영값은 5, #184). 환각률은 동시 호출 수의 영향을 받지 않아
+     * 과거 측정과 비교하는 데 지장이 없고, 슬롯이 좁을수록 요청 간 간섭도 적다.
+     */
     private static final int MAX_CONCURRENT_CALLS = 2;
 
-    /** 역산 기준이 되는 운영 예산({@code ai.course.budget-ms} 기본값). */
-    private static final int PRODUCTION_BUDGET_MS = 30_000;
+    /** 역산 기준이 되는 운영 예산({@code ai.course.budget-ms}). 30초에서 35초로 늘었다(#189). */
+    private static final int PRODUCTION_BUDGET_MS = 35_000;
 
     /** 연속 이만큼 실패하면 키·쿼터 문제로 보고 멈춘다. 환각률 하네스가 세운 방침이다. */
     private static final int ABORT_AFTER_CONSECUTIVE_FAILURES = 3;

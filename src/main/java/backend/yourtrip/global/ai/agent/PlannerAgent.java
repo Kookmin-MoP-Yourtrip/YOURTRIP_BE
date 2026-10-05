@@ -98,9 +98,9 @@ public class PlannerAgent {
     /**
      * 호출을 던지고 <b>남은 예산까지만</b> 기다린다.
      *
-     * <p>단일 호출인데도 비동기로 던지는 이유는 {@code llm.timeout-ms}(호출 1건의 상한)와
-     * 요청 전체 예산이 다른 값이기 때문이다. 20초짜리 호출 상한만으로는 "Planner에서 이미
-     * 예산의 절반을 썼다"를 표현할 수 없다.
+     * <p>단일 호출인데도 비동기로 던지는 이유는 {@code llm.timeout-ms}(슬롯 대기·HTTP 시도 1회 각각의
+     * 상한)와 요청 전체 예산이 다른 값이기 때문이다. 재시도가 곱해지면 호출 1건은 20초를 훌쩍 넘을 수
+     * 있고, 그 상한만으로는 "Planner에서 이미 예산의 절반을 썼다"를 표현할 수도 없다.
      */
     private PlannerResponse await(LlmCall<PlannerResponse> call, CourseDeadline deadline) {
         CompletableFuture<PlannerResponse> future = llmClient.generateAsync(call, aiAgentExecutor);
