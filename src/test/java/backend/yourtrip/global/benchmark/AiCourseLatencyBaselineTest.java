@@ -100,10 +100,10 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 class AiCourseLatencyBaselineTest {
 
     /**
-     * 운영 설정({@code application.yml})의 동시 호출 수. 기준선(2단계)은 당시 운영값 2로 쟀다 — 2단계를
+     * 운영 설정({@code application.yml})의 동시 호출 수(#184 에서 4 → 5). 기준선(2단계)은 당시 운영값 2로 쟀다 — 2단계를
      * 다시 재현하려면 {@code LATENCY_BASELINE_MAX_CONCURRENT_CALLS=2}를 준다.
      */
-    private static final int PRODUCTION_MAX_CONCURRENT_CALLS = 4;
+    private static final int PRODUCTION_MAX_CONCURRENT_CALLS = 5;
 
     /**
      * 예산·LLM 상한은 운영값으로 고정하고, <b>동시 호출 수만 환경변수로 바꾼다</b>(4단계, #108).
