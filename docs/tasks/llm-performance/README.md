@@ -12,11 +12,11 @@
 | 1 | 슬롯 대기 지표 추가 | 계측 | ✅ 구현·E2E 완료, PR 대기 | [#173](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/173) · [STEP-1](steps/STEP-1-permit-wait.md) |
 | 2 | 기준선 측정 | 측정 | ✅ 단일 p95 24.1초·대기 매회 5~8초, 동시 3명 폴백 42% | [#175](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/175) · [STEP-2](steps/STEP-2-baseline.md) (#108 개선 전) |
 | 3 | 마감 뒤 남는 호출 정리 | 안정성 | ⏸ 조사 완료, 구현은 4단계 측정 뒤 판단 | [#176](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/176) · [STEP-3](steps/STEP-3-late-calls.md) |
-| 4 | `max-concurrent-calls` 조정 | 성능 | ✅ **4 확정** — 단일 p95 24.1 → 18.6초, 동시 3명 폴백 42 → 0%(4-1 풀 정렬 뒤). 8(로컬)은 동시 5명 폴백 0%, 5 이상은 출력 상한 조정 뒤 · [STEP-4](steps/STEP-4-concurrent-calls.md) | [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108) |
+| 4 | `max-concurrent-calls` 조정 | 성능 | ✅ **5 확정**(2026-10-05, 4-4) — 4 → 5 로 동시 5명 폴백 32.8 → 11.1%, 네이버 실패 0%(4-5 제한기 전제). 처음 4 확정은 단일 p95 24.1 → 18.6초, 동시 3명 폴백 42 → 0%(4-1 풀 정렬 뒤) · [STEP-4](steps/STEP-4-concurrent-calls.md) | [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108) |
 | 4-1 | `aiAgentExecutor`를 세마포어보다 넉넉하게 | 성능 | ✅ 풀 = 슬롯 × 4, 동시 5명 큐 11 → 0 · 대기가 세마포어로 이동 | [#177](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/177) · [STEP-4-1](steps/STEP-4-1-executor-sizing.md) |
 | 4-2 | 네이버 지역검색 호출 줄이기 (429) | 성능·품질 | ✅ 질의 감사 → 수식어 적용 슬롯 규칙(C): 시더 호출 요청당 45 → 28회, 네이버 실패율 동시 3·5명 23~29 → 4.0%(10/252)·3.3%(14/427), 8명 51.6 → 10.9%(72/660). + 5건 조건: 시더 호출 약 25회, 실패율 3명 8.6%(19/222)·5명 0.5%(2/381). 재시도는 보류(재검토 조건 기록) | [#179](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/179) · [STEP-4-2](steps/STEP-4-2-naver-queries.md) |
 | 4-3 | Curator 출력 상한 낮추기 | 성능 | ✅ 4,096 → 2,048: 보수적 서버당 상한 4.7 → 약 6.1. 출력 최대 1,540(누적 596건 기준 1,490)이라 1,500 은 잘림. 같은 날 전후 절단 0건. 시도 단위 절단 지표 `ai.llm.truncated` 추가 | [#182](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/182) · [STEP-4-3](steps/STEP-4-3-curator-output-cap.md) |
-| 4-4 | 슬롯 5~6 상향 | 성능 | ⏸ 측정 완료·값 보류 — 동시 5명 폴백 35.6 → 15.1(5) → 8.1%(6)이지만 네이버 실패 1.0 → 14.4%, 식사·카페 unfilled 0 → 25. 좁은 슬롯이 네이버 버스트를 우연히 막고 있었다 → 네이버 버스트 제어(#185) 뒤 4·5 재측정 | [#184](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/184) · [STEP-4-4](steps/STEP-4-4-slot-raise.md) · [#185](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/185) |
+| 4-4 | 슬롯 5~6 상향 | 성능 | ✅ **5 확정** — 1차(제한기 없음): 폴백 35.6 → 15.1(5) → 8.1%(6)이지만 네이버 실패 1.0 → 14.4%, 식사·카페 unfilled 0 → 25(좁은 슬롯이 네이버 버스트를 우연히 막고 있었다). 2차(#185 제한기 뒤, 같은 날): 동시 5명 폴백 32.8 → **11.1** → 13.0%, 네이버 실패 모두 0%. 6은 이득 없이 TPM 여유만 빠듯(12 / 12.2). 동시 8명은 모든 슬롯에서 54% 이상 | [#184](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/184) · [STEP-4-4](steps/STEP-4-4-slot-raise.md) · [#185](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/185) |
 | 4-5 | 네이버 호출 속도 제한 | 안정성 | ✅ **초당 25 · 버스트 15** 서버 단위 제한기(GCRA). 슬롯 5 동시 5명 네이버 실패 33.7 → 0%, 빈 슬롯 55 → 0, 504 4 → 0(TourAPI 차단 조건). 혼자 쓸 때 비용 +0.13초. 실제 조건에서 40은 후보 공급 2.8 → 1.3초지만 폴백 11.1 → 24.4%·429 1건이라 25 확정 | [#185](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/185) · [STEP-4-5](steps/STEP-4-5-naver-rate-limiter.md) |
 | 5 | Planner 단계 상한 | 안정성 | 데이터 확인 후 결정 | 이슈 없음 |
 | 6 | 30초 예산 재조정 + 시간 제한 관계 문서화 | 정리 | ⬜ | 이슈 없음 |
@@ -145,6 +145,8 @@ LLM이 먼저 포화된다(서버당 제대로 처리 가능한 양 ≈ 분당 5
 - 볼 것: Curator 단계 지연, 슬롯 대기, 429 빈도, 요청 전체 p95
 - 정한 값과 근거(티어 ÷ 인스턴스 수)를 `application.yml` 주석에 남긴다
 - **확정(2026-10-03): 4.** 공식 문서상 출력 상한도 TPM 에 잡혀 보수적 기준(서버당 4.8)을 따른다. 운영은 2대로 요청이 나뉘어 동시 5~6명까지 폴백 없이 버틸 것으로 본다(운영 실측은 아님). 6으로 올리는 순서: 네이버 429 대응(4-2 ✅) → Curator 출력 상한 조정·잘림 측정(4-3 ✅) → 6 재측정 *(4-4: 재측정에서 슬롯을 넓히면 네이버 순간 몰림이 되살아나 식사·카페가 빈다는 것이 드러났다. 네이버 버스트 제어(#185)를 끼워 넣는다)*
+- **재확정(2026-10-05): 5.** 네이버 429 대응(4-2) → Curator 출력 상한 2,048(4-3) → 네이버 속도 제한기 초당 25(4-5) 순서로 전제를 갖춘 뒤 같은 날 4·5·6을 비교했다. 5가 동시 5명 폴백 32.8 → 11.1% 로 가장 좋았고, 6은 13.0% 로 이득이 없으면서 계정 전체 동시 12 / 보수적 상한 12.2 로 빠듯했다. 운영 2대 기준 계정 전체 10 / 12.2 다 *([STEP-4-4](steps/STEP-4-4-slot-raise.md) 6절)*
+- **동시 8명은 슬롯으로 풀리지 않는다** — 4·5·6 모두 폴백 54% 이상이다. 3단계(#176)와 AI 동시 입장 제한의 판단 근거로 넘긴다
 - 1단계 E2E 기준 기대 효과: Curator 단계 약 5초 단축(요청 전체의 약 1/4) — 2단계 분포로 확정한다
 
 ### 5. Planner 단계 상한 (조건부)
