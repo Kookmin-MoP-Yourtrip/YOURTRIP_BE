@@ -32,7 +32,10 @@ import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
+import backend.yourtrip.global.ai.AiCourseAdmission;
+import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.candidate.CandidateSourceType;
+import backend.yourtrip.global.ai.config.AiAdmissionProperties;
 import backend.yourtrip.global.ai.grounding.GroundedPlace;
 import backend.yourtrip.global.ai.pipeline.AiCourseDay;
 import backend.yourtrip.global.ai.pipeline.AiCourseDraft;
@@ -43,10 +46,12 @@ import backend.yourtrip.global.ai.route.SlotType;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService.CourseSignature;
 import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.RetryLaterException;
 import backend.yourtrip.global.exception.errorCode.AiCourseErrorCode;
 import backend.yourtrip.global.exception.errorCode.CloudFrontErrorCode;
 import backend.yourtrip.global.exception.errorCode.MyCourseErrorCode;
 import backend.yourtrip.global.s3.service.S3Service;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -99,6 +104,11 @@ class MyCourseServiceImplTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    // 목이 아니라 실물이다 — admit 이 작업을 실제로 실행해야 파이프라인 목까지 호출이 닿는다.
+    // 상한 1 이라 "자리를 쥔 채 다음 요청"을 작업 안의 재진입으로 만들 수 있다.
+    private final AiCourseAdmission aiCourseAdmission = new AiCourseAdmission(
+        new AiAdmissionProperties(1, 5), new AiCourseMetrics(new SimpleMeterRegistry()));
+
     private MyCourseServiceImpl myCourseService;
 
     private static final Long OWNER_ID = 10L;
@@ -118,7 +128,7 @@ class MyCourseServiceImplTest {
         // 인자 순서는 MyCourseServiceImpl의 필드 선언 순서와 같아야 한다 — 위치 인자라
         // 자리가 밀리면 엉뚱한 목이 주입된 채 조용히 통과할 수 있다.
         myCourseService = new MyCourseServiceImpl(
-            userService, s3Service, cloudFrontService, aiCoursePipeline,
+            userService, s3Service, cloudFrontService, aiCoursePipeline, aiCourseAdmission,
             travelCourseRepository, dayScheduleRepository, placeRepository,
             placeImageRepository, uploadCourseRepository,
             myCourseDetailReader, aiCoursePersister, eventPublisher
@@ -389,6 +399,27 @@ class MyCourseServiceImplTest {
             .extracting(e -> ((BusinessException) e).getErrorCode())
             .isEqualTo(AiCourseErrorCode.AI_GROUNDING_FAILED);
 
+        verify(aiCoursePersister, never()).save(any(), anyString(), any(), any());
+    }
+
+    @Test
+    @DisplayName("createAICourse - 입장 상한이 차 있으면 파이프라인을 시작하지 않고 AI_COURSE_BUSY 로 거절한다")
+    void createAiCourse_AdmissionFull_RejectsBeforePipeline() {
+        // given
+        AICourseCreateRequest request = new AICourseCreateRequest(
+            "경주", LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 2),
+            List.of(KeywordType.HEALING));
+        given(userService.getCurrentUserId()).willReturn(OWNER_ID);
+
+        // when & then — 다른 요청이 하나뿐인 자리를 쥔 동안 들어온다
+        aiCourseAdmission.admit(() -> {
+            assertThatThrownBy(() -> myCourseService.createAICourse(request))
+                .isInstanceOfSatisfying(RetryLaterException.class, e ->
+                    assertThat(e.getErrorCode()).isEqualTo(AiCourseErrorCode.AI_COURSE_BUSY));
+            return null;
+        });
+
+        verify(aiCoursePipeline, never()).generate(any(CourseBrief.class));
         verify(aiCoursePersister, never()).save(any(), anyString(), any(), any());
     }
 

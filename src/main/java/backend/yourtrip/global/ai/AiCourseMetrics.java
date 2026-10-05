@@ -283,6 +283,28 @@ public class AiCourseMetrics {
     public static final String REQUEST_DURATION = "ai.course.request.duration";
 
     /**
+     * <b>동시 입장 제한의 판정 결과</b> (#192). {@code result}는 {@link #ADMISSION_ADMITTED}·
+     * {@link #ADMISSION_REJECTED} 둘이 전체를 나눠 분모를 따로 둘 필요가 없다.
+     *
+     * <p>거절은 4xx라 {@code GlobalExceptionHandler}가 DEBUG로만 남긴다. 그래서 <b>"얼마나 돌려보냈는가"는
+     * 이 지표가 유일한 신호</b>다 — 거절률이 평소에도 0이 아니면 상한이 안전밸브가 아니라 상시 병목이
+     * 됐다는 뜻이고, 슬롯(용량)을 늘릴 근거가 된다.
+     */
+    public static final String ADMISSION = "ai.course.admission";
+
+    /** 자리를 받아 파이프라인을 시작했다. */
+    public static final String ADMISSION_ADMITTED = "admitted";
+
+    /** 상한이 차서 파이프라인을 시작하지 않고 429로 돌려보냈다. */
+    public static final String ADMISSION_REJECTED = "rejected";
+
+    /**
+     * 지금 자리를 쥔 요청 수. {@link #LLM_PERMITS_IN_USE}와 나란히 보면 "요청은 상한 아래인데 슬롯이
+     * 포화"(일수가 긴 요청, #178)와 "요청이 상한에 붙어 있다"를 가를 수 있다.
+     */
+    public static final String ADMISSION_IN_USE = "ai.course.admission.in_use";
+
+    /**
      * <b>최종 코스에 실린 장소가 어디서 왔는가</b> (ROADMAP 7-5, 5-8에서 이관).
      * 5-8이 이걸 이관한 이유는 분모가 거기 없기 때문이다 — "채택됐다"는 배치가 확정된 뒤에만
      * 알 수 있고, 그 시점은 7단계에서 처음 생긴다.
@@ -414,6 +436,9 @@ public class AiCourseMetrics {
             pipelineTimer(stage);
         }
         requestTimer();
+        for (String result : new String[]{ADMISSION_ADMITTED, ADMISSION_REJECTED}) {
+            admissionCounter(result);
+        }
         for (CandidateSourceType source : CandidateSourceType.values()) {
             for (boolean fromModifier : new boolean[]{true, false}) {
                 adoptedCounter(source, fromModifier);
@@ -647,6 +672,26 @@ public class AiCourseMetrics {
      */
     public void requestDuration(long durationNanos) {
         requestTimer().record(durationNanos, TimeUnit.NANOSECONDS);
+    }
+
+    /** 입장 판정 하나를 기록한다 (#192). */
+    public void admission(String result) {
+        admissionCounter(result).increment();
+    }
+
+    /**
+     * 입장 게이트의 현재 점유를 게이지로 연결한다 (#192). {@link #bindLlmPermitGauges}와 같은
+     * 이유로 게이트를 쥔 쪽({@code AiCourseAdmission})이 생성 시점에 부른다.
+     */
+    public void bindAdmissionGauge(Semaphore gate, int maxPermits) {
+        Gauge.builder(ADMISSION_IN_USE, gate, g -> maxPermits - g.availablePermits())
+            .register(registry);
+    }
+
+    private Counter admissionCounter(String result) {
+        return Counter.builder(ADMISSION)
+            .tag("result", result)
+            .register(registry);
     }
 
     /**

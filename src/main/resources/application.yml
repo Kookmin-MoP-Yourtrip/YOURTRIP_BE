@@ -198,6 +198,19 @@ ai:
     # 예산이 끝나도 버려진 LLM 호출은 취소되지 않고 끝까지 돌아 슬롯을 쥔다(STEP-3).
     budget-ms: 35000
 
+    # 서버 한 대의 AI 코스 생성 동시 입장 상한(AiAdmissionProperties, #192,
+    # docs/tasks/llm-performance/steps/STEP-admission-limit.md). 넘치면 기다리지 않고 바로 429 + Retry-After 다.
+    admission:
+      # 5: 슬롯 공급(35초 × llm.max-concurrent-calls 5 = 175 슬롯·초)을 요청 하나의 사용량(3일 일정 기준 LLM 4회 × 약
+      # 9초 = 36 슬롯·초)으로 나눈 이론 한계 4~5 와, 동시 5명 마감 20% · 8명 50% 실측이 가리키는 값이다.
+      # llm.max-concurrent-calls 를 바꾸면 이 값도 함께 본다.
+      # - 기다리지 않는 이유: 대기는 CourseDeadline 앞에서 일어나 응답 최대 시간이 "대기 + 예산"이 되고, 포화 중에는
+      #   요청 하나가 자리를 20~35초 쥐어 몇 초 기다려도 자리가 잘 나지 않는다.
+      # - 요청 수 기준이라 일수가 긴 요청 하나가 LLM 작업을 많이 만드는 경우는 막지 못한다(일수 상한은 #178).
+      max-concurrent-requests: 5
+      # 5: 포화 상태에서 자리가 하나 비는 평균 간격(요청 p50 약 25초 / 상한 5)이다. 클라이언트에게 주는 힌트일 뿐이다.
+      retry-after-seconds: 5
+
 # AI 코스 생성의 LLM 호출 설정 (AiLlmProperties). AI 코스 생성 API(POST /api/my-courses/ai)의 Planner·Curator 가 쓴다.
 llm:
   # 비우면 OpenAiLlmClient 빈이 뜨지 않는다. 어댑터를 통째로 끄는 스위치다.

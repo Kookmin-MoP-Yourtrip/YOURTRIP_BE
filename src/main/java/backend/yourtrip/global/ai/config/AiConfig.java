@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Configuration;
  * 이 규칙은 {@code LlmPortIsolationTest}가 테스트로 강제한다.
  */
 @Configuration
-@EnableConfigurationProperties({AiLlmProperties.class, AiCourseProperties.class})
+@EnableConfigurationProperties({AiLlmProperties.class, AiCourseProperties.class,
+    AiAdmissionProperties.class})
 public class AiConfig {
 }
