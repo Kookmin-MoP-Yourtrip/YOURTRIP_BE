@@ -84,9 +84,9 @@ class AiCourseMetricsTest {
         }
 
         @Test
-        @DisplayName("상한이 요청 예산(30초)이라 그 위는 +Inf 로 모인다 — 그것 자체가 예산 초과라는 답이다")
+        @DisplayName("상한이 요청 예산(35초)이라 그 위는 +Inf 로 모인다 — 그것 자체가 예산 초과라는 답이다")
         void upperBoundIsTheRequestBudget() {
-            metrics.pipelineStage(PipelineStage.CURATOR, TimeUnit.SECONDS.toNanos(31));
+            metrics.pipelineStage(PipelineStage.CURATOR, TimeUnit.SECONDS.toNanos(36));
 
             String scrape = registry.scrape();
             assertThat(scrape).contains("ai_course_pipeline_duration_seconds_bucket");

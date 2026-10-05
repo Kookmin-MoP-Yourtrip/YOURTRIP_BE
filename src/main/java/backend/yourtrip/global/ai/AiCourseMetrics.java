@@ -344,11 +344,14 @@ public class AiCourseMetrics {
     private static final Duration LATENCY_MIN = Duration.ofMillis(1);
 
     /**
-     * 파이프라인 단계 지연의 상한. <b>요청 예산({@code ai.course.budget-ms}, 기본 30초)과 같은 값이다</b> —
+     * 파이프라인 단계 지연의 상한. <b>요청 예산({@code ai.course.budget-ms}, 35초)과 같은 값이다</b> —
      * 모든 스테이지가 그 예산 안에서 기다림을 자르므로 이보다 오래 걸리는 단계는 원리적으로 없고,
      * {@code +Inf} 버킷에 값이 잡힌다면 그 자체가 "예산을 넘겼다"는 답이다.
+     *
+     * <p><b>예산을 바꾸면 이 값도 함께 바꾼다</b>(#189). 예산만 늘리고 두면 옛 상한을 넘는 정상 요청이
+     * 전부 {@code +Inf}에 뭉쳐 분포를 읽을 수 없다.
      */
-    private static final Duration PIPELINE_LATENCY_MAX = Duration.ofSeconds(30);
+    private static final Duration PIPELINE_LATENCY_MAX = Duration.ofSeconds(35);
 
     /**
      * LLM 호출 1건의 상한. HTTP 시도 1회의 상한({@code llm.timeout-ms}, 20초) 위에 재시도·백오프가

@@ -11,10 +11,10 @@ import org.springframework.validation.annotation.Validated;
  * 그쪽은 <b>호출 1건</b>의 상한이고 이쪽은 <b>요청 전체</b>의 상한이다. 같은 prefix 아래 두면
  * 둘을 같은 종류의 값으로 착각한 채 튜닝하게 되는데, 실제로는 후자가 전자보다 항상 커야 한다.
  *
- * @param budgetMs {@code CourseDeadline}에 들어가는 값. 기본값 30초는 설계 지연 예산의
- *                 p95 상단(17~24초) 위에 여유를 둔 것이다 — <b>이 값이 p95보다 낮으면 정상
- *                 요청이 504가 되고, 너무 높으면 데드라인이 없는 것과 같아진다.</b>
- *                 설정으로 뺀 것은 8단계 E2E 실측 뒤 조정하기 위해서다
+ * @param budgetMs {@code CourseDeadline}에 들어가는 값(운영 35초, #189). <b>낮추면 응답은 빨라지지만
+ *                 Curator 폴백이 늘고, 높이면 폴백은 줄지만 마감에 걸린 사용자가 오래 기다린다</b> —
+ *                 예산을 넘긴 요청은 실패가 아니라 품질이 떨어진 200 으로 나가기 때문이다.
+ *                 값의 근거와 불변식(예산 + 후처리 &lt; 클라이언트·ALB 60초)은 {@code application.yml} 주석에 있다
  */
 @Validated
 @ConfigurationProperties(prefix = "ai.course")

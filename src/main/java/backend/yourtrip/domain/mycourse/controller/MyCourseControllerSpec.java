@@ -1197,7 +1197,7 @@ public interface MyCourseControllerSpec {
         - 생성된 나의 코스 ID가 반환됩니다.
         - 모든 장소는 실존 검증을 거쳐 실좌표(latitude, longitude)와 함께 저장됩니다.
             다만 placeUrl은 검증 결과에 따라 null로 저장될 수 있습니다. (수기로 장소 등록한 것이랑 똑같이 처리하면 될듯)
-        - AI가 코스를 생성하는데 약간의 시간이 소요됩니다. (최대 30초)
+        - AI가 코스를 생성하는데 약간의 시간이 소요됩니다. (최대 약 35초)
         ### 제약조건
         - 요청 값
             - 여행지(location): 필수 입력
@@ -1206,7 +1206,7 @@ public interface MyCourseControllerSpec {
         ### ⚠ 예외상황
         - `INVALID_REQUEST_FIELD(400)`: 필수 필드 값 누락, 등록되지 않는 태그 값, 날짜 범위 오류 등
         - `AI_GROUNDING_FAILED(503)`: 실존이 검증된 장소를 하나도 확보하지 못했을 때 (재시도 가능)
-        - `AI_COURSE_TIMEOUT(504)`: 시간 예산(30초) 안에 코스를 완성하지 못했을 때 (재시도 가능)
+        - `AI_COURSE_TIMEOUT(504)`: 시간 예산(35초) 안에 코스를 완성하지 못했을 때 (재시도 가능)
         """
     )
     AICourseCreateResponse createAICourse(AICourseCreateRequest request);
