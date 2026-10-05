@@ -5,10 +5,15 @@ import backend.yourtrip.global.naver.dto.NaverLocalResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.time.Duration;
 import java.util.List;
 import java.util.Set;
-import lombok.RequiredArgsConstructor;
+import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientException;
@@ -29,9 +34,11 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
  *
  * <p><b>예외를 던지지 않는다.</b> 실패는 {@link NaverLocalResult.Failed}로 돌려준다 — 이유는
  * {@link NaverLocalResult}의 설명 참고.
+ *
+ * <p><b>모든 호출이 {@link NaverRateLimiter}를 거친다</b>(이슈 #185). 초당 한도는 이 API 의 성질이라
+ * 호출부(시더·재질의)가 아니라 여기서 지킨다 — 그래야 새 호출 경로가 생겨도 한도를 빠져나가지 못한다.
  */
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class NaverLocalClient {
 
@@ -60,7 +67,50 @@ public class NaverLocalClient {
     /** 오류 본문 해석 전용. 성공 응답은 WebClient 디코더가 읽으므로 여기서는 쓰지 않는다. */
     private static final ObjectMapper ERROR_BODY_READER = new ObjectMapper();
 
+    /**
+     * <b>제한기 앞에서 기다린 시간</b> (이슈 #185). {@code result=rejected}는 대기 상한을 넘겨 HTTP 를
+     * 보내지 않고 포기한 호출이다. 대기 분포가 곧 "버스트 제어가 후보 공급을 얼마나 늘렸는가"의 답이다.
+     */
+    public static final String THROTTLE_WAIT = "naver.local.throttle.wait";
+
+    static final String THROTTLE_ACQUIRED = "acquired";
+    static final String THROTTLE_REJECTED = "rejected";
+
     private final WebClient naverWebClient;
+    private final NaverRateLimiter rateLimiter;
+    private final Timer acquiredWait;
+    private final Timer rejectedWait;
+
+    /**
+     * 생성자가 둘이라 주입할 쪽을 명시한다. 표시하지 않으면 Spring 이 기본 생성자를 찾다가 컨텍스트가
+     * 깨진다({@code LlmRetryExecutor}가 겪은 전례).
+     */
+    @Autowired
+    public NaverLocalClient(WebClient naverWebClient, NaverRateLimiter naverRateLimiter,
+        MeterRegistry meterRegistry) {
+        this.naverWebClient = naverWebClient;
+        this.rateLimiter = naverRateLimiter;
+        // 0으로 미리 등록한다 — "거절 0건"과 "시계열 없음"을 갈라야 전후 비교가 된다.
+        this.acquiredWait = throttleTimer(meterRegistry, THROTTLE_ACQUIRED);
+        this.rejectedWait = throttleTimer(meterRegistry, THROTTLE_REJECTED);
+    }
+
+    /**
+     * 제한 없이 조립한다. Spring 컨텍스트 없이 클라이언트를 만드는 스텁 테스트·실호출 프로브용이다 —
+     * 그쪽은 호출을 순차로 보내 초당 한도에 닿지 않는다.
+     */
+    public NaverLocalClient(WebClient naverWebClient) {
+        this(naverWebClient, NaverRateLimiter.unlimited(), new SimpleMeterRegistry());
+    }
+
+    private static Timer throttleTimer(MeterRegistry registry, String result) {
+        return Timer.builder(THROTTLE_WAIT)
+            .tag("result", result)
+            .publishPercentileHistogram()
+            .minimumExpectedValue(Duration.ofMillis(1))
+            .maximumExpectedValue(Duration.ofSeconds(5))
+            .register(registry);
+    }
 
     /**
      * 지역검색 1회.
@@ -73,6 +123,10 @@ public class NaverLocalClient {
             return new NaverLocalResult.Empty();
         }
         int size = Math.min(Math.max(display, 1), MAX_DISPLAY);
+        NaverLocalResult throttled = awaitTurn(query);
+        if (throttled != null) {
+            return throttled;
+        }
         try {
             NaverLocalResponse response = naverWebClient.get()
                 .uri(uriBuilder -> uriBuilder
@@ -107,6 +161,32 @@ public class NaverLocalClient {
             // 200인데 본문이 스키마와 다른 경우(역직렬화 실패). 후보 공급이 죽어도 코스는 살아야 한다.
             log.warn("네이버 지역검색 응답 해석 실패: query={}, error={}", query, e.getMessage());
             return new NaverLocalResult.Failed(ApiFailureCause.MALFORMED, e.getMessage());
+        }
+    }
+
+    /**
+     * 제한기에서 차례를 기다린다. 차례를 얻으면 {@code null}, 못 얻으면 호출부가 그대로 돌려줄 실패다.
+     *
+     * <p>거절을 {@link ApiFailureCause#RATE_LIMITED}로 돌려주는 이유: 결과가 429 를 맞은 것과 같다 —
+     * 그 질의의 후보만 빠지고 나머지는 fail-open 으로 계속된다. 다른 점은 <b>네이버에 닿지 않았다</b>는
+     * 것뿐이라, 그 구분은 {@link #THROTTLE_WAIT}{@code {result=rejected}}가 맡는다.
+     */
+    private NaverLocalResult awaitTurn(String query) {
+        long startedAt = System.nanoTime();
+        try {
+            long waited = rateLimiter.acquire();
+            if (waited < 0) {
+                rejectedWait.record(System.nanoTime() - startedAt, TimeUnit.NANOSECONDS);
+                log.warn("네이버 지역검색 호출 속도 상한으로 포기: query={}", query);
+                return new NaverLocalResult.Failed(ApiFailureCause.RATE_LIMITED, "local throttle");
+            }
+            acquiredWait.record(waited, TimeUnit.NANOSECONDS);
+            return null;
+        } catch (InterruptedException e) {
+            // 요청 마감으로 끊긴 것이다. 플래그를 되살려 위쪽이 인터럽트를 알게 한다(#176 의 원칙).
+            Thread.currentThread().interrupt();
+            return new NaverLocalResult.Failed(ApiFailureCause.TRANSPORT_ERROR,
+                "interrupted while throttled");
         }
     }
 

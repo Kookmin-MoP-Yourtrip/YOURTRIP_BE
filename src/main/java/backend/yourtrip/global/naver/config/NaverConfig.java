@@ -1,5 +1,6 @@
 package backend.yourtrip.global.naver.config;
 
+import backend.yourtrip.global.naver.NaverRateLimiter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.ChannelOption;
 import java.time.Duration;
@@ -55,9 +56,24 @@ public class NaverConfig {
     @Value("${naver.client-secret:}")
     private String clientSecret;
 
+    @Value("${naver.rate-limit.permits-per-second}")
+    private double permitsPerSecond;
+
+    @Value("${naver.rate-limit.burst}")
+    private int burst;
+
+    @Value("${naver.rate-limit.max-wait-ms}")
+    private long maxWaitMs;
+
     @Bean
     public WebClient naverWebClient() {
         return buildNaverWebClient(naverBaseUrl, clientId, clientSecret);
+    }
+
+    /** 서버 단위 호출 속도 제한(이슈 #185). 값의 근거는 {@code application.yml}의 {@code naver.rate-limit} 주석. */
+    @Bean
+    public NaverRateLimiter naverRateLimiter() {
+        return new NaverRateLimiter(permitsPerSecond, burst, maxWaitMs);
     }
 
     /**
