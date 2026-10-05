@@ -30,6 +30,8 @@ nearest_rank = aggregate_ai.nearest_rank
 fast_api = aggregate_ai.fast_api
 
 BUDGET_MS = 35000
+# 예정 도착 시각과 실제 송신 시각의 허용 차이. 정상 run 은 수 ms 다.
+MAX_LAG_MS = 1000
 
 
 def read_tagged(path, tag):
@@ -123,6 +125,11 @@ def main():
     print(f"- 설정: 분당 {run['ratePerMin']}건 · {run['durationSec']}초 · 시드 {run['seed']} · 상한 {args.limit}"
           f" · 웜업 {args.warmup}초 제외")
     print(f"- 출발 지연(예정 대비): 최대 {max(lag):.0f}ms · 최소 {min(lag):.0f}ms")
+    # 도착 일정이 지켜지지 않았으면 이 측정은 포아송 도착을 잰 것이 아니다. 실제로 측정 도중 PC 가
+    # 절전에 들어가 시계가 수천 초 튀고 토큰이 만료돼 전부 403 이 난 run 이 있었다(STEP-arrival-rate 4절).
+    if max(abs(x) for x in lag) > MAX_LAG_MS:
+        print(f"!!! 무효: 출발 지연이 {MAX_LAG_MS}ms 를 넘었다 — 도착 일정이 깨졌다(절전·과부하 의심). 다시 잰다")
+        sys.exit(4)
     print(f"- 구간 도착 {len(window)}건 (실측 분당 {rate_obs:.2f}건) · 받아들임 {len(admitted)} · 거절 {len(rejected)}"
           f" · 기타 {others or '없음'}")
     print(f"- **거절률 {100 * reject_rate:.1f}%** · 얼랑 B 예측 {100 * erlang_b(args.limit, a_obs):.1f}%"
