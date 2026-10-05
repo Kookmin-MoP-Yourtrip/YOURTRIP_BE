@@ -51,7 +51,29 @@
 | LLM 슬롯 대기 / HTTP 시도 1회 | 각 20초 (`llm.timeout-ms`) | **호출 1건 상한이 아니다** — 전송 재시도 3회 × 의미 재시도 2회가 곱해져 이론상 약 144초 |
 | Tomcat 워커 (운영) | 32개 | 동기 컨트롤러라 AI 요청 하나가 워커 하나를 22~30초 점유 |
 
-불변식: **서버 예산 < 클라이언트 60초 = ALB 60초.** 예산을 늘릴 수 있는 현실적 상한은 50초 안팎이다(6단계에서 문서화).
+불변식: **서버 예산 < 클라이언트 60초 = ALB 60초.** 예산을 늘릴 수 있는 현실적 상한은 50초 안팎이다. 6단계에서 예산을 35초로 바꾸고, 배포 쪽 관계까지 포함해 아래 "시간 제한 불변식"으로 정리했다.
+
+### 시간 제한 불변식 (6단계, 현재 값 기준 정본)
+
+AI 코스 생성의 시간 제한은 **서로 다른 저장소·파일에 흩어져 있다**(BE yml, FE Java, terraform). 어느 하나를 바꿔도 다른 쪽에서 경고가 나지 않으므로, 값을 바꿀 때는 이 표를 먼저 본다. 근거와 측정은 [STEP-6](steps/STEP-6-budget.md).
+
+| 값 | 현재 | 정의 위치 |
+|---|---|---|
+| 서버 예산 | 35초 | `ai.course.budget-ms` (`application.yml`) |
+| 후처리 (예산 뒤 경로 계산·저장) | 실측 0.3초 미만 | – (STEP-6 측정 최대 282ms) |
+| 클라이언트 | 60초 (읽기 공백 기준) | FE `RetrofitClient` OkHttp `readTimeout` |
+| ALB 유휴 연결 | 60초 | `alb_idle_timeout` (`terraform/prod/variables.tf`) |
+| ALB 연결 정리 (배포·scale-in) | 30초 | `target_group_deregistration_delay` (같은 파일) |
+| Spring graceful shutdown | 30초 (미설정, 기본값) | `spring.lifecycle.timeout-per-shutdown-phase` |
+
+| 불변식 | 현재 | 깨지면 |
+|---|---|---|
+| **① 예산 + 후처리 < 클라이언트 = ALB 유휴 연결** | ✅ 35.3 < 60 = 60 | 서버는 코스를 만들어 저장했는데 사용자는 오류를 받는다. 다시 누르면 같은 코스가 두 개 생기고 OpenAI 비용도 두 번 든다. 클라이언트와 ALB 중 짧은 쪽이 실제 상한이라 둘은 같이 움직인다 |
+| **② 예산 + 후처리 ≤ ALB 연결 정리 ≤ graceful shutdown** | ❌ **35.3 > 30** ([#190](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/190)) | 배포 중 진행되던 AI 요청이 잘릴 수 있다. 실질 상한은 ALB 연결 정리다 — ALB 가 먼저 요청을 비운 뒤 인스턴스가 종료되므로, graceful shutdown 은 앱만 내려갈 때(`systemctl restart` 등)의 안전망이다 |
+
+- 예산을 올릴 수 있는 현실적 상한은 ①로 50초 안팎이다. ②는 연결 정리 시간을 같이 늘려야 하고, 그만큼 배포·scale-in 이 인스턴스당 길어진다
+- ALB 유휴 연결은 별도로 **Tomcat keep-alive(65초)보다 짧아야** 한다(`alb_idle_timeout` 설명) — ①을 위해 ALB 값을 올릴 때 이 제약도 함께 본다
+- 서블릿 비동기로 바꾸면 **비동기 요청 타임아웃**(설정하지 않으면 Tomcat 기본 30초)이 ①의 서버 쪽에 한 층 더 생긴다
 
 ### 병목 가설 — LLM 동시 호출 슬롯
 
