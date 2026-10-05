@@ -198,15 +198,17 @@ ai:
     # 예산이 끝나도 버려진 LLM 호출은 취소되지 않고 끝까지 돌아 슬롯을 쥔다(STEP-3).
     budget-ms: 35000
 
-# AI 코스 생성의 LLM 호출 설정 (AiLlmProperties).
-# 8단계 스위치 전까지 이 설정을 읽는 어댑터는 프로덕션 경로에서 호출되지 않는다 —
-# 지금은 테스트와 환각률 측정 하네스만 사용한다.
+# AI 코스 생성의 LLM 호출 설정 (AiLlmProperties). AI 코스 생성 API(POST /api/my-courses/ai)의 Planner·Curator 가 쓴다.
 llm:
   # 비우면 OpenAiLlmClient 빈이 뜨지 않는다. 어댑터를 통째로 끄는 스위치다.
   provider: openai
 
-  # 호출 1건의 상한. 설계 지연 예산에서 LLM 단일 호출은 3~10초를 잡았고, p95를 크게 넘는
-  # 호출은 기다려봐야 파이프라인 전체 데드라인(지연 예산)을 잠식할 뿐이다.
+  # 호출 1건의 상한이 아니다(#189, docs/tasks/llm-performance/steps/STEP-6-budget.md 1절). 같은 값이 세 곳에 각각 걸린다.
+  #   ① 슬롯(max-concurrent-calls) 대기  ② HTTP 연결  ③ HTTP 응답 읽기 공백(reactor-netty responseTimeout —
+  #   "다 받기까지"가 아니라 읽기 사이의 공백이다. 비스트리밍이라 사실상 "첫 바이트까지 20초"로 동작한다)
+  # 그 위에 전송 재시도 3회와 의미 재시도 2회가 곱해져, 호출 1건은 타임아웃만 나면 약 82초, 이론상 최악 약 144초까지
+  # 간다. 사용자 응답은 ai.course.budget-ms 가 막지만, 버려진 호출이 슬롯을 쥐는 시간은 이 값과 재시도가 정한다.
+  # 20초는 설계 지연 예산의 LLM 단일 호출(3~10초)을 크게 넘는 시도를 끊는 값이다.
   timeout-ms: 20000
 
   # 서버 한 대의 OpenAI 동시 호출 상한(#108 → #184). 근거는 docs/tasks/llm-performance/steps/STEP-0·4·4-1·4-4.

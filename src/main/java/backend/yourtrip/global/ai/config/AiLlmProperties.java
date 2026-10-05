@@ -25,7 +25,9 @@ import org.springframework.validation.annotation.Validated;
  * @param provider           어댑터 선택 키. OpenAI로 확정됐지만 {@code @ConditionalOnProperty}
  *                           구조는 유지한다 — 값을 비우면 어댑터 빈이 아예 뜨지 않으므로,
  *                           API 키 없는 환경에서 기동을 살리는 탈출구도 된다
- * @param timeoutMs          호출 1건의 상한. 세마포어 대기 시간도 여기서 함께 잘라낸다
+ * @param timeoutMs          <b>호출 1건의 상한이 아니다.</b> 슬롯(세마포어) 대기 · HTTP 연결 · HTTP 응답
+ *                           읽기 공백 세 곳에 각각 걸리고, 그 위에 전송·의미 재시도가 곱해진다(#189,
+ *                           {@code STEP-6-budget.md} 1절). 요청 전체 상한은 {@code ai.course.budget-ms}다
  * @param maxConcurrentCalls <b>rate limit 대응의 전부다.</b> 2로 두면 day별 Curator 3개가
  *                           2라운드로 나뉘어 실행된다(+3~6초). 429가 나는 대신 느려질 뿐이고,
  *                           티어 상향은 이 값 한 줄이다. "Curator를 day별 병렬로 만들지 1회
