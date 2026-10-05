@@ -11,7 +11,7 @@
 | 0 | OpenAI 티어(RPM/TPM) 확인 + 호출당 토큰 실측 | 사전 조사·계측 | ✅ 서버당 상한 4~8 도출 | [#174](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/174) · [STEP-0](steps/STEP-0-token-usage.md) |
 | 1 | 슬롯 대기 지표 추가 | 계측 | ✅ 구현·E2E 완료, PR 대기 | [#173](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/173) · [STEP-1](steps/STEP-1-permit-wait.md) |
 | 2 | 기준선 측정 | 측정 | ✅ 단일 p95 24.1초·대기 매회 5~8초, 동시 3명 폴백 42% | [#175](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/175) · [STEP-2](steps/STEP-2-baseline.md) (#108 개선 전) |
-| 3 | 마감 뒤 남는 호출 정리 | 안정성 | ⏸ 조사 완료, 구현은 4단계 측정 뒤 판단 | [#176](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/176) · [STEP-3](steps/STEP-3-late-calls.md) |
+| 3 | 마감 뒤 남는 호출 정리 | 안정성 | ⏸ **보류**(2026-10-05) — 슬롯 5에서 동시 5명 폴백 11.1% 로 작다. 동시 8명 이상 과부하(폴백 54%+)는 AI 동시 입장 제한과 함께 다시 판단 | [#176](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/176) · [STEP-3](steps/STEP-3-late-calls.md) |
 | 4 | `max-concurrent-calls` 조정 | 성능 | ✅ **5 확정**(2026-10-05, 4-4) — 4 → 5 로 동시 5명 폴백 32.8 → 11.1%, 네이버 실패 0%(4-5 제한기 전제). 처음 4 확정은 단일 p95 24.1 → 18.6초, 동시 3명 폴백 42 → 0%(4-1 풀 정렬 뒤) · [STEP-4](steps/STEP-4-concurrent-calls.md) | [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108) |
 | 4-1 | `aiAgentExecutor`를 세마포어보다 넉넉하게 | 성능 | ✅ 풀 = 슬롯 × 4, 동시 5명 큐 11 → 0 · 대기가 세마포어로 이동 | [#177](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/177) · [STEP-4-1](steps/STEP-4-1-executor-sizing.md) |
 | 4-2 | 네이버 지역검색 호출 줄이기 (429) | 성능·품질 | ✅ 질의 감사 → 수식어 적용 슬롯 규칙(C): 시더 호출 요청당 45 → 28회, 네이버 실패율 동시 3·5명 23~29 → 4.0%(10/252)·3.3%(14/427), 8명 51.6 → 10.9%(72/660). + 5건 조건: 시더 호출 약 25회, 실패율 3명 8.6%(19/222)·5명 0.5%(2/381). 재시도는 보류(재검토 조건 기록) | [#179](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/179) · [STEP-4-2](steps/STEP-4-2-naver-queries.md) |
@@ -132,6 +132,7 @@ LLM이 먼저 포화된다(서버당 제대로 처리 가능한 양 ≈ 분당 5
 - ~~**4단계보다 먼저인 이유**: 버려진 호출이 슬롯을 쥔 상태에서 동시 호출 수를 조정하면 측정값에 그 점유가 섞여 해석할 수 없다~~
 - **순서를 4단계 뒤로 바꿨다(2026-10-03).** 위 근거는 측정 구조상 약했다 — 단일 요청 측정에서는 남는 호출이 0건이었고, 동시 측정은 라운드 간격 90초라 남는 호출이 다음 라운드로 넘어가지 않는다. 라운드 안에서 생기는 남는 호출은 오염이 아니라 운영에서도 일어나는 현상의 일부다
 - **구현 여부는 4단계 측정으로 정한다.** 남는 호출의 해악은 과부하 구간(슬롯 시간 수요 > 공급)에서만 크다. 슬롯을 늘려 그 구간이 동시 5명 밖으로 밀려나면 이 단계의 가치가 작아진다. 동시 5명에서 폴백이 크게 남으면 구현하고, 작으면 #176 을 보류한다
+- **보류로 판단했다(2026-10-05).** 4단계 재확정(슬롯 5) 측정에서 동시 5명 폴백이 11.1% 로 작다. 동시 8명은 슬롯 4·5·6 모두 폴백 54% 이상이라 남는 호출 정리만으로 풀리지 않고, 요청을 받아들이는 수 자체를 제한하는 쪽(AI 동시 입장 제한)과 함께 봐야 한다
 - 조사 결과(인터럽트로 슬롯 대기·HTTP·백오프를 모두 멈출 수 있다, 인터럽트가 재시도 대상으로 오분류된다)는 [STEP-3](steps/STEP-3-late-calls.md)에 있다
 
 ### 4. `max-concurrent-calls` 조정 (#108)
