@@ -35,6 +35,7 @@ import backend.yourtrip.domain.uploadcourse.entity.UploadCourse;
 import backend.yourtrip.domain.uploadcourse.repository.UploadCourseRepository;
 import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
+import backend.yourtrip.global.ai.AiCourseAdmission;
 import backend.yourtrip.global.ai.pipeline.AiCourseDraft;
 import backend.yourtrip.global.ai.pipeline.AiCoursePipeline;
 import backend.yourtrip.global.ai.pipeline.CourseBrief;
@@ -69,6 +70,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final S3Service s3Service;
     private final CloudFrontService cloudFrontService;
     private final AiCoursePipeline aiCoursePipeline;
+    private final AiCourseAdmission aiCourseAdmission;
 
     private final TravelCourseRepository travelCourseRepository;
     private final DayScheduleRepository dayScheduleRepository;
@@ -515,6 +517,10 @@ public class MyCourseServiceImpl implements MyCourseService {
      * <p>실패는 파이프라인이 판정한다 — 전 day 장소 0개일 때만 hard fail이고
      * ({@code AI_GROUNDING_FAILED} 503 / 예산 소진이면 {@code AI_COURSE_TIMEOUT} 504),
      * 나머지는 파이프라인 내부에서 degrade로 흡수된다.
+     *
+     * <p><b>파이프라인만 입장 제한({@link AiCourseAdmission})으로 감싼다</b>(#192). 자리가 없으면
+     * 기다리지 않고 {@code AI_COURSE_BUSY}(429)로 거절한다. 저장은 LLM을 쓰지 않는 짧은 트랜잭션이라
+     * 자리를 쥐지 않는다.
      */
     @Override
     public AICourseCreateResponse createAICourse(AICourseCreateRequest request) {
@@ -526,8 +532,8 @@ public class MyCourseServiceImpl implements MyCourseService {
             (int) ChronoUnit.DAYS.between(request.startDate(), request.endDate()) + 1;
 
         //파이프라인 실행 (외부 I/O — 여기까지가 트랜잭션 밖이다)
-        AiCourseDraft draft = aiCoursePipeline.generate(
-            CourseBrief.of(request.location(), days, request.keywords()));
+        AiCourseDraft draft = aiCourseAdmission.admit(() -> aiCoursePipeline.generate(
+            CourseBrief.of(request.location(), days, request.keywords())));
 
         //저장 (짧은 트랜잭션) — 리스트 순서가 곧 동선 순서이므로 변환기가 순서를 보존한다
         Long courseId = aiCoursePersister.save(request, draft.title(),

@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -38,6 +39,18 @@ public class GlobalExceptionHandler {
                 "code", code,
                 "message", e.getMessage()
             ));
+    }
+
+    /**
+     * 본문은 {@link #handleBusinessException}과 같고 {@code Retry-After}(초)만 더한다 (#192).
+     * 하위 타입이라 Spring이 더 구체적인 이 핸들러를 고른다.
+     */
+    @ExceptionHandler(RetryLaterException.class)
+    public ResponseEntity<Map<String, Object>> handleRetryLaterException(RetryLaterException e) {
+        ResponseEntity<Map<String, Object>> response = handleBusinessException(e);
+        return ResponseEntity.status(response.getStatusCode())
+            .header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()))
+            .body(response.getBody());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

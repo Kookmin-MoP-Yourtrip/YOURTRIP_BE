@@ -11,9 +11,10 @@ import org.springframework.http.HttpStatus;
  * {@code code}는 핸들러가 {@code Enum#name()}으로 뽑고 상태는 인터페이스 메서드로 읽는다.
  * 부수 효과로 <b>상수 이름이 그대로 공개 API 계약</b>이 되므로 한 번 붙이면 바꾸지 않는다.
  *
- * <h2>설계가 지정한 다섯 중 둘만 만든다</h2>
+ * <h2>설계가 지정한 다섯 중 셋만 만든다</h2>
  * 설계(운영 관심사 "신규 {@code AiCourseErrorCode}")는 다섯 개를 열거했지만, 같은 문서의
- * <b>degrade, don't fail</b> 표가 그중 셋의 발화 경로를 스스로 막는다.
+ * <b>degrade, don't fail</b> 표가 그중 둘의 발화 경로를 스스로 막는다. 처음에는 셋을 막았는데,
+ * {@code AI_COURSE_BUSY}는 동시 입장 제한(#192)이 발화 경로를 새로 만들어 추가했다.
  *
  * <ul>
  *   <li>{@code AI_PLAN_FAILED} — Planner 실패는 {@code DefaultPlannerPlans}의 결정론적 기본
@@ -21,10 +22,13 @@ import org.springframework.http.HttpStatus;
  *   <li>{@code AI_RESPONSE_INVALID} — 깨진 응답은 어댑터 안에서 의미 재시도까지 소진한 뒤
  *       {@code LlmResponseException}으로 올라오는데, 그 예외를 받는 두 지점(Planner·Curator)이
  *       모두 degrade로 끝난다. 결국 위와 같은 경로로 수렴한다</li>
- *   <li>{@code AI_COURSE_BUSY} — 세마포어 포화는 {@code OpenAiLlmClient}의 permit 획득 실패이고,
- *       그 실패가 다른 전송 실패와 <b>같은 {@code LlmTransportException} 타입</b>으로 나와
- *       구분 자체가 되지 않는다. 구분하더라도 위 둘과 같은 degrade에 먹힌다</li>
  * </ul>
+ *
+ * <p>{@code AI_COURSE_BUSY}를 처음에 빼 둔 이유는 그때의 유일한 포화 지점이 LLM 슬롯이었기
+ * 때문이다. 슬롯 포화는 {@code OpenAiLlmClient}의 permit 획득 실패라 다른 전송 실패와 <b>같은
+ * {@code LlmTransportException} 타입</b>으로 나오고, 구분하더라도 degrade에 먹힌다. 입장 제한은
+ * 파이프라인에 들어가기 <b>전에</b> 거절하므로 degrade를 거치지 않는다 — 그래서 이제 이 코드로
+ * 사용자에게 도달한다.
  *
  * <p><b>발화하지 않는 상수를 미리 두지 않는 이유</b>는 이 enum이 곧 "이 기능이 사용자에게
  * 실패하는 방식의 전부"라는 목록이기 때문이다. 쓰이지 않는 항목이 섞이면 그 목록이
@@ -49,7 +53,15 @@ public enum AiCourseErrorCode implements ErrorCode {
      * 운영에서 어느 쪽을 고쳐야 할지 알 수 없다.
      */
     AI_COURSE_TIMEOUT("AI 코스 생성이 지연되고 있습니다. 잠시 후 다시 시도해주세요",
-        HttpStatus.GATEWAY_TIMEOUT);
+        HttpStatus.GATEWAY_TIMEOUT),
+
+    /**
+     * 서버의 동시 입장 상한이 차서 파이프라인을 시작하지 않았다 (#192). 위 둘과 달리 <b>아무 작업도
+     * 하지 않은 거절</b>이라 즉시 나가고, {@code Retry-After} 헤더로 재시도 간격을 함께 준다
+     * ({@code RetryLaterException}).
+     */
+    AI_COURSE_BUSY("AI 코스 생성 요청이 많습니다. 잠시 후 다시 시도해주세요",
+        HttpStatus.TOO_MANY_REQUESTS);
 
     private final String message;
     private final HttpStatus status;

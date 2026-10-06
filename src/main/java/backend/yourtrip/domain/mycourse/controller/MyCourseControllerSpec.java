@@ -1207,6 +1207,8 @@ public interface MyCourseControllerSpec {
         - `INVALID_REQUEST_FIELD(400)`: 필수 필드 값 누락, 등록되지 않는 태그 값, 날짜 범위 오류 등
         - `AI_GROUNDING_FAILED(503)`: 실존이 검증된 장소를 하나도 확보하지 못했을 때 (재시도 가능)
         - `AI_COURSE_TIMEOUT(504)`: 시간 예산(35초) 안에 코스를 완성하지 못했을 때 (재시도 가능)
+        - `AI_COURSE_BUSY(429)`: 서버가 동시에 처리하는 AI 코스 생성 요청이 가득 찼을 때. 코스 생성을 시작하지 않고 즉시 응답합니다.
+            응답 헤더 `Retry-After`(초) 뒤에 같은 요청을 다시 보내면 됩니다 (재시도 가능)
         """
     )
     AICourseCreateResponse createAICourse(AICourseCreateRequest request);
