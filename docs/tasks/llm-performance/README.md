@@ -20,7 +20,7 @@
 | 4-5 | 네이버 호출 속도 제한 | 안정성 | ✅ **초당 25 · 버스트 15** 서버 단위 제한기(GCRA). 슬롯 5 동시 5명 네이버 실패 33.7 → 0%, 빈 슬롯 55 → 0, 504 4 → 0(TourAPI 차단 조건). 혼자 쓸 때 비용 +0.13초. 실제 조건에서 40은 후보 공급 2.8 → 1.3초지만 폴백 11.1 → 24.4%·429 1건이라 25 확정 | [#185](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/185) · [STEP-4-5](steps/STEP-4-5-naver-rate-limiter.md) |
 | 5 | Planner 단계 상한 | 안정성 | ⏸ **보류(근거 없음)** — 측정 요청 683건에서 Planner 실패·호출 실패·슬롯 대기 포기 0건, 504 5건은 모두 후보 공급 실패. Planner 단계 최대 16.5초(동시 8명) | 이슈 없음 |
 | 6 | 30초 예산 재조정 + 시간 제한 관계 문서화 | 정리 | ✅ **35초 확정**(2026-10-05) — 같은 오후 조건에서 30 → 35초로 동시 5명 폴백 24.4 → 11.1%(하루 안 LLM 지연 약 20% 흔들림을 흡수). `timeout-ms`는 호출 1건 상한이 아님을 확인·정정(재시도로 82~144초). 시간 제한 불변식 정리 — 배포 연결 정리 30초와의 관계가 깨져 [#190](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/190)으로 넘김 | [#189](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/189) · [STEP-6](steps/STEP-6-budget.md) |
-| 별도 | AI 동시 입장 제한 | 안정성 | ✅ **서버당 4 확정**(2026-10-05) — 넘치면 즉시 `429 AI_COURSE_BUSY` + `Retry-After`. 동시 8명 몰림에서 받아들인 요청의 폴백 65.8%(제한 없음) → 15.6%(상한 5) → **4.4%(상한 4)**, 거절 응답 0.2초 이내. 대가로 몰릴 때 온전한 코스 약 11% 감소. 일수 상한은 [#178](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/178), FE 재시도 합의는 이후 | [#192](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/192) · [STEP](steps/STEP-admission-limit.md) |
+| 별도 | AI 동시 입장 제한 | 안정성 | ✅ **서버당 4 확정**(2026-10-05) — 넘치면 즉시 `429 AI_COURSE_BUSY` + `Retry-After`. 동시 8명 몰림에서 받아들인 요청의 폴백 65.8%(제한 없음) → 15.6%(상한 5) → **4.4%(상한 4)**, 거절 응답 0.2초 이내. 대가로 몰릴 때 온전한 코스 약 11% 감소. 흩어진 도착([#193](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/193))에서도 유지 — 분당 5건 거절 11.9%(얼랑 B로 예측 가능), 상한 5는 폴백만 늘림. 일수 상한은 [#178](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/178), FE 재시도 합의는 이후 | [#192](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/192) · [STEP](steps/STEP-admission-limit.md) |
 | 7 | 202 Accepted 전환 판단 | 구조 결정 | 맨 마지막 | ai-course-create ROADMAP 11-2 |
 
 **진행 원칙**
@@ -217,7 +217,8 @@ LLM이 먼저 포화된다(서버당 제대로 처리 가능한 양 ≈ 분당 5
 - **결과(2026-10-05, [#192](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/192), [STEP](steps/STEP-admission-limit.md))** — 서비스 진입부(`MyCourseServiceImpl.createAICourse`)의 세마포어 `AiCourseAdmission`, **대기 없는 즉시 거절**(`429 AI_COURSE_BUSY` + `Retry-After: 5`). 대기를 두지 않은 이유는 대기가 `CourseDeadline` 앞에서 일어나 응답 최대 시간을 "대기 + 예산"으로 늘리고(시간 제한 불변식에 영향), 포화 중에는 몇 초 기다려도 자리가 잘 나지 않기 때문이다
   - 같은 저녁 동시 8명 몰림: 제한 없음은 67%가 예산을 다 쓰고 폴백 65.8%, 상한 5는 받아들인 요청의 폴백 15.6%(4회 합산, 회차별 9~27%), **상한 4는 4.4%(2회 합산, 0~9%)**. 거절 응답 0.2초 이내, 빠른 API p95 영향 없음
   - **4로 정했다** — 상한 5는 공급 한계(약 4.9건)에 붙어 LLM 이 느린 시간대에 넘친다. 대가는 몰릴 때 온전한 코스 약 11% 감소와 429 1명 증가이고, 거절된 사람은 재시도로 회복할 수 있지만 폴백 코스는 그대로 남는다는 판단으로 품질을 우선했다
-  - 거절 지표 `ai_course_admission_total{result="rejected"}`가 평소에도 0이 아니면 안전밸브가 상시 병목이 됐다는 뜻이다 — 상한이 아니라 공급(티어·요청당 LLM 작업량)을 늘릴 신호다
+  - **흩어진 도착에서도 확인했다(2026-10-06, [#193](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/193), [STEP](steps/STEP-arrival-rate.md))** — 시드 고정 포아송 도착으로 상한 4·5를 같은 도착에 대해 쟀다. 분당 5건(하루 활성 사용자 1,000명 가정의 피크)에서 상한 4는 거절 11.9% · 폴백 0.1%, 상한 5는 거절 6.8% · 폴백 5.0%이고 온전한 코스는 52 → 48명으로 오히려 줄었다. 처음의 "평소에는 작동하지 않는 안전밸브"는 평균만 본 추정이라 틀렸다 — 평소에도 약 8명 중 1명이 429를 받는다
+  - 거절률은 **얼랑 B**(자리 c개·즉시 거절의 거절 확률)와 실측 처리 시간으로 1~4%p 안에서 예측된다. 거절률이 예측보다 높거나 목표를 넘으면 상한이 아니라 공급(티어·요청당 LLM 작업량, [#194](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/194))을 늘릴 신호다
 - 다음 단계 후보(필요할 때): 컨트롤러를 `CompletableFuture`/`DeferredResult` 반환으로 바꾸는 **서블릿 비동기** — API 계약과 FE는 그대로 두고 Tomcat 워커만 풀어 준다
 
 ### 7. 202 Accepted 전환 판단

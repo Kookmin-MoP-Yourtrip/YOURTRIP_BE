@@ -287,8 +287,9 @@ public class AiCourseMetrics {
      * {@link #ADMISSION_REJECTED} 둘이 전체를 나눠 분모를 따로 둘 필요가 없다.
      *
      * <p>거절은 4xx라 {@code GlobalExceptionHandler}가 DEBUG로만 남긴다. 그래서 <b>"얼마나 돌려보냈는가"는
-     * 이 지표가 유일한 신호</b>다 — 거절률이 평소에도 0이 아니면 상한이 안전밸브가 아니라 상시 병목이
-     * 됐다는 뜻이고, 슬롯(용량)을 늘릴 근거가 된다.
+     * 이 지표가 유일한 신호</b>다. 무작위 도착에서는 평균 동시 처리가 상한보다 한참 낮아도 거절이 생기므로
+     * (#193 실측: 분당 5건 · 상한 4 에서 약 12%) "0이 아님"은 이상 신호가 아니다. 거절률을 얼랑 B 예측
+     * (도착률 × 실측 처리 시간)과 견줘, 예측보다 높거나 목표를 넘으면 슬롯·요청당 LLM 작업량을 늘릴 근거가 된다.
      */
     public static final String ADMISSION = "ai.course.admission";
 
