@@ -7,7 +7,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -48,8 +51,25 @@ class LoadTestTokenIssuer {
             "results/loadtest-jwt.txt"));
         Files.createDirectories(out.toAbsolutePath().getParent());
         String token = new JwtTokenProvider(secret).createAccessToken(SEED_USER_ID, SEED_USER_EMAIL);
+        restrictToOwner(out);
         Files.writeString(out, token, StandardCharsets.UTF_8);
         System.out.printf("[토큰] user %d 의 액세스 토큰을 %s 에 썼다(%d자)%n", SEED_USER_ID,
             out.toAbsolutePath(), token.length());
+    }
+
+    /**
+     * 토큰을 쓰기 <b>전에</b> 파일을 소유자 읽기·쓰기 전용으로 만든다 — 쓴 뒤에 좁히면 그 사이 다른 사용자가
+     * 읽을 틈이 생긴다. POSIX 권한이 없는 파일 시스템(Windows NTFS)에서는 그대로 둔다.
+     */
+    private static void restrictToOwner(Path out) throws IOException {
+        if (!out.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+            return;
+        }
+        Set<PosixFilePermission> ownerOnly = PosixFilePermissions.fromString("rw-------");
+        if (Files.notExists(out)) {
+            Files.createFile(out, PosixFilePermissions.asFileAttribute(ownerOnly));
+        } else {
+            Files.setPosixFilePermissions(out, ownerOnly);
+        }
     }
 }
