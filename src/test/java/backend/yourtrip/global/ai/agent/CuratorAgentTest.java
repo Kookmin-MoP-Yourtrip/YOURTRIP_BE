@@ -75,7 +75,7 @@ class CuratorAgentTest {
         @DisplayName("day 수만큼 호출하고 순서를 그대로 유지한다")
         void callsOncePerDay() {
             given(llmClient.generateAsync(any(), any()))
-                .willReturn(completed(response(1)), completed(response(2)));
+                .willReturn(completed(response()), completed(response()));
 
             List<CuratedDay> days = agent.curate(plan(2), pool(), List.of(),
                 CourseDeadline.unbounded());
@@ -90,7 +90,7 @@ class CuratorAgentTest {
             given(llmClient.generateAsync(any(), any())).willReturn(
                 CompletableFuture.failedFuture(
                     new LlmTransportException(CuratorAgent.AGENT_NAME, 3, "429", null)),
-                completed(response(2)));
+                completed(response()));
 
             List<CuratedDay> days = agent.curate(plan(2), pool(), List.of(),
                 CourseDeadline.unbounded());
@@ -109,7 +109,7 @@ class CuratorAgentTest {
         @Test
         @DisplayName("권역·테마·자리 목록·후보 목록이 user 프롬프트에 들어간다")
         void carriesDayContext() {
-            given(llmClient.generateAsync(any(), any())).willReturn(completed(response(1)));
+            given(llmClient.generateAsync(any(), any())).willReturn(completed(response()));
 
             agent.curate(plan(1), pool(), List.of(KeywordType.HEALING),
                 CourseDeadline.unbounded());
@@ -131,11 +131,11 @@ class CuratorAgentTest {
     class Demotion {
 
         @Test
-        @DisplayName("위조된 목록 참조를 강등하고 사유별로 센다")
+        @DisplayName("목록 범위 밖 번호를 이름으로 강등하고 사유별로 센다")
         void recordsDemotions() {
             given(llmClient.generateAsync(any(), any())).willReturn(completed(
-                new CuratorResponse(1, List.of(new CuratorResponse.Slot(0, "ATTRACTION",
-                    List.of(new CuratorResponse.Choice("SEEDED", 9, "천마총")))))));
+                new CuratorResponse(List.of(new CuratorResponse.Slot(0,
+                    List.of(new CuratorResponse.Choice(9, "천마총")))))));
 
             List<CuratedDay> days = agent.curate(plan(1), pool(), List.of(),
                 CourseDeadline.unbounded());
@@ -151,12 +151,12 @@ class CuratorAgentTest {
         @Test
         @DisplayName("강등이 없으면 시계열은 0으로 남는다 — 없는 것과 0은 다르다")
         void keepsZeroSeries() {
-            given(llmClient.generateAsync(any(), any())).willReturn(completed(response(1)));
+            given(llmClient.generateAsync(any(), any())).willReturn(completed(response()));
 
             agent.curate(plan(1), pool(), List.of(), CourseDeadline.unbounded());
 
             assertThat(registry.get(AiCourseMetrics.CANDIDATE_DEMOTED)
-                .tag("reason", "name_mismatch").counter().count()).isZero();
+                .tag("reason", "index_out_of_range").counter().count()).isZero();
         }
     }
 
@@ -227,8 +227,8 @@ class CuratorAgentTest {
         return new CandidatePool(slots);
     }
 
-    private static CuratorResponse response(int day) {
-        return new CuratorResponse(day, List.of(new CuratorResponse.Slot(0, "ATTRACTION",
-            List.of(new CuratorResponse.Choice("SEEDED", 0, "대릉원")))));
+    private static CuratorResponse response() {
+        return new CuratorResponse(List.of(new CuratorResponse.Slot(0,
+            List.of(new CuratorResponse.Choice(0, null)))));
     }
 }

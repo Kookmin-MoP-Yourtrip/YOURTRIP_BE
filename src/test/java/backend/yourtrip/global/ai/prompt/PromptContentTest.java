@@ -76,8 +76,11 @@ class PromptContentTest {
             assertThat(raw(PromptTemplate.CURATOR_SYSTEM))
                 .contains("번호는 0부터 시작한다")
                 .contains("seed")
-                .contains("SUGGESTED")
-                .contains("listIndex");
+                // #194 부터 응답에 source 가 없어 SUGGESTED 라는 값은 프롬프트에서 빠졌다.
+                // 개념(목록 밖 제안)과 그때만 상호명을 적는다는 계약은 남아야 한다.
+                .contains("목록 밖 제안")
+                .contains("listIndex")
+                .contains("placeName");
         }
 
         @Test

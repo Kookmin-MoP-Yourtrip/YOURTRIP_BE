@@ -15,12 +15,13 @@
 | 4 | `max-concurrent-calls` 조정 | 성능 | ✅ **5 확정**(2026-10-05, 4-4) — 4 → 5 로 동시 5명 폴백 32.8 → 11.1%, 네이버 실패 0%(4-5 제한기 전제). 처음 4 확정은 단일 p95 24.1 → 18.6초, 동시 3명 폴백 42 → 0%(4-1 풀 정렬 뒤) · [STEP-4](steps/STEP-4-concurrent-calls.md) | [#108](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/108) |
 | 4-1 | `aiAgentExecutor`를 세마포어보다 넉넉하게 | 성능 | ✅ 풀 = 슬롯 × 4, 동시 5명 큐 11 → 0 · 대기가 세마포어로 이동 | [#177](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/177) · [STEP-4-1](steps/STEP-4-1-executor-sizing.md) |
 | 4-2 | 네이버 지역검색 호출 줄이기 (429) | 성능·품질 | ✅ 질의 감사 → 수식어 적용 슬롯 규칙(C): 시더 호출 요청당 45 → 28회, 네이버 실패율 동시 3·5명 23~29 → 4.0%(10/252)·3.3%(14/427), 8명 51.6 → 10.9%(72/660). + 5건 조건: 시더 호출 약 25회, 실패율 3명 8.6%(19/222)·5명 0.5%(2/381). 재시도는 보류(재검토 조건 기록) | [#179](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/179) · [STEP-4-2](steps/STEP-4-2-naver-queries.md) |
-| 4-3 | Curator 출력 상한 낮추기 | 성능 | ✅ 4,096 → 2,048: 보수적 서버당 상한 4.7 → 약 6.1. 출력 최대 1,540(누적 596건 기준 1,490)이라 1,500 은 잘림. 같은 날 전후 절단 0건. 시도 단위 절단 지표 `ai.llm.truncated` 추가 | [#182](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/182) · [STEP-4-3](steps/STEP-4-3-curator-output-cap.md) |
+| 4-3 | Curator 출력 상한 낮추기 | 성능 | ✅ 4,096 → 2,048: 보수적 서버당 상한 4.7 → 약 6.1 *(#194에서 전제 정정 — TPM 은 출력 상한을 잡지 않아 이 효과는 없었다. 값은 잘림 방지 여유로 유지)*. 출력 최대 1,540(누적 596건 기준 1,490)이라 1,500 은 잘림. 같은 날 전후 절단 0건. 시도 단위 절단 지표 `ai.llm.truncated` 추가 | [#182](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/182) · [STEP-4-3](steps/STEP-4-3-curator-output-cap.md) |
 | 4-4 | 슬롯 5~6 상향 | 성능 | ✅ **5 확정** — 1차(제한기 없음): 폴백 35.6 → 15.1(5) → 8.1%(6)이지만 네이버 실패 1.0 → 14.4%, 식사·카페 unfilled 0 → 25(좁은 슬롯이 네이버 버스트를 우연히 막고 있었다). 2차(#185 제한기 뒤, 같은 날): 동시 5명 폴백 32.8 → **11.1** → 13.0%, 네이버 실패 모두 0%. 6은 이득 없이 TPM 여유만 빠듯(12 / 12.2). 동시 8명은 모든 슬롯에서 54% 이상 | [#184](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/184) · [STEP-4-4](steps/STEP-4-4-slot-raise.md) · [#185](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/185) |
 | 4-5 | 네이버 호출 속도 제한 | 안정성 | ✅ **초당 25 · 버스트 15** 서버 단위 제한기(GCRA). 슬롯 5 동시 5명 네이버 실패 33.7 → 0%, 빈 슬롯 55 → 0, 504 4 → 0(TourAPI 차단 조건). 혼자 쓸 때 비용 +0.13초. 실제 조건에서 40은 후보 공급 2.8 → 1.3초지만 폴백 11.1 → 24.4%·429 1건이라 25 확정 | [#185](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/185) · [STEP-4-5](steps/STEP-4-5-naver-rate-limiter.md) |
 | 5 | Planner 단계 상한 | 안정성 | ⏸ **보류(근거 없음)** — 측정 요청 683건에서 Planner 실패·호출 실패·슬롯 대기 포기 0건, 504 5건은 모두 후보 공급 실패. Planner 단계 최대 16.5초(동시 8명) | 이슈 없음 |
 | 6 | 30초 예산 재조정 + 시간 제한 관계 문서화 | 정리 | ✅ **35초 확정**(2026-10-05) — 같은 오후 조건에서 30 → 35초로 동시 5명 폴백 24.4 → 11.1%(하루 안 LLM 지연 약 20% 흔들림을 흡수). `timeout-ms`는 호출 1건 상한이 아님을 확인·정정(재시도로 82~144초). 시간 제한 불변식 정리 — 배포 연결 정리 30초와의 관계가 깨져 [#190](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/190)으로 넘김 | [#189](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/189) · [STEP-6](steps/STEP-6-budget.md) |
 | 별도 | AI 동시 입장 제한 | 안정성 | ✅ **서버당 4 확정**(2026-10-05) — 넘치면 즉시 `429 AI_COURSE_BUSY` + `Retry-After`. 동시 8명 몰림에서 받아들인 요청의 폴백 65.8%(제한 없음) → 15.6%(상한 5) → **4.4%(상한 4)**, 거절 응답 0.2초 이내. 대가로 몰릴 때 온전한 코스 약 11% 감소. 흩어진 도착([#193](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/193))에서도 유지 — 분당 5건 거절 11.9%(얼랑 B로 예측 가능), 상한 5는 폴백만 늘림. 일수 상한은 [#178](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/178), FE 재시도 합의는 이후 | [#192](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/192) · [STEP](steps/STEP-admission-limit.md) |
+| 별도 | Curator 출력 줄이기 | 성능 | ✅ **응답을 목록 번호로 축소**(2026-10-06) — 출력 881 → 621토큰(−30%), 도착률 측정 W 21.0 → 16.7초, 요청당 LLM 슬롯 점유 26.7 → 19.6 슬롯·초, 분당 5건 거절 11.9 → 5.1%. 추론 강도 `none`은 선택 쏠림으로 보류. **TPM 은 출력 상한을 미리 잡지 않는다**(응답 헤더 실측, #182 근거 정정). 늘어난 여유로 입장 상한 5를 다시 쟀으나 느린 시간대에 504 12건 — **상한 4 · 슬롯 5 유지** | [#194](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/194) · [STEP](steps/STEP-curator-output.md) |
 | 7 | 202 Accepted 전환 판단 | 구조 결정 | 맨 마지막 | ai-course-create ROADMAP 11-2 |
 
 **진행 원칙**
@@ -126,7 +127,7 @@ LLM이 먼저 포화된다(서버당 제대로 처리 가능한 양 ≈ 분당 5
 
 **미확인**
 
-- **TPM의 `max_completion_tokens` 반영 여부** — 반영된다면 보수적 기준이 맞고, 출력 상한(Curator 4,096)을 ~~실제 출력(최대 876)에 맞게~~ 낮추는 것만으로 한도 여유가 커진다 → **4-3에서 해소**: 공식 문서 기준 반영으로 보고 Curator 상한을 **2,048** 로 낮췄다. "최대 876"은 표본 3건이었고 누적 596건 최대 1,490 · 전후 측정 최대 1,540 이다. `ai.llm.truncated{reason=length}`가 0을 넘으면 상한을 다시 본다([STEP-4-3](steps/STEP-4-3-curator-output-cap.md))
+- ~~**TPM의 `max_completion_tokens` 반영 여부**~~ → **#194에서 해소: 반영되지 않는다.** 출력 상한을 4,096 / 1,024 로 바꿔도 응답 헤더의 잡힌 양이 같았다(입력 추정치만 잡힌다, [STEP-curator-output](steps/STEP-curator-output.md) 7-1). 아래 4-3 의 판단은 공식 문서 기준이었다. 이전 기록 — 반영된다면 보수적 기준이 맞고, 출력 상한(Curator 4,096)을 ~~실제 출력(최대 876)에 맞게~~ 낮추는 것만으로 한도 여유가 커진다 → **4-3에서 해소**: 공식 문서 기준 반영으로 보고 Curator 상한을 **2,048** 로 낮췄다. "최대 876"은 표본 3건이었고 누적 596건 최대 1,490 · 전후 측정 최대 1,540 이다. `ai.llm.truncated{reason=length}`가 0을 넘으면 상한을 다시 본다([STEP-4-3](steps/STEP-4-3-curator-output-cap.md))
 - **표본 1건** — Curator 입력은 후보 목록 길이에 따라 다르다. 2단계 기준선 측정에서 분포로 보완한다
 
 ### 1. 슬롯 대기 지표 추가 ✅
@@ -230,6 +231,6 @@ LLM이 먼저 포화된다(서버당 제대로 처리 가능한 양 ≈ 분당 5
 
 ## 열린 질문
 
-- TPM 계산의 `max_completion_tokens` 반영 여부(공식 문서 기준 반영으로 보고 4-3을 진행했다. 계정에서 직접 확인하지는 않았다), 캐시 적중 토큰의 TPM 할인 여부 (0단계 미확인 항목)
+- 캐시 적중 토큰의 TPM 할인 여부 (0단계 미확인 항목). `max_completion_tokens`는 반영되지 않는 것으로 확인했다(#194). 응답 뒤 실제 출력을 차감하는지는 헤더로 볼 수 없어 여전히 보수적으로 입력 + 출력을 센다
 - FE `BASE_URL`(`yourtrip.site`)과 Swagger 안내 도메인(`yourtrip.cloud`)이 다르다 — 구 도메인 잔존 여부 미확인
 - 배포 중 instance refresh(`deregistration_delay` 30초)가 진행 중인 AI 요청을 자르는 빈도 — 202 전환 시 워커 유실 문제와 직결된다. 예산 35초로 요청 최대 시간이 연결 정리 시간을 넘어섰다 → [#190](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/190)

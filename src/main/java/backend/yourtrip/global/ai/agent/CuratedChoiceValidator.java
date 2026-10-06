@@ -5,7 +5,6 @@ import backend.yourtrip.global.ai.candidate.CandidatePool;
 import backend.yourtrip.global.ai.candidate.CandidateSlot;
 import backend.yourtrip.global.ai.candidate.CandidateSourceType;
 import backend.yourtrip.global.ai.candidate.PlaceCandidate;
-import backend.yourtrip.global.ai.candidate.PlaceNameNormalizer;
 import backend.yourtrip.global.ai.pipeline.CuratedDay;
 import backend.yourtrip.global.ai.pipeline.CuratedPlace;
 import backend.yourtrip.global.ai.pipeline.CuratedSlot;
@@ -16,24 +15,25 @@ import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Curator 응답을 검증하고 위조된 목록 참조를 <b>{@code SUGGESTED}로 강등</b>한다 (ROADMAP 6-7).
+ * Curator 응답을 검증해 자리별 선택으로 바꾼다 (ROADMAP 6-7, #194).
  *
- * <h2>이 검증이 없으면 무엇이 뚫리는가</h2>
+ * <h2>목록 선택은 번호가 전부다</h2>
  * {@code SEEDED}·{@code LISTED}는 그라운딩에서 <b>카카오를 부르지 않고</b> 목록 항목의 좌표·주소를
- * 승계한다. 그 생략이 안전한 이유는 "목록에 있는 것은 실존이 이미 확인됐다"인데, <b>모델이 목록에
- * 없는 이름에 아무 번호나 붙여 보내면 그 전제가 무너진다</b> — 검증을 건너뛴 채 엉뚱한 좌표가
- * 코스에 실린다. 인덱스 범위만 보면 이건 통과한다. 이름까지 대조해야 막힌다.
+ * 승계한다. 그 생략이 안전한 이유는 "목록에 있는 것은 실존이 이미 확인됐다"이다. 예전 응답은 번호와
+ * 상호명을 함께 받아 둘을 대조했는데, 그건 <b>상호명을 적게 한 탓에 생긴 위조 통로</b>(목록에 없는
+ * 이름에 아무 번호나 붙이기)를 다시 막는 장치였다. #194 에서 목록 선택은 번호만 받도록 바꿔
+ * <b>통로 자체를 닫았다</b> — 번호가 범위 안이면 그 항목은 정의상 목록에 있다. 출처·이름·좌표를
+ * 전부 그 항목에서 가져오므로 모델이 적은 값은 남지 않는다.
  *
- * <h2>버리지 않고 강등한다</h2>
- * 어긋난 것은 "목록에서 골랐다는 주장"이지 "장소의 실존"이 아니다. {@code SUGGESTED}로 내리면
- * 카카오 이름 게이트를 거치게 되므로, 실존하면 살아남고 환각이면 거기서 걸린다.
+ * <h2>범위 밖 번호는 이름이 있을 때만 강등한다</h2>
+ * 이름이 함께 왔다면 {@code SUGGESTED}로 내려 카카오 이름 게이트에 맡긴다 — 실존하면 살아남고
+ * 환각이면 거기서 걸린다. 이름이 없으면 물어볼 검색어가 없어 버린다.
  *
  * <h2>순수 함수 — 메트릭을 직접 올리지 않는다</h2>
  * 집계를 {@link CurationOutcome}에 실어 돌려주고 올리는 것은 호출자가 한다. 그래야 이 클래스가
@@ -102,7 +102,7 @@ public final class CuratedChoiceValidator {
         return byPosition;
     }
 
-    // ── ② 선택 검증 — 세 사유로 강등한다 ──────────────────────────────────────
+    // ── ② 선택 검증 ──────────────────────────────────────────────────────────
 
     private static List<CuratedPlace> validateChoices(CuratorResponse.Slot raw, SlotType slotType,
         CandidatePool pool, int day, Map<DemotionReason, Integer> demotions) {
@@ -110,14 +110,7 @@ public final class CuratedChoiceValidator {
             return List.of();
         }
 
-        // slotType 이 어긋나면 listIndex 가 가리키는 목록도 다르다 — 후보 풀은 (day, slotType)
-        // 으로 조회되기 때문이다. 인덱스를 신뢰할 수 없으므로 이 자리의 선택을 전부 강등한다.
-        boolean slotMismatch = !slotType.name().equalsIgnoreCase(trimmed(raw.slotType()));
-        if (slotMismatch) {
-            log.warn("day {} 자리 {}: 슬롯 타입이 어긋난다(Planner={}, Curator={}) — 전부 강등한다",
-                day, raw.slotIndex(), slotType, raw.slotType());
-        }
-
+        // 번호가 가리키는 목록은 Planner 의 자리 종류로 찾는다 — 정본이 Planner 이기 때문이다.
         CandidateSlot candidates = pool.findOrEmpty(day, slotType);
         List<CuratedPlace> validated = new ArrayList<>(MAX_CHOICES);
         for (CuratorResponse.Choice choice : raw.choices()) {
@@ -126,65 +119,48 @@ public final class CuratedChoiceValidator {
                     MAX_CHOICES);
                 break;
             }
-            validateChoice(choice, candidates, slotMismatch, demotions).ifPresent(validated::add);
+            validateChoice(choice, candidates, demotions).ifPresent(validated::add);
         }
         return validated;
     }
 
     private static Optional<CuratedPlace> validateChoice(CuratorResponse.Choice choice,
-        CandidateSlot candidates, boolean slotMismatch, Map<DemotionReason, Integer> demotions) {
-        if (choice == null || choice.placeName() == null || choice.placeName().isBlank()) {
-            // 검색어조차 없으면 SUGGESTED 로 내려도 카카오에 물어볼 것이 없다.
-            log.warn("Curator 가 상호명 없는 선택을 냈다 — 버린다");
+        CandidateSlot candidates, Map<DemotionReason, Integer> demotions) {
+        if (choice == null) {
             return Optional.empty();
         }
-        String placeName = choice.placeName().trim();
+        String placeName = trimmed(choice.placeName());
 
-        CandidateSourceType claimed = parseSource(choice.source());
-        if (claimed == null) {
-            return Optional.of(demote(placeName, DemotionReason.UNKNOWN_SOURCE, demotions));
-        }
-        if (claimed == CandidateSourceType.SUGGESTED) {
-            // 목록 밖 제안. listIndex 를 적어 보냈더라도 버린다 — 가리킬 목록이 없다.
+        if (choice.listIndex() == null) {
+            if (placeName == null) {
+                // 번호도 이름도 없으면 목록에서도 카카오에서도 찾을 수 없다.
+                log.warn("Curator 가 번호도 상호명도 없는 선택을 냈다 — 버린다");
+                return Optional.empty();
+            }
             return Optional.of(new CuratedPlace(CandidateSourceType.SUGGESTED, null, placeName));
-        }
-        if (slotMismatch) {
-            return Optional.of(demote(placeName, DemotionReason.SLOT_MISMATCH, demotions));
         }
 
         Optional<PlaceCandidate> referenced = candidates.at(choice.listIndex());
         if (referenced.isEmpty()) {
+            if (placeName == null) {
+                log.warn("Curator 가 목록 범위 밖 번호 {} 를 냈다(목록 {}건) — 검색어가 없어 버린다",
+                    choice.listIndex(), candidates.candidates().size());
+                return Optional.empty();
+            }
             return Optional.of(demote(placeName, DemotionReason.INDEX_OUT_OF_RANGE, demotions));
         }
-        PlaceCandidate candidate = referenced.get();
-        if (!PlaceNameNormalizer.similar(candidate.name(), placeName)) {
-            log.debug("목록 참조가 이름과 어긋난다: index={}, 목록={}, 응답={}",
-                choice.listIndex(), candidate.name(), placeName);
-            return Optional.of(demote(placeName, DemotionReason.NAME_MISMATCH, demotions));
-        }
 
-        // 출처는 모델이 아니라 **목록**이 정한다. 모델이 SEEDED 라 적었어도 그 항목이 TourAPI
-        // 단독이면 LISTED 다 — 이 값은 5-6 메트릭의 source 태그가 되므로 틀리면 지표가 오염된다.
-        return Optional.of(new CuratedPlace(candidate.source(), choice.listIndex(), placeName));
+        // 출처·이름은 모델이 아니라 **목록**이 정한다. 출처는 5-6 메트릭의 source 태그가 되므로
+        // 틀리면 지표가 오염되고, 이름은 그라운딩·로그가 그대로 쓴다.
+        PlaceCandidate candidate = referenced.get();
+        return Optional.of(
+            new CuratedPlace(candidate.source(), choice.listIndex(), candidate.name()));
     }
 
     private static CuratedPlace demote(String placeName, DemotionReason reason,
         Map<DemotionReason, Integer> demotions) {
         demotions.merge(reason, 1, Integer::sum);
         return new CuratedPlace(CandidateSourceType.SUGGESTED, null, placeName);
-    }
-
-    /** 대소문자·공백만 관용한다. 그 이상 추측하면 "비슷한 이름"을 잘못 매핑한다. */
-    private static CandidateSourceType parseSource(String raw) {
-        String value = trimmed(raw);
-        if (value == null) {
-            return null;
-        }
-        try {
-            return CandidateSourceType.valueOf(value.toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
     }
 
     private static String trimmed(String raw) {
