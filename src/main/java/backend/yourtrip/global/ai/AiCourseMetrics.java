@@ -123,9 +123,10 @@ public class AiCourseMetrics {
     public static final String GROUNDING_DUPLICATE = "ai.grounding.duplicate";
 
     /**
-     * <b>Curator 가 목록 참조를 위조한 빈도</b> (ROADMAP 6-7). {@code SEEDED}·{@code LISTED} 가
-     * 카카오 검증을 생략하는 근거는 "목록에 있는 것은 실존이 확인됐다"인데, 이 값이 크면 그 전제가
-     * 실제로 얼마나 자주 깨지는지를 말해 준다.
+     * <b>Curator 가 목록 밖 번호를 낸 빈도</b> (ROADMAP 6-7). {@code SEEDED}·{@code LISTED} 가
+     * 카카오 검증을 생략하는 근거는 "목록에 있는 것은 실존이 확인됐다"인데, 이 값이 크면 모델이
+     * 목록을 제대로 참조하지 못하고 있다는 뜻이다. #194 에서 목록 선택이 번호만 받게 되면서 사유는
+     * {@code index_out_of_range} 하나만 남았다 — 이름 대조로 잡던 위조 통로가 닫혔기 때문이다.
      *
      * <p><b>강등만 센다.</b> 자리 번호가 범위 밖이거나 상호명이 비어 있어 <b>폐기</b>된 경우는
      * 여기 오지 않는다 — 섞으면 "얼마나 자주 위조가 일어나는가" 라는 질문에 다른 사건이 섞인다.

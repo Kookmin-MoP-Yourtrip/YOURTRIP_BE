@@ -373,10 +373,10 @@ class AiCourseStagesStubIntegrationTest {
                 new PlannerResponse.Day(1, "황리단길 일대", "대릉원", "골목 산책", "10:00",
                     List.of("ATTRACTION"))));
             // 목록 1번은 조립 뒤에야 정해진다 — 시더가 앞, TourAPI 가 뒤다.
-            llmClient.curator = new CuratorResponse(1, List.of(new CuratorResponse.Slot(
-                0, "ATTRACTION", List.of(
-                new CuratorResponse.Choice("LISTED", 1, "골굴사"),
-                new CuratorResponse.Choice("SEEDED", 0, "황리단길")))));
+            llmClient.curator = new CuratorResponse(List.of(new CuratorResponse.Slot(
+                0, List.of(
+                new CuratorResponse.Choice(1, null),
+                new CuratorResponse.Choice(0, null)))));
 
             PlannerAgent planner = new PlannerAgent(llmClient, new PromptLoader(), Runnable::run);
             CuratorAgent curator =
@@ -389,9 +389,8 @@ class AiCourseStagesStubIntegrationTest {
             List<CuratedDay> curated = curator.curate(plan, pool, List.of(KeywordType.HEALING),
                 CourseDeadline.unbounded());
 
-            // 강등이 없다는 것이 곧 "인덱스와 이름이 같은 항목을 가리켰다" 는 뜻이다.
-            assertThat(counter(AiCourseMetrics.CANDIDATE_DEMOTED, "reason", "name_mismatch"))
-                .isZero();
+            // 강등이 없다는 것이 곧 "번호가 목록 범위 안을 가리켰다" 는 뜻이다. 출처 순서가 그 번호가
+            // 조립 뒤의 목록(시더 앞, TourAPI 뒤)을 가리켰음을 보여 준다.
             assertThat(counter(AiCourseMetrics.CANDIDATE_DEMOTED, "reason", "index_out_of_range"))
                 .isZero();
             assertThat(curated.getFirst().slots().getFirst().choices())
@@ -417,7 +416,7 @@ class AiCourseStagesStubIntegrationTest {
             llmClient.planner = new PlannerResponse("경주 1일", "고도", List.of(
                 new PlannerResponse.Day(1, "황리단길 일대", "대릉원", "골목 산책", "10:00",
                     List.of("ATTRACTION", "CAFE", "STROLL"))));
-            llmClient.curator = new CuratorResponse(1, List.of());
+            llmClient.curator = new CuratorResponse(List.of());
 
             PlannerPlan plan = new PlannerAgent(llmClient, new PromptLoader(), Runnable::run)
                 .plan("경주", 1, List.of(), CourseDeadline.unbounded());
@@ -463,8 +462,8 @@ class AiCourseStagesStubIntegrationTest {
             stubNaver(naverBody(naverItem("황리단길", "관광,명소>거리", "1292104983", "358386877")));
             stubTour(emptyTourBody());
             givenPlannerSays("ATTRACTION");
-            llmClient.curator = new CuratorResponse(1, List.of(new CuratorResponse.Slot(
-                0, "ATTRACTION", List.of(new CuratorResponse.Choice("SEEDED", 0, "황리단길")))));
+            llmClient.curator = new CuratorResponse(List.of(new CuratorResponse.Slot(
+                0, List.of(new CuratorResponse.Choice(0, null)))));
 
             AiCourseDraft draft = pipeline()
                 .generate(CourseBrief.of("경주", 1, List.of(KeywordType.HEALING)));
@@ -500,8 +499,8 @@ class AiCourseStagesStubIntegrationTest {
             stubTourStatus(500);
             stubKakaoDocuments(kakaoDocument("대릉원", "AT4", ANCHOR_X, ANCHOR_Y));
             givenPlannerSays("ATTRACTION");
-            llmClient.curator = new CuratorResponse(1, List.of(new CuratorResponse.Slot(
-                0, "ATTRACTION", List.of(new CuratorResponse.Choice("SUGGESTED", null, "대릉원")))));
+            llmClient.curator = new CuratorResponse(List.of(new CuratorResponse.Slot(
+                0, List.of(new CuratorResponse.Choice(null, "대릉원")))));
 
             AiCourseDraft draft = pipeline()
                 .generate(CourseBrief.of("경주", 1, List.of(KeywordType.HEALING)));
@@ -520,7 +519,7 @@ class AiCourseStagesStubIntegrationTest {
             stubNaver(naverBody(naverItem("황리단길", "관광,명소>거리", "1292104983", "358386877")));
             stubTour(emptyTourBody());
             givenPlannerSays("ATTRACTION");
-            llmClient.curator = new CuratorResponse(1, List.of());
+            llmClient.curator = new CuratorResponse(List.of());
 
             AiCourseDraft draft = pipeline()
                 .generate(CourseBrief.of("경주", 1, List.of(KeywordType.HEALING)));
@@ -540,8 +539,8 @@ class AiCourseStagesStubIntegrationTest {
             stubTourStatus(500);
             stubKakaoStatus(500);
             givenPlannerSays("ATTRACTION");
-            llmClient.curator = new CuratorResponse(1, List.of(new CuratorResponse.Slot(
-                0, "ATTRACTION", List.of(new CuratorResponse.Choice("SUGGESTED", null, "대릉원")))));
+            llmClient.curator = new CuratorResponse(List.of(new CuratorResponse.Slot(
+                0, List.of(new CuratorResponse.Choice(null, "대릉원")))));
 
             assertThatThrownBy(() -> pipeline()
                 .generate(CourseBrief.of("경주", 1, List.of(KeywordType.HEALING))))

@@ -19,28 +19,29 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-@DisplayName("CuratedChoiceValidator (ROADMAP 6-7)")
+@DisplayName("CuratedChoiceValidator (ROADMAP 6-7, #194)")
 class CuratedChoiceValidatorTest {
 
     private static final int DAY = 1;
     private static final double LAT = 35.8386877792;
     private static final double LON = 129.2104983997;
 
-    /** 후보 목록: 0=대릉원(LISTED), 1=첨성대(SEEDED). 6-7 검증의 대조본이다. */
+    /** 후보 목록: ATTRACTION 0=대릉원(LISTED)·1=첨성대(SEEDED), MEAL 0=교리김밥(SEEDED). */
     private static final CandidatePool POOL = new CandidatePool(List.of(
         new CandidateSlot(DAY, SlotType.ATTRACTION, List.of(
-            candidate("대릉원", CandidateSourceType.LISTED, null),
-            candidate("첨성대", CandidateSourceType.SEEDED, 1)))));
+            candidate("대릉원", CandidateSourceType.LISTED, null, SlotType.ATTRACTION),
+            candidate("첨성대", CandidateSourceType.SEEDED, 1, SlotType.ATTRACTION))),
+        new CandidateSlot(DAY, SlotType.MEAL, List.of(
+            candidate("교리김밥", CandidateSourceType.SEEDED, 1, SlotType.MEAL)))));
 
     @Nested
     @DisplayName("멀쩡한 응답")
     class WellFormed {
 
         @Test
-        @DisplayName("강등이 0건이고 선택이 그대로 남는다")
+        @DisplayName("목록 번호만 받아도 선택이 남고 강등은 0건이다")
         void keepsValidChoices() {
-            CurationOutcome outcome = validate(slot(0, "ATTRACTION",
-                choice("LISTED", 0, "대릉원"), choice("SEEDED", 1, "첨성대")));
+            CurationOutcome outcome = validate(slot(0, choice(0, null), choice(1, null)));
 
             assertThat(outcome.hasDemotions()).isFalse();
             assertThat(outcome.day().slots()).hasSize(1);
@@ -49,26 +50,40 @@ class CuratedChoiceValidatorTest {
         }
 
         @Test
-        @DisplayName("출처는 모델이 아니라 목록이 정한다 — 이 값이 5-6 메트릭의 source 태그가 된다")
-        void takesSourceFromTheList() {
-            CurationOutcome outcome = validate(slot(0, "ATTRACTION",
-                choice("SEEDED", 0, "대릉원")));
+        @DisplayName("출처와 이름은 목록이 정한다 — 모델이 이름을 적어 보내도 쓰지 않는다")
+        void takesSourceAndNameFromTheList() {
+            CurationOutcome outcome = validate(slot(0, choice(0, "황남빵 본점")));
 
-            assertThat(outcome.day().slots().getFirst().choices().getFirst().source())
-                .isEqualTo(CandidateSourceType.LISTED);
+            assertThat(outcome.day().slots().getFirst().choices()).singleElement()
+                .satisfies(place -> {
+                    assertThat(place.source()).isEqualTo(CandidateSourceType.LISTED);
+                    assertThat(place.listIndex()).isZero();
+                    assertThat(place.placeName()).isEqualTo("대릉원");
+                });
             assertThat(outcome.hasDemotions()).isFalse();
         }
 
         @Test
-        @DisplayName("SUGGESTED 는 목록을 보지 않고 통과시킨다 — listIndex 는 비운다")
+        @DisplayName("번호가 없고 이름이 있으면 목록 밖 제안(SUGGESTED)이다")
         void passesSuggestedThrough() {
-            CurationOutcome outcome = validate(slot(0, "ATTRACTION",
-                choice("SUGGESTED", 7, "황남빵 본점")));
+            CurationOutcome outcome = validate(slot(0, choice(null, " 황남빵 본점 ")));
 
             CuratedPlace place = outcome.day().slots().getFirst().choices().getFirst();
             assertThat(place.source()).isEqualTo(CandidateSourceType.SUGGESTED);
             assertThat(place.listIndex()).isNull();
+            assertThat(place.placeName()).isEqualTo("황남빵 본점");
             assertThat(outcome.hasDemotions()).isFalse();
+        }
+
+        @Test
+        @DisplayName("번호는 Planner 가 정한 그 자리 종류의 목록에서 찾는다 — 응답은 자리 종류를 적지 않는다")
+        void resolvesIndexAgainstPlannerSlotType() {
+            CurationOutcome outcome = CuratedChoiceValidator.validate(
+                day(SlotType.ATTRACTION, SlotType.MEAL), POOL,
+                new CuratorResponse(List.of(slot(1, choice(0, null)))));
+
+            assertThat(outcome.day().slots().get(1).choices())
+                .extracting(CuratedPlace::placeName).containsExactly("교리김밥");
         }
     }
 
@@ -77,65 +92,13 @@ class CuratedChoiceValidatorTest {
     class Demotion {
 
         @Test
-        @DisplayName("인덱스가 범위를 벗어나면 강등한다 — 버리지 않는 이유는 이름이 실존할 수 있어서다")
-        void demotesOutOfRangeIndex() {
-            CurationOutcome outcome = validate(slot(0, "ATTRACTION",
-                choice("SEEDED", 9, "천마총")));
+        @DisplayName("번호가 범위를 벗어났는데 이름이 있으면 강등한다 — 이름이 실존할 수 있어서다")
+        void demotesOutOfRangeIndexWithName() {
+            CurationOutcome outcome = validate(slot(0, choice(9, "천마총")));
 
             assertDemotedTo("천마총", outcome);
             assertThat(outcome.demotions())
                 .containsExactly(entry(DemotionReason.INDEX_OUT_OF_RANGE, 1));
-        }
-
-        @Test
-        @DisplayName("목록에서 골랐다면서 listIndex 가 없으면 강등한다")
-        void demotesMissingIndex() {
-            CurationOutcome outcome = validate(slot(0, "ATTRACTION",
-                choice("LISTED", null, "천마총")));
-
-            assertThat(outcome.demotions())
-                .containsExactly(entry(DemotionReason.INDEX_OUT_OF_RANGE, 1));
-        }
-
-        @Test
-        @DisplayName("인덱스는 맞는데 이름이 다르면 강등한다 — 인덱스만 보면 통과하는 위조다")
-        void demotesNameMismatch() {
-            CurationOutcome outcome = validate(slot(0, "ATTRACTION",
-                choice("LISTED", 0, "황남빵 본점")));
-
-            assertDemotedTo("황남빵 본점", outcome);
-            assertThat(outcome.demotions())
-                .containsExactly(entry(DemotionReason.NAME_MISMATCH, 1));
-        }
-
-        @Test
-        @DisplayName("알 수 없는 source 는 강등한다")
-        void demotesUnknownSource() {
-            CurationOutcome outcome = validate(slot(0, "ATTRACTION",
-                choice("NAVER", 0, "대릉원")));
-
-            assertThat(outcome.demotions())
-                .containsExactly(entry(DemotionReason.UNKNOWN_SOURCE, 1));
-        }
-
-        @Test
-        @DisplayName("슬롯 타입이 어긋나면 그 자리의 선택을 전부 강등한다 — 인덱스가 가리키는 목록이 다르다")
-        void demotesEveryChoiceOnSlotMismatch() {
-            CurationOutcome outcome = validate(slot(0, "CAFE",
-                choice("LISTED", 0, "대릉원"), choice("SEEDED", 1, "첨성대")));
-
-            assertThat(outcome.day().slots().getFirst().choices())
-                .extracting(CuratedPlace::source)
-                .containsOnly(CandidateSourceType.SUGGESTED);
-            assertThat(outcome.demotions()).containsExactly(entry(DemotionReason.SLOT_MISMATCH, 2));
-        }
-
-        @Test
-        @DisplayName("자리 종류는 Planner 것을 유지한다 — 정본은 Planner 다")
-        void keepsPlannerSlotType() {
-            CurationOutcome outcome = validate(slot(0, "CAFE", choice("LISTED", 0, "대릉원")));
-
-            assertThat(outcome.day().slots().getFirst().slotType()).isEqualTo(SlotType.ATTRACTION);
         }
     }
 
@@ -144,9 +107,29 @@ class CuratedChoiceValidatorTest {
     class Discard {
 
         @Test
+        @DisplayName("번호가 범위를 벗어났는데 이름이 없으면 버린다 — 카카오에 물어볼 검색어가 없다")
+        void discardsOutOfRangeIndexWithoutName() {
+            CurationOutcome outcome = validate(slot(0, choice(9, null), choice(1, null)));
+
+            assertThat(outcome.day().slots().getFirst().choices())
+                .extracting(CuratedPlace::placeName).containsExactly("첨성대");
+            assertThat(outcome.demotions()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("번호도 이름도 없으면 버린다")
+        void discardsChoiceWithoutIndexAndName() {
+            CurationOutcome outcome = validate(slot(0, choice(null, " "), choice(0, null)));
+
+            assertThat(outcome.day().slots().getFirst().choices())
+                .extracting(CuratedPlace::placeName).containsExactly("대릉원");
+            assertThat(outcome.demotions()).isEmpty();
+        }
+
+        @Test
         @DisplayName("없는 자리를 지목하면 그 슬롯을 버린다 — 놓을 자리가 없어 강등할 수도 없다")
         void discardsUnknownSlotIndex() {
-            CurationOutcome outcome = validate(slot(5, "ATTRACTION", choice("LISTED", 0, "대릉원")));
+            CurationOutcome outcome = validate(slot(5, choice(0, null)));
 
             assertThat(outcome.day().slots()).hasSize(1);
             assertThat(outcome.day().slots().getFirst().choices()).isEmpty();
@@ -157,31 +140,20 @@ class CuratedChoiceValidatorTest {
         @DisplayName("같은 자리를 두 번 채우면 먼저 온 것을 쓴다")
         void keepsFirstOfDuplicateSlots() {
             CurationOutcome outcome = CuratedChoiceValidator.validate(day(SlotType.ATTRACTION),
-                POOL, new CuratorResponse(DAY, List.of(
-                    slot(0, "ATTRACTION", choice("LISTED", 0, "대릉원")),
-                    slot(0, "ATTRACTION", choice("SEEDED", 1, "첨성대")))));
+                POOL, new CuratorResponse(List.of(
+                    slot(0, choice(0, null)),
+                    slot(0, choice(1, null)))));
 
             assertThat(outcome.day().slots().getFirst().choices())
                 .extracting(CuratedPlace::placeName).containsExactly("대릉원");
-        }
-
-        @Test
-        @DisplayName("상호명이 비면 버린다 — SUGGESTED 로 내려도 카카오에 물어볼 것이 없다")
-        void discardsBlankName() {
-            CurationOutcome outcome = validate(slot(0, "ATTRACTION",
-                choice("SUGGESTED", null, " "), choice("LISTED", 0, "대릉원")));
-
-            assertThat(outcome.day().slots().getFirst().choices())
-                .extracting(CuratedPlace::placeName).containsExactly("대릉원");
-            assertThat(outcome.demotions()).isEmpty();
         }
 
         @Test
         @DisplayName("선택이 3개를 넘으면 앞에서부터 자른다 — 순서가 곧 선호도다")
         void trimsExtraChoices() {
-            CurationOutcome outcome = validate(slot(0, "ATTRACTION",
-                choice("LISTED", 0, "대릉원"), choice("SEEDED", 1, "첨성대"),
-                choice("SUGGESTED", null, "황남빵"), choice("SUGGESTED", null, "교촌마을")));
+            CurationOutcome outcome = validate(slot(0,
+                choice(0, null), choice(1, null),
+                choice(null, "황남빵"), choice(null, "교촌마을")));
 
             assertThat(outcome.day().slots().getFirst().choices())
                 .hasSize(CuratedChoiceValidator.MAX_CHOICES)
@@ -213,7 +185,7 @@ class CuratedChoiceValidatorTest {
 
     private static CurationOutcome validate(CuratorResponse.Slot slot) {
         return CuratedChoiceValidator.validate(day(SlotType.ATTRACTION), POOL,
-            new CuratorResponse(DAY, List.of(slot)));
+            new CuratorResponse(List.of(slot)));
     }
 
     private static void assertDemotedTo(String placeName, CurationOutcome outcome) {
@@ -230,19 +202,17 @@ class CuratedChoiceValidatorTest {
         return PlannerDayPlan.of(DAY, "황리단길 일대", "대릉원", List.of(slots));
     }
 
-    private static CuratorResponse.Slot slot(int slotIndex, String slotType,
-        CuratorResponse.Choice... choices) {
-        return new CuratorResponse.Slot(slotIndex, slotType, List.of(choices));
+    private static CuratorResponse.Slot slot(int slotIndex, CuratorResponse.Choice... choices) {
+        return new CuratorResponse.Slot(slotIndex, List.of(choices));
     }
 
-    private static CuratorResponse.Choice choice(String source, Integer listIndex,
-        String placeName) {
-        return new CuratorResponse.Choice(source, listIndex, placeName);
+    private static CuratorResponse.Choice choice(Integer listIndex, String placeName) {
+        return new CuratorResponse.Choice(listIndex, placeName);
     }
 
     private static PlaceCandidate candidate(String name, CandidateSourceType source,
-        Integer seedRank) {
-        return new PlaceCandidate(source, name, "경주시 황남동", LAT, LON, SlotType.ATTRACTION,
+        Integer seedRank, SlotType slotType) {
+        return new PlaceCandidate(source, name, "경주시 황남동", LAT, LON, slotType,
             Set.of(), seedRank, null, 0.4, "A02");
     }
 }
