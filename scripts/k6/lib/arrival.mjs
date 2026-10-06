@@ -19,8 +19,9 @@ export function mulberry32(seed) {
 
 // [0, durationSec) 안의 도착 시각(ms) 배열. 오름차순이다.
 export function arrivalSchedule(ratePerMin, durationSec, seed) {
-  if (!(ratePerMin > 0) || !(durationSec > 0)) {
-    throw new Error(`ratePerMin·durationSec 는 양수여야 한다: ${ratePerMin}, ${durationSec}`);
+  // Infinity 도 막는다 — 도착률이 무한이면 평균 간격이 0 이 되어 아래 반복이 끝나지 않는다.
+  if (!(Number.isFinite(ratePerMin) && ratePerMin > 0) || !(Number.isFinite(durationSec) && durationSec > 0)) {
+    throw new Error(`ratePerMin·durationSec 는 유한한 양수여야 한다: ${ratePerMin}, ${durationSec}`);
   }
   const rand = mulberry32(seed);
   const meanGapMs = 60000 / ratePerMin;
