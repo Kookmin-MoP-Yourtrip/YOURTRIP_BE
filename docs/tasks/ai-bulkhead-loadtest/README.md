@@ -403,6 +403,7 @@ TourAPI를 생략하면 **카카오가 새 병목**이다.
 | [`scripts/loadtest/bulkhead-cache-evict.py`](../../../scripts/loadtest/bulkhead-cache-evict.py) | 앱 인스턴스(root) | 캐시 키만 `SCAN` + `UNLINK`로 삭제. 인스턴스에 redis-cli가 없어 표준 라이브러리로 RESP를 직접 말한다 |
 | [`scripts/loadtest/aggregate-bulkhead.py`](../../../scripts/loadtest/aggregate-bulkhead.py) | 개발 PC | 6-5·8·9절의 판정. 무효면 종료 코드 4 |
 | [`scripts/loadtest/bulkhead-round.sh`](../../../scripts/loadtest/bulkhead-round.sh) | 개발 PC | 10-4절 회차 절차 전체(토큰 → 배포 → 점검 → 캐시 삭제 → 수집 → k6 → 회수 → ALB 지표 → 판정) |
+| [`scripts/loadtest/bulkhead-windows.py`](../../../scripts/loadtest/bulkhead-windows.py) | 개발 PC | 회차 하나의 배경 지연을 10초 창별 p50·p95·p99로 펼친다(판정에는 쓰지 않는 보조 자료) |
 | [`scripts/loadtest/bulkhead-plan.sh`](../../../scripts/loadtest/bulkhead-plan.sh) | 개발 PC | 고정 회차를 5-7절 순서로 이어 돌린다(`--rounds`로 경계 탐색 회차를 하나씩 지정). 무효 회차는 보관하고 같은 자리에서 한 번 더, 인프라 문제면 멈춘다 |
 | [`scripts/loadtest/bulkhead-sql.sh`](../../../scripts/loadtest/bulkhead-sql.sh) | 앱 인스턴스(root) | `.env`의 DB 접속 정보로 SQL 파일을 실행한다. 비밀번호를 인스턴스 밖으로 꺼내지 않는다 |
 | [`scripts/sql/seed-bulkhead.sql`](../../../scripts/sql/seed-bulkhead.sql) | 운영 RDS | 부하용 사용자 + 업로드 코스 3,000건. PK는 시퀀스에 맡기고 `created_at`은 `now()`로 넣는다. 로컬 개발 DB에서 롤백 트랜잭션으로 검증했다(ID 범위 연속 3,000) |
@@ -508,6 +509,7 @@ TourAPI를 생략하면 **카카오가 새 병목**이다.
 
 ## 14. 관련 문서
 
+- [measurement.md](measurement.md) — 이 설계로 잰 결과(회차 요약, 절벽형 붕괴 표)
 - [llm-performance 로드맵](../llm-performance/README.md) — 비교 대상 PR들의 측정 기록
 - [STEP-admission-limit](../llm-performance/steps/STEP-admission-limit.md), [STEP-arrival-rate](../llm-performance/steps/STEP-arrival-rate.md) — 입장 제한과 도착률 측정 도구(#195)
 - [STEP-curator-output](../llm-performance/steps/STEP-curator-output.md) — B의 처리 시간 W 실측(#196)
