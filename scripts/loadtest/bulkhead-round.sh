@@ -32,6 +32,13 @@ set -a; . "$CONFIG"; set +a
 export AWS_CONFIG_FILE="${AWS_CONFIG_FILE:-$USERPROFILE/.aws/config}"
 export AWS_SHARED_CREDENTIALS_FILE="${AWS_SHARED_CREDENTIALS_FILE:-$USERPROFILE/.aws/credentials}"
 export AWS_PROFILE AWS_REGION AWS_DEFAULT_REGION="$AWS_REGION"
+# Git Bash 는 '/' 로 시작하는 인자(와 'Key=/...' 의 값)를 Windows 경로로 바꿔 Windows 실행 파일에 넘긴다.
+# 그러면 aws 가 SSM 이름 /yourtrip/prod/... 를 'C:/Program Files/Git/yourtrip/...' 로 받아 ParameterNotFound 가
+# 난다(실제로 겪었다). 그래서 변환을 끄고, Windows 실행 파일(python·aws file://)에 넘기는 로컬 경로만 win() 으로
+# 직접 바꾼다. ssh·scp·tar 는 Git Bash 자체 도구라 /c/... 를 그대로 이해한다 — 오히려 C:/... 로 넘기면
+# 'C:' 를 원격 호스트로 읽는다.
+export MSYS_NO_PATHCONV=1
+win() { cygpath -m "$1"; }
 
 LABEL="r${RATE}-${ARM}${REP}"
 # 같은 단계의 A·B 는 같은 시드 — 정확히 같은 도착을 받는다.
@@ -53,9 +60,13 @@ k6_scp() { scp -q "${SSH_OPTS[@]}" -i "$REPO/$K6_SSH_KEY" "$@"; }
 log "회차 $LABEL 시작 — arm $ARM ($KEY), 분당 $RATE 건, seed $SEED"
 
 # ── 0. 전제 확인 ─────────────────────────────────────────────────────────────
+ASG_COUNT=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
+  --query 'length(AutoScalingGroups)' --output text)
+[ "$ASG_COUNT" = "1" ] || { log "중단: 운영 ASG($ASG_NAME)가 없다 — terraform/prod 를 먼저 올린다"; exit 3; }
 SUSPENDED=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
-  --query "AutoScalingGroups[0].SuspendedProcesses[?ProcessName=='ReplaceUnhealthy'] | length(@)" --output text)
-[ "$SUSPENDED" = "1" ] || { log "중단: ReplaceUnhealthy 가 일시 중지돼 있지 않다(본측정 전제, 설계 문서 10-2)"; exit 3; }
+  --query 'AutoScalingGroups[0].SuspendedProcesses[].ProcessName' --output text)
+grep -qw ReplaceUnhealthy <<< "$SUSPENDED" \
+  || { log "중단: ReplaceUnhealthy 가 일시 중지돼 있지 않다(본측정 전제, 설계 문서 10-2)"; exit 3; }
 
 # ── 1. 토큰 ──────────────────────────────────────────────────────────────────
 # 비밀키는 SSM 에서 읽어 gradle 프로세스 환경에만 넘긴다. 화면·파일·로그에 남기지 않는다.
@@ -63,7 +74,7 @@ log "토큰 발급(사용자 $LOADTEST_USER_ID)"
 TOKEN_FILE="$OUT/jwt.txt"
 ( cd "$REPO" && JWT_SECRET="$(aws ssm get-parameter --name "$SSM_JWT_SECRET_PARAM" --with-decryption \
       --query Parameter.Value --output text)" \
-    LOADTEST_TOKEN_FILE="$(cygpath -w "$TOKEN_FILE" 2>/dev/null || echo "$TOKEN_FILE")" \
+    LOADTEST_TOKEN_FILE="$(win "$TOKEN_FILE")" \
     ./gradlew benchmarkTest --tests '*LoadTestTokenIssuer*' --rerun -q ) >> "$LOG" 2>&1
 [ -s "$TOKEN_FILE" ] || { log "중단: 토큰 파일이 비었다"; exit 3; }
 chmod 600 "$TOKEN_FILE" 2>/dev/null || true
@@ -72,7 +83,7 @@ chmod 600 "$TOKEN_FILE" 2>/dev/null || true
 log "artifact_key → $KEY, instance refresh 시작"
 aws ssm put-parameter --name "$SSM_ARTIFACT_KEY_PARAM" --value "$KEY" --type String --overwrite >/dev/null
 REFRESH_ID=$(aws autoscaling start-instance-refresh --auto-scaling-group-name "$ASG_NAME" \
-  --preferences "file://$REPO/deploy/prod/instance-refresh-preferences.json" \
+  --preferences "file://$(win "$REPO/deploy/prod/instance-refresh-preferences.json")" \
   --query InstanceRefreshId --output text)
 # 진행 중인 refresh 는 취소하지 않는다(docs/guide/cd.md — 취소가 정상 인스턴스를 죽인 사고가 있었다).
 DEADLINE=$(( $(date +%s) + 1500 ))
@@ -157,13 +168,13 @@ for spec in "UnHealthyHostCount Maximum tg" "HealthyHostCount Minimum tg" \
 done
 
 set +e
-python "$REPO/scripts/loadtest/aggregate-bulkhead.py" \
-  --k6-log "$OUT/$LABEL.k6.log" --k6-summary "$OUT/$LABEL.summary.json" \
-  --poll "$OUT/$LABEL/metrics.prom" --dumps-dir "$OUT/$LABEL/dumps" --journal "$OUT/$LABEL/app.log" \
-  --label "$LABEL" --out-json "$OUT/result.json" | tee -a "$LOG"
+python "$(win "$REPO/scripts/loadtest/aggregate-bulkhead.py")" \
+  --k6-log "$(win "$OUT/$LABEL.k6.log")" --k6-summary "$(win "$OUT/$LABEL.summary.json")" \
+  --poll "$(win "$OUT/$LABEL/metrics.prom")" --dumps-dir "$(win "$OUT/$LABEL/dumps")" \
+  --journal "$(win "$OUT/$LABEL/app.log")" --label "$LABEL" --out-json "$(win "$OUT/result.json")" | tee -a "$LOG"
 AGG_EXIT=${PIPESTATUS[0]}
 set -e
-UNHEALTHY_MAX=$(python -c "import json,sys;d=json.load(open(sys.argv[1]));print(max([p['Maximum'] for p in d['Datapoints']] or [0]))" "$OUT/cw-UnHealthyHostCount.json")
+UNHEALTHY_MAX=$(python -c "import json,sys;d=json.load(open(sys.argv[1]));print(max([p['Maximum'] for p in d['Datapoints']] or [0]))" "$(win "$OUT/cw-UnHealthyHostCount.json")")
 log "UnHealthyHostCount 최대 $UNHEALTHY_MAX (J5)"
 printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date '+%F %T')" "$LABEL" "$ARM" "$RATE" "$AGG_EXIT" "$UNHEALTHY_MAX" \
   >> "$REPO/results/ai-bulkhead/index.tsv"
