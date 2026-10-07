@@ -117,8 +117,11 @@ case "$DEPLOYED" in
   *"$KEY"*) log "배포 확인: $DEPLOYED" ;;
   *) log "중단: 의도한 JAR 이 아니다 — $DEPLOYED"; exit 3 ;;
 esac
-app_ssh "curl -sf -o /dev/null http://localhost:8081/actuator/health && curl -sf -o /dev/null http://localhost:8080/livez" \
-  || { log "중단: 관리 포트(8081) 또는 /livez(8080) 가 응답하지 않는다(설계 문서 6-2)"; exit 3; }
+# 헬스체크 경로(8080 /actuator)가 liveness 만 담는지까지 본다 — 전체 health 면 DB 순간 장애에 교체 폭풍이 된다.
+LIVENESS=$(app_ssh "curl -sf http://localhost:8080/actuator" || true)
+app_ssh "curl -sf -o /dev/null http://localhost:8081/actuator/prometheus" \
+  && [ "$LIVENESS" = '{"status":"UP","components":{"livenessState":{"status":"UP"}}}' ] \
+  || { log "중단: 관리 포트(8081) 또는 헬스체크 경로(8080 /actuator)가 기대와 다르다: $LIVENESS (설계 문서 6-2)"; exit 3; }
 
 # ── 4. 캐시 삭제 · 수집 시작 ─────────────────────────────────────────────────
 app_ssh "mkdir -p /tmp/bulkhead"

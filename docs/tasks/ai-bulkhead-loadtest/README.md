@@ -210,8 +210,14 @@ AI 도착 구간을 5분으로 둔 이유:
 | 설정 (환경변수, A·B 동일) | 효과 |
 |---|---|
 | `MANAGEMENT_SERVER_PORT=8081` | actuator가 **별도 내장 Tomcat**(별도 커넥터·대기열·워커 풀 `http-nio-8081-exec-*`)으로 옮겨진다. 앱 워커 32개가 고갈돼도 지표 수집은 영향받지 않는다 |
-| `MANAGEMENT_ENDPOINT_HEALTH_PROBES_ADD_ADDITIONAL_PATHS=true` | 8080에 `/livez`가 열린다 |
-| ALB 헬스체크 경로 → `/livez` (`terraform/prod` `health_check_path`) | 헬스체크가 **운영과 같이 앱 워커 풀을 거친다.** 이걸 안 하면 헬스체크가 8081로 옮겨져 3-1의 5단계 가설이 실험에서 사라진다 |
+| `MANAGEMENT_ENDPOINT_HEALTH_GROUP_LIVENESS_ADDITIONALPATH=server:/actuator` | liveness 그룹을 **앱 포트(8080)의 `/actuator`** 에도 노출한다 |
+| `MANAGEMENT_ENDPOINT_HEALTH_GROUP_LIVENESS_INCLUDE=livenessState` | 그 그룹이 liveness 상태만 담게 한다 |
+| ALB 헬스체크 경로 → `/actuator` (`terraform/prod` `health_check_path`) | 헬스체크가 **운영과 같이 앱 워커 풀을 거친다.** 이걸 안 하면 헬스체크가 8081로 옮겨져 3-1의 5단계 가설이 실험에서 사라진다 |
+
+**왜 `/livez`가 아니라 `/actuator`인가 — 설계 중 두 번 틀렸다.** 처음에는 Spring Boot가 제공하는 `/livez`(`probes.add-additional-paths`)를 쓰려 했다. 그런데 두 버전 모두 보안 설정이 `/actuator/**`만 인증 없이 열고 나머지는 `anyRequest().authenticated()`라, `/livez`는 401이 돼 인스턴스가 영원히 unhealthy가 된다. 개선 전 JAR은 코드를 바꿀 수 없으므로 보안 설정을 고치는 길은 없다. 그래서 liveness 그룹의 `additional-path`로 **이미 열려 있는 `/actuator/**` 아래**에 노출했다.
+- 기존 경로 그대로(`/actuator/health/liveness`)는 쓸 수 없다 — `additional-path`는 경로 한 단계만 허용한다(`'value' must contain only one segment`로 기동 실패를 로컬에서 확인). `/actuator` 한 단계는 `/actuator/**` 허용 규칙에 포함된다
+- `additional-path`만 주면 **liveness가 전체 health로 바뀐다** — 사용자 정의 그룹이 자동 생성 그룹을 대체하면서 포함 대상이 비어 DB·Redis·메일까지 담겼다. 그러면 DB 순간 장애에도 503이 나 ASG 교체 폭풍이 된다(운영이 `/actuator/health`가 아니라 liveness를 고른 이유와 같다). 그래서 `include=livenessState`를 함께 준다
+- 로컬에서 세 설정을 함께 주고 확인했다: 8080 `/actuator` → 인증 없이 200, `{"livenessState":"UP"}`만 / 8080 `/actuator/prometheus` → 404 / 8081 `/actuator/prometheus` → 200
 
 환경변수는 SSM `<ssm_parameter_path>/env/` 아래에 두면 부팅 때 `.env`로 떨어져 매 회차 새 인스턴스에도 적용된다.
 
@@ -341,7 +347,7 @@ TourAPI를 생략하면 **카카오가 새 병목**이다.
 
 1. A의 JAR을 `3df97b4^1`에서 빌드해 아티팩트 버킷에 올린다(B는 CD가 이미 올렸는지 확인)
 2. SSM `env/`에 6-2절의 관리 포트 환경변수 두 개와 `tour.base-url` 생략값을 넣는다
-3. `terraform/prod`의 `health_check_path`를 `/livez`로 바꿔 `plan` → `apply`한다(형상 변경이라 terraform을 거친다)
+3. `terraform/prod`의 `health_check_path`를 `/actuator`로 바꿔 `plan` → `apply`한다(형상 변경이라 terraform을 거친다). **2번(SSM)보다 먼저 바꾸면 안 된다** — 새 경로를 여는 설정이 없는 인스턴스는 헬스체크에 실패해 교체가 반복된다
 4. ASG의 `ReplaceUnhealthy` 프로세스를 일시 중지한다(본측정 동안만. 실행 상태 조작이라 CLI로 한다)
 5. 운영 DB에 시드를 넣는다 — 부하용 사용자 1명과 업로드 코스 3,000건([`seed-bulkhead.sql`](../../../scripts/sql/seed-bulkhead.sql)). 운영 RDS는 인프라를 올릴 때마다 새로 만들어져 비어 있고(스냅샷 복원 없음), 스키마는 첫 앱 기동 때 생긴다(DDL `update`) — 그래서 **앱이 한 번 뜬 뒤에** 넣는다. 시드 결과로 나온 사용자 id와 상세 코스 ID 범위를 회차 설정에 넣는다. 측정 뒤 인프라를 내리면 RDS와 함께 사라진다
 6. 부하용 사용자를 정한다. 인증 필터가 토큰의 사용자를 DB에서 조회하므로 운영에 실제로 있는 사용자여야 한다. 토큰은 `LoadTestTokenIssuer`가 서버와 같은 방식(유효 1시간)으로 **회차마다** 발급한다(`LOADTEST_USER_ID`·`LOADTEST_USER_EMAIL`, 비밀키는 SSM에서 읽어 발급 프로세스에만 넘긴다)
@@ -353,7 +359,7 @@ TourAPI를 생략하면 **카카오가 새 병목**이다.
 ### 10-3. 측정 전 점검 (첫 회차 전에 한 번)
 
 - [ ] 관리 Tomcat이 실제로 분리됐는가 — 스레드 덤프에 `http-nio-8081-exec-*`가 있고 그 개수가 몇인가(앱의 `server.tomcat.threads.max: 32`가 자식 서버에도 적용되는지 단정하지 않고 확인한다)
-- [ ] ALB 헬스체크가 `/livez`로 통과하는가, `/livez`가 `http-nio-8080-exec-*`에서 처리되는가
+- [ ] ALB 헬스체크가 `/actuator`로 통과하는가, 응답이 `livenessState`만 담는가(전체 health면 DB 장애 때 교체 폭풍이 된다)
 - [ ] A의 JAR에서 `executor_*{name="aiAgentExecutor"}`와 `tomcat_threads_*` 지표가 노출되는가
 - [ ] TourAPI 성공 0건인가(AI 요청 1건으로 확인)
 - [ ] `ReplaceUnhealthy`가 일시 중지됐는가
@@ -397,7 +403,7 @@ TourAPI를 생략하면 **카카오가 새 병목**이다.
 
 ### 10-6. 원복
 
-- SSM `env/`의 관리 포트·`tour.base-url` 값을 지운다
+- SSM `env/`에 추가한 네 값(관리 포트, liveness 경로·포함 대상, `TOUR_BASEURL`)을 지운다
 - `health_check_path`를 `/actuator/health/liveness`로 되돌려 `apply`한다
 - ASG `ReplaceUnhealthy`를 재개한다
 - `artifact_key`를 측정 전 값으로 되돌린다
@@ -429,7 +435,7 @@ TourAPI를 생략하면 **카카오가 새 병목**이다.
 | TourAPI | 생략(닫힌 포트) | 5-4 |
 | 일정·규모 | 하루, 단계 순서 40 → 70 → 20 → 5, 10회차(40단계만 ABBA), 회차 12분, 약 3.3시간 | 5-5 |
 | 회차 초기화 | 매 회차 instance refresh + 캐시 키만 삭제 | 5-6 |
-| 지표 수집 | 관리 포트 8081 분리, 헬스체크는 8080 `/livez`, 운영 Alloy는 쓰지 않음 | 6-2 |
+| 지표 수집 | 관리 포트 8081 분리, 헬스체크는 8080 `/actuator`(liveness만), 운영 Alloy는 쓰지 않음 | 6-2 |
 | 판정 임계값 | 저하 3배 그리고 +100ms · 30초 연속 / 장애 p99 1초 · 30초 연속 또는 에러율 1% / 회복 1.5배 또는 +100ms · 30초 연속 | 6-5, 8 |
 | 수집 실패·CPU 포화 | 무효가 아니라 "원인 분리 필요"(J3만 보류) | 9-2 |
 | ASG 교체 | 본측정은 `ReplaceUnhealthy` 일시 중지, 버전별 시연 측정은 허용(최대 10분, 본측정과 다른 날) | 11 |
