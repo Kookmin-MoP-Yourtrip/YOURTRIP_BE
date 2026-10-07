@@ -28,6 +28,10 @@ import org.junit.jupiter.api.Test;
  *
  * <p>{@code DB_DDL_AUTO=create}라 서버를 띄울 때마다 시드가 다시 들어가므로 user1 의 id 는 1 로 고정이다.
  *
+ * <p><b>운영 측정(#197)</b> — 인증 필터가 토큰의 사용자를 DB에서 조회하므로 운영에 실제로 있는 사용자여야
+ * 한다. {@code LOADTEST_USER_ID}·{@code LOADTEST_USER_EMAIL}로 바꾸고, 비밀키는 {@code JWT_SECRET} 환경변수로
+ * 넘긴다(OS 환경변수가 {@code .env}보다 우선한다). 유효기간은 서버와 같은 1시간이라 회차(약 21분)마다 새로 발급한다.
+ *
  * <pre>{@code
  * LOADTEST_TOKEN_FILE=results/ai-arrival-194/jwt.txt \
  *     ./gradlew benchmarkTest --tests '*LoadTestTokenIssuer*' --rerun
@@ -37,7 +41,7 @@ import org.junit.jupiter.api.Test;
 @DisplayName("로컬 부하 측정용 액세스 토큰 발급 (#194)")
 class LoadTestTokenIssuer {
 
-    private static final long SEED_USER_ID = 1L;
+    private static final String SEED_USER_ID = "1";
     private static final String SEED_USER_EMAIL = "user1@yourtrip.com";
 
     @Test
@@ -50,10 +54,12 @@ class LoadTestTokenIssuer {
         Path out = Path.of(BenchmarkEnv.text("loadtest.token.file", "LOADTEST_TOKEN_FILE",
             "results/loadtest-jwt.txt"));
         Files.createDirectories(out.toAbsolutePath().getParent());
-        String token = new JwtTokenProvider(secret).createAccessToken(SEED_USER_ID, SEED_USER_EMAIL);
+        long userId = Long.parseLong(BenchmarkEnv.text("loadtest.user.id", "LOADTEST_USER_ID", SEED_USER_ID));
+        String email = BenchmarkEnv.text("loadtest.user.email", "LOADTEST_USER_EMAIL", SEED_USER_EMAIL);
+        String token = new JwtTokenProvider(secret).createAccessToken(userId, email);
         restrictToOwner(out);
         Files.writeString(out, token, StandardCharsets.UTF_8);
-        System.out.printf("[토큰] user %d 의 액세스 토큰을 %s 에 썼다(%d자)%n", SEED_USER_ID,
+        System.out.printf("[토큰] user %d 의 액세스 토큰을 %s 에 썼다(%d자)%n", userId,
             out.toAbsolutePath(), token.length());
     }
 
