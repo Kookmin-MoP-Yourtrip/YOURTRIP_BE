@@ -340,7 +340,7 @@ TourAPI를 생략하면 **카카오가 새 병목**이다.
 |---|---|
 | 앱 | `terraform/prod` — t3.small, ASG desired 1 / max 2, ALB(idle timeout 60초) |
 | DB · 캐시 | 같은 모듈의 RDS(db.t3.micro), ElastiCache(cache.t3.micro) |
-| 부하 생성 | `terraform/loadtest`의 k6 EC2만 `-target=aws_instance.k6`로 띄워 운영 ALB의 공개 도메인으로 보낸다. k6 EC2는 서브넷·보안그룹·키페어에만 의존해 앱·RDS·Redis는 만들어지지 않는다. 모듈에 토글 변수를 두는 방법은 기존 리소스에 `count`를 붙여 state 주소가 바뀌고 `state mv`가 따라오므로 택하지 않았다 |
+| 부하 생성 | `terraform/loadtest`의 k6 EC2(`m7i-flex.large`)만 `-target`으로 띄워(10-7) 운영 ALB의 공개 도메인으로 보낸다. k6 EC2는 서브넷·보안그룹·키페어에만 의존해 앱·RDS·Redis는 만들어지지 않는다. 모듈에 토글 변수를 두는 방법은 기존 리소스에 `count`를 붙여 state 주소가 바뀌고 `state mv`가 따라오므로 택하지 않았다 |
 | 배포 | SSM `artifact_key` + instance refresh (CD와 같은 경로) |
 
 ### 10-2. 사전 작업
@@ -348,7 +348,9 @@ TourAPI를 생략하면 **카카오가 새 병목**이다.
 1. A의 JAR을 `3df97b4^1`에서 빌드해 아티팩트 버킷에 올린다(B는 CD가 이미 올렸는지 확인)
 2. SSM `env/`에 6-2절의 관리 포트 환경변수 두 개와 `tour.base-url` 생략값을 넣는다
 3. `terraform/prod`의 `health_check_path`를 `/actuator`로 바꿔 `plan` → `apply`한다(형상 변경이라 terraform을 거친다). **2번(SSM)보다 먼저 바꾸면 안 된다** — 새 경로를 여는 설정이 없는 인스턴스는 헬스체크에 실패해 교체가 반복된다
-4. ASG의 `ReplaceUnhealthy` 프로세스를 일시 중지한다(본측정 동안만. 실행 상태 조작이라 CLI로 한다)
+4. ASG의 `ReplaceUnhealthy`와 `AlarmNotification` 프로세스를 일시 중지한다(본측정 동안만. 실행 상태 조작이라 CLI로 한다)
+   - `ReplaceUnhealthy`: 헬스체크 실패로 인스턴스가 교체되면 회차가 끊긴다(11절)
+   - `AlarmNotification`: 운영 ASG에는 요청 수 기반 확장 정책(`aws_autoscaling_policy.request_count`)이 있다. 부하에 반응해 2대로 늘면 "서버 1대" 전제가 측정 도중에 깨진다 — `terraform plan`을 보다가 발견했다. 회차마다 하는 instance refresh는 이 둘과 무관하게 동작한다
 5. 운영 DB에 시드를 넣는다 — 부하용 사용자 1명과 업로드 코스 3,000건([`seed-bulkhead.sql`](../../../scripts/sql/seed-bulkhead.sql)). 운영 RDS는 인프라를 올릴 때마다 새로 만들어져 비어 있고(스냅샷 복원 없음), 스키마는 첫 앱 기동 때 생긴다(DDL `update`) — 그래서 **앱이 한 번 뜬 뒤에** 넣는다. 시드 결과로 나온 사용자 id와 상세 코스 ID 범위를 회차 설정에 넣는다. 측정 뒤 인프라를 내리면 RDS와 함께 사라진다
 6. 부하용 사용자를 정한다. 인증 필터가 토큰의 사용자를 DB에서 조회하므로 운영에 실제로 있는 사용자여야 한다. 토큰은 `LoadTestTokenIssuer`가 서버와 같은 방식(유효 1시간)으로 **회차마다** 발급한다(`LOADTEST_USER_ID`·`LOADTEST_USER_EMAIL`, 비밀키는 SSM에서 읽어 발급 프로세스에만 넘긴다)
 7. 인스턴스 안에서 1초 수집과 10초 스레드 덤프를 돌릴 스크립트를 준비한다(측정 결과는 회차 끝에 S3로 옮긴다)
@@ -362,7 +364,7 @@ TourAPI를 생략하면 **카카오가 새 병목**이다.
 - [ ] ALB 헬스체크가 `/actuator`로 통과하는가, 응답이 `livenessState`만 담는가(전체 health면 DB 장애 때 교체 폭풍이 된다)
 - [ ] A의 JAR에서 `executor_*{name="aiAgentExecutor"}`와 `tomcat_threads_*` 지표가 노출되는가
 - [ ] TourAPI 성공 0건인가(AI 요청 1건으로 확인)
-- [ ] `ReplaceUnhealthy`가 일시 중지됐는가
+- [ ] `ReplaceUnhealthy`·`AlarmNotification`이 일시 중지됐는가
 
 ### 10-4. 회차 절차
 
@@ -401,11 +403,35 @@ TourAPI를 생략하면 **카카오가 새 병목**이다.
 
 스레드 덤프 파서는 CallerRuns 스택을 담은 샘플 덤프로, 캐시 삭제는 로컬 Redis의 빈 DB에 캐시 키와 보존 대상 키를 섞어 넣어 확인했다(캐시 키만 지워지고 조회수 증분·인증·락 키는 남았다. 구버전 Redis는 `UNLINK`를 몰라 `DEL`로 내려가는 경로를 더했다).
 
+### 10-7. 준비 중 겪은 일 — 측정 전에 막은 결함
+
+운영에 올린 뒤 측정 전 점검에서 드러나, 그대로 측정했으면 결과를 오염시켰을 것들이다.
+
+| 발견 | 그대로 뒀다면 | 조치 |
+|---|---|---|
+| 운영의 앱 Tomcat 워커 이름이 `http-nio-0.0.0.0-8080-exec-N`이다(`server.address` 지정). 관리 포트는 `http-nio-8081-exec-N` | 덤프 파서가 앱 워커를 0개로 세어 **CallerRuns를 한 건도 못 잡는다** | 주소 부분이 있어도 없어도 맞추는 정규식으로 바꾸고 운영 덤프로 확인(앱 10 · 관리 10) |
+| 운영 ASG에 요청 수 기반 확장 정책(`request_count`)이 있다 | 부하에 반응해 2대로 늘어 "서버 1대" 전제가 깨진다 | `AlarmNotification`도 일시 중지(10-2) |
+| ASG의 `suspended_processes`를 terraform이 관리한다 | 측정 중 운영 `apply`를 하면 CLI로 멈춘 프로세스가 되살아난다 | **측정 중에는 운영 apply를 하지 않는다.** SSH 허용 IP를 바꾸는 대신 앱 인스턴스에는 **SSM 세션으로 SSH를 터널링**한다(보안그룹 변경 불필요) |
+| `-target=aws_instance.k6`는 인스턴스가 **의존하는** 것만 만든다 | 인터넷 게이트웨이·라우팅과 보안그룹 규칙(인바운드 SSH, **아웃바운드 전체**)이 빠진다. terraform은 보안그룹을 만들 때 기본 아웃바운드 허용을 지우므로 k6 EC2가 밖으로 아무것도 못 해 부팅 스크립트(k6 설치·clone)가 실패한다 | 네트워크 → 보안그룹 규칙 → 인스턴스 순으로 대상을 나눠 적용하고, 실패한 인스턴스는 교체한다 |
+| 이 AWS 계정은 프리 티어 플랜이라 허용된 인스턴스 타입만 띄운다 | k6 EC2용으로 고른 t3.large가 거부된다. 원래 값 t3.micro(1GB)는 VU 최대 약 650개를 감당하지 못한다 | 허용 목록 중 `m7i-flex.large`(vCPU 2, 8GB) |
+| 명령줄 `curl`의 한글 본문이 UTF-8이 아니게 전달된다(Windows Git Bash) | 점검 요청이 400 | 본문을 UTF-8 파일로 보낸다. k6는 UTF-8이라 측정과 무관 |
+
+측정 전 점검(10-3) 결과 — 두 버전 모두 같은 측정용 설정으로 기동했다.
+
+| | A `46465a4` | B `47c0425` |
+|---|---|---|
+| 8080 `/actuator` | livenessState만 | livenessState만 |
+| `aiAgentExecutor` 최대 / Tomcat 최대 | 8 / 32 | 20 / 32 |
+| 입장 제한 지표 | 없음 | 있음 |
+| TourAPI | — | 성공 0 · 실패 7(닫힌 포트로 즉시 실패) |
+| AI 요청 1건 | — | 201, 21.5초 |
+| 수집 스크립트 | — | jcmd 없음 → `-devel` 설치 후 jcmd, 15초에 덤프 2 · 스냅샷 15 · 수집 실패 0 |
+
 ### 10-6. 원복
 
 - SSM `env/`에 추가한 네 값(관리 포트, liveness 경로·포함 대상, `TOUR_BASEURL`)을 지운다
 - `health_check_path`를 `/actuator/health/liveness`로 되돌려 `apply`한다
-- ASG `ReplaceUnhealthy`를 재개한다
+- ASG `ReplaceUnhealthy`·`AlarmNotification`을 재개한다
 - `artifact_key`를 측정 전 값으로 되돌린다
 - loadtest 모듈을 `terraform destroy`로 내린다. `-target` destroy는 대상과 그것에 **의존하는** 리소스만 지우고, 대상이 의존하는 서브넷·보안그룹·키페어는 남긴다. 이 모듈의 state에는 측정 때 `-target`으로 만든 것만 있으므로 전체 destroy가 정확히 그것만 지운다 — 실행 전 `plan -destroy`로 목록을 확인한다
 
@@ -438,7 +464,7 @@ TourAPI를 생략하면 **카카오가 새 병목**이다.
 | 지표 수집 | 관리 포트 8081 분리, 헬스체크는 8080 `/actuator`(liveness만), 운영 Alloy는 쓰지 않음 | 6-2 |
 | 판정 임계값 | 저하 3배 그리고 +100ms · 30초 연속 / 장애 p99 1초 · 30초 연속 또는 에러율 1% / 회복 1.5배 또는 +100ms · 30초 연속 | 6-5, 8 |
 | 수집 실패·CPU 포화 | 무효가 아니라 "원인 분리 필요"(J3만 보류) | 9-2 |
-| ASG 교체 | 본측정은 `ReplaceUnhealthy` 일시 중지, 버전별 시연 측정은 허용(최대 10분, 본측정과 다른 날) | 11 |
+| ASG 교체·확장 | 본측정은 `ReplaceUnhealthy`·`AlarmNotification` 일시 중지, 버전별 시연 측정은 허용(최대 10분, 본측정과 다른 날) | 11 |
 | k6 실행 위치 | loadtest 모듈의 k6 EC2만 `-target`으로 | 10-1 |
 | 범위 | 회복 시간 포함. 재시도 폭풍·30일 요청·저녁 지연·LLM stub 제외 | 1-3 |
 

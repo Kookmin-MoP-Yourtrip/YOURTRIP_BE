@@ -229,6 +229,10 @@ def server_metrics(poll_path, t0_epoch, phases):
 # ── 스레드 덤프 ─────────────────────────────────────────────────────────────
 
 THREAD_HEAD_RE = re.compile(r'^"([^"]+)"')
+# Tomcat 워커 이름은 커넥터 이름을 따른다. server.address 를 지정한 운영은 'http-nio-0.0.0.0-8080-exec-N',
+# 지정하지 않은 관리 포트는 'http-nio-8081-exec-N' 이다(운영 덤프로 확인). 주소 부분은 있어도 없어도 맞춘다.
+APP_WORKER_RE = re.compile(r'^http-nio-(?:[0-9a-fA-F.:\[\]]+-)?8080-exec-')
+MGMT_WORKER_RE = re.compile(r'^http-nio-(?:[0-9a-fA-F.:\[\]]+-)?8081-exec-')
 STATE_RE = re.compile(r'java\.lang\.Thread\.State: (\w+)')
 
 
@@ -265,8 +269,8 @@ def dump_series(dumps_dir, t0_epoch, phases):
         except ValueError:
             continue
         threads = parse_dump(os.path.join(dumps_dir, fn))
-        app_workers = {n: v for n, v in threads.items() if n.startswith('http-nio-8080-exec-')}
-        mgmt_workers = [n for n in threads if n.startswith('http-nio-8081-exec-')]
+        app_workers = {n: v for n, v in threads.items() if APP_WORKER_RE.match(n)}
+        mgmt_workers = [n for n in threads if MGMT_WORKER_RE.match(n)]
         # CallerRuns: 요청 스레드의 스택에 거부 정책 실행과 LLM 호출이 함께 있다.
         caller_runs = [n for n, (_, st) in app_workers.items()
                        if 'CallerRunsPolicy.rejectedExecution' in st and 'OpenAiLlmClient.generate' in st]

@@ -51,9 +51,13 @@ log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; }
 
 if [ "$ARM" = A ]; then KEY="$ARTIFACT_KEY_A"; else KEY="$ARTIFACT_KEY_B"; fi
 KNOWN="$OUT/known_hosts"
-SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=10 -o ServerAliveInterval=30)
-app_ssh() { ssh "${SSH_OPTS[@]}" -i "$REPO/$PROD_SSH_KEY" "$SSH_USER@$APP_IP" "$@"; }
-app_scp() { scp -q "${SSH_OPTS[@]}" -i "$REPO/$PROD_SSH_KEY" "$@"; }
+SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=30 -o ServerAliveInterval=30)
+# 앱 인스턴스는 공인 IP·보안그룹이 아니라 SSM 세션으로 SSH 를 터널링한다(호스트 자리에 인스턴스 ID).
+# 운영 보안그룹의 SSH 허용 IP 를 바꾸려면 terraform apply 가 필요한데, 그 apply 는 CLI 로 멈춘
+# ASG 프로세스(ReplaceUnhealthy·AlarmNotification)를 drift 로 보고 되살린다 — 측정 중에는 운영 apply 를 하지 않는다.
+APP_PROXY=(-o "ProxyCommand=aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p")
+app_ssh() { ssh "${SSH_OPTS[@]}" "${APP_PROXY[@]}" -i "$REPO/$PROD_SSH_KEY" "$SSH_USER@$INSTANCE_ID" "$@"; }
+app_scp() { scp -q "${SSH_OPTS[@]}" "${APP_PROXY[@]}" -i "$REPO/$PROD_SSH_KEY" "$@"; }
 k6_ssh() { ssh "${SSH_OPTS[@]}" -i "$REPO/$K6_SSH_KEY" "$SSH_USER@$K6_HOST" "$@"; }
 k6_scp() { scp -q "${SSH_OPTS[@]}" -i "$REPO/$K6_SSH_KEY" "$@"; }
 
@@ -65,8 +69,13 @@ ASG_COUNT=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-na
 [ "$ASG_COUNT" = "1" ] || { log "중단: 운영 ASG($ASG_NAME)가 없다 — terraform/prod 를 먼저 올린다"; exit 3; }
 SUSPENDED=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
   --query 'AutoScalingGroups[0].SuspendedProcesses[].ProcessName' --output text)
-grep -qw ReplaceUnhealthy <<< "$SUSPENDED" \
-  || { log "중단: ReplaceUnhealthy 가 일시 중지돼 있지 않다(본측정 전제, 설계 문서 10-2)"; exit 3; }
+# ReplaceUnhealthy: 헬스체크 실패로 인스턴스가 교체되면 회차가 끊긴다(교체는 시연 측정에서만 본다).
+# AlarmNotification: 요청 수 기반 확장 정책(aws_autoscaling_policy.request_count)이 부하에 반응해 2대로 늘리면
+# '서버 1대' 전제가 측정 도중에 깨진다. instance refresh 는 이 둘과 무관하게 동작한다.
+for proc in ReplaceUnhealthy AlarmNotification; do
+  grep -qw "$proc" <<< "$SUSPENDED" \
+    || { log "중단: $proc 가 일시 중지돼 있지 않다(본측정 전제, 설계 문서 10-2)"; exit 3; }
+done
 
 # ── 1. 토큰 ──────────────────────────────────────────────────────────────────
 # 비밀키는 SSM 에서 읽어 gradle 프로세스 환경에만 넘긴다. 화면·파일·로그에 남기지 않는다.
@@ -101,15 +110,13 @@ log "instance refresh Successful"
 
 INSTANCE_ID=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
   --query "AutoScalingGroups[0].Instances[?LifecycleState=='InService'].InstanceId | [0]" --output text)
-APP_IP=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
-  --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
 TG_ARN=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
   --query 'AutoScalingGroups[0].TargetGroupARNs[0]' --output text)
 until [ "$(aws elbv2 describe-target-health --target-group-arn "$TG_ARN" \
     --query "TargetHealthDescriptions[?Target.Id=='$INSTANCE_ID'].TargetHealth.State | [0]" --output text)" = healthy ]; do
   sleep 10
 done
-log "타깃 healthy — $INSTANCE_ID ($APP_IP)"
+log "타깃 healthy — $INSTANCE_ID"
 
 # ── 3. 새 인스턴스 점검 ──────────────────────────────────────────────────────
 DEPLOYED=$(app_ssh "sudo grep -h 'downloaded artifact:' /var/log/cloud-init-output.log | tail -1")
@@ -126,13 +133,16 @@ app_ssh "curl -sf -o /dev/null http://localhost:8081/actuator/prometheus" \
 # ── 4. 캐시 삭제 · 수집 시작 ─────────────────────────────────────────────────
 app_ssh "mkdir -p /tmp/bulkhead"
 app_scp "$REPO/scripts/loadtest/bulkhead-collect.sh" "$REPO/scripts/loadtest/poll-metrics.sh" \
-  "$REPO/scripts/loadtest/bulkhead-cache-evict.py" "$SSH_USER@$APP_IP:/tmp/bulkhead/"
+  "$REPO/scripts/loadtest/bulkhead-cache-evict.py" "$SSH_USER@$INSTANCE_ID:/tmp/bulkhead/"
 app_ssh "sudo python3 /tmp/bulkhead/bulkhead-cache-evict.py" | tee -a "$LOG"
 REMOTE_OUT="/var/tmp/bulkhead/$LABEL"
 app_ssh "sudo mkdir -p /var/tmp/bulkhead && sudo bash /tmp/bulkhead/bulkhead-collect.sh start $REMOTE_OUT" | tee -a "$LOG"
 
 # ── 5. k6 ────────────────────────────────────────────────────────────────────
-log "k6 실행(약 15분)"
+# k6 EC2 의 저장소를 이 회차의 스크립트 버전으로 맞춘다. 부팅 때 한 번 clone 한 뒤로는 갱신되지 않아,
+# 측정 도중 스크립트를 고치면 k6 EC2 만 옛 버전으로 돌게 된다.
+k6_ssh "cd /opt/app && sudo git fetch -q --depth 1 origin '$K6_GIT_REF' && sudo git checkout -q FETCH_HEAD && git log -1 --format='k6 스크립트 버전 %h'" | tee -a "$LOG"
+log "k6 실행(약 12분)"
 k6_scp "$TOKEN_FILE" "$SSH_USER@$K6_HOST:/tmp/$LABEL.jwt"
 k6_ssh "chmod 600 /tmp/$LABEL.jwt"
 START_EPOCH=$(date +%s)
@@ -149,7 +159,7 @@ log "k6 종료(exit $K6_EXIT)"
 
 # ── 6. 회수 · 판정 ───────────────────────────────────────────────────────────
 app_ssh "sudo bash /tmp/bulkhead/bulkhead-collect.sh stop $REMOTE_OUT" | tee -a "$LOG"
-app_scp "$SSH_USER@$APP_IP:$REMOTE_OUT.tar.gz" "$OUT/server.tar.gz"
+app_scp "$SSH_USER@$INSTANCE_ID:$REMOTE_OUT.tar.gz" "$OUT/server.tar.gz"
 tar -xzf "$OUT/server.tar.gz" -C "$OUT"
 k6_scp "$SSH_USER@$K6_HOST:/tmp/$LABEL.k6.log" "$SSH_USER@$K6_HOST:/tmp/$LABEL.summary.json" "$OUT/"
 rm -f "$TOKEN_FILE"
