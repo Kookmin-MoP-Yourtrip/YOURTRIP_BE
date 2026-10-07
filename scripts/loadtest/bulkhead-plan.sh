@@ -18,8 +18,9 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+# 40 단계 ABBA 후반(B2·A2)은 B1 결과에 따라 --rounds 로만 돌린다(5-7절) — A 는 이미 두 번 재 결과가 같았다.
 PLAN=(
-  "A 40 1" "B 40 1" "B 40 2" "A 40 2"
+  "A 40 1" "B 40 1"
   "A 30 1"
 )
 START=1
