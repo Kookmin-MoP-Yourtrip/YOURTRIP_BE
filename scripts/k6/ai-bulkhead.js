@@ -4,7 +4,7 @@
 // 질문: AI 요청이 몰릴 때 피해가 AI 기능 안에 갇히는가, AI 와 무관한 API 까지 번지는가.
 //
 // 회차 하나의 구간(기본값):
-//   [웜업 120s] → [기준선 180s] → [AI 도착 300s] → [회복 관측 300s]
+//   [웜업 120s] → [기준선 120s] → [AI 도착 300s] → [회복 관측 180s]  = 12분
 //   - 배경 트래픽(/popular + 코스 상세)은 처음부터 끝까지 일정한 속도로 흐른다
 //   - 웜업에는 AI 를 분당 2건 넣어 새 인스턴스의 AI 경로 JIT 를 데운다(배경 트래픽만으로는 안 데워진다)
 //   - AI 도착 구간에는 단계의 도착률(RATE_PER_MIN)로 포아송 도착을 넣는다. 시드가 같으면 A·B 회차가
@@ -36,9 +36,10 @@ const RATE_PER_MIN = parseFloat(__ENV.RATE_PER_MIN || '5');
 const SEED = parseInt(__ENV.SEED || '197', 10);
 
 const WARMUP_SEC = parseInt(__ENV.WARMUP_SEC || '120', 10);
-const BASELINE_SEC = parseInt(__ENV.BASELINE_SEC || '180', 10);
+const BASELINE_SEC = parseInt(__ENV.BASELINE_SEC || '120', 10);
 const AI_SEC = parseInt(__ENV.AI_SEC || '300', 10);
-const RECOVERY_SEC = parseInt(__ENV.RECOVERY_SEC || '300', 10);
+// 3분 안에 회복하지 않으면 집계기가 '회복 안 됨(3분 이상)'으로 기록한다(설계 문서 6-5).
+const RECOVERY_SEC = parseInt(__ENV.RECOVERY_SEC || '180', 10);
 const WARMUP_AI_PER_MIN = parseFloat(__ENV.WARMUP_AI_PER_MIN || '2');
 // 웜업 도착은 단계와 무관하게 같은 일정이어야 회차끼리 같은 상태에서 기준선에 들어간다.
 const WARMUP_SEED = parseInt(__ENV.WARMUP_SEED || '1970', 10);
