@@ -49,6 +49,16 @@ CPU_FLAG = 0.90                  # 1분 평균
 # AI 요청이 낼 수 있는 정상 결과. 그 밖(401·403 토큰 만료, 0 연결 실패, 코드 없는 4xx)은 측정 도구 문제다.
 # A 는 입장 제한이 없어 429 가 없고, 504 는 ALB idle timeout(코드 없음)도 포함한다 — 과부하의 실제 결과다.
 AI_EXPECTED = {201, 429, 502, 503, 504}
+# k6 AI 타임아웃(scripts/k6/ai-bulkhead.js AI_TIMEOUT_SEC)에 걸린 요청은 상태 0 으로 남는다. ALB idle timeout 과
+# 같은 60초라 어느 쪽이 먼저 끊느냐에 따라 504(코드 없음)나 0 이 된다 — 둘 다 '서버가 60초 안에 답하지 못했다'는
+# 같은 과부하 결과다(r40-A1 실측: 0 이 77~78건, 소요 59,991~60,001ms). 그래서 타임아웃 근처에서 끝난 0 만
+# 정상 결과로 보고, 그보다 일찍 끝난 0(연결 실패 등)은 그대로 도구 문제로 본다.
+AI_CLIENT_TIMEOUT_MS = 60000
+AI_CLIENT_TIMEOUT_SLACK_MS = 1000
+
+
+def is_ai_client_timeout(r):
+    return r['status'] == 0 and r['durationMs'] >= AI_CLIENT_TIMEOUT_MS - AI_CLIENT_TIMEOUT_SLACK_MS
 # 배경 요청: 200 과 서버 쪽 실패(5xx, 0 = 타임아웃·연결 실패)만 실험 결과다. 404 는 코스 ID 범위가 틀렸다는 뜻이다.
 BG_OK = 200
 
@@ -347,7 +357,7 @@ def main():
     late = [r for r in ai if r['lagMs'] > MAX_LAG_MS]
     if late:
         invalid.append(f'AI 출발 지연 1초 초과 {len(late)}건(최대 {max(r["lagMs"] for r in late)}ms)')
-    odd_ai = [r for r in ai if r['status'] not in AI_EXPECTED]
+    odd_ai = [r for r in ai if r['status'] not in AI_EXPECTED and not is_ai_client_timeout(r)]
     if odd_ai:
         codes = sorted({r['status'] for r in odd_ai})
         invalid.append(f'AI 요청의 예상 밖 응답 {len(odd_ai)}건 {codes} — 토큰 만료·연결 실패 등 도구 문제')
@@ -403,7 +413,10 @@ def main():
     main_ai = [r for r in ai if r['phase'] == 'main']
     statuses = {}
     for r in main_ai:
-        key = f"{r['status']}{'/' + r['errorCode'] if r['errorCode'] else ''}"
+        if is_ai_client_timeout(r):
+            key = '0/CLIENT_TIMEOUT_60S'
+        else:
+            key = f"{r['status']}{'/' + r['errorCode'] if r['errorCode'] else ''}"
         statuses[key] = statuses.get(key, 0) + 1
     ok = sorted(r['durationMs'] for r in main_ai if r['status'] == 201)
 

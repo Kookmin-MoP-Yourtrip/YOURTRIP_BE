@@ -57,7 +57,16 @@ SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$KNOWN" -o 
 # ASG 프로세스(ReplaceUnhealthy·AlarmNotification)를 drift 로 보고 되살린다 — 측정 중에는 운영 apply 를 하지 않는다.
 APP_PROXY=(-o "ProxyCommand=aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p")
 app_ssh() { ssh "${SSH_OPTS[@]}" "${APP_PROXY[@]}" -i "$REPO/$PROD_SSH_KEY" "$SSH_USER@$INSTANCE_ID" "$@"; }
-app_scp() { scp -q "${SSH_OPTS[@]}" "${APP_PROXY[@]}" -i "$REPO/$PROD_SSH_KEY" "$@"; }
+# SSM 터널 위 scp 는 가끔 전송 도중 멈춘 채 끝나지 않는다(r40-A1: 9.8MB 중 4.1MB 에서 45분 정지, 다시 받으니
+# 수 초 만에 끝났다). ServerAlive 는 터널 프로세스가 살아 있어 이를 못 잡는다. 그래서 시간 제한을 두고 다시 받는다.
+app_scp() {
+  local i
+  for i in 1 2 3; do
+    timeout 180 scp -q "${SSH_OPTS[@]}" "${APP_PROXY[@]}" -i "$REPO/$PROD_SSH_KEY" "$@" && return 0
+    echo "scp 실패·시간 초과(시도 $i/3) — 다시 받는다" >&2
+  done
+  return 1
+}
 k6_ssh() { ssh "${SSH_OPTS[@]}" -i "$REPO/$K6_SSH_KEY" "$SSH_USER@$K6_HOST" "$@"; }
 k6_scp() { scp -q "${SSH_OPTS[@]}" -i "$REPO/$K6_SSH_KEY" "$@"; }
 
