@@ -141,7 +141,7 @@ app_ssh "sudo mkdir -p /var/tmp/bulkhead && sudo bash /tmp/bulkhead/bulkhead-col
 # ── 5. k6 ────────────────────────────────────────────────────────────────────
 # k6 EC2 의 저장소를 이 회차의 스크립트 버전으로 맞춘다. 부팅 때 한 번 clone 한 뒤로는 갱신되지 않아,
 # 측정 도중 스크립트를 고치면 k6 EC2 만 옛 버전으로 돌게 된다.
-k6_ssh "cd /opt/app && sudo git fetch -q --depth 1 origin '$K6_GIT_REF' && sudo git checkout -q FETCH_HEAD && git log -1 --format='k6 스크립트 버전 %h'" | tee -a "$LOG"
+k6_ssh "cd /opt/app && sudo git fetch -q --depth 1 origin '$K6_GIT_REF' && sudo git checkout -q FETCH_HEAD && sudo git log -1 --format='k6 스크립트 버전 %h'" | tee -a "$LOG"
 log "k6 실행(약 12분)"
 k6_scp "$TOKEN_FILE" "$SSH_USER@$K6_HOST:/tmp/$LABEL.jwt"
 k6_ssh "chmod 600 /tmp/$LABEL.jwt"
