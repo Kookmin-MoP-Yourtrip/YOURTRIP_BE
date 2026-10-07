@@ -166,6 +166,8 @@ AI 도착 구간을 5분으로 둔 이유:
 - t3.small이 `/popular`만으로 초당 약 2,900건을 처리하므로([ec2-measurement](../tomcat-thread-sizing/ec2-measurement.md)) 배경 트래픽 자체는 부하가 되지 않는다
 - 상세조회는 DB만 타는 API가 아니다. 조회수 증분을 Redis에 쓰고(`view_count:increment:*`) 이것이 주기적으로 DB에 동기화된다. A·B에 똑같이 적용되므로 비교에는 영향이 없다
 - `constant-arrival-rate`(열린 모델)로 보낸다. 앞 요청의 응답을 기다리지 않아야 워커 고갈 때 대기 시간이 그대로 드러난다
+- **배경 요청의 클라이언트 타임아웃은 10초**다. 열린 모델은 응답이 늦어질수록 동시에 떠 있는 요청이 늘어, 60초면 초당 20건에 k6 VU가 1,200개 넘게 든다. VU가 모자라면 k6가 요청을 건너뛰어(dropped iteration) 가장 나쁜 구간의 데이터가 빠진다. 판정 기준이 "p99 1초 초과 = 장애"라 10초에서 잘라도 판정은 바뀌지 않는다. 10초를 넘긴 요청은 상태 코드 0(에러)으로 센다
+- VU는 처음부터 전부 할당한다(초당 건수 × 15). 부하 도중에 VU를 늘리면 그 초기화 사이에 보낼 요청을 건너뛴다 — 모의 서버 검증에서 150건이 빠지는 것을 확인했다(10-5절)
 - 요청 생성은 기존 [`lib/scenarios.mjs`](../../../scripts/k6/lib/scenarios.mjs)의 `buildPopularRequest`·`buildRequest`를 재사용한다
 
 ### 5-4. TourAPI 생략
@@ -302,10 +304,12 @@ TourAPI를 생략하면 **카카오가 새 병목**이다.
 
 다시 재는 동안 ABBA 순서는 바꾸지 않는다.
 
-- k6 출발 지연이 1초를 넘는 요청이 있음(기존 `aggregate-arrival.py` 규칙)
-- TourAPI 성공 호출이 1건 이상(생략이 적용되지 않음)
-- 카카오 한도 소진 응답이 1건 이상
-- OpenAI가 429(TPM 초과)를 돌려준 호출이 1건 이상 — A의 슬롯 대기 포기는 실험 대상이므로 해당하지 않는다
+- k6 출발 지연이 1초를 넘는 AI 요청이 있음(기존 `aggregate-arrival.py` 규칙)
+- k6가 배경 요청을 제때 보내지 못함(`dropped_iterations` > 0) — k6 VU 부족
+- 도구 문제로 보이는 응답이 있음 — AI 요청의 201·429·502·503·504 외 응답(401·403 토큰 만료, 연결 실패 등), 배경 요청의 200·5xx·타임아웃 외 응답(404면 상세 코스 ID 범위가 틀렸다)
+- TourAPI 성공 호출이 1건 이상(생략이 적용되지 않음) — `ai_candidate_retrieval_total{source="tour_api",result=hit|empty}` 증가분
+- 카카오 한도 소진이 1건 이상 — 앱 로그의 `Kakao search API error(QUOTA_EXCEEDED)`
+- OpenAI가 429(TPM 초과)를 돌려준 호출이 1건 이상 — A의 슬롯 대기 포기는 실험 대상이므로 해당하지 않는다. 두 버전 모두 이를 가르는 지표가 없어, 집계기는 의심 로그를 찾아 **수동 확인**으로 표시한다
 - 측정 중 인스턴스가 교체됨(ASG 프로세스 일시 중지가 적용되지 않음)
 
 ### 9-2. 원인 분리 필요 — 데이터는 남기고 J3만 보류
@@ -335,7 +339,7 @@ TourAPI를 생략하면 **카카오가 새 병목**이다.
 3. `terraform/prod`의 `health_check_path`를 `/livez`로 바꿔 `plan` → `apply`한다(형상 변경이라 terraform을 거친다)
 4. ASG의 `ReplaceUnhealthy` 프로세스를 일시 중지한다(본측정 동안만. 실행 상태 조작이라 CLI로 한다)
 5. 운영 DB에 배경 상세조회 대상 코스가 충분히 있는지 확인한다(기존 측정은 3,000개)
-6. 부하용 액세스 토큰을 `LoadTestTokenIssuer`로 발급한다
+6. 부하용 사용자를 정한다. 인증 필터가 토큰의 사용자를 DB에서 조회하므로 운영에 실제로 있는 사용자여야 한다. 토큰은 `LoadTestTokenIssuer`가 서버와 같은 방식(유효 1시간)으로 **회차마다** 발급한다(`LOADTEST_USER_ID`·`LOADTEST_USER_EMAIL`, 비밀키는 SSM에서 읽어 발급 프로세스에만 넘긴다)
 7. 인스턴스 안에서 1초 수집과 10초 스레드 덤프를 돌릴 스크립트를 준비한다(측정 결과는 회차 끝에 S3로 옮긴다)
 8. 배경 트래픽을 담은 k6 시나리오를 준비한다(`ai-course-arrival.js`의 `fastApi`를 5-3절 구성으로 확장)
 9. 새로 만든 k6 스크립트를 **원격 브랜치에 push**하고, loadtest `terraform.tfvars`의 `app_git_ref`를 그 브랜치로 맞춘다. k6 EC2는 부팅 때 그 ref를 clone한다
@@ -358,7 +362,32 @@ TourAPI를 생략하면 **카카오가 새 병목**이다.
 5. 수집을 멈추고 결과를 S3로 옮긴다
 6. 9-1절 무효 조건과 9-2절 원인 분리 표시를 확인한다. 첫 회차라면 7절의 카카오 실측 소모로 남은 일정을 다시 계산한다
 
-### 10-5. 원복
+### 10-5. 측정 도구
+
+| 파일 | 실행 위치 | 역할 |
+|---|---|---|
+| [`scripts/k6/ai-bulkhead.js`](../../../scripts/k6/ai-bulkhead.js) | k6 EC2 | 회차 하나의 부하(웜업 → 기준선 → AI 도착 → 회복 관측)와 요청별 로그 |
+| [`scripts/loadtest/bulkhead-collect.sh`](../../../scripts/loadtest/bulkhead-collect.sh) | 앱 인스턴스(root) | 8081 1초 수집, 10초 스레드 덤프(jcmd, 없으면 `-devel` 설치, 그것도 안 되면 SIGQUIT), 앱 로그 |
+| [`scripts/loadtest/bulkhead-cache-evict.py`](../../../scripts/loadtest/bulkhead-cache-evict.py) | 앱 인스턴스(root) | 캐시 키만 `SCAN` + `UNLINK`로 삭제. 인스턴스에 redis-cli가 없어 표준 라이브러리로 RESP를 직접 말한다 |
+| [`scripts/loadtest/aggregate-bulkhead.py`](../../../scripts/loadtest/aggregate-bulkhead.py) | 개발 PC | 6-5·8·9절의 판정. 무효면 종료 코드 4 |
+| [`scripts/loadtest/bulkhead-round.sh`](../../../scripts/loadtest/bulkhead-round.sh) | 개발 PC | 10-4절 회차 절차 전체(토큰 → 배포 → 점검 → 캐시 삭제 → 수집 → k6 → 회수 → ALB 지표 → 판정) |
+| [`scripts/loadtest/bulkhead.env.example`](../../../scripts/loadtest/bulkhead.env.example) | — | 회차 설정 예시. 실제 값은 gitignore 대상인 `results/ai-bulkhead/config.env`에 둔다 |
+
+**운영에 올리기 전 로컬 검증.** 워커 32개를 세마포어로 흉내 낸 모의 서버(AI 요청이 워커를 8초 쥔다)에 같은 도착(시간표 압축, 분당 400건)을 넣어 k6 → 수집 → 집계 → 판정 경로를 확인했다.
+
+| 모의 조건 | 판정 | 근거 |
+|---|---|---|
+| 입장 제한 없음 | **장애** | 워커 32/32 포화 23초, 배경 p99 10초(타임아웃), 1분 에러율 37%, AI 도착 종료 30초 뒤 회복 |
+| 입장 제한 4 | **정상** | 198건 중 182건 즉시 429, 워커 최대 6/32, 배경 p99 기준선 그대로(12ms) |
+
+검증 중 고친 결함 셋:
+- 배경 VU를 부하 도중에 늘리다 요청 150건을 건너뛰었다 → 미리 할당(5-3절)
+- `dropped_iterations`에는 시나리오의 `api` 태그가 붙지 않아 태그별 확인이 0으로 보였다 → 전체 합계로 판정
+- 판정 창이 1분보다 짧으면 1분 에러율 검사를 통째로 건너뛰었다 → 창 전체로 본다(실측의 판정 창 3분에서는 드러나지 않았을 결함이지만, 기준이 조용히 빠지는 구조라 고쳤다)
+
+스레드 덤프 파서는 CallerRuns 스택을 담은 샘플 덤프로, 캐시 삭제는 로컬 Redis의 빈 DB에 캐시 키와 보존 대상 키를 섞어 넣어 확인했다(캐시 키만 지워지고 조회수 증분·인증·락 키는 남았다. 구버전 Redis는 `UNLINK`를 몰라 `DEL`로 내려가는 경로를 더했다).
+
+### 10-6. 원복
 
 - SSM `env/`의 관리 포트·`tour.base-url` 값을 지운다
 - `health_check_path`를 `/actuator/health/liveness`로 되돌려 `apply`한다
