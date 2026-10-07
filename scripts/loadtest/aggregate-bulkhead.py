@@ -409,6 +409,10 @@ def main():
                         'judgeErrors': sum(1 for r in rows
                                            if judge_start <= r['rel'] < phases['recoveryStartMs'] and is_error(r['s']))}
 
+    # 보고용: 판정 창 요청을 모두 모은 p99. 판정에는 쓰지 않는다 — '최악 10초 p99'는 GC 한 번에도 튀어
+    # 구간 대표값으로 읽으면 B 가 실제보다 나빠 보인다(r40-B1: 최악 창 126ms, 판정 창 전체 29ms).
+    judge_all_p99 = p99([r['ms'] for r in bg if judge_start <= r['rel'] < phases['recoveryStartMs']])
+
     # ── AI 요청 ──
     main_ai = [r for r in ai if r['phase'] == 'main']
     statuses = {}
@@ -428,6 +432,7 @@ def main():
             'baselineP99Ms': base,
             'requests': len(bg),
             'perApi': per_api,
+            'judgeP99Ms': judge_all_p99,
             **judged,
             'firstDegradedSecInAi': ai_win[first_deg]['startMs'] / 1000 - phases['aiStartMs'] / 1000
             if first_deg is not None else None,
@@ -475,6 +480,7 @@ def print_report(r):
     print(f"== {r['label']} (분당 {r['ratePerMin']}건, seed {r['seed']})")
     verdict = '장애' if b['outage'] else '저하' if b['degraded'] else '정상'
     print(f"배경 API 판정: {verdict} — 기준선 p99 {fmt(b['baselineP99Ms'], 'ms')}, "
+          f"판정 창 전체 p99 {fmt(b.get('judgeP99Ms'), 'ms')}, "
           f"판정 창 최악 10초 p99 {fmt(b['worstWindowP99Ms'], 'ms')}, "
           f"최악 1분 에러율 {b['worstMinuteErrorRate']:.2%}")
     print(f"  처음 저하 {fmt(b['firstDegradedSecInAi'], '초')} · 처음 장애 {fmt(b['firstOutageSecInAi'], '초')}"
