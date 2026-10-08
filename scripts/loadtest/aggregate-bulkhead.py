@@ -64,6 +64,9 @@ BG_OK = 200
 
 KAKAO_QUOTA_RE = re.compile(r'Kakao search API error\(QUOTA_EXCEEDED\)')
 OPENAI_429_RE = re.compile(r'(?i)(openai|llm).*\b429\b|\b429\b.*(openai|llm)')
+# 비교 실험 C(#201, abort-variant.md 3절) — Curator 가 요청마다 남기는 day 결과 한 줄
+CURATOR_DAYS_RE = re.compile(
+    r'AI_CURATOR_DAYS days=(\d+) responded=(\d+) rejected=(\d+) failed=(\d+) unfinished=(\d+)')
 
 
 def read_tagged(path, tag):
@@ -221,7 +224,12 @@ def server_metrics(poll_path, t0_epoch, phases):
     tour_success = delta('ai_candidate_retrieval_total',
                          lambda l: l.get('source') == 'tour_api' and l.get('result') in ('hit', 'empty'))
 
+    # 비교 실험 C(#201) — 실행기 제출 시점 거절. 지표가 없는 버전(A·B)이면 None
+    rejected = {agent: delta('ai_agent_rejected_total', lambda l, a=agent: l.get('agent') == a)
+                for agent in ('planner', 'curator')}
+
     return {
+        'agentRejected': rejected,
         'snapshots': len(good),
         'tomcatMaxThreads': max_threads,
         'tomcatBusyMaxInAi': max((v for _, v in busy), default=None),
@@ -374,6 +382,7 @@ def main():
         if dropped:
             invalid.append('k6 가 배경 요청을 제때 보내지 못했다(dropped_iterations > 0) — k6 VU 부족')
     journal_lines = []
+    course_mix = None
     if args.journal:
         with open(args.journal, encoding='utf-8', errors='replace') as f:
             journal_lines = f.readlines()
@@ -383,6 +392,7 @@ def main():
         openai = [l.strip() for l in journal_lines if OPENAI_429_RE.search(l)]
         if openai:
             flags.append(f'OpenAI 429 의심 로그 {len(openai)}줄 — 수동 확인 필요(첫 줄: {openai[0][:160]})')
+    course_mix = curator_day_mix(journal_lines)
 
     # ── 배경 API ──
     base_rows = [r['ms'] for r in bg if phases['baselineStartMs'] <= r['rel'] < phases['aiStartMs']]
@@ -441,6 +451,7 @@ def main():
             'recoverySec': rec_sec,
             'recoveryLimitMs': rec_limit,
         },
+        'courseMix': course_mix,
         'ai': {
             'mainArrivals': len(main_ai),
             'statuses': statuses,
@@ -469,6 +480,34 @@ def main():
         with open(args.out_json, 'w', encoding='utf-8') as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
     sys.exit(4 if invalid else 0)
+
+
+def curator_day_mix(lines):
+    """비교 실험 C(#201) — 요청을 Curator day 결과로 나눈다. 앱 로그에 시각이 없어 웜업 요청도 포함된다.
+
+    정상: 전 day 가 LLM 응답 · 부분: 일부 day 만 응답 · 완전 폴백: 응답 0.
+    부분 중 거절이 낀 것(파이프라인 중간 거절)을 따로 센다 — 실험 C 의 핵심 관측이다.
+    """
+    mix = {'requests': 0, 'normal': 0, 'partial': 0, 'partialWithRejection': 0, 'full': 0,
+           'rejectedDays': 0, 'failedDays': 0, 'unfinishedDays': 0}
+    for line in lines:
+        m = CURATOR_DAYS_RE.search(line)
+        if not m:
+            continue
+        days, responded, rejected, failed, unfinished = map(int, m.groups())
+        mix['requests'] += 1
+        mix['rejectedDays'] += rejected
+        mix['failedDays'] += failed
+        mix['unfinishedDays'] += unfinished
+        if responded == days:
+            mix['normal'] += 1
+        elif responded == 0:
+            mix['full'] += 1
+        else:
+            mix['partial'] += 1
+            if rejected:
+                mix['partialWithRejection'] += 1
+    return mix if mix['requests'] else None
 
 
 def fmt(v, unit=''):
@@ -505,6 +544,15 @@ def print_report(r):
         print(f"스레드 덤프 {d['dumps']}개 · CallerRuns 최대 {fmt(d['callerRunsMaxInAi'])}"
               f"(처음 {fmt(d['callerRunsFirstSec'], '초')}) · 앱 워커 RUNNABLE 비율 {fmt(d['appWorkerRunnableShareInAi'])}"
               f" · LLM 호출 소진 {fmt(d['llmDrainedSec'], '초')} · 관리 워커 최대 {fmt(d['mgmtWorkersMax'])}")
+    rej = (r.get('server') or {}).get('agentRejected') or {}
+    mx = r.get('courseMix')
+    if mx or any(rej.values()):
+        mx = mx or {}
+        print(f"실행기 거절 planner {fmt(rej.get('planner'))} · curator {fmt(rej.get('curator'))} · "
+              f"Curator 결과(웜업 포함) 요청 {mx.get('requests', 0)}건: 정상 {mx.get('normal', 0)} · "
+              f"부분 {mx.get('partial', 0)}(거절 포함 {mx.get('partialWithRejection', 0)}) · "
+              f"완전 폴백 {mx.get('full', 0)} · day 거절 {mx.get('rejectedDays', 0)} "
+              f"실패 {mx.get('failedDays', 0)} 미완료 {mx.get('unfinishedDays', 0)}")
     for f in r['flags']:
         print(f'  ※ {f}')
     for i in r['invalid']:
