@@ -118,6 +118,14 @@ class AiCourseLatencyBaselineTest {
             "latency.baseline.maxConcurrentCalls", "LATENCY_BASELINE_MAX_CONCURRENT_CALLS",
             PRODUCTION_MAX_CONCURRENT_CALLS));
 
+    /**
+     * 여행 일수. 기본은 공유 입력 세트의 3일이고, 일수 상한(#178)을 정할 때만 환경변수로 바꾼다.
+     * Curator 는 day 마다 호출 1개라 일수가 곧 요청 하나의 LLM 작업 수를 정한다 — 슬롯 수를 넘는
+     * 일수에서 단일 요청이 예산 안에 끝나는지를 같은 하네스로 잰다. 산출물 파일명에 실려 섞이지 않는다.
+     */
+    private static final int TRIP_DAYS = (int) setting("latency.baseline.tripDays",
+        "LATENCY_BASELINE_TRIP_DAYS", BaselineInputSet.TRIP_DAYS);
+
     /** 요청 간 휴지. 슬롯이 빈 뒤에도 두는 것은 RPM·외부 API 쿼터에 대한 예의다. */
     private static final long DEFAULT_DELAY_MS = 5_000L;
 
@@ -161,6 +169,8 @@ class AiCourseLatencyBaselineTest {
         assumeTrue(openAiKey != null && naverId != null && naverSecret != null && tourKey != null
             && kakaoKey != null, "OpenAI·네이버·TourAPI·카카오 키가 모두 있어야 측정할 수 있다");
 
+        assertThat(TRIP_DAYS).as("LATENCY_BASELINE_TRIP_DAYS 는 1 이상이어야 한다").isPositive();
+
         List<RequestSpec> fullInputSet = BaselineInputSet.buildInputSet();
         int from = (int) setting("latency.baseline.requestFrom",
             "LATENCY_BASELINE_REQUEST_FROM", 1);
@@ -187,7 +197,7 @@ class AiCourseLatencyBaselineTest {
             new PipelineBenchmarkWiring.ApiKeys(openAiKey, naverId, naverSecret, tourKey), LIMITS);
 
         System.out.printf("%n=== LLM 호출 경로 기준선: 요청 %d~%d (%d건), 여행 %d일 ===%n",
-            startIndex + 1, endIndex, inputSet.size(), BaselineInputSet.TRIP_DAYS);
+            startIndex + 1, endIndex, inputSet.size(), TRIP_DAYS);
         System.out.printf("    예산 %,dms · LLM 상한 %,dms · 동시 호출 %d%s · 요청 간 휴지 %,dms%n",
             LIMITS.budgetMs(), LIMITS.llmTimeoutMs(), LIMITS.maxConcurrentCalls(),
             LIMITS.maxConcurrentCalls() == PRODUCTION_MAX_CONCURRENT_CALLS ? " (운영값)" : " (운영값 아님)",
@@ -246,7 +256,7 @@ class AiCourseLatencyBaselineTest {
         String failure = "";
         try {
             draft = pipeline.generate(CourseBrief.of(spec.region().name(),
-                BaselineInputSet.TRIP_DAYS, spec.keywordSet().keywords()));
+                TRIP_DAYS, spec.keywordSet().keywords()));
         } catch (RuntimeException e) {
             failure = oneLine(e.toString());
         }
@@ -271,7 +281,7 @@ class AiCourseLatencyBaselineTest {
         String tokens = AiCourseMetrics.LLM_TOKENS;
 
         boolean plannerFallback = draft != null && draft.title().equals(
-            DefaultPlannerPlans.defaultTitle(spec.region().name(), BaselineInputSet.TRIP_DAYS));
+            DefaultPlannerPlans.defaultTitle(spec.region().name(), TRIP_DAYS));
         int totalPlaces = draft == null ? 0
             : draft.days().stream().mapToInt(day -> day.places().size()).sum();
 
@@ -518,9 +528,13 @@ class AiCourseLatencyBaselineTest {
         return sorted.get(Math.min(Math.max(index, 0), sorted.size() - 1));
     }
 
-    /** 동시 호출 수를 파일명에 싣는다 — 기준선(c2)과 4단계 측정이 같은 디렉터리에 쌓인다. */
+    /**
+     * 동시 호출 수를 파일명에 싣는다 — 기준선(c2)과 4단계 측정이 같은 디렉터리에 쌓인다.
+     * 일수는 기본(3일)이 아닐 때만 붙여 기존 산출물 이름을 그대로 둔다.
+     */
     private static String outputName(String runTag) {
-        return "latency-baseline-c" + LIMITS.maxConcurrentCalls() + "-" + runTag + ".csv";
+        String days = TRIP_DAYS == BaselineInputSet.TRIP_DAYS ? "" : "-d" + TRIP_DAYS;
+        return "latency-baseline-c" + LIMITS.maxConcurrentCalls() + days + "-" + runTag + ".csv";
     }
 
     private static long elapsedMs(long startNanos) {

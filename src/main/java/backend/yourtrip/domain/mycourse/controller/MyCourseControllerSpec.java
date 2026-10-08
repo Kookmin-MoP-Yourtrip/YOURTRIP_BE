@@ -1202,9 +1202,11 @@ public interface MyCourseControllerSpec {
         - 요청 값
             - 여행지(location): 필수 입력
             - 여행 기간(startDate, endDate): 필수 입력, endDate는 startDate 이후여야 함
+            - 여행 일수: 시작일과 종료일을 포함해 **최대 5일** (예: 11/6 ~ 11/10). 넘으면 400
             - 선호 활동(preferredActivities): 선택 입력
         ### ⚠ 예외상황
-        - `INVALID_REQUEST_FIELD(400)`: 필수 필드 값 누락, 등록되지 않는 태그 값, 날짜 범위 오류 등
+        - `INVALID_REQUEST_FIELD(400)`: 필수 필드 값 누락, 등록되지 않는 태그 값, 날짜 범위 오류, 여행 일수 초과 등
+            - 여행 일수 초과 시 message: `validTripLength: AI 코스는 최대 5일까지 생성할 수 있습니다.`
         - `AI_GROUNDING_FAILED(503)`: 실존이 검증된 장소를 하나도 확보하지 못했을 때 (재시도 가능)
         - `AI_COURSE_TIMEOUT(504)`: 시간 예산(35초) 안에 코스를 완성하지 못했을 때 (재시도 가능)
         - `AI_COURSE_BUSY(429)`: 서버가 동시에 처리하는 AI 코스 생성 요청이 가득 찼을 때. 코스 생성을 시작하지 않고 즉시 응답합니다.
