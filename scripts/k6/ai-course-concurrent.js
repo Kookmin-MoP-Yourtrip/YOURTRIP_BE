@@ -9,8 +9,8 @@
 // 보내 "동시"가 무너진다. 라운드 사이 휴지는 마감 뒤 남은 호출이 슬롯을 비울 시간이다.
 // 같은 시간 동안 빠른 API(인기 코스 목록, permitAll)를 고정 도착률로 보낸다.
 //
-// 사용 예 (N=3, 라운드 3):
-//   k6 run -e JWT="$TOKEN" -e CONCURRENCY=3 \
+// 사용 예 (N=3, 라운드 3, 5일 일정 — TRIP_DAYS 를 빼면 3일):
+//   k6 run -e JWT="$TOKEN" -e CONCURRENCY=3 -e TRIP_DAYS=5 \
 //          --summary-export=results/ai-concurrent-c3.json scripts/k6/ai-course-concurrent.js \
 //          2> results/ai-concurrent-c3.log
 // 요청별 결과는 stderr 에 "AIREQ {json}" 줄로 남는다(aggregate-ai.py 가 읽는다).
@@ -27,6 +27,14 @@ const ROUNDS = parseInt(__ENV.ROUNDS || '3', 10);
 // 다음 라운드에 섞이지 않게 넉넉히 잡는다.
 const ROUND_INTERVAL_SEC = parseInt(__ENV.ROUND_INTERVAL_SEC || '90', 10);
 const FAST_RPS = parseInt(__ENV.FAST_RPS || '2', 10);
+// 여행 일수(시작·종료일 포함). 요청 하나의 LLM 작업 수가 1 + 일수라, 같은 동시 인원이라도 일수가
+// 슬롯 부하를 바꾼다(#200). 기본 3은 이 손잡이가 생기기 전의 고정값(11/06~11/08)이다.
+const TRIP_DAYS = parseInt(__ENV.TRIP_DAYS || '3', 10);
+const START_DATE = '2026-11-06';
+
+if (!(TRIP_DAYS >= 1)) {
+  throw new Error(`TRIP_DAYS 는 1 이상이어야 한다 — 받은 값: ${__ENV.TRIP_DAYS}`);
+}
 
 if (!JWT) {
   throw new Error('POST /api/my-courses/ai 는 인증이 필요하다 — -e JWT=... 를 넘겨라');
@@ -41,6 +49,14 @@ const KEYWORD_SETS = {
 };
 const INPUTS = REGIONS.flatMap((region) =>
   Object.keys(KEYWORD_SETS).map((set) => ({ region, set })));
+
+// 시작일 + (일수 - 1)일. UTC 로 계산해 실행 머신의 시간대와 무관하게 같은 날짜가 나온다.
+function endDateOf(startDate, days) {
+  const end = new Date(`${startDate}T00:00:00Z`);
+  end.setUTCDate(end.getUTCDate() + days - 1);
+  return end.toISOString().slice(0, 10);
+}
+const END_DATE = endDateOf(START_DATE, TRIP_DAYS);
 
 function buildScenarios() {
   const scenarios = {};
@@ -90,8 +106,8 @@ export function aiCourse() {
   const input = INPUTS[((round - 1) * CONCURRENCY + vu) % INPUTS.length];
   const body = JSON.stringify({
     location: input.region,
-    startDate: '2026-11-06',
-    endDate: '2026-11-08',
+    startDate: START_DATE,
+    endDate: END_DATE,
     keywords: KEYWORD_SETS[input.set],
   });
 
@@ -110,7 +126,7 @@ export function aiCourse() {
     }
   }
   console.error(`AIREQ ${JSON.stringify({
-    concurrency: CONCURRENCY, round, vu, location: input.region, keywordSet: input.set,
+    concurrency: CONCURRENCY, tripDays: TRIP_DAYS, round, vu, location: input.region, keywordSet: input.set,
     status: res.status, durationMs: Math.round(res.timings.duration), errorCode,
   })}`);
 }
