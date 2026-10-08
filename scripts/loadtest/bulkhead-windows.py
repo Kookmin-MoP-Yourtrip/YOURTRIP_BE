@@ -10,6 +10,7 @@
 """
 import argparse
 import json
+import math
 import re
 
 LINE_RE = re.compile(r'msg="(BHRUN|AIREQ|BGREQ) (.*)" source=')
@@ -37,7 +38,7 @@ def pct(values, p):
     if not values:
         return None
     v = sorted(values)
-    return v[min(len(v) - 1, int(p * len(v)))]
+    return v[max(0, math.ceil(p * len(v)) - 1)]
 
 
 def main():
