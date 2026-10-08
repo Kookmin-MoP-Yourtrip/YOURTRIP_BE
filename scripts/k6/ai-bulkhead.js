@@ -26,7 +26,7 @@
 //          -e LABEL=r40-A1 --summary-export=r40-A1.json scripts/k6/ai-bulkhead.js 2> r40-A1.log
 
 import http from 'k6/http';
-import { arrivalSchedule } from './lib/arrival.mjs';
+import { arrivalSchedule, mulberry32 } from './lib/arrival.mjs';
 import { buildPopularRequest } from './lib/scenarios.mjs';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
@@ -51,6 +51,13 @@ const BG_TIMEOUT_SEC = parseInt(__ENV.BG_TIMEOUT_SEC || '10', 10);
 const DETAIL_ID_MIN = parseInt(__ENV.DETAIL_ID_MIN || '2', 10);
 const DETAIL_ID_MAX = parseInt(__ENV.DETAIL_ID_MAX || '3000', 10);
 
+// 본 도착의 여행 일수 분포(#200). "1:20,2:20,3:20,4:20,5:20" 처럼 일수:가중치를 쉼표로 잇는다. 비우면 이 손잡이가
+// 생기기 전과 같은 3일 고정이다. 일수는 도착 순번마다 시드로 정해 두어, 같은 시드의 회차들이 정확히 같은
+// "도착 시각 + 일수" 순서를 받는다. 웜업은 분포와 무관하게 3일이다 — 회차끼리 같은 상태로 기준선에 들어가야 한다.
+const DAYS_MIX = __ENV.DAYS_MIX || '';
+const START_DATE = '2026-11-06';
+const DEFAULT_TRIP_DAYS = 3;
+
 // 첫 요청까지의 여유. k6 VU 초기화가 끝난 뒤 시작하게 한다.
 const LEAD_MS = 5000;
 // FE OkHttp readTimeout = ALB idle_timeout 60초. 여유 5초는 응답 수신 마무리용이다.
@@ -73,7 +80,7 @@ const PHASES = {
   endMs: LEAD_MS + (WARMUP_SEC + BASELINE_SEC + AI_SEC + RECOVERY_SEC) * 1000,
 };
 
-// ai-course-arrival.js 와 같은 입력(지역 10 × 키워드 세트 3, 3일 코스). 도착 순번으로 순환한다.
+// ai-course-arrival.js 와 같은 입력(지역 10 × 키워드 세트 3). 도착 순번으로 순환한다. 일수는 DAYS_MIX 가 정한다.
 const REGIONS = ['경주', '부산', '제주', '서울', '강릉', '순천', '영주', '공주', '통영', '삼척'];
 const KEYWORD_SETS = {
   A: ['WALK', 'COUPLE', 'HEALING', 'SENSIBILITY', 'COST_EFFECTIVE'],
@@ -86,6 +93,48 @@ const INPUTS = REGIONS.flatMap((region) =>
 // init 코드는 VU 마다 다시 실행되지만 시드가 같아 모든 VU 가 같은 일정을 얻는다.
 const WARMUP_ARRIVALS = arrivalSchedule(WARMUP_AI_PER_MIN, WARMUP_SEC, WARMUP_SEED);
 const MAIN_ARRIVALS = arrivalSchedule(RATE_PER_MIN, AI_SEC, SEED);
+
+function parseDaysMix(spec) {
+  if (!spec) {
+    return [];
+  }
+  return spec.split(',').map((pair) => {
+    const [days, weight] = pair.split(':').map((v) => parseFloat(v));
+    if (!(Number.isInteger(days) && days >= 1 && weight > 0)) {
+      throw new Error(`DAYS_MIX 항목이 잘못됐다: ${pair} (일수:가중치, 일수는 1 이상의 정수)`);
+    }
+    return { days, weight };
+  });
+}
+
+// 도착 순번 → 일수. 도착 일정과 다른 시드를 써서 일정 생성기의 난수열을 건드리지 않는다.
+function tripDaysSchedule(spec, count, seed) {
+  const mix = parseDaysMix(spec);
+  if (mix.length === 0) {
+    return Array(count).fill(DEFAULT_TRIP_DAYS);
+  }
+  const total = mix.reduce((sum, m) => sum + m.weight, 0);
+  const rand = mulberry32(seed);
+  return Array.from({ length: count }, () => {
+    let pick = rand() * total;
+    for (const m of mix) {
+      pick -= m.weight;
+      if (pick < 0) {
+        return m.days;
+      }
+    }
+    return mix[mix.length - 1].days;
+  });
+}
+
+const MAIN_TRIP_DAYS = tripDaysSchedule(DAYS_MIX, MAIN_ARRIVALS.length, SEED + 200);
+
+// 시작일 + (일수 - 1)일. UTC 로 계산해 실행 머신의 시간대와 무관하게 같은 날짜가 나온다.
+function endDateOf(days) {
+  const end = new Date(`${START_DATE}T00:00:00Z`);
+  end.setUTCDate(end.getUTCDate() + days - 1);
+  return end.toISOString().slice(0, 10);
+}
 
 function aiScenario(phase, i, offsetMs) {
   return {
@@ -150,7 +199,7 @@ export const options = {
 export function setup() {
   console.error(`BHRUN ${JSON.stringify({
     label: LABEL, ratePerMin: RATE_PER_MIN, seed: SEED, warmupSeed: WARMUP_SEED,
-    warmupAiPerMin: WARMUP_AI_PER_MIN, phases: PHASES,
+    warmupAiPerMin: WARMUP_AI_PER_MIN, phases: PHASES, daysMix: DAYS_MIX || `${DEFAULT_TRIP_DAYS}:1`,
     warmupArrivals: WARMUP_ARRIVALS.length, mainArrivals: MAIN_ARRIVALS.length,
     bgPopularRps: BG_POPULAR_RPS, bgDetailRps: BG_DETAIL_RPS, bgTimeoutSec: BG_TIMEOUT_SEC,
     detailIdRange: [DETAIL_ID_MIN, DETAIL_ID_MAX], setupEpochMs: Date.now(),
@@ -163,10 +212,11 @@ export function aiCourse() {
   const offsetMs = parseInt(__ENV.OFFSET_MS, 10);
   // 웜업과 본 도착이 같은 입력부터 시작하지 않게 순번을 어긋나게 둔다.
   const input = INPUTS[(phase === 'warmup' ? arrival + 15 : arrival) % INPUTS.length];
+  const tripDays = phase === 'warmup' ? DEFAULT_TRIP_DAYS : MAIN_TRIP_DAYS[arrival];
   const body = JSON.stringify({
     location: input.region,
-    startDate: '2026-11-06',
-    endDate: '2026-11-08',
+    startDate: START_DATE,
+    endDate: endDateOf(tripDays),
     keywords: KEYWORD_SETS[input.set],
   });
 
@@ -186,7 +236,7 @@ export function aiCourse() {
     }
   }
   console.error(`AIREQ ${JSON.stringify({
-    phase, arrival, offsetMs, sentAtMs, status: res.status,
+    phase, arrival, tripDays, offsetMs, sentAtMs, status: res.status,
     durationMs: Math.round(res.timings.duration), errorCode,
   })}`);
 }

@@ -10,18 +10,22 @@
 #   5. k6 EC2 에서 회차 실행(약 15분)
 #   6. 수집 종료 → 자료 회수 → ALB CloudWatch 지표 → 집계·판정
 #
-# 사용:  bash scripts/loadtest/bulkhead-round.sh <A|B> <분당 도착률> <반복 번호>
+# 사용:  bash scripts/loadtest/bulkhead-round.sh <A|B|C|D> <분당 도착률> <반복 번호>
 #   예:  bash scripts/loadtest/bulkhead-round.sh A 40 1      → results/ai-bulkhead/r40-A1/
+#   D 는 일수 가중 입장(#200)이다. 여행 일수를 섞으려면 DAYS_MIX 를 환경변수로 넘긴다(비우면 3일 고정):
+#        DAYS_MIX=1:20,2:20,3:20,4:20,5:20 bash scripts/loadtest/bulkhead-round.sh D 40 m1
 # 설정:  results/ai-bulkhead/config.env (scripts/loadtest/bulkhead.env.example 참고)
 #
 # 이 스크립트가 하지 않는 것: 인프라 생성·철거, SSM env/ 설정, health_check_path 변경, ASG 프로세스 중지.
 # 그것들은 회차가 아니라 측정 전체의 앞뒤에 한 번씩 하는 일이다(10-2·10-5절).
 set -euo pipefail
 
-ARM="${1:?A|B|C}"
+ARM="${1:?A|B|C|D}"
 RATE="${2:?분당 도착률}"
 REP="${3:?반복 번호}"
-case "$ARM" in A|B|C) ;; *) echo "arm 은 A·B·C 중 하나(C 는 비교 실험 #201)" >&2; exit 2 ;; esac
+case "$ARM" in A|B|C|D) ;; *) echo "arm 은 A·B·C·D 중 하나(C 는 비교 실험 #201, D 는 일수 가중 입장 #200)" >&2; exit 2 ;; esac
+# 본 도착의 여행 일수 분포(ai-bulkhead.js 의 DAYS_MIX). 같은 시드면 일수 순서도 같아 arm 끼리 그대로 비교된다.
+DAYS_MIX="${DAYS_MIX:-}"
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 CONFIG="$REPO/results/ai-bulkhead/config.env"
@@ -53,6 +57,7 @@ case "$ARM" in
   A) KEY="$ARTIFACT_KEY_A" ;;
   B) KEY="$ARTIFACT_KEY_B" ;;
   C) KEY="${ARTIFACT_KEY_C:?config.env 에 ARTIFACT_KEY_C 가 없다(비교 실험 #201)}" ;;
+  D) KEY="${ARTIFACT_KEY_D:?config.env 에 ARTIFACT_KEY_D 가 없다(일수 가중 입장 #200)}" ;;
 esac
 KNOWN="$OUT/known_hosts"
 SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=30 -o ServerAliveInterval=30)
@@ -74,7 +79,7 @@ app_scp() {
 k6_ssh() { ssh "${SSH_OPTS[@]}" -i "$REPO/$K6_SSH_KEY" "$SSH_USER@$K6_HOST" "$@"; }
 k6_scp() { scp -q "${SSH_OPTS[@]}" -i "$REPO/$K6_SSH_KEY" "$@"; }
 
-log "회차 $LABEL 시작 — arm $ARM ($KEY), 분당 $RATE 건, seed $SEED"
+log "회차 $LABEL 시작 — arm $ARM ($KEY), 분당 $RATE 건, seed $SEED, 일수 분포 ${DAYS_MIX:-3일 고정}"
 
 # ── 0. 전제 확인 ─────────────────────────────────────────────────────────────
 ASG_COUNT=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
@@ -164,7 +169,7 @@ k6_ssh "chmod 600 /tmp/$LABEL.jwt"
 START_EPOCH=$(date +%s)
 set +e
 k6_ssh "cd /opt/app && k6 run -q -e BASE_URL='$BASE_URL' -e JWT=\"\$(cat /tmp/$LABEL.jwt)\" \
-  -e RATE_PER_MIN=$RATE -e SEED=$SEED -e LABEL=$LABEL \
+  -e RATE_PER_MIN=$RATE -e SEED=$SEED -e LABEL=$LABEL -e DAYS_MIX='$DAYS_MIX' \
   -e DETAIL_ID_MIN=$DETAIL_ID_MIN -e DETAIL_ID_MAX=$DETAIL_ID_MAX \
   --summary-export=/tmp/$LABEL.summary.json scripts/k6/ai-bulkhead.js 2> /tmp/$LABEL.k6.log > /dev/null"
 K6_EXIT=$?
