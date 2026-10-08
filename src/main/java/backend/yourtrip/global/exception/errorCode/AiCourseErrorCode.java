@@ -56,7 +56,7 @@ public enum AiCourseErrorCode implements ErrorCode {
         HttpStatus.GATEWAY_TIMEOUT),
 
     /**
-     * 서버의 동시 입장 상한이 차서 파이프라인을 시작하지 않았다 (#192). 위 둘과 달리 <b>아무 작업도
+     * 서버의 입장 총량(LLM 작업 자리, #200)이 모자라 파이프라인을 시작하지 않았다 (#192). 위 둘과 달리 <b>아무 작업도
      * 하지 않은 거절</b>이라 즉시 나가고, {@code Retry-After} 헤더로 재시도 간격을 함께 준다
      * ({@code RetryLaterException}).
      */

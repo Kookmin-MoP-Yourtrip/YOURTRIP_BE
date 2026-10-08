@@ -6,13 +6,17 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
+import backend.yourtrip.global.ai.AiCourseAdmission;
 import backend.yourtrip.global.ai.AiCourseMetrics;
+import backend.yourtrip.global.ai.LlmWorkLease;
+import backend.yourtrip.global.ai.config.AiAdmissionProperties;
 import backend.yourtrip.global.ai.CourseDeadline;
 import backend.yourtrip.global.ai.agent.CuratorAgent;
 import backend.yourtrip.global.ai.agent.DefaultPlannerPlans;
@@ -140,10 +144,10 @@ class AiCoursePipelineTest {
     }
 
     private void givenPlannerAndCurator(PlannerPlan plan) {
-        given(plannerAgent.plan(anyString(), anyInt(), anyList(), any())).willReturn(plan);
+        given(plannerAgent.plan(anyString(), anyInt(), anyList(), any(), any())).willReturn(plan);
         given(candidateRetrievalStage.retrieve(anyString(), any(), anyList(), any()))
             .willReturn(CandidatePool.empty());
-        given(curatorAgent.curate(any(), any(), anyList(), any())).willReturn(List.of());
+        given(curatorAgent.curate(any(), any(), anyList(), any(), any())).willReturn(List.of());
     }
 
     @Nested
@@ -163,12 +167,46 @@ class AiCoursePipelineTest {
 
             InOrder order = inOrder(plannerAgent, candidateRetrievalStage, curatorAgent,
                 groundingStage, placeUrlEnricher);
-            order.verify(plannerAgent).plan(anyString(), anyInt(), anyList(), any());
+            order.verify(plannerAgent).plan(anyString(), anyInt(), anyList(), any(), any());
             order.verify(candidateRetrievalStage).retrieve(anyString(), any(), anyList(), any());
-            order.verify(curatorAgent).curate(any(), any(), anyList(), any());
+            order.verify(curatorAgent).curate(any(), any(), anyList(), any(), any());
             order.verify(groundingStage).ground(anyString(), anyList(), any(), any());
             order.verify(placeUrlEnricher).enrich(anyString(), anyList(), any());
             order.verifyNoMoreInteractions();
+        }
+
+        @Test
+        @DisplayName("입장 자리 임대를 Planner·Curator 에 그대로 넘긴다 — 호출마다 자리를 묶을 수 있게 (#200)")
+        void passesLeaseToAgents() {
+            givenPlannerAndCurator(plan(1, SlotType.ATTRACTION));
+            givenGrounded(List.of(groundedDay(1,
+                place("천마총", SlotType.ATTRACTION, CHEONMACHONG_LAT, CHEONMACHONG_LON))));
+            givenEnricherIsIdentity();
+            LlmWorkLease lease = new AiCourseAdmission(new AiAdmissionProperties(16, 5),
+                new AiCourseMetrics(new SimpleMeterRegistry()))
+                .admit(1, admitted -> {
+                    pipeline().generate(CourseBrief.of(LOCATION, 1, KEYWORDS), admitted);
+                    return admitted;
+                });
+
+            verify(plannerAgent).plan(anyString(), anyInt(), anyList(), any(), same(lease));
+            verify(curatorAgent).curate(any(), any(), anyList(), any(), same(lease));
+        }
+
+        @Test
+        @DisplayName("임대 없이 부르면 추적하지 않는 임대를 넘긴다 — 입장 제한 밖의 테스트·벤치마크 경로")
+        void withoutLease_PassesUntracked() {
+            givenPlannerAndCurator(plan(1, SlotType.ATTRACTION));
+            givenGrounded(List.of(groundedDay(1,
+                place("천마총", SlotType.ATTRACTION, CHEONMACHONG_LAT, CHEONMACHONG_LON))));
+            givenEnricherIsIdentity();
+
+            pipeline().generate(CourseBrief.of(LOCATION, 1, KEYWORDS));
+
+            verify(plannerAgent).plan(anyString(), anyInt(), anyList(), any(),
+                same(LlmWorkLease.untracked()));
+            verify(curatorAgent).curate(any(), any(), anyList(), any(),
+                same(LlmWorkLease.untracked()));
         }
 
         @Test
@@ -218,11 +256,11 @@ class AiCoursePipelineTest {
         @Test
         @DisplayName("예외가 새지 않고 area = location 인 결정론적 플랜으로 진행한다")
         void fallsBackToDefaultPlan() {
-            given(plannerAgent.plan(anyString(), anyInt(), anyList(), any()))
+            given(plannerAgent.plan(anyString(), anyInt(), anyList(), any(), any()))
                 .willThrow(new LlmTransportException("planner", 3, "429 가 계속됐다", null));
             given(candidateRetrievalStage.retrieve(anyString(), any(), anyList(), any()))
                 .willReturn(CandidatePool.empty());
-            given(curatorAgent.curate(any(), any(), anyList(), any())).willReturn(List.of());
+            given(curatorAgent.curate(any(), any(), anyList(), any(), any())).willReturn(List.of());
             givenGrounded(List.of(groundedDay(1,
                 place("천마총", SlotType.ATTRACTION, CHEONMACHONG_LAT, CHEONMACHONG_LON))));
             givenEnricherIsIdentity();
@@ -255,10 +293,10 @@ class AiCoursePipelineTest {
                 SlotType.ATTRACTION, List.of(
                 candidate("천마총"), candidate("첨성대"), candidate("동궁과 월지")))));
 
-            given(plannerAgent.plan(anyString(), anyInt(), anyList(), any())).willReturn(plan);
+            given(plannerAgent.plan(anyString(), anyInt(), anyList(), any(), any())).willReturn(plan);
             given(candidateRetrievalStage.retrieve(anyString(), any(), anyList(), any()))
                 .willReturn(pool);
-            given(curatorAgent.curate(any(), any(), anyList(), any()))
+            given(curatorAgent.curate(any(), any(), anyList(), any(), any()))
                 .willReturn(List.of(new CuratedDay(1,
                     List.of(new CuratedSlot(SlotType.ATTRACTION, List.of())))));
             givenGrounded(List.of(groundedDay(1,
@@ -421,10 +459,10 @@ class AiCoursePipelineTest {
                 List.of(new PlaceCandidate(CandidateSourceType.SEEDED, "황남밀면", "경북 경주시",
                     CHEOMSEONGDAE_LAT, CHEOMSEONGDAE_LON, SlotType.MEAL, Set.<StyleTag>of(), 1,
                     null, null, "음식점>한식")))));
-            given(plannerAgent.plan(anyString(), anyInt(), anyList(), any())).willReturn(plan);
+            given(plannerAgent.plan(anyString(), anyInt(), anyList(), any(), any())).willReturn(plan);
             given(candidateRetrievalStage.retrieve(anyString(), any(), anyList(), any()))
                 .willReturn(pool);
-            given(curatorAgent.curate(any(), any(), anyList(), any()))
+            given(curatorAgent.curate(any(), any(), anyList(), any(), any()))
                 .willReturn(List.of(new CuratedDay(1, List.of(
                     new CuratedSlot(SlotType.ATTRACTION,
                         List.of(new CuratedPlace(CandidateSourceType.SUGGESTED, null, "천마총"))),
@@ -547,7 +585,7 @@ class AiCoursePipelineTest {
                 ArgumentCaptor.forClass(CourseDeadline.class);
             ArgumentCaptor<CourseDeadline> enricher =
                 ArgumentCaptor.forClass(CourseDeadline.class);
-            verify(plannerAgent).plan(anyString(), anyInt(), anyList(), planner.capture());
+            verify(plannerAgent).plan(anyString(), anyInt(), anyList(), planner.capture(), any());
             verify(placeUrlEnricher).enrich(anyString(), anyList(), enricher.capture());
 
             assertThat(enricher.getValue()).isSameAs(planner.getValue());
