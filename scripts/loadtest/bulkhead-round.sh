@@ -18,10 +18,10 @@
 # 그것들은 회차가 아니라 측정 전체의 앞뒤에 한 번씩 하는 일이다(10-2·10-5절).
 set -euo pipefail
 
-ARM="${1:?A|B}"
+ARM="${1:?A|B|C}"
 RATE="${2:?분당 도착률}"
 REP="${3:?반복 번호}"
-case "$ARM" in A|B) ;; *) echo "arm 은 A 또는 B" >&2; exit 2 ;; esac
+case "$ARM" in A|B|C) ;; *) echo "arm 은 A·B·C 중 하나(C 는 비교 실험 #201)" >&2; exit 2 ;; esac
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 CONFIG="$REPO/results/ai-bulkhead/config.env"
@@ -49,7 +49,11 @@ mkdir -p "$OUT"
 LOG="$OUT/round.log"
 log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; }
 
-if [ "$ARM" = A ]; then KEY="$ARTIFACT_KEY_A"; else KEY="$ARTIFACT_KEY_B"; fi
+case "$ARM" in
+  A) KEY="$ARTIFACT_KEY_A" ;;
+  B) KEY="$ARTIFACT_KEY_B" ;;
+  C) KEY="${ARTIFACT_KEY_C:?config.env 에 ARTIFACT_KEY_C 가 없다(비교 실험 #201)}" ;;
+esac
 KNOWN="$OUT/known_hosts"
 SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=30 -o ServerAliveInterval=30)
 # 앱 인스턴스는 공인 IP·보안그룹이 아니라 SSM 세션으로 SSH 를 터널링한다(호스트 자리에 인스턴스 ID).
