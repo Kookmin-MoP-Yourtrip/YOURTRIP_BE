@@ -125,8 +125,11 @@ INSTANCE_ID=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-
   --query "AutoScalingGroups[0].Instances[?LifecycleState=='InService'].InstanceId | [0]" --output text)
 TG_ARN=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
   --query 'AutoScalingGroups[0].TargetGroupARNs[0]' --output text)
+# refresh 가 끝나도 타깃이 healthy 가 못 되면(앱 기동 실패 등) 회차를 멈춘다 — 무한 대기하면 plan 도 같이 멈춘다
+HEALTH_DEADLINE=$(( $(date +%s) + 600 ))
 until [ "$(aws elbv2 describe-target-health --target-group-arn "$TG_ARN" \
     --query "TargetHealthDescriptions[?Target.Id=='$INSTANCE_ID'].TargetHealth.State | [0]" --output text)" = healthy ]; do
+  [ "$(date +%s)" -lt "$HEALTH_DEADLINE" ] || { log "중단: 타깃 healthy 대기 10분 초과 — $INSTANCE_ID"; exit 3; }
   sleep 10
 done
 log "타깃 healthy — $INSTANCE_ID"
