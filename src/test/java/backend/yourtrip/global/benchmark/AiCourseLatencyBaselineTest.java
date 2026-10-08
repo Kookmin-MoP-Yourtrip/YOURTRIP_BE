@@ -169,6 +169,8 @@ class AiCourseLatencyBaselineTest {
         assumeTrue(openAiKey != null && naverId != null && naverSecret != null && tourKey != null
             && kakaoKey != null, "OpenAI·네이버·TourAPI·카카오 키가 모두 있어야 측정할 수 있다");
 
+        assertThat(TRIP_DAYS).as("LATENCY_BASELINE_TRIP_DAYS 는 1 이상이어야 한다").isPositive();
+
         List<RequestSpec> fullInputSet = BaselineInputSet.buildInputSet();
         int from = (int) setting("latency.baseline.requestFrom",
             "LATENCY_BASELINE_REQUEST_FROM", 1);
