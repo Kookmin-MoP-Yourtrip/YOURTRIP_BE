@@ -65,11 +65,17 @@ def main():
     ap.add_argument('--k6-log', required=True)
     ap.add_argument('--k6-summary', required=True)
     ap.add_argument('--label', default='')
+    ap.add_argument('--budget-ms', type=int, default=35_000)
     args = ap.parse_args()
 
     reqs = read_ai_requests(args.k6_log)
     durations = sorted(r['durationMs'] for r in reqs)
     ok = sum(1 for r in reqs if r['status'] == 201)
+    # 예산(35초)을 다 쓴 요청 — 정상 완료는 예산 전에 끝나므로 클라이언트 소요가 예산 이상이면 마감으로 끊긴 것이다.
+    # 마감에 걸린 day 는 폴백으로 채워져 201 이 나가므로 상태 코드로는 갈리지 않는다.
+    exhausted = sum(1 for r in reqs if r['status'] == 201 and r['durationMs'] >= args.budget_ms)
+    # tripDays 는 #200 에서 더한 필드다. 그 전 로그는 3일 고정이었다.
+    trip_days = sorted({r.get('tripDays', 3) for r in reqs})
     errors = {}
     for r in reqs:
         if r['status'] != 201:
@@ -97,7 +103,9 @@ def main():
     fast_duration, fast_failed = fast_api(args.k6_summary)
 
     print(f"### {args.label}")
+    print(f"- 여행 일수 {', '.join(map(str, trip_days))}일")
     print(f"- AI 요청 {len(reqs)}건, 201 {ok}건, 오류 {errors or '없음'}")
+    print(f"- 예산 소진(201 중 소요 ≥ {args.budget_ms / 1000:.0f}초) {exhausted} / {ok}건")
     print(f"- AI 클라이언트 소요(ms) p50 {nearest_rank(durations, 50):,} · p95 {nearest_rank(durations, 95):,}"
           f" · max {durations[-1] if durations else 0:,}")
     print(f"- 슬롯 in_use 최대 {max_gauge('ai_llm_permits_in_use'):.0f}, waiting 최대 {max_gauge('ai_llm_permits_waiting'):.0f},"
