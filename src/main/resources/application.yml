@@ -215,7 +215,9 @@ ai:
       # llm.max-concurrent-calls 를 바꾸면 이 값도 함께 본다.
       # - 기다리지 않는 이유: 대기는 CourseDeadline 앞에서 일어나 응답 최대 시간이 "대기 + 예산"이 되고, 포화 중에는
       #   요청 하나가 자리를 20~35초 쥐어 몇 초 기다려도 자리가 잘 나지 않는다.
-      # - 요청 수 기준이라 일수가 긴 요청 하나가 LLM 작업을 많이 만드는 경우는 막지 못한다(일수 상한은 #178).
+      # - 요청 수 기준이라 요청 하나의 크기는 일수 상한(AICourseCreateRequest.MAX_TRIP_DAYS = 5, #178)이 묶는다.
+      #   4 × 5일 = Curator 작업 20 ≤ aiAgentExecutor 스레드 20(슬롯 5 × 4) — 받아들인 요청만으로는 큐가 쌓이지 않아
+      #   CallerRuns 가 발동할 수 없다. 셋 중 하나를 바꾸면 AiExecutorCapacityInvariantTest 가 깨진다.
       max-concurrent-requests: 4
       # 5: 포화 상태에서 자리가 하나 비는 평균 간격(받아들인 요청 p50 약 22~25초 / 상한 4 ≈ 6초)보다 약간 짧게 잡은 값이다.
       # 클라이언트에게 주는 힌트일 뿐이라 정밀할 필요는 없다.
