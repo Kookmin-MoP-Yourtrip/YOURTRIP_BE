@@ -502,7 +502,9 @@ def ai_by_days(main_ai):
             'busy429': sum(1 for r in rows if r['status'] == 429),
             'other': sum(1 for r in rows if r['status'] not in (201, 429)),
             'budgetExhausted': sum(1 for v in ok if v >= AI_BUDGET_MS),
-            'okP50Ms': ok[len(ok) // 2] if ok else None,
+            # 최근접 순위(aggregate-ai.py 와 같은 정의). 짝수 표본에서 아래쪽 가운데 값이다 — 일수별 표본은 작아
+            # 정의가 다르면 2건 중 큰 값이 p50 으로 나와 비교가 어긋난다.
+            'okP50Ms': ok[(len(ok) - 1) // 2] if ok else None,
             'okMaxMs': ok[-1] if ok else None,
         }
     return out
