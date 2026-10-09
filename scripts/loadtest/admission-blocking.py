@@ -3,8 +3,14 @@
 
 입장 제한은 대기 없이 즉시 429 를 내는 손실 시스템이다. 요청 하나가 자리 (1 + 일수)개를 한꺼번에
 쥐므로 "자리 수가 다른 여러 종류의 손님"이 섞인 손실 시스템이 되고, 종류별 거절 확률은
-Kaufman–Roberts 재귀가 정확히 준다. 얼랑 B 의 일반화라 같은 무감응성(처리 시간 분포와 무관하게
+Kaufman–Roberts 재귀가 준다. 얼랑 B 의 일반화라 같은 무감응성(처리 시간 분포와 무관하게
 평균만으로 성립)을 가진다 — #193 에서 얼랑 B 가 실측 거절률과 1~4%p 로 맞은 근거가 그대로 이어진다.
+
+모델의 한계 — 일괄 점유 근사: 이 계산은 요청이 자리 (1 + 일수)개를 입장부터 요청 종료까지 한꺼번에 쥔다고
+본다. 실제 LlmWorkLease 는 호출마다 반납한다 — Planner 자리는 Planner 가 끝나면(요청 시간의 약 3분의 1)
+먼저 돌아오고, Curator 자리는 Curator 호출이 끝날 때(요청 끝 무렵) 돌아온다. 실제 점유가 이 모델보다 짧으므로
+여기 나오는 거절률은 실제보다 높은 쪽의 추정이다. 재귀와 시뮬레이션의 일치는 계산이 맞다는 확인일 뿐,
+이 근사가 실제 정책과 같다는 근거가 아니다. 실제 거절률은 운영의 ai.course.admission{days} 로 본다.
 
 비교하는 정책:
   fixed4     요청 수 상한 4 (지금 구조). 얼랑 B, 일수와 무관하게 거절률이 같다
@@ -60,7 +66,7 @@ def kaufman_roberts(total, loads):
 
 
 def simulate(rate_per_sec, mix, hold, total, reserve, horizon=2_000_000, seed=200):
-    """포아송 도착 · 지수 처리 시간 이벤트 시뮬레이션. 반환: {일수: 거절률}."""
+    """포아송 도착 · 지수 처리 시간 이벤트 시뮬레이션(일괄 점유 근사 — 모듈 설명 참고). 반환: {일수: 거절률}."""
     rng = random.Random(seed)
     longest = max(mix)
     days, weights = zip(*mix.items())
@@ -107,6 +113,7 @@ def main():
             mean_hold = sum(p * hold[d] for d, p in mix.items())
             b4 = erlang_b(4, lam * mean_hold)
             rows.append(('상한 4건', {d: b4 for d in DAYS}))
+            # 일괄 점유 근사의 제공 부하 — 자리를 요청 처리 시간 내내 쥔다고 본다(모듈 설명의 한계)
             loads = {need(d): lam * p * hold[d] for d, p in mix.items()}
             kr = kaufman_roberts(TOTAL, loads)
             rows.append((f'총량 {TOTAL} (계산)', {d: kr[need(d)] for d in DAYS}))
