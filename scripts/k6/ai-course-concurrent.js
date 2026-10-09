@@ -29,12 +29,14 @@ const ROUND_INTERVAL_SEC = parseInt(__ENV.ROUND_INTERVAL_SEC || '90', 10);
 const FAST_RPS = parseInt(__ENV.FAST_RPS || '2', 10);
 // 여행 일수(시작·종료일 포함). 요청 하나의 LLM 작업 수가 1 + 일수라, 같은 동시 인원이라도 일수가
 // 슬롯 부하를 바꾼다(#200). 기본 3은 이 손잡이가 생기기 전의 고정값(11/06~11/08)이다.
-const TRIP_DAYS = parseInt(__ENV.TRIP_DAYS || '3', 10);
-const START_DATE = '2026-11-06';
-
-if (!(TRIP_DAYS >= 1)) {
-  throw new Error(`TRIP_DAYS 는 1 이상이어야 한다 — 받은 값: ${__ENV.TRIP_DAYS}`);
+// 서버가 받는 1 ~ 5일(AICourseCreateRequest.MAX_TRIP_DAYS)만 허용한다. parseInt 는 '2.9' 를 2 로 조용히 잘라
+// 측정 조건이 바뀌므로 문자열 전체를 검사한다.
+const TRIP_DAYS_RAW = __ENV.TRIP_DAYS || '3';
+if (!/^[1-5]$/.test(TRIP_DAYS_RAW)) {
+  throw new Error(`TRIP_DAYS 는 1 ~ 5 의 정수여야 한다 — 받은 값: ${TRIP_DAYS_RAW}`);
 }
+const TRIP_DAYS = Number(TRIP_DAYS_RAW);
+const START_DATE = '2026-11-06';
 
 if (!JWT) {
   throw new Error('POST /api/my-courses/ai 는 인증이 필요하다 — -e JWT=... 를 넘겨라');

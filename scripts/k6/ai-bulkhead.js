@@ -98,12 +98,15 @@ function parseDaysMix(spec) {
   if (!spec) {
     return [];
   }
+  // 항목 전체를 검사한다 — parseFloat 은 '2abc' 를 2 로, 'Infinity' 를 그대로 받는다. 가중치가 Infinity 면
+  // 누적 선택이 NaN 이 돼 모든 도착이 마지막 일수로 떨어진다. 일수는 서버가 받는 1 ~ 5일만 허용한다.
   return spec.split(',').map((pair) => {
-    const [days, weight] = pair.split(':').map((v) => parseFloat(v));
-    if (!(Number.isInteger(days) && days >= 1 && weight > 0)) {
-      throw new Error(`DAYS_MIX 항목이 잘못됐다: ${pair} (일수:가중치, 일수는 1 이상의 정수)`);
+    const m = /^([1-5]):(\d+(?:\.\d+)?)$/.exec(pair.trim());
+    const weight = m ? Number(m[2]) : NaN;
+    if (!m || !(Number.isFinite(weight) && weight > 0)) {
+      throw new Error(`DAYS_MIX 항목이 잘못됐다: ${pair} (일수:가중치, 일수는 1 ~ 5 의 정수, 가중치는 양수)`);
     }
-    return { days, weight };
+    return { days: Number(m[1]), weight };
   });
 }
 
