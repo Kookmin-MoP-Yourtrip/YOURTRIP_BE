@@ -1,5 +1,6 @@
 package backend.yourtrip.global.ai;
 
+import backend.yourtrip.domain.mycourse.dto.request.AICourseCreateRequest;
 import backend.yourtrip.global.ai.agent.DemotionReason;
 import backend.yourtrip.global.ai.candidate.CandidateDropReason;
 import backend.yourtrip.global.ai.candidate.CandidateOutcome;
@@ -291,6 +292,11 @@ public class AiCourseMetrics {
      * 이 지표가 유일한 신호</b>다. 무작위 도착에서는 평균 동시 처리가 상한보다 한참 낮아도 거절이 생기므로
      * (#193 실측: 분당 5건 · 상한 4 에서 약 12%) "0이 아님"은 이상 신호가 아니다. 거절률을 얼랑 B 예측
      * (도착률 × 실측 처리 시간)과 견줘, 예측보다 높거나 목표를 넘으면 슬롯·요청당 LLM 작업량을 늘릴 근거가 된다.
+     *
+     * <p><b>{@code days} 태그 (#200).</b> 입장이 자리 {@code 1 + 일수}개 단위라 긴 일정이 더 자주 거절된다
+     * (Kaufman–Roberts 예측: 국내 여행형 분포 · 분당 5건에서 1일 2% · 5일 12%). 그 차이가 예측보다 벌어지는지를
+     * 운영에서 보려면 일수별 분모·분자가 따로 있어야 한다. 값은 1 ~ {@code AICourseCreateRequest.MAX_TRIP_DAYS}로
+     * 닫혀 있어(검증이 그 밖을 400으로 막는다) 시계열이 결과 2 × 일수 5 = 10개로 묶인다.
      */
     public static final String ADMISSION = "ai.course.admission";
 
@@ -301,10 +307,17 @@ public class AiCourseMetrics {
     public static final String ADMISSION_REJECTED = "rejected";
 
     /**
-     * 지금 자리를 쥔 요청 수. {@link #LLM_PERMITS_IN_USE}와 나란히 보면 "요청은 상한 아래인데 슬롯이
-     * 포화"(일수가 긴 요청, #178)와 "요청이 상한에 붙어 있다"를 가를 수 있다.
+     * 지금 쥐인 LLM 작업 자리 수(#200 부터 요청 수가 아니라 자리 수다). 작업에 묶인 자리는 그 작업이 끝날 때
+     * 돌아오므로, 예산이 지나 버려졌지만 아직 도는 호출도 여기 남는다. {@link #LLM_PERMITS_IN_USE}와 나란히 보면
+     * "자리는 남는데 슬롯이 포화"(예상보다 호출이 느림)와 "자리가 총량에 붙어 있다"(입구가 막고 있음)를 가를 수 있다.
      */
     public static final String ADMISSION_IN_USE = "ai.course.admission.in_use";
+
+    /**
+     * 지금 처리 중인 AI 요청 수 — LLM 호출이 끝난 뒤 그라운딩·경로 단계에 있는 요청까지 센다. {@link #ADMISSION_IN_USE}
+     * (자리)는 0 인데 이 값이 높으면 후속 단계(장소 API 등)가 막혀 요청이 워커를 쥐고 있다는 뜻이다.
+     */
+    public static final String ADMISSION_REQUESTS_IN_USE = "ai.course.admission.requests.in_use";
 
     /**
      * <b>최종 코스에 실린 장소가 어디서 왔는가</b> (ROADMAP 7-5, 5-8에서 이관).
@@ -439,7 +452,9 @@ public class AiCourseMetrics {
         }
         requestTimer();
         for (String result : new String[]{ADMISSION_ADMITTED, ADMISSION_REJECTED}) {
-            admissionCounter(result);
+            for (int days = 1; days <= AICourseCreateRequest.MAX_TRIP_DAYS; days++) {
+                admissionCounter(result, days);
+            }
         }
         for (CandidateSourceType source : CandidateSourceType.values()) {
             for (boolean fromModifier : new boolean[]{true, false}) {
@@ -676,9 +691,9 @@ public class AiCourseMetrics {
         requestTimer().record(durationNanos, TimeUnit.NANOSECONDS);
     }
 
-    /** 입장 판정 하나를 기록한다 (#192). */
-    public void admission(String result) {
-        admissionCounter(result).increment();
+    /** 입장 판정 하나를 기록한다 (#192, 일수 태그는 #200). */
+    public void admission(String result, int days) {
+        admissionCounter(result, days).increment();
     }
 
     /**
@@ -690,9 +705,16 @@ public class AiCourseMetrics {
             .register(registry);
     }
 
-    private Counter admissionCounter(String result) {
+    /** 입장 요청 자리의 현재 점유를 게이지로 연결한다 (#200). */
+    public void bindAdmissionRequestGauge(Semaphore requests, int maxRequests) {
+        Gauge.builder(ADMISSION_REQUESTS_IN_USE, requests, r -> maxRequests - r.availablePermits())
+            .register(registry);
+    }
+
+    private Counter admissionCounter(String result, int days) {
         return Counter.builder(ADMISSION)
             .tag("result", result)
+            .tag("days", String.valueOf(days))
             .register(registry);
     }
 

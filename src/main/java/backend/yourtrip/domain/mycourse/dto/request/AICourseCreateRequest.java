@@ -40,9 +40,14 @@ public record AICourseCreateRequest(
      * AI 코스로 만들 수 있는 최대 여행 일수 (#178).
      *
      * <p>Curator 는 day 마다 LLM 호출을 1개씩 병렬로 내므로 일수가 곧 요청 하나의 LLM 작업 수다.
-     * 상한이 없으면 30일 요청 하나가 작업 31개를 만들고, 입장 제한(요청 수 기준)을 통과한 몇 건만으로
-     * {@code aiAgentExecutor}가 넘쳐 요청 스레드가 LLM 을 직접 부르는 경로가 살아난다.
-     * 값의 근거(단일 요청 지연 실측, 실행기 용량 불변식)는 {@code docs/tasks/ai-course-day-limit/README.md}.
+     * 상한이 없으면 30일 요청 하나가 작업 31개를 만들고, 입장 제한이 요청 수 기준이던 때(#192)는 그런 요청
+     * 몇 건만으로 {@code aiAgentExecutor}가 넘쳐 요청 스레드가 LLM 을 직접 부르는 경로가 살아났다.
+     * 값의 근거(단일 요청 지연 실측)는 {@code docs/tasks/ai-course-day-limit/README.md}.
+     *
+     * <p>입장이 작업 자리 단위가 된 뒤(#200)에는 실행기를 지키는 일은 입장 총량이 맡고, 이 상한은 <b>요청 하나가
+     * 슬롯을 한 바퀴에 쓰는 크기</b>(5일까지 Curator 슬롯 대기 0)와 <b>총량 안에 들어가는 크기</b>를 지킨다. 총량보다
+     * 큰 요청은 영원히 입장하지 못하는데 응답은 재시도하라는 429 라서, 그 경우를 여기서 400으로 먼저 막아야 한다
+     * ({@code AiExecutorCapacityInvariantTest}).
      */
     public static final int MAX_TRIP_DAYS = 5;
 

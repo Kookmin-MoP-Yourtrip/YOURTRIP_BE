@@ -4,6 +4,7 @@ import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.global.ai.CourseDeadline;
 import backend.yourtrip.global.ai.LlmCall;
 import backend.yourtrip.global.ai.LlmClient;
+import backend.yourtrip.global.ai.LlmWorkLease;
 import backend.yourtrip.global.ai.agent.dto.PlannerResponse;
 import backend.yourtrip.global.ai.exception.LlmException;
 import backend.yourtrip.global.ai.exception.LlmTransportException;
@@ -63,8 +64,18 @@ public class PlannerAgent {
         this.aiAgentExecutor = aiAgentExecutor;
     }
 
+    /** 입장 자리를 추적하지 않는 단독 호출 — 테스트·프로브용이다. 운영 경로는 임대를 받는 쪽을 쓴다. */
     public PlannerPlan plan(String location, int days, List<KeywordType> keywords,
         CourseDeadline deadline) {
+        return plan(location, days, keywords, deadline, LlmWorkLease.untracked());
+    }
+
+    /**
+     * @param lease 입장한 요청의 LLM 작업 자리(#200). 호출 하나를 올리며 자리 하나를 그 호출에 묶어,
+     *              예산이 지나 기다림을 끊어도 호출이 끝날 때까지 자리가 돌아가지 않게 한다
+     */
+    public PlannerPlan plan(String location, int days, List<KeywordType> keywords,
+        CourseDeadline deadline, LlmWorkLease lease) {
         // duration 키워드는 프롬프트에 싣지 않는다(6-5). 다만 명백한 모순은 남긴다 —
         // 잦다면 고칠 곳이 코스 생성이 아니라 키워드를 고르는 화면이기 때문이다.
         KeywordRenderer.durationConflict(keywords, days).ifPresent(log::warn);
@@ -74,7 +85,7 @@ public class PlannerAgent {
                 "예산이 소진돼 Planner 를 호출하지 못했다", null);
         }
 
-        PlannerResponse response = await(buildCall(location, days, keywords), deadline);
+        PlannerResponse response = await(buildCall(location, days, keywords), deadline, lease);
         return PlannerPlanNormalizer.normalize(response, location, days);
     }
 
@@ -102,8 +113,10 @@ public class PlannerAgent {
      * 상한)와 요청 전체 예산이 다른 값이기 때문이다. 재시도가 곱해지면 호출 1건은 20초를 훌쩍 넘을 수
      * 있고, 그 상한만으로는 "Planner에서 이미 예산의 절반을 썼다"를 표현할 수도 없다.
      */
-    private PlannerResponse await(LlmCall<PlannerResponse> call, CourseDeadline deadline) {
-        CompletableFuture<PlannerResponse> future = llmClient.generateAsync(call, aiAgentExecutor);
+    private PlannerResponse await(LlmCall<PlannerResponse> call, CourseDeadline deadline,
+        LlmWorkLease lease) {
+        CompletableFuture<PlannerResponse> future =
+            lease.track(llmClient.generateAsync(call, aiAgentExecutor));
         try {
             return future.get(deadline.remainingMs(), TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {

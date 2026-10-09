@@ -3,6 +3,7 @@ package backend.yourtrip.global.ai.pipeline;
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
 import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.CourseDeadline;
+import backend.yourtrip.global.ai.LlmWorkLease;
 import backend.yourtrip.global.ai.agent.CuratorAgent;
 import backend.yourtrip.global.ai.agent.DefaultPlannerPlans;
 import backend.yourtrip.global.ai.agent.PlannerAgent;
@@ -106,30 +107,41 @@ public class AiCoursePipeline {
      *                           {@code AI_COURSE_TIMEOUT}(그 원인이 예산 소진일 때)
      */
     public AiCourseDraft generate(CourseBrief brief) {
+        return generate(brief, LlmWorkLease.untracked());
+    }
+
+    /**
+     * 입장한 요청의 LLM 작업 자리를 에이전트까지 넘기며 코스 초안 하나를 만든다(#200). 운영 경로
+     * ({@code MyCourseServiceImpl})가 부른다 — 자리는 실행기에 올린 호출 하나마다 묶여 그 호출이 끝날 때 돌아간다.
+     *
+     * @throws BusinessException {@link #generate(CourseBrief)}와 같다
+     */
+    public AiCourseDraft generate(CourseBrief brief, LlmWorkLease lease) {
         // 단계별 p95 를 더해도 요청 전체 p95 가 되지 않는다(AiCourseMetrics.REQUEST_DURATION
         // javadoc). 11-2 의 202 Accepted 전환 판단이 이 값에 걸려 있어 별도로 잰다. 실패한
         // 요청도 그 시간만큼 예산을 썼으므로 finally 에서 기록한다.
         long startNanos = System.nanoTime();
         try {
-            return doGenerate(brief);
+            return doGenerate(brief, lease);
         } finally {
             metrics.requestDuration(System.nanoTime() - startNanos);
         }
     }
 
-    private AiCourseDraft doGenerate(CourseBrief brief) {
+    private AiCourseDraft doGenerate(CourseBrief brief, LlmWorkLease lease) {
         // 요청당 한 번. 이후 모든 스테이지가 이 하나를 나눠 쓴다 - 스테이지마다 새로 만들면
         // 각자 예산을 다 쓸 수 있게 되어 전체 상한이 사라진다.
         CourseDeadline deadline = CourseDeadline.startingNow(budget);
 
-        PlannerPlan plan = timed(PipelineStage.PLANNER, () -> planOrDefault(brief, deadline));
+        PlannerPlan plan = timed(PipelineStage.PLANNER,
+            () -> planOrDefault(brief, deadline, lease));
 
         CandidatePool pool = timed(PipelineStage.CANDIDATE_RETRIEVAL,
             () -> candidateRetrievalStage.retrieve(brief.location(), plan, brief.keywords(),
                 deadline));
 
         List<CuratedDay> curated = timed(PipelineStage.CURATOR,
-            () -> curateWithFallback(plan, pool, brief.keywords(), deadline));
+            () -> curateWithFallback(plan, pool, brief.keywords(), deadline, lease));
 
         List<GroundedDay> grounded = timed(PipelineStage.GROUNDING,
             () -> groundingStage.ground(brief.location(), curated, pool, deadline));
@@ -155,9 +167,9 @@ public class AiCoursePipeline {
      * 좋아 보인다 — 폴백이 채운 장소는 실존이 확인된 후보라 환각률이 구조적으로 0에 가깝다.
      */
     private List<CuratedDay> curateWithFallback(PlannerPlan plan, CandidatePool pool,
-        List<KeywordType> keywords, CourseDeadline deadline) {
+        List<KeywordType> keywords, CourseDeadline deadline, LlmWorkLease lease) {
         DeterministicCuration.Filled filled = DeterministicCuration.fill(
-            curatorAgent.curate(plan, pool, keywords, deadline), pool);
+            curatorAgent.curate(plan, pool, keywords, deadline, lease), pool);
         filled.slotCounts().forEach(metrics::curationSlot);
         return filled.days();
     }
@@ -171,9 +183,11 @@ public class AiCoursePipeline {
      * 때문이다. 어댑터가 이미 전송·의미 두 계층의 재시도를 소진하고 올린 예외라, 여기서 한 번 더
      * 부르면 남은 예산만 태운다.
      */
-    private PlannerPlan planOrDefault(CourseBrief brief, CourseDeadline deadline) {
+    private PlannerPlan planOrDefault(CourseBrief brief, CourseDeadline deadline,
+        LlmWorkLease lease) {
         try {
-            return plannerAgent.plan(brief.location(), brief.days(), brief.keywords(), deadline);
+            return plannerAgent.plan(brief.location(), brief.days(), brief.keywords(), deadline,
+                lease);
         } catch (LlmException e) {
             log.warn("Planner 가 실패해 결정론적 기본 플랜으로 진행한다 (location={}, days={}): {}",
                 brief.location(), brief.days(), e.getMessage());

@@ -34,6 +34,7 @@ import backend.yourtrip.domain.user.entity.User;
 import backend.yourtrip.domain.user.service.UserService;
 import backend.yourtrip.global.ai.AiCourseAdmission;
 import backend.yourtrip.global.ai.AiCourseMetrics;
+import backend.yourtrip.global.ai.LlmWorkLease;
 import backend.yourtrip.global.ai.candidate.CandidateSourceType;
 import backend.yourtrip.global.ai.config.AiAdmissionProperties;
 import backend.yourtrip.global.ai.grounding.GroundedPlace;
@@ -105,9 +106,11 @@ class MyCourseServiceImplTest {
     private ApplicationEventPublisher eventPublisher;
 
     // 목이 아니라 실물이다 — admit 이 작업을 실제로 실행해야 파이프라인 목까지 호출이 닿는다.
-    // 상한 1 이라 "자리를 쥔 채 다음 요청"을 작업 안의 재진입으로 만들 수 있다.
+    // 총량이 2일 요청 하나의 자리(1 + 2 = 3)와 같아 "자리를 쥔 채 다음 요청"을 작업 안의 재진입으로 만들 수 있다.
+    private static final int TRIP_DAYS = 2;
     private final AiCourseAdmission aiCourseAdmission = new AiCourseAdmission(
-        new AiAdmissionProperties(1, 5), new AiCourseMetrics(new SimpleMeterRegistry()));
+        new AiAdmissionProperties(AiCourseAdmission.unitsFor(TRIP_DAYS), 8, 5),
+        new AiCourseMetrics(new SimpleMeterRegistry()));
 
     private MyCourseServiceImpl myCourseService;
 
@@ -361,7 +364,7 @@ class MyCourseServiceImplTest {
                 aiCoursePlace("불국사", LocalTime.of(10, 0))))));
 
         given(userService.getCurrentUserId()).willReturn(OWNER_ID);
-        given(aiCoursePipeline.generate(any(CourseBrief.class))).willReturn(draft);
+        given(aiCoursePipeline.generate(any(CourseBrief.class), any(LlmWorkLease.class))).willReturn(draft);
         given(aiCoursePersister.save(any(), anyString(), any(), any())).willReturn(COURSE_ID);
 
         // when
@@ -390,7 +393,7 @@ class MyCourseServiceImplTest {
             List.of(KeywordType.HEALING));
 
         given(userService.getCurrentUserId()).willReturn(OWNER_ID);
-        given(aiCoursePipeline.generate(any(CourseBrief.class)))
+        given(aiCoursePipeline.generate(any(CourseBrief.class), any(LlmWorkLease.class)))
             .willThrow(new BusinessException(AiCourseErrorCode.AI_GROUNDING_FAILED));
 
         // when & then
@@ -411,15 +414,15 @@ class MyCourseServiceImplTest {
             List.of(KeywordType.HEALING));
         given(userService.getCurrentUserId()).willReturn(OWNER_ID);
 
-        // when & then — 다른 요청이 하나뿐인 자리를 쥔 동안 들어온다
-        aiCourseAdmission.admit(() -> {
+        // when & then — 다른 2일 요청이 총량을 모두 쥔 동안 들어온다
+        aiCourseAdmission.admit(TRIP_DAYS, lease -> {
             assertThatThrownBy(() -> myCourseService.createAICourse(request))
                 .isInstanceOfSatisfying(RetryLaterException.class, e ->
                     assertThat(e.getErrorCode()).isEqualTo(AiCourseErrorCode.AI_COURSE_BUSY));
             return null;
         });
 
-        verify(aiCoursePipeline, never()).generate(any(CourseBrief.class));
+        verify(aiCoursePipeline, never()).generate(any(CourseBrief.class), any(LlmWorkLease.class));
         verify(aiCoursePersister, never()).save(any(), anyString(), any(), any());
     }
 

@@ -5,6 +5,7 @@ import backend.yourtrip.global.ai.AiCourseMetrics;
 import backend.yourtrip.global.ai.CourseDeadline;
 import backend.yourtrip.global.ai.LlmCall;
 import backend.yourtrip.global.ai.LlmClient;
+import backend.yourtrip.global.ai.LlmWorkLease;
 import backend.yourtrip.global.ai.agent.CuratedChoiceValidator.CurationOutcome;
 import backend.yourtrip.global.ai.agent.dto.CuratorResponse;
 import backend.yourtrip.global.ai.candidate.CandidatePool;
@@ -73,6 +74,17 @@ public class CuratorAgent {
      */
     public List<CuratedDay> curate(PlannerPlan plan, CandidatePool pool,
         List<KeywordType> keywords, CourseDeadline deadline) {
+        return curate(plan, pool, keywords, deadline, LlmWorkLease.untracked());
+    }
+
+    /**
+     * 입장 자리를 day 호출마다 하나씩 묶는다(#200). 나머지는 위와 같다.
+     *
+     * @param lease 입장한 요청의 LLM 작업 자리. 기다림을 끊고 빈 자리로 넘긴 day 의 호출도 끝날 때까지
+     *              자리를 쥔다 — 그 호출은 취소되지 않고 슬롯을 계속 쓰기 때문이다(STEP-3)
+     */
+    public List<CuratedDay> curate(PlannerPlan plan, CandidatePool pool,
+        List<KeywordType> keywords, CourseDeadline deadline, LlmWorkLease lease) {
         List<PlannerDayPlan> days = plan == null ? List.of() : plan.days();
         if (days.isEmpty()) {
             return List.of();
@@ -87,7 +99,7 @@ public class CuratorAgent {
         String concept = plan.concept();
         String renderedKeywords = KeywordRenderer.render(keywords);
         List<CompletableFuture<CuratorResponse>> futures = days.stream()
-            .map(day -> submit(day, candidatePool, concept, renderedKeywords))
+            .map(day -> submit(day, candidatePool, concept, renderedKeywords, lease))
             .toList();
         awaitAll(futures, deadline);
 
@@ -114,8 +126,9 @@ public class CuratorAgent {
      * 같은 성질을 LLM 포트 위에 만들어 주는 셈이다.
      */
     private CompletableFuture<CuratorResponse> submit(PlannerDayPlan day, CandidatePool pool,
-        String concept, String keywords) {
-        return llmClient.generateAsync(buildCall(day, pool, concept, keywords), aiAgentExecutor)
+        String concept, String keywords, LlmWorkLease lease) {
+        return lease.track(
+                llmClient.generateAsync(buildCall(day, pool, concept, keywords), aiAgentExecutor))
             .handle((response, error) -> {
                 if (error != null) {
                     log.warn("day {} 의 Curator 호출이 실패했다 — 그 day 를 비운다: {}",

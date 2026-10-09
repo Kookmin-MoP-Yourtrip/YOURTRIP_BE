@@ -532,8 +532,9 @@ public class MyCourseServiceImpl implements MyCourseService {
             (int) ChronoUnit.DAYS.between(request.startDate(), request.endDate()) + 1;
 
         //파이프라인 실행 (외부 I/O — 여기까지가 트랜잭션 밖이다)
-        AiCourseDraft draft = aiCourseAdmission.admit(() -> aiCoursePipeline.generate(
-            CourseBrief.of(request.location(), days, request.keywords())));
+        // 입장은 LLM 작업 자리 1 + days 개 단위다(#200). 자리는 에이전트가 올린 호출마다 묶여 호출이 끝날 때 돌아간다.
+        AiCourseDraft draft = aiCourseAdmission.admit(days, lease -> aiCoursePipeline.generate(
+            CourseBrief.of(request.location(), days, request.keywords()), lease));
 
         //저장 (짧은 트랜잭션) — 리스트 순서가 곧 동선 순서이므로 변환기가 순서를 보존한다
         Long courseId = aiCoursePersister.save(request, draft.title(),

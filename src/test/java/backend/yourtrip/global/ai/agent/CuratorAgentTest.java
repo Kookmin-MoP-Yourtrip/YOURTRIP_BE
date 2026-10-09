@@ -7,7 +7,9 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 
 import backend.yourtrip.domain.uploadcourse.entity.enums.KeywordType;
+import backend.yourtrip.global.ai.AiCourseAdmission;
 import backend.yourtrip.global.ai.AiCourseMetrics;
+import backend.yourtrip.global.ai.config.AiAdmissionProperties;
 import backend.yourtrip.global.ai.CourseDeadline;
 import backend.yourtrip.global.ai.LlmCall;
 import backend.yourtrip.global.ai.LlmClient;
@@ -184,6 +186,53 @@ class CuratorAgentTest {
 
             then(llmClient).should(never()).generateAsync(any(), any());
             assertThat(days).isEmpty();
+        }
+    }
+
+    @Nested
+    @DisplayName("입장 자리 (#200)")
+    class WorkLease {
+
+        private AiCourseAdmission admission;
+
+        // 필드 초기화는 바깥 @BeforeEach(registry 생성)보다 먼저 돌아 같은 registry 를 볼 수 없다
+        @BeforeEach
+        void setUpAdmission() {
+            admission = new AiCourseAdmission(new AiAdmissionProperties(16, 8, 5),
+                new AiCourseMetrics(registry));
+        }
+
+        @Test
+        @DisplayName("예산이 지나 기다림을 끊은 day 의 호출은 끝날 때까지 자리를 쥔다 — 그 호출은 취소되지 않고 슬롯을 쓴다")
+        void abandonedDayCallHoldsUnitUntilItEnds() {
+            CompletableFuture<Object> slowDay = new CompletableFuture<>();
+            given(llmClient.generateAsync(any(), any())).willReturn(completed(response()), slowDay);
+
+            // 2일 요청(자리 3): 1일차는 끝나고 2일차는 예산(50ms) 안에 오지 않는다
+            List<CuratedDay> days = admission.admit(2, lease -> agent.curate(plan(2), pool(),
+                List.of(), CourseDeadline.startingNow(Duration.ofMillis(50)), lease));
+
+            assertThat(choiceNamesOf(days.getFirst())).containsExactly("대릉원");
+            assertThat(days.get(1).slots()).allSatisfy(slot -> assertThat(slot.choices()).isEmpty());
+            // 1일차 자리와 올리지 않은 Planner 몫은 돌아왔고, 아직 도는 2일차 호출 하나만 남는다
+            assertThat(admissionInUse()).isEqualTo(1.0);
+
+            slowDay.complete(response());
+            assertThat(admissionInUse()).isZero();
+        }
+
+        @Test
+        @DisplayName("예산이 진입 전에 끝나 호출하지 않으면 예약한 자리를 요청 종료와 함께 모두 돌려준다")
+        void skippedCallsReturnUnitsOnClose() {
+            admission.admit(2, lease -> agent.curate(plan(2), pool(), List.of(),
+                CourseDeadline.startingNow(Duration.ZERO), lease));
+
+            then(llmClient).should(never()).generateAsync(any(), any());
+            assertThat(admissionInUse()).isZero();
+        }
+
+        private double admissionInUse() {
+            return registry.get(AiCourseMetrics.ADMISSION_IN_USE).gauge().value();
         }
     }
 

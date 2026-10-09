@@ -433,6 +433,7 @@ def main():
             key = f"{r['status']}{'/' + r['errorCode'] if r['errorCode'] else ''}"
         statuses[key] = statuses.get(key, 0) + 1
     ok = sorted(r['durationMs'] for r in main_ai if r['status'] == 201)
+    by_days = ai_by_days(main_ai)
 
     result = {
         'label': args.label or run.get('label', ''),
@@ -458,6 +459,7 @@ def main():
             'okP50Ms': ok[len(ok) // 2] if ok else None,
             'okMaxMs': ok[-1] if ok else None,
             'maxLagMs': max((r['lagMs'] for r in ai), default=None),
+            'byDays': by_days,
         },
     }
 
@@ -480,6 +482,32 @@ def main():
         with open(args.out_json, 'w', encoding='utf-8') as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
     sys.exit(4 if invalid else 0)
+
+
+# 서버 예산(ai.course.budget-ms). 정상 완료는 예산 전에 끝나므로 201 인데 소요가 이 이상이면 마감으로 끊긴 요청이다.
+AI_BUDGET_MS = 35_000
+
+
+def ai_by_days(main_ai):
+    """본 도착을 여행 일수별로 나눈다(#200). tripDays 가 없는 이전 로그는 3일이다."""
+    groups = {}
+    for r in main_ai:
+        groups.setdefault(r.get('tripDays', 3), []).append(r)
+    out = {}
+    for days, rows in sorted(groups.items()):
+        ok = sorted(r['durationMs'] for r in rows if r['status'] == 201)
+        out[str(days)] = {
+            'arrivals': len(rows),
+            'ok': len(ok),
+            'busy429': sum(1 for r in rows if r['status'] == 429),
+            'other': sum(1 for r in rows if r['status'] not in (201, 429)),
+            'budgetExhausted': sum(1 for v in ok if v >= AI_BUDGET_MS),
+            # 최근접 순위(aggregate-ai.py 와 같은 정의). 짝수 표본에서 아래쪽 가운데 값이다 — 일수별 표본은 작아
+            # 정의가 다르면 2건 중 큰 값이 p50 으로 나와 비교가 어긋난다.
+            'okP50Ms': ok[(len(ok) - 1) // 2] if ok else None,
+            'okMaxMs': ok[-1] if ok else None,
+        }
+    return out
 
 
 def curator_day_mix(lines):
@@ -531,6 +559,11 @@ def print_report(r):
     a = r['ai']
     print(f"AI 요청 {a['mainArrivals']}건 {a['statuses']} · 201 p50 {fmt(a['okP50Ms'], 'ms')} "
           f"최대 {fmt(a['okMaxMs'], 'ms')} · 최대 출발 지연 {fmt(a['maxLagMs'], 'ms')}")
+    if len(a.get('byDays') or {}) > 1:
+        for days, v in a['byDays'].items():
+            print(f"  {days}일: 도착 {v['arrivals']} · 201 {v['ok']}(예산 소진 {v['budgetExhausted']}) · "
+                  f"429 {v['busy429']} · 그 밖 {v['other']} · 201 p50 {fmt(v['okP50Ms'], 'ms')} "
+                  f"최대 {fmt(v['okMaxMs'], 'ms')}")
     if 'server' in r:
         s = r['server']
         print(f"Tomcat busy 최대 {fmt(s['tomcatBusyMaxInAi'])}/{fmt(s['tomcatMaxThreads'])}, "
