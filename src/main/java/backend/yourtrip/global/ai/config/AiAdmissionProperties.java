@@ -17,6 +17,9 @@ import org.springframework.validation.annotation.Validated;
  *                          함께 움직인다</b> — 슬롯이 늘면 예산 안에 처리할 수 있는 호출도 는다. 값의 근거는
  *                          {@code application.yml} 주석에, 다른 설정과의 부등식은
  *                          {@code AiExecutorCapacityInvariantTest}에 있다
+ * @param maxRequests       서버 한 대가 동시에 처리하는 AI 코스 생성 요청 수. 작업 자리와 별개로 <b>요청이 끝날 때까지</b>
+ *                          쥔다. 작업 자리는 LLM 호출이 끝나면 돌아오지만 요청은 그 뒤 그라운딩·경로·URL 보강 동안에도
+ *                          Tomcat 워커를 쥐므로, 이 상한이 없으면 후속 단계가 느려질 때 AI 요청이 워커를 모두 쥘 수 있다
  * @param retryAfterSeconds 거절 응답의 {@code Retry-After}. 클라이언트에게 주는 재시도 간격의 힌트다
  */
 @Validated
@@ -25,6 +28,9 @@ public record AiAdmissionProperties(
 
     @Positive
     int maxWorkUnits,
+
+    @Positive
+    int maxRequests,
 
     @Positive
     int retryAfterSeconds

@@ -27,8 +27,11 @@ import org.springframework.core.io.ClassPathResource;
  *       요청 수로 세던 때(#178)는 "입장 4 × 최대 5일"로 따졌고 좀비 작업은 이 부등식 밖이었다</li>
  *   <li><b>가장 긴 요청의 자리 ≤ 총량</b> — 넘으면 그 요청은 영원히 입장하지 못하는데 응답은 재시도하라는 429 다.
  *       일수 상한 검증이 400 으로 먼저 막아야 한다</li>
- *   <li><b>동시 요청 수의 최대 &lt; Tomcat 워커</b> — 가장 짧은 요청(1일, 2자리)만 들어오면 동시 요청이 가장 많다.
- *       AI 요청이 워커를 모두 쥐면 다른 API 가 막힌다(벌크헤드)</li>
+ *   <li><b>요청 수 상한 &lt; Tomcat 워커</b> — 작업 자리는 LLM 호출이 끝나면 돌아오지만 요청은 그 뒤 그라운딩·경로
+ *       동안에도 워커를 쥔다. 그래서 동시 요청 수는 자리에서 유도되지 않고 요청 전체 수명 동안 쥐는 별도 상한
+ *       ({@code max-requests})이 묶는다. AI 요청이 워커를 모두 쥐면 다른 API 가 막힌다(벌크헤드)</li>
+ *   <li><b>요청 수 상한 ≥ 총량 ÷ 가장 짧은 요청의 자리</b> — 요청 수 상한이 작업 자리보다 먼저 걸리면 슬롯이 남아도
+ *       1일 요청을 돌려보내 #200 의 목적(짧은 요청으로 남는 슬롯을 채운다)이 무너진다</li>
  * </ol>
  *
  * <p>값은 운영과 같은 {@code application.yml}(입장·슬롯)과 {@code application-prod.yml}(Tomcat)에서 읽는다 —
@@ -63,16 +66,31 @@ class AiExecutorCapacityInvariantTest {
     }
 
     @Test
-    @DisplayName("동시에 받아들일 수 있는 AI 요청 수는 운영 Tomcat 워커 수보다 적다")
-    void maxConcurrentRequestsBelowTomcatWorkers() throws IOException {
-        int maxWorkUnits = maxWorkUnits(binderOf("application.yml"));
+    @DisplayName("요청 수 상한은 운영 Tomcat 워커 수보다 적다 — 후속 단계가 멈춰도 AI 요청이 워커를 다 쥐지 못한다")
+    void requestCapBelowTomcatWorkers() throws IOException {
+        int maxRequests = maxRequests(binderOf("application.yml"));
         int tomcatWorkers = binderOf("application-prod.yml")
             .bind("server.tomcat.threads.max", Integer.class).get();
-        int maxRequests = maxWorkUnits / AiCourseAdmission.unitsFor(1);
 
         assertThat(maxRequests)
-            .as("1일 요청만 들어오면 동시 %d건이 Tomcat 워커 %d개를 다 쥔다", maxRequests, tomcatWorkers)
+            .as("AI 요청 %d건이 Tomcat 워커 %d개를 다 쥘 수 있다", maxRequests, tomcatWorkers)
             .isLessThan(tomcatWorkers);
+    }
+
+    @Test
+    @DisplayName("요청 수 상한은 작업 자리보다 먼저 걸리지 않는다 — 1일 요청만 와도 총량을 다 쓸 수 있다")
+    void requestCapDoesNotUndercutWorkUnits() throws IOException {
+        Binder binder = binderOf("application.yml");
+        int maxRequests = maxRequests(binder);
+        int byUnits = maxWorkUnits(binder) / AiCourseAdmission.unitsFor(1);
+
+        assertThat(maxRequests)
+            .as("요청 수 상한 %d 가 자리로 받을 수 있는 1일 요청 %d건보다 작다", maxRequests, byUnits)
+            .isGreaterThanOrEqualTo(byUnits);
+    }
+
+    private static int maxRequests(Binder binder) {
+        return binder.bind("ai.course.admission.max-requests", Integer.class).get();
     }
 
     private static int maxWorkUnits(Binder binder) {

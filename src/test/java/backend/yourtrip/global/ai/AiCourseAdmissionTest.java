@@ -27,9 +27,14 @@ class AiCourseAdmissionTest {
 
     private final SimpleMeterRegistry registry = new SimpleMeterRegistry();
 
+    /** 요청 수 상한이 넉넉한 게이트 — 작업 자리 계약만 볼 때 쓴다. */
     private AiCourseAdmission admissionOf(int maxWorkUnits) {
+        return admissionOf(maxWorkUnits, 100);
+    }
+
+    private AiCourseAdmission admissionOf(int maxWorkUnits, int maxRequests) {
         return new AiCourseAdmission(
-            new AiAdmissionProperties(maxWorkUnits, RETRY_AFTER_SECONDS),
+            new AiAdmissionProperties(maxWorkUnits, maxRequests, RETRY_AFTER_SECONDS),
             new AiCourseMetrics(registry));
     }
 
@@ -185,6 +190,58 @@ class AiCourseAdmissionTest {
     }
 
     @Test
+    @DisplayName("요청 수 상한이 차면 작업 자리가 남아도 거절하고, 작업 자리를 건드리지 않는다")
+    void admit_RequestCapFull_RejectsWithoutTakingUnits() {
+        AiCourseAdmission admission = admissionOf(16, 1);
+
+        admission.admit(1, held -> {
+            assertThatThrownBy(() -> admission.admit(1, lease -> null))
+                .isInstanceOf(RetryLaterException.class);
+            // 첫 요청의 2자리만 쥐어져 있다 — 거절된 요청이 자리를 뗐다가 흘리지 않았다
+            assertThat(inUse()).isEqualTo(2.0);
+            return null;
+        });
+
+        assertThat(requestsInUse()).isZero();
+        assertThat(inUse()).isZero();
+    }
+
+    @Test
+    @DisplayName("작업 자리가 모자라 거절되면 먼저 뗀 요청 자리를 돌려준다")
+    void admit_UnitsShort_ReturnsRequestSeat() {
+        AiCourseAdmission admission = admissionOf(6, 8);
+
+        admission.admit(5, held -> {
+            assertThatThrownBy(() -> admission.admit(1, lease -> null))
+                .isInstanceOf(RetryLaterException.class);
+            assertThat(requestsInUse()).isEqualTo(1.0);
+            return null;
+        });
+
+        assertThat(requestsInUse()).isZero();
+    }
+
+    @Test
+    @DisplayName("LLM 호출이 모두 끝나 작업 자리가 비어도 요청이 끝날 때까지 요청 자리는 쥔다 — 후속 단계도 워커를 쓴다")
+    void admit_AfterCallsDone_HoldsRequestSeatUntilWorkReturns() {
+        AiCourseAdmission admission = admissionOf(16, 1);
+
+        admission.admit(1, lease -> {
+            lease.track(CompletableFuture.completedFuture("planner"));
+            lease.track(CompletableFuture.completedFuture("curator"));
+            // 그라운딩·경로 단계에 해당하는 구간 — 작업 자리는 0 인데 새 요청은 들어오지 못한다
+            assertThat(inUse()).isZero();
+            assertThat(requestsInUse()).isEqualTo(1.0);
+            assertThatThrownBy(() -> admission.admit(1, inner -> null))
+                .isInstanceOf(RetryLaterException.class);
+            return null;
+        });
+
+        assertThat(requestsInUse()).isZero();
+        assertThat(admission.<String>admit(1, lease -> "다음 요청")).isEqualTo("다음 요청");
+    }
+
+    @Test
     @DisplayName("기동 직후 두 판정 결과 × 허용 일수 전부의 시계열이 0으로 존재한다 — '없음'과 '0'을 가르기 위해서다")
     void metrics_RegisterZeroSeriesAtStartup() {
         admissionOf(16);
@@ -200,6 +257,10 @@ class AiCourseAdmissionTest {
             .tag("result", result)
             .tag("days", String.valueOf(days))
             .counter().count();
+    }
+
+    private double requestsInUse() {
+        return registry.get(AiCourseMetrics.ADMISSION_REQUESTS_IN_USE).gauge().value();
     }
 
     private double inUse() {

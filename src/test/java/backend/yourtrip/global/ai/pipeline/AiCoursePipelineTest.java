@@ -182,7 +182,7 @@ class AiCoursePipelineTest {
             givenGrounded(List.of(groundedDay(1,
                 place("천마총", SlotType.ATTRACTION, CHEONMACHONG_LAT, CHEONMACHONG_LON))));
             givenEnricherIsIdentity();
-            LlmWorkLease lease = new AiCourseAdmission(new AiAdmissionProperties(16, 5),
+            LlmWorkLease lease = new AiCourseAdmission(new AiAdmissionProperties(16, 8, 5),
                 new AiCourseMetrics(new SimpleMeterRegistry()))
                 .admit(1, admitted -> {
                     pipeline().generate(CourseBrief.of(LOCATION, 1, KEYWORDS), admitted);

@@ -109,7 +109,7 @@ class MyCourseServiceImplTest {
     // 총량이 2일 요청 하나의 자리(1 + 2 = 3)와 같아 "자리를 쥔 채 다음 요청"을 작업 안의 재진입으로 만들 수 있다.
     private static final int TRIP_DAYS = 2;
     private final AiCourseAdmission aiCourseAdmission = new AiCourseAdmission(
-        new AiAdmissionProperties(AiCourseAdmission.unitsFor(TRIP_DAYS), 5),
+        new AiAdmissionProperties(AiCourseAdmission.unitsFor(TRIP_DAYS), 8, 5),
         new AiCourseMetrics(new SimpleMeterRegistry()));
 
     private MyCourseServiceImpl myCourseService;

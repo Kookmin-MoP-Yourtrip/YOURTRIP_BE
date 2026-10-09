@@ -314,6 +314,12 @@ public class AiCourseMetrics {
     public static final String ADMISSION_IN_USE = "ai.course.admission.in_use";
 
     /**
+     * 지금 처리 중인 AI 요청 수 — LLM 호출이 끝난 뒤 그라운딩·경로 단계에 있는 요청까지 센다. {@link #ADMISSION_IN_USE}
+     * (자리)는 0 인데 이 값이 높으면 후속 단계(장소 API 등)가 막혀 요청이 워커를 쥐고 있다는 뜻이다.
+     */
+    public static final String ADMISSION_REQUESTS_IN_USE = "ai.course.admission.requests.in_use";
+
+    /**
      * <b>최종 코스에 실린 장소가 어디서 왔는가</b> (ROADMAP 7-5, 5-8에서 이관).
      * 5-8이 이걸 이관한 이유는 분모가 거기 없기 때문이다 — "채택됐다"는 배치가 확정된 뒤에만
      * 알 수 있고, 그 시점은 7단계에서 처음 생긴다.
@@ -696,6 +702,12 @@ public class AiCourseMetrics {
      */
     public void bindAdmissionGauge(Semaphore gate, int maxPermits) {
         Gauge.builder(ADMISSION_IN_USE, gate, g -> maxPermits - g.availablePermits())
+            .register(registry);
+    }
+
+    /** 입장 요청 자리의 현재 점유를 게이지로 연결한다 (#200). */
+    public void bindAdmissionRequestGauge(Semaphore requests, int maxRequests) {
+        Gauge.builder(ADMISSION_REQUESTS_IN_USE, requests, r -> maxRequests - r.availablePermits())
             .register(registry);
     }
 

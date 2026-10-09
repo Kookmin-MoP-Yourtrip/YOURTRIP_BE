@@ -198,7 +198,7 @@ class CuratorAgentTest {
         // 필드 초기화는 바깥 @BeforeEach(registry 생성)보다 먼저 돌아 같은 registry 를 볼 수 없다
         @BeforeEach
         void setUpAdmission() {
-            admission = new AiCourseAdmission(new AiAdmissionProperties(16, 5),
+            admission = new AiCourseAdmission(new AiAdmissionProperties(16, 8, 5),
                 new AiCourseMetrics(registry));
         }
 

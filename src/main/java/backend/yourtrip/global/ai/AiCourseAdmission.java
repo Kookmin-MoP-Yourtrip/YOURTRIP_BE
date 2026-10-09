@@ -26,6 +26,13 @@ import org.springframework.stereotype.Component;
  * 총량은 실행기 크기가 아니라 <b>예산 안에 슬롯이 처리하는 호출 수</b>로 정한다(값의 근거는
  * {@code application.yml} 주석).
  *
+ * <h2>요청 수 상한을 따로 두는 이유</h2>
+ * 작업 자리는 LLM 호출이 끝나면 돌아오지만, 요청은 그 뒤 그라운딩(장소 API)·경로·URL 보강 동안에도 Tomcat
+ * 워커를 쥔다. 자리만 세면 후속 단계가 느려질 때 자리가 빈 틈으로 새 요청이 계속 들어와 워커가 쌓인다 — 비교
+ * 실험 C(#201)에서 장소 API 대기로 워커 32개가 모두 찬 것과 같은 경로다. 그래서 <b>요청 전체 수명</b> 동안 쥐는
+ * 요청 자리를 함께 둔다. 값(8)은 작업 자리만으로 받을 수 있는 최대 요청 수(16 ÷ 1일 요청 2자리)와 같아, 평소에는
+ * 작업 자리보다 먼저 걸리지 않고 후속 단계가 멈출 때만 막는다.
+ *
  * <h2>기다리지 않는다</h2>
  * {@link Semaphore#tryAcquire(int)}를 대기 없이 부른다. 대기는 {@code CourseDeadline}이 시작되기 전에
  * 일어나 응답 최대 시간을 "대기 + 예산"으로 늘리고, 기다리는 동안 요청 스레드를 쥔다. 재시도 간격은
@@ -41,14 +48,17 @@ import org.springframework.stereotype.Component;
 public class AiCourseAdmission {
 
     private final Semaphore gate;
+    private final Semaphore requests;
     private final int retryAfterSeconds;
     private final AiCourseMetrics metrics;
 
     public AiCourseAdmission(AiAdmissionProperties properties, AiCourseMetrics metrics) {
         this.gate = new Semaphore(properties.maxWorkUnits());
+        this.requests = new Semaphore(properties.maxRequests());
         this.retryAfterSeconds = properties.retryAfterSeconds();
         this.metrics = metrics;
         metrics.bindAdmissionGauge(gate, properties.maxWorkUnits());
+        metrics.bindAdmissionRequestGauge(requests, properties.maxRequests());
     }
 
     /** {@code days}일 요청 하나가 떼는 자리 수 — Planner 1 + day 마다 Curator 1. */
@@ -57,9 +67,9 @@ public class AiCourseAdmission {
     }
 
     /**
-     * 자리 {@link #unitsFor(int) 1 + days}개가 있으면 떼어 {@code work}에 임대로 넘기고, 끝나면(예외로
-     * 끝나도) 작업에 묶이지 않은 자리를 돌려준다. 작업에 묶인 자리는 그 작업이 끝날 때 돌아간다
-     * ({@link LlmWorkLease}).
+     * 요청 자리 1개와 작업 자리 {@link #unitsFor(int) 1 + days}개가 모두 있으면 떼어 {@code work}에 임대로 넘기고,
+     * 끝나면(예외로 끝나도) 요청 자리와 작업에 묶이지 않은 작업 자리를 돌려준다. 작업에 묶인 자리는 그 작업이 끝날 때
+     * 돌아간다({@link LlmWorkLease}). 둘 중 하나라도 모자라면 이미 뗀 쪽을 돌려주고 거절한다.
      *
      * <p>획득과 해제를 호출자에게 나눠 맡기지 않고 이 메서드 하나에 가둔 이유는, 해제를 빠뜨리면
      * 자리가 영구히 줄어드는데 그 결함이 <b>총량만큼 쌓인 뒤에야 전면 429로</b> 드러나기 때문이다.
@@ -68,9 +78,12 @@ public class AiCourseAdmission {
      */
     public <T> T admit(int days, Function<LlmWorkLease, T> work) {
         int units = unitsFor(days);
+        if (!requests.tryAcquire()) {
+            throw reject(days);
+        }
         if (!gate.tryAcquire(units)) {
-            metrics.admission(AiCourseMetrics.ADMISSION_REJECTED, days);
-            throw new RetryLaterException(AiCourseErrorCode.AI_COURSE_BUSY, retryAfterSeconds);
+            requests.release();
+            throw reject(days);
         }
         metrics.admission(AiCourseMetrics.ADMISSION_ADMITTED, days);
         LlmWorkLease lease = new LlmWorkLease(gate, units);
@@ -78,6 +91,12 @@ public class AiCourseAdmission {
             return work.apply(lease);
         } finally {
             lease.close();
+            requests.release();
         }
+    }
+
+    private RetryLaterException reject(int days) {
+        metrics.admission(AiCourseMetrics.ADMISSION_REJECTED, days);
+        return new RetryLaterException(AiCourseErrorCode.AI_COURSE_BUSY, retryAfterSeconds);
     }
 }
