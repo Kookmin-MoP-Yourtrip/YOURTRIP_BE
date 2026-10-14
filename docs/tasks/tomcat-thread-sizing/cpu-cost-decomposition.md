@@ -1,5 +1,7 @@
 # 요청당 CPU 26% 감소의 분해 — 전환 횟수인가, 캐시 지역성인가
 
+> **재검증 (2026-10-14)** — 이 문서가 분해한 요청당 CPU 차이(−31.5%)는 현재 코드·환경에서 −3.6%로 거의 사라졌다. 원인 조건(스레드 200개가 공유 L2를 다툼)은 그대로인데 효과가 사라졌으므로, 아래의 "전환 1회당 캐시 재적재 비용" 설명은 배제법에 의한 당시의 추론으로만 읽는다. 상세는 [lettuce-dispatch-latency.md](lettuce-dispatch-latency.md) 6-6·6-7.
+
 > [#97](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/97)의 기록이다. [ec2-measurement.md](ec2-measurement.md)가 한계로 남긴 항목을 정조준한다. 계측을 어떻게 만들고 검증했는지는 [measurement-harness.md](measurement-harness.md)에 따로 있다.
 >
 > **결론** — 전환을 덜 해서가 아니라, **전환 1회당 캐시를 되채우는 비용이 싸져서다.** 요청당 CPU가 0.7293 → 0.4996 vCPU-ms(**−31.5%**)로 줄었는데 그 낭비의 **92.3%가 유저 시간**이고, 요청당 전환 횟수는 5.05 vs 4.72로 **0.33회밖에 차이 나지 않아 전환 횟수의 몫은 1.4%**다.

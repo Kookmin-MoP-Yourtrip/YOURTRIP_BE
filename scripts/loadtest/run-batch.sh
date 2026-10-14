@@ -22,12 +22,13 @@
 # 선택:
 #   ARMS="T200 T64 T32 T16 T8 T200+snc"   REPS=2   LEVELS="5 20 50 200"   LEVEL_SEC=90
 #   SCENARIO=levels|mixed  (mixed는 popular-mixed.js 450s 1회 — 보통 FLUSH_REDIS=1과 함께 쓴다)
-#   OUT=./results/<batch>  REMOTE_DIR=/tmp/lt  SCHEDSTAT=1  TAG=<접두사>
+#   OUT=./results/<batch>  REMOTE_DIR=/tmp/lt  SCHEDSTAT=1  SCHEDLAT=0  TAG=<접두사>
 #   FLUSH_REDIS=1  arm 전환(재기동·워머) 직후 App EC2에서 FLUSHALL — 상세 캐시를 비워 DB 미스 경로를 만든다
 #                  (mixed 시나리오용. ElastiCache는 App SG에서만 열려 있어 App EC2의 /dev/tcp로 보낸다)
 #   REDIS_HOST=<엔드포인트>  FLUSH_REDIS=1일 때 필수
 #
-# 사전 조건: App EC2에 scripts/loadtest/{switch-thread-arm,switch-heap-arm,sample-host,sample-schedstat}.sh,
+# 사전 조건: App EC2에 scripts/loadtest/{switch-thread-arm,switch-heap-arm,sample-host,sample-schedstat}.sh
+#            (SCHEDLAT=1이면 sample-sched-latency.sh·trace-sched-latency.bt도),
 #            k6 EC2에 scripts/loadtest/poll-metrics.sh와 scripts/k6/{popular-cold,popular-mixed}.js,
 #            scripts/k6/lib/scenarios.mjs 가 있어야 한다(scp).
 set -euo pipefail
@@ -43,6 +44,10 @@ SCHEDSTAT="${SCHEDSTAT:-1}"
 # schedstat 창 길이. 요청당 전환 횟수로 정규화하려면 창이 길수록 표본이 안정된다(#97에서
 # 10초 -> 60초로 올렸다). 창은 레벨 구간의 한가운데에 놓는다.
 SCHEDSTAT_SEC="${SCHEDSTAT_SEC:-10}"
+# 1이면 최상위 레벨에서 sample-schedstat.sh 대신 sample-sched-latency.sh를 부른다 — bpftrace로
+# 런큐 대기 분포를 잡고, 같은 창의 schedstat과 대조한다(lettuce-dispatch-latency.md).
+# App EC2에 bpftrace가 설치돼 있어야 한다(sudo dnf install -y bpftrace).
+SCHEDLAT="${SCHEDLAT:-0}"
 # arm 전환 직후 예열. 재기동 직후 첫 고부하 run은 JIT이 덜 데워져 TPS가 20% 이상 낮게 나온다
 # (실측: 2,253 -> 2,976). 낮은 VU 레벨을 먼저 도는 것이 추가 예열을 겸한다.
 WARMUP_SEC="${WARMUP_SEC:-30}"
@@ -94,7 +99,12 @@ run_level() {
   local run="$1" vus="$2" sec="$3"
   local hostdur=$((sec + 15))
   app "nohup bash $REMOTE_DIR/sample-host.sh $REMOTE_DIR/$run.host.tsv $hostdur >/dev/null 2>&1 &"
-  if [ "$SCHEDSTAT" = "1" ] && [ "$vus" = "${LEVELS##* }" ]; then
+  if [ "$SCHEDLAT" = "1" ] && [ "$vus" = "${LEVELS##* }" ]; then
+    # schedstat을 bpftrace와 같은 창으로 묶어 돈다 — 산출물(.schedstat.txt·.schedlat.json·.env.txt)은
+    # App EC2의 $REMOTE_DIR/$run.* 에 남고 배치 끝의 scp가 함께 회수한다
+    ( sleep $(( (sec - SCHEDSTAT_SEC) / 2 )); app "bash $REMOTE_DIR/sample-sched-latency.sh $REMOTE_DIR/$run $SCHEDSTAT_SEC" >> "$OUT/batch.log" 2>&1 ) &
+    local sched_pid=$! sched_kind=schedlat
+  elif [ "$SCHEDSTAT" = "1" ] && [ "$vus" = "${LEVELS##* }" ]; then
     ( sleep $(( (sec - SCHEDSTAT_SEC) / 2 )); app "bash $REMOTE_DIR/sample-schedstat.sh $SCHEDSTAT_SEC" > "$OUT/$run.schedstat.txt" 2>&1 ) &
     local sched_pid=$!
   fi
@@ -104,7 +114,16 @@ run_level() {
               --summary-export=$REMOTE_DIR/$run.k6.json scripts/k6/popular-cold.js > $REMOTE_DIR/$run.k6.log 2>&1;
        T1=\$(date +%s.%N); sleep 3; kill \$PP; echo \"t0=\$T0 t1=\$T1\" > $REMOTE_DIR/$run.window; cat $REMOTE_DIR/$run.window" \
       | tee -a "$OUT/batch.log"
-  [ -n "${sched_pid:-}" ] && wait "$sched_pid" || true
+  # SCHEDLAT 샘플러가 실패하면 그 run의 bpftrace·schedstat 결과가 비거나 반쪽이 된다. 배치 전체를
+  # 멈추지는 않는다(40분짜리 배치를 샘플러 하나 때문에 중단하면 다른 arm의 정상 데이터까지 잃는다).
+  # 대신 batch.log에 경고를 남기고 실패 표식 파일을 만들어, 사후 집계에서 그 run을 바로 걸러낸다.
+  # 기존 SCHEDSTAT 경로는 이전처럼 결과를 무시한다.
+  if [ -n "${sched_pid:-}" ]; then
+    if ! wait "$sched_pid" && [ "${sched_kind:-}" = "schedlat" ]; then
+      log "WARN schedlat sampler failed for $run — 이 run의 추적 결과를 쓰지 말 것"
+      : > "$OUT/$run.schedlat.FAILED"
+    fi
+  fi
 }
 
 run_mixed() {

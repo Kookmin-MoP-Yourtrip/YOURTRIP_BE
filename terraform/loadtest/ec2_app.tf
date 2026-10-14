@@ -2,9 +2,13 @@ data "aws_ami" "al2023" {
   most_recent = true
   owners      = ["amazon"]
 
+  # 커널을 6.1로 고정한다. "al2023-ami-2023.*-x86_64"는 같은 릴리스의 kernel-6.1/6.12/6.18 AMI가
+  # 같은 생성 시각으로 함께 걸려 most_recent가 무엇을 고를지 정해지지 않는다. 6.6+는 스케줄러가
+  # CFS가 아니라 EEVDF라, 스레드 경합 측정(#88·#97·lettuce-dispatch-latency)의 전제가 apply마다
+  # 바뀔 수 있다. 기존 측정이 전부 6.1(CFS)이므로 그에 맞춘다.
   filter {
     name   = "name"
-    values = ["al2023-ami-2023.*-x86_64"]
+    values = ["al2023-ami-2023.*-kernel-6.1-x86_64"]
   }
 
   filter {
