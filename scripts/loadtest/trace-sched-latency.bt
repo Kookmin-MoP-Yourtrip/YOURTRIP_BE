@@ -129,6 +129,11 @@ tracepoint:sched:sched_switch
 			@run_stat[$pg] = stats($run);
 		}
 		delete(@oncpu[$ptid]);
+		// CPU에서 내려오는 스레드에 남은 깨어남 시각은 낡은 값이다. 커널 6.1은 이미 CPU 위에 있는 스레드를
+		// 깨워도(unpark가 허가만 쌓는 경우) ttwu_runnable 경로로 sched_wakeup을 낸다. 추적 시작 전부터 돌던
+		// 스레드는 @oncpu가 비어 있어 그 깨우기를 거르지 못하고, 지우지 않으면 다음 진짜 깨우기에서
+		// "실행 + 수면" 전체가 대기로 잡힌다(게이트 wake 모드에서 tomcat 대기 5~23ms 이상값 약 50건).
+		delete(@qwake[$ptid]);
 		if ((args->prev_state & 0xff) == 0) {
 			@qpre[$ptid] = $now;
 			@out_preempt[$pg] = count();
