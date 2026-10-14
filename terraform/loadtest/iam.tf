@@ -40,3 +40,27 @@ resource "aws_iam_instance_profile" "app_ec2" {
   name = "${var.name_prefix}-app-ec2-profile"
   role = aws_iam_role.app_ec2.name
 }
+
+# k6 EC2 전용 IAM 역할 — SSM Session Manager 접속만 허용한다(#210).
+#
+# 측정 도중 개발 PC의 공인 IP가 바뀌자(네트워크 전환) my_ip_cidr로 묶인 SSH가 막혀, 로컬에서
+# ssh로 엮던 배치가 2회차에서 끊겼다. 두 가지를 바꿨다:
+#   1. 접속을 IP에서 떼어낸다 — SSM 경유 SSH(AWS-StartSSHSession)는 포트 22를 인터넷에 열지 않고
+#      AWS 자격증명으로 인증하므로 어느 네트워크에서든 붙는다. App EC2는 이미 SSM 권한이 있다.
+#   2. 배치 드라이버를 k6 EC2 안에서 돌린다 — 로컬과의 연결은 시작·회수 때만 필요하다.
+#      (App EC2로의 SSH는 security_groups.tf의 app_ingress_ssh_from_k6가 연다.)
+# App 역할을 재사용하지 않는 이유: k6에는 CloudWatch Agent 권한이 필요 없다.
+resource "aws_iam_role" "k6_ec2" {
+  name               = "${var.name_prefix}-k6-ec2-role"
+  assume_role_policy = data.aws_iam_policy_document.ec2_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "k6_ec2_ssm" {
+  role       = aws_iam_role.k6_ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "k6_ec2" {
+  name = "${var.name_prefix}-k6-ec2-profile"
+  role = aws_iam_role.k6_ec2.name
+}

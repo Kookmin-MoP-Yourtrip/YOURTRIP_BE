@@ -70,6 +70,18 @@ resource "aws_security_group_rule" "app_ingress_ssh_from_dev" {
   description       = "SSH for troubleshooting and CloudFront private key delivery"
 }
 
+# k6 EC2에서 도는 배치 드라이버(run-batch.sh)가 App EC2를 사설 IP로 제어하기 위한 SSH(#210).
+# 드라이버를 로컬에 두면 개발 PC의 네트워크가 바뀔 때 배치가 끊긴다 — iam.tf의 k6_ec2 참고.
+resource "aws_security_group_rule" "app_ingress_ssh_from_k6" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.app.id
+  from_port                = 22
+  to_port                  = 22
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.k6.id
+  description              = "SSH from batch driver on k6 EC2"
+}
+
 resource "aws_security_group_rule" "app_egress_all" {
   type              = "egress"
   security_group_id = aws_security_group.app.id
