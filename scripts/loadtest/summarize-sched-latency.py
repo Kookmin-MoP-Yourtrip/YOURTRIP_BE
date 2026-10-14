@@ -183,9 +183,19 @@ def near(a, b):
 
 def summarize_preemptors(maps):
     """lettuce를 선점한 스레드 — 그룹, 그 스레드를 마지막으로 깨운 쪽, 선점 유발 여부(#207)."""
-    who = {k: v for k, v in maps.get("preemptor", {}).items()}
-    if not who:
+    if "preemptor" not in maps:
         print("(선점자 맵 없음 — #207 이전 trace 스크립트의 결과다)\n")
+        return
+    who = {k: v for k, v in maps["preemptor"].items()}
+    if not who:
+        # 맵은 출력됐지만 비었다 — 창 안에서 lettuce가 한 번도 선점되지 않았다(T8처럼 lettuce가 거의 잠드는 조건).
+        # 그 자체는 오류가 아니므로 선점 내려옴도 0인지로 판정한다.
+        out_pre = maps.get("out_preempt", {}).get("1", 0)
+        print("### lettuce 선점자 (선점 0건)\n")
+        print("| 정합성 | 기준 | 판정 |")
+        print("|---|---|---|")
+        print(f"| G6a 선점자 합 = 선점 내려옴(lettuce) | 3건 또는 0.1% 이내 | {near(0, out_pre)} |")
+        print()
         return
     total = sum(who.values())
     waker = {}

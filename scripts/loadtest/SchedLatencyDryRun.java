@@ -51,6 +51,10 @@ public class SchedLatencyDryRun {
     public static void main(String[] args) throws InterruptedException {
         int workers = Integer.parseInt(args[0]);
         int seconds = Integer.parseInt(args[1]);
+        if (workers < 1) {
+            // wake 모드에서 0이면 lettuce 스레드가 pool[next]에서 예외로 죽고 프로세스는 계속 돌아 측정이 조용히 틀린다
+            throw new IllegalArgumentException("workers must be >= 1: " + workers);
+        }
         String mode = args.length > 2 ? args[2] : "indep";
         if (!mode.equals("indep") && !mode.equals("wake")) {
             throw new IllegalArgumentException("mode must be indep or wake: " + mode);
