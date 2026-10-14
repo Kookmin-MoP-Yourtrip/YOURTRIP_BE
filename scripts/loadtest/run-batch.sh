@@ -38,6 +38,11 @@ set -euo pipefail
 : "${APP_IP:?}" "${K6_IP:?}" "${APP_PRIVATE:?}" "${SSH_KEY:?}"
 ARMS="${ARMS:-T200 T64 T32 T16 T8 T200+snc}"
 REPS="${REPS:-2}"
+# 중단된 배치를 이 회차부터 다시 돈다(#210 — 측정 도중 개발 PC의 공인 IP가 바뀌어 보안그룹이 SSH를
+# 막았다). 회차 번호와 정순/역순 규칙이 그대로 이어지므로, 같은 TAG·OUT으로 다시 부르면 끊긴 회차를
+# 통째로 덮어쓰고 이어서 진행한다. 끊긴 회차의 일부 arm만 다시 돌면 같은 회차의 두 arm이 시간상
+# 인접하지 않아 쌍 비교의 전제(표류 공유)가 깨지므로, 회차 단위로 다시 돈다.
+REP_START="${REP_START:-1}"
 LEVELS="${LEVELS:-5 20 50 200}"
 LEVEL_SEC="${LEVEL_SEC:-90}"
 SCENARIO="${SCENARIO:-levels}"
@@ -153,7 +158,7 @@ run_mixed() {
       | tee -a "$OUT/batch.log"
 }
 
-for rep in $(seq 1 "$REPS"); do
+for rep in $(seq "$REP_START" "$REPS"); do
   order="$ARMS"
   # 홀수 rep은 정순, 짝수 rep은 역순 — 시간 표류가 특정 arm에만 얹히지 않게
   if [ $((rep % 2)) -eq 0 ]; then order=$(echo "$ARMS" | tr ' ' '\n' | tac | tr '\n' ' '); fi
