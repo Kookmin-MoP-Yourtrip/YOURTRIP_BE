@@ -55,14 +55,20 @@ BEGIN
 }
 
 // ---- 인터럽트 깊이(CPU별) — sched_waking의 waker 귀속에 쓴다
-// 끝(exit)만 보이는 경우(추적 시작 시 이미 처리 중이던 인터럽트)에 음수로 내려가지 않게 0에서 멈춘다.
+// bpftrace는 프로브를 하나씩 붙인다. entry만 붙고 exit는 아직인 틈에 들어온 인터럽트는 진입만 세져
+// 깊이가 영구히 +1로 남는다 — 게이트(wake 모드)에서 한 CPU의 깨우기가 전부 인터럽트로 분류돼
+// lettuce 50% / 인터럽트 50%로 갈렸다. 그래서 sched_switch마다 0으로 되돌린다: 문맥 전환은
+// 인터럽트·softirq 처리 도중에는 일어나지 않으므로 전환 시점의 깊이는 반드시 0이다.
+// 끝만 보이는 경우(추적 시작 시 이미 처리 중이던 인터럽트)에는 음수로 내려가지 않게 0에서 멈춘다.
 tracepoint:irq:softirq_entry,
+tracepoint:irq:irq_handler_entry,
 tracepoint:timer:hrtimer_expire_entry
 {
 	@irqd[cpu] = @irqd[cpu] + 1;
 }
 
 tracepoint:irq:softirq_exit,
+tracepoint:irq:irq_handler_exit,
 tracepoint:timer:hrtimer_expire_exit
 {
 	if (@irqd[cpu] > 0) {
@@ -106,6 +112,8 @@ tracepoint:sched:sched_wakeup_new
 tracepoint:sched:sched_switch
 {
 	$now = nsecs;
+	// 인터럽트 깊이 자가 복구 — 위 @irqd 설명 참고
+	@irqd[cpu] = 0;
 
 	// ---- CPU에서 내려오는 스레드
 	$pg = 0;
