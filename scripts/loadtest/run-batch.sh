@@ -11,7 +11,9 @@
 #   T200            Tomcat maxThreads만 바꾼다(힙은 건드리지 않는다)
 #   T32H1024        maxThreads 32 + -Xmx1024m
 #   T200+snc        shareNativeConnection=false
+#   T32+nice10      예열 직후 lettuce 이벤트루프 스레드에 nice -10(renice-lettuce.sh, #210)
 # H 토큰이 없으면 힙을 건드리지 않으므로 기존 배치 이름이 그대로 동작한다.
+# + 꼬리 토큰(snc·nice<N>)은 함께 붙일 수 있다(예: T200+snc+nice10).
 #
 # 필수 환경변수(하드코딩 금지 — 재기동마다 퍼블릭 IP가 바뀌고, IP를 두 곳에 박아뒀다가 한쪽만
 # 고쳐 죽은 IP로 ssh하던 사고가 있었다):
@@ -27,7 +29,7 @@
 #                  (mixed 시나리오용. ElastiCache는 App SG에서만 열려 있어 App EC2의 /dev/tcp로 보낸다)
 #   REDIS_HOST=<엔드포인트>  FLUSH_REDIS=1일 때 필수
 #
-# 사전 조건: App EC2에 scripts/loadtest/{switch-thread-arm,switch-heap-arm,sample-host,sample-schedstat}.sh
+# 사전 조건: App EC2에 scripts/loadtest/{switch-thread-arm,switch-heap-arm,sample-host,sample-schedstat,renice-lettuce}.sh
 #            (SCHEDLAT=1이면 sample-sched-latency.sh·trace-sched-latency.bt도),
 #            k6 EC2에 scripts/loadtest/poll-metrics.sh와 scripts/k6/{popular-cold,popular-mixed}.js,
 #            scripts/k6/lib/scenarios.mjs 가 있어야 한다(scp).
@@ -68,10 +70,19 @@ log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$OUT/batch.log"; }
 
 app "mkdir -p $REMOTE_DIR"; k6h "mkdir -p $REMOTE_DIR"
 
-switch_arm() { # T32 | T200+snc | T32H1024
-  local arm="$1" max heap="" snc=true body
-  body="${arm%%+*}"                       # +snc 꼬리를 떼고 T<max>[H<heap>]만 남긴다
-  [[ "$arm" == *+snc ]] && snc=false
+ARM_NICE=""  # switch_arm이 채운다 — 예열 뒤 apply_nice가 읽는다
+
+switch_arm() { # T32 | T200+snc | T32H1024 | T32+nice10
+  local arm="$1" max heap="" snc=true body tok
+  body="${arm%%+*}"                       # + 꼬리를 떼고 T<max>[H<heap>]만 남긴다
+  ARM_NICE=""
+  for tok in $(tr '+' ' ' <<< "${arm#"$body"}"); do
+    case "$tok" in
+      snc) snc=false ;;
+      nice[0-9]*) ARM_NICE="-${tok#nice}" ;;  # 우대만 실험하므로 토큰의 숫자는 음수 nice로 읽는다
+      *) echo "unknown arm token '+$tok' in $arm" >&2; exit 1 ;;
+    esac
+  done
   max="${body#T}"
   if [[ "$max" == *H* ]]; then            # H 토큰이 있으면 힙 축이 붙은 arm이다
     heap="${max#*H}"
@@ -80,7 +91,7 @@ switch_arm() { # T32 | T200+snc | T32H1024
   # 예전에는 T200을 default(키 제거)로 넘겼다 — Tomcat 기본값이 200이라 같은 뜻이었기 때문이다.
   # #88이 application-prod.yml에 server.tomcat.threads.max: 32를 넣으면서 그 전제가 깨졌다.
   # 이제 키를 지우면 200이 아니라 32가 되므로, 모든 arm에서 값을 명시적으로 넘긴다.
-  log "switch arm=$arm (max=$max heap=${heap:-unchanged} snc=$snc)"
+  log "switch arm=$arm (max=$max heap=${heap:-unchanged} snc=$snc nice=${ARM_NICE:-0})"
   # 힙은 .env의 JVM_OPTS와 systemd 드롭인만 갈아두고 재기동하지 않는다. 재기동·health
   # 폴링·적용 검증은 switch-thread-arm.sh가 하므로, arm당 재기동이 1회로 유지된다.
   if [ -n "$heap" ]; then
@@ -150,6 +161,10 @@ for rep in $(seq 1 "$REPS"); do
     switch_arm "$arm"
     log "warm-up ${WARMUP_SEC}s"
     k6h "cd /opt/app && k6 run -q -e BASE_URL=http://$APP_PRIVATE:8080 -e VUS=5 -e DURATION=${WARMUP_SEC}s scripts/k6/popular-cold.js >/dev/null 2>&1"
+    # nice는 예열 **뒤에** 건다 — 재기동으로 tid가 바뀌었고, netty 이벤트루프는 첫 작업이 들어올 때
+    # 생긴다. 기준 arm도 0으로 같은 검증을 거쳐(게이트 N2) 재기동이 nice를 초기화했음을 남긴다.
+    # 실패하면 배치를 멈춘다 — nice가 안 걸린 run을 nice arm으로 기록하면 판정 자체가 틀린다.
+    app "sudo bash $REMOTE_DIR/renice-lettuce.sh ${ARM_NICE:-0}" | tee -a "$OUT/batch.log"
     if [ "$SCENARIO" = "mixed" ]; then
       run="${TAG}_${arm}_mixed_r${rep}"; log "run $run"; run_mixed "$run"
     else
