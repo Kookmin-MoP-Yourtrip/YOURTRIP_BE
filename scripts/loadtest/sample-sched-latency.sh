@@ -28,6 +28,10 @@ command -v bpftrace >/dev/null || { echo "bpftrace not installed (sudo dnf insta
 
 sudo bpftrace -f json -B none "$DIR/trace-sched-latency.bt" "$DURATION" > "$BT_OUT" 2>"$PREFIX.schedlat.err" &
 BT_PID=$!
+# set -e라 아래 schedstat이 실패하면 스크립트가 즉시 끝난다. 그때 bpftrace가 interval이 끝날 때까지
+# 프로브를 붙인 채 남으면 다음 run의 측정에 추적 부하가 섞인다 — 어떤 경로로 끝나든 회수한다.
+# 정상 종료 시에는 이미 wait로 끝난 뒤라 kill이 no-op이다.
+trap 'kill "$BT_PID" 2>/dev/null || true' EXIT
 
 for _ in $(seq 1 300); do
   grep -q READY "$BT_OUT" 2>/dev/null && break

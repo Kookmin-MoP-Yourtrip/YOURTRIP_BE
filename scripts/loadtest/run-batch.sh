@@ -103,7 +103,7 @@ run_level() {
     # schedstat을 bpftrace와 같은 창으로 묶어 돈다 — 산출물(.schedstat.txt·.schedlat.json·.env.txt)은
     # App EC2의 $REMOTE_DIR/$run.* 에 남고 배치 끝의 scp가 함께 회수한다
     ( sleep $(( (sec - SCHEDSTAT_SEC) / 2 )); app "bash $REMOTE_DIR/sample-sched-latency.sh $REMOTE_DIR/$run $SCHEDSTAT_SEC" >> "$OUT/batch.log" 2>&1 ) &
-    local sched_pid=$!
+    local sched_pid=$! sched_kind=schedlat
   elif [ "$SCHEDSTAT" = "1" ] && [ "$vus" = "${LEVELS##* }" ]; then
     ( sleep $(( (sec - SCHEDSTAT_SEC) / 2 )); app "bash $REMOTE_DIR/sample-schedstat.sh $SCHEDSTAT_SEC" > "$OUT/$run.schedstat.txt" 2>&1 ) &
     local sched_pid=$!
@@ -114,7 +114,16 @@ run_level() {
               --summary-export=$REMOTE_DIR/$run.k6.json scripts/k6/popular-cold.js > $REMOTE_DIR/$run.k6.log 2>&1;
        T1=\$(date +%s.%N); sleep 3; kill \$PP; echo \"t0=\$T0 t1=\$T1\" > $REMOTE_DIR/$run.window; cat $REMOTE_DIR/$run.window" \
       | tee -a "$OUT/batch.log"
-  [ -n "${sched_pid:-}" ] && wait "$sched_pid" || true
+  # SCHEDLAT 샘플러가 실패하면 그 run의 bpftrace·schedstat 결과가 비거나 반쪽이 된다. 배치 전체를
+  # 멈추지는 않는다(40분짜리 배치를 샘플러 하나 때문에 중단하면 다른 arm의 정상 데이터까지 잃는다).
+  # 대신 batch.log에 경고를 남기고 실패 표식 파일을 만들어, 사후 집계에서 그 run을 바로 걸러낸다.
+  # 기존 SCHEDSTAT 경로는 이전처럼 결과를 무시한다.
+  if [ -n "${sched_pid:-}" ]; then
+    if ! wait "$sched_pid" && [ "${sched_kind:-}" = "schedlat" ]; then
+      log "WARN schedlat sampler failed for $run — 이 run의 추적 결과를 쓰지 말 것"
+      : > "$OUT/$run.schedlat.FAILED"
+    fi
+  fi
 }
 
 run_mixed() {
