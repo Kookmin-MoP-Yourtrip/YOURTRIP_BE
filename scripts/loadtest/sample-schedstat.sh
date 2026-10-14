@@ -136,13 +136,37 @@ done
 awk -v s="$tot_sw" -v q="$reqs" 'BEGIN{
   printf "| **합계** | | | | | | %d | | | %s |\n", s, (q>0) ? sprintf("%.2f", s/q) : "—" }'
 
+# 배정(dispatch) 단위 — 위 표의 "대기 비율"은 W/(R+W) = w̄/(r̄+w̄)라서 배정 횟수가 약분된다.
+# 배정 1회당 대기(w̄)가 줄어도 1회당 실행(r̄)이 같은 비율로 줄면 비율은 그대로다. #88에서
+# maxThreads를 200→16으로 줄여도 lettuce 대기 비율이 91→86%로 거의 안 움직인 것이 이 경우인지
+# 가리려고, 같은 원자료(실행 ns·대기 ns·pcount)를 배정 횟수로 나눠 출력한다.
+#   배정당 대기 = 런큐에 들어간 뒤 CPU를 얻기까지 평균(= "얼마나 빨리 CPU를 얻는가")
+#   배정/초     = CPU를 얻은 빈도(= "얼마나 자주 CPU를 얻는가")
+#   배정당 실행 = 한 번 얻었을 때 쥐고 있던 평균 시간(= 그 사이 밀린 일의 크기)
+# 평균이라 꼬리는 못 본다 — 분포는 trace-sched-latency.bt(bpftrace)가 따로 잰다.
+echo
+echo "| 그룹 | 배정당 대기(μs) | 배정당 실행(μs) | 배정/초 | 스레드당 배정/초 |"
+echo "|---|---|---|---|---|"
+for g in lettuce tomcat gc jit other; do
+  awk -v g="$g" -v r="${run[$g]:-0}" -v w="${wait[$g]:-0}" -v s="${sw[$g]:-0}" \
+      -v c="${cnt[$g]:-0}" -v wall="$wall_ms" 'BEGIN{
+    wd = (s>0) ? sprintf("%.1f", w/s/1e3) : "—";
+    rd = (s>0) ? sprintf("%.1f", r/s/1e3) : "—";
+    hz = (wall>0) ? s/(wall/1e3) : 0;
+    printf "| %s | %s | %s | %.0f | %s |\n", g, wd, rd, hz, (c>0) ? sprintf("%.0f", hz/c) : "—" }'
+done
+
 echo
 echo "raw (lettuce event loop threads):"
 while IFS=$'\t' read -r tid comm r1 w1 c1 v1 n1; do
   case "$comm" in lettuce-epollEv*|lettuce-nioEven*) ;; *) continue ;; esac
   prev=${p0[$tid]:-}; [ -n "$prev" ] || continue
   read -r r0 w0 c0 v0 n0 <<< "$prev"
+  # 이벤트루프는 2개지만 공유 커넥션이면 1개만 일한다 — 그룹 평균이 노는 스레드에 희석되지
+  # 않았는지 여기서 스레드별 배정당 값으로 확인한다.
   awk -v t="$tid" -v c="$comm" -v r="$((r1-r0))" -v w="$((w1-w0))" \
-      -v s="$((c1-c0))" -v v="$((v1-v0))" -v n="$((n1-n0))" 'BEGIN{
-    printf "  tid=%s %s run=%.0fms wait=%.0fms switches=%d (vol=%d nonvol=%d)\n", t, c, r/1e6, w/1e6, s, v, n }'
+      -v s="$((c1-c0))" -v v="$((v1-v0))" -v n="$((n1-n0))" -v wall="$wall_ms" 'BEGIN{
+    printf "  tid=%s %s run=%.0fms wait=%.0fms switches=%d (vol=%d nonvol=%d)", t, c, r/1e6, w/1e6, s, v, n
+    if (s>0) printf " wait/dispatch=%.1fus run/dispatch=%.1fus dispatch/s=%.0f", w/s/1e3, r/s/1e3, s/(wall/1e3)
+    printf "\n" }'
 done <<< "$s1"

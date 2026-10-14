@@ -1,0 +1,117 @@
+#!/usr/bin/env bpftrace
+/*
+ * lettuce 이벤트루프 스레드(와 대조군 Tomcat 워커)가 "CPU를 얼마나 빨리 다시 얻는가"의 분포를 잰다.
+ *
+ * sample-schedstat.sh의 배정당 대기(대기 ns ÷ pcount)는 평균이라 꼬리를 못 보고, 대기가
+ * 어디서 시작됐는지도 가르지 못한다. 여기서는 대기 구간을 시작 원인별로 나눠 히스토그램에 담는다.
+ *
+ *   wake    : 잠들어 있다가 깨워진 시각(sched_wakeup) → CPU에 올라간 시각(sched_switch next)
+ *             = 소켓에 응답이 도착해 이벤트루프가 깨어난 뒤 실제로 돌기까지
+ *   preempt : runnable인 채로 CPU에서 내려온 시각(sched_switch prev, 수면 비트 없음) → 다시 올라간 시각
+ *             = 일하던 도중 다른 스레드에게 밀려나 런큐에서 기다린 시간
+ *   run     : CPU에 올라간 시각 → 내려온 시각 = 한 번 얻었을 때 쥐고 있던 시간
+ *
+ * 해상도: 대기와 실행 길이는 lhist 두 벌에 담는다 — 100μs 간격(50ms까지)과 10μs 간격(2ms까지). 게이트에서
+ * 합성 워크로드의 lettuce 대기가 100μs 미만에 몰려 100μs 간격으로는 p50·p90이 한 버킷에 뭉개졌다.
+ * 요약기는 분위수가 2ms 미만이면 정밀 쪽을 쓴다.
+ *
+ * 선점 판별: 커널 6.1의 __trace_sched_switch_state()는 선점이면 TASK_REPORT_MAX(0x100)를,
+ * 그 밖에 runnable(양보 등)이면 0을 보고한다. 하위 8비트(수면 상태 비트)가 0이면 둘 다
+ * "아직 runnable"이다. 이 판별이 맞는지는 같은 창의 /proc nonvoluntary_ctxt_switches와 대조해
+ * 검증한다(sample-sched-latency.sh, lettuce-dispatch-latency.md의 게이트 G2).
+ *
+ * 그룹은 정수 키다 — 1 = lettuce(lettuce-*), 2 = tomcat(http-nio-* = 워커·poller·acceptor).
+ * 문자열 키를 쓰지 않는 것은 구버전 bpftrace가 길이가 다른 문자열 리터럴을 한 변수에 담으면
+ * 타입 오류를 내기 때문이다. tomcat을 워커만으로 좁히지 않는 것은 sample-schedstat.sh의 tomcat
+ * 그룹과 같은 집합이어야 게이트 G1·G2로 대조할 수 있기 때문이다(워커가 대부분이라 대조군으로서의
+ * 의미는 같다).
+ * 스레드 이름은 커널 comm(15자 절단) 기준이라 PID를 거르지 않아도 이 박스에서는 겹치지 않는다.
+ *
+ * 사용:  sudo bpftrace -f json -B none trace-sched-latency.bt <duration-sec>
+ *        (보통 sample-sched-latency.sh가 schedstat과 같은 창으로 묶어 부른다)
+ */
+
+BEGIN
+{
+	printf("READY\n");
+}
+
+tracepoint:sched:sched_wakeup,
+tracepoint:sched:sched_wakeup_new
+{
+	if (strncmp(args->comm, "lettuce-", 8) == 0 || strncmp(args->comm, "http-nio-", 9) == 0) {
+		$tid = args->pid;
+		// 이미 CPU 위에 있거나 런큐에서 기다리는 중이면 대기 시작 시각을 덮어쓰지 않는다
+		if (@oncpu[$tid] == 0 && @qpre[$tid] == 0 && @qwake[$tid] == 0) {
+			@qwake[$tid] = nsecs;
+		}
+	}
+}
+
+tracepoint:sched:sched_switch
+{
+	$now = nsecs;
+
+	// ---- CPU에서 내려오는 스레드
+	$pg = 0;
+	if (strncmp(args->prev_comm, "lettuce-", 8) == 0) { $pg = 1; }
+	else if (strncmp(args->prev_comm, "http-nio-", 9) == 0) { $pg = 2; }
+	if ($pg != 0) {
+		$ptid = args->prev_pid;
+		$on = @oncpu[$ptid];
+		if ($on != 0) {
+			$run = ($now - $on) / 1000;
+			@run_us[$pg] = lhist($run, 0, 50000, 100);
+			@run_fine_us[$pg] = lhist($run, 0, 2000, 10);
+			@run_stat[$pg] = stats($run);
+		}
+		delete(@oncpu[$ptid]);
+		if ((args->prev_state & 0xff) == 0) {
+			@qpre[$ptid] = $now;
+			@out_preempt[$pg] = count();
+		} else {
+			@out_sleep[$pg] = count();
+		}
+	}
+
+	// ---- CPU에 올라가는 스레드
+	$ng = 0;
+	if (strncmp(args->next_comm, "lettuce-", 8) == 0) { $ng = 1; }
+	else if (strncmp(args->next_comm, "http-nio-", 9) == 0) { $ng = 2; }
+	if ($ng != 0) {
+		$ntid = args->next_pid;
+		$p = @qpre[$ntid];
+		$w = @qwake[$ntid];
+		if ($p != 0) {
+			$lat = ($now - $p) / 1000;
+			@preempt_us[$ng] = lhist($lat, 0, 50000, 100);
+			@preempt_fine_us[$ng] = lhist($lat, 0, 2000, 10);
+			@preempt_stat[$ng] = stats($lat);
+		} else if ($w != 0) {
+			$lat = ($now - $w) / 1000;
+			@wake_us[$ng] = lhist($lat, 0, 50000, 100);
+			@wake_fine_us[$ng] = lhist($lat, 0, 2000, 10);
+			@wake_stat[$ng] = stats($lat);
+		} else {
+			// 추적 시작 전에 대기에 들어간 배정 — 시작점을 모르므로 지연에서 뺀다
+			@dispatch_unknown[$ng] = count();
+		}
+		delete(@qpre[$ntid]);
+		delete(@qwake[$ntid]);
+		@oncpu[$ntid] = $now;
+		@dispatch[$ng] = count();
+	}
+}
+
+interval:s:$1
+{
+	exit();
+}
+
+END
+{
+	// 진행 중 상태는 결과가 아니다 — 출력하지 않는다
+	clear(@oncpu);
+	clear(@qpre);
+	clear(@qwake);
+}
