@@ -48,6 +48,11 @@ SCHEDSTAT_SEC="${SCHEDSTAT_SEC:-10}"
 # 런큐 대기 분포를 잡고, 같은 창의 schedstat과 대조한다(lettuce-dispatch-latency.md).
 # App EC2에 bpftrace가 설치돼 있어야 한다(sudo dnf install -y bpftrace).
 SCHEDLAT="${SCHEDLAT:-0}"
+# SCHEDLAT 래퍼를 레벨 중앙보다 몇 초 앞당겨 띄울지. 기본 0 — 실제 앱(VU 200)에서 bpftrace 부착은
+# 3.8~4.1초였다(#207). 합성 포화 조건(워커 32)의 25초를 근거로 20초를 앞당겼더니 창이 레벨 시작 후
+# 약 25초간의 TPS 램프업(VU 5 예열 → VU 200)과 겹쳐 G4가 −16~27%로 부풀었다. 부착이 25초까지
+# 늘어도 창은 30 + 25 + 30 = 85초에 닫혀 90초 레벨 안에 든다.
+ATTACH_LEAD="${ATTACH_LEAD:-0}"
 # arm 전환 직후 예열. 재기동 직후 첫 고부하 run은 JIT이 덜 데워져 TPS가 20% 이상 낮게 나온다
 # (실측: 2,253 -> 2,976). 낮은 VU 레벨을 먼저 도는 것이 추가 예열을 겸한다.
 WARMUP_SEC="${WARMUP_SEC:-30}"
@@ -102,7 +107,8 @@ run_level() {
   if [ "$SCHEDLAT" = "1" ] && [ "$vus" = "${LEVELS##* }" ]; then
     # schedstat을 bpftrace와 같은 창으로 묶어 돈다 — 산출물(.schedstat.txt·.schedlat.json·.env.txt)은
     # App EC2의 $REMOTE_DIR/$run.* 에 남고 배치 끝의 scp가 함께 회수한다
-    ( sleep $(( (sec - SCHEDSTAT_SEC) / 2 )); app "bash $REMOTE_DIR/sample-sched-latency.sh $REMOTE_DIR/$run $SCHEDSTAT_SEC" >> "$OUT/batch.log" 2>&1 ) &
+    local lead=$(( (sec - SCHEDSTAT_SEC) / 2 - ATTACH_LEAD )); [ "$lead" -lt 0 ] && lead=0
+    ( sleep "$lead"; app "bash $REMOTE_DIR/sample-sched-latency.sh $REMOTE_DIR/$run $SCHEDSTAT_SEC" >> "$OUT/batch.log" 2>&1 ) &
     local sched_pid=$! sched_kind=schedlat
   elif [ "$SCHEDSTAT" = "1" ] && [ "$vus" = "${LEVELS##* }" ]; then
     ( sleep $(( (sec - SCHEDSTAT_SEC) / 2 )); app "bash $REMOTE_DIR/sample-schedstat.sh $SCHEDSTAT_SEC" > "$OUT/$run.schedstat.txt" 2>&1 ) &
