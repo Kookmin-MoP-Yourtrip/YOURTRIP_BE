@@ -6,6 +6,8 @@
 #   G2  bpftrace의 선점 내려옴 횟수(@out_preempt) ≈ /proc의 nonvoluntary_ctxt_switches 증가분
 # G1이 어긋나면 스레드 이름 필터가, G2가 어긋나면 prev_state 선점 판별이 틀린 것이다 —
 # 둘 다 bpftrace 쪽에서는 에러 없이 조용히 틀린 숫자를 내므로 이 대조 말고는 잡을 방법이 없다.
+# lettuce 선점자 집계(#207)는 외부 출처가 없어 bpftrace 맵끼리의 정합성(G6)으로 본다 —
+# summarize-sched-latency.py 참고. 집계가 정답을 내는지는 SchedLatencyDryRun의 indep/wake 모드로 검증한다.
 #
 # bpftrace는 프로브 부착에 수 초가 걸린다. 그래서 동시에 띄우지 않고, BEGIN이 READY를 찍을 때까지
 # 기다렸다가 schedstat을 시작한다. 어긋남은 READY 폴링 간격(0.1초) 이내다.
