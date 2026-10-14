@@ -9,8 +9,10 @@
 # lettuce 선점자 집계(#207)는 외부 출처가 없어 bpftrace 맵끼리의 정합성(G6)으로 본다 —
 # summarize-sched-latency.py 참고. 집계가 정답을 내는지는 SchedLatencyDryRun의 indep/wake 모드로 검증한다.
 #
-# bpftrace는 프로브 부착에 수 초가 걸린다. 그래서 동시에 띄우지 않고, BEGIN이 READY를 찍을 때까지
-# 기다렸다가 schedstat을 시작한다. 어긋남은 READY 폴링 간격(0.1초) 이내다.
+# bpftrace는 프로브 부착에 수 초가 걸린다. 그래서 동시에 띄우지 않고, 부착 후 결과 맵을 비우고(무장)
+# READY를 찍을 때까지 기다렸다가 schedstat을 시작한다. 어긋남은 READY 폴링 간격(0.1초) 이내다.
+# 부착 소요(bt_launch → window_start)는 env.txt에 남는다 — CPU 포화 상태에서는 프로그램 로드가 수십 초까지
+# 늘어날 수 있고, run-batch.sh가 90초 레벨 중간에 이 래퍼를 부르므로 그 예산을 넘는지 확인해야 한다.
 #
 # 사용:  sample-sched-latency.sh <out-prefix> [duration-sec=10] [service-or-pid=yourtrip-app]
 #   <out-prefix>.schedlat.json  bpftrace 결과(JSON 줄 단위 — summarize-sched-latency.py가 읽는다)
@@ -28,6 +30,7 @@ command -v bpftrace >/dev/null || { echo "bpftrace not installed (sudo dnf insta
 # 커널이 바뀌면 스케줄러(6.6+는 EEVDF)와 prev_state 인코딩이 바뀐다 — 결과마다 남긴다
 { echo "kernel=$(uname -r)"; echo "bpftrace=$(bpftrace --version)"; } > "$PREFIX.env.txt"
 
+echo "bt_launch=$(date +%s.%N)" >> "$PREFIX.env.txt"
 sudo bpftrace -f json -B none "$DIR/trace-sched-latency.bt" "$DURATION" > "$BT_OUT" 2>"$PREFIX.schedlat.err" &
 BT_PID=$!
 # set -e라 아래 schedstat이 실패하면 스크립트가 즉시 끝난다. 그때 bpftrace가 interval이 끝날 때까지
@@ -35,12 +38,13 @@ BT_PID=$!
 # 정상 종료 시에는 이미 wait로 끝난 뒤라 kill이 no-op이다.
 trap 'kill "$BT_PID" 2>/dev/null || true' EXIT
 
-for _ in $(seq 1 300); do
+# 상한 60초 — 포화 상태(합성 워커 32, 2 vCPU)에서 프로브 12개 부착이 25초 걸렸다(#207 게이트)
+for _ in $(seq 1 600); do
   grep -q READY "$BT_OUT" 2>/dev/null && break
   kill -0 "$BT_PID" 2>/dev/null || { echo "bpftrace exited early:" >&2; cat "$PREFIX.schedlat.err" >&2; exit 1; }
   sleep 0.1
 done
-grep -q READY "$BT_OUT" || { echo "bpftrace not ready in 30s" >&2; kill "$BT_PID"; exit 1; }
+grep -q READY "$BT_OUT" || { echo "bpftrace not ready in 60s" >&2; kill "$BT_PID"; exit 1; }
 
 # 추적 창의 벽시계(epoch) — 추적 부하 게이트가 k6 EC2의 1초 폴링에서 "창 안 TPS vs 창 밖 TPS"를
 # 가르는 데 쓴다. 두 호스트 모두 chrony 동기화라 초 단위 비교에는 충분하다.
