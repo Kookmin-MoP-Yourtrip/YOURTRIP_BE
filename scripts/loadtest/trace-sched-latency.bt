@@ -27,6 +27,14 @@
  * 의미는 같다).
  * 스레드 이름은 커널 comm(15자 절단) 기준이라 PID를 거르지 않아도 이 박스에서는 겹치지 않는다.
  *
+ * 선점자(#207): lettuce가 선점으로 내려올 때 그 CPU에 올라가는 스레드(next)를 @preemptor[그룹]에 센다.
+ *   0 = 분류 밖   1 = lettuce   2 = tomcat   3 = gc(G1)   4 = jit(C1/C2)   5 = VM Thread
+ *   6 = 커널 스레드(ksoftirqd·kworker·migration·rcu)   7 = bpftrace 자신   9 = idle(pid 0 — 선점이면 나오지 않아야 한다)
+ * VM Thread를 gc와 나누는 것은 Serial GC면 GC가 VM Thread에서 돌지만 safepoint 작업 일반도 거기서 돌기 때문이다.
+ * GC·JIT 접두사는 JVM 버전·GC 종류에 따라 달라진다. 분류 밖은 @preemptor_other_comm[comm]으로 이름을 남겨,
+ * 실제 앱에서 접두사 목록이 빠뜨린 스레드가 없는지 확인한다. 그룹 합계는 @out_preempt[1]과 같아야 한다.
+ * next는 "비운 CPU를 차지한 스레드"이지 선점을 일으킨 스레드와 같다는 보장은 없다 — 그 대조는 따로 한다.
+ *
  * 사용:  sudo bpftrace -f json -B none trace-sched-latency.bt <duration-sec>
  *        (보통 sample-sched-latency.sh가 schedstat과 같은 창으로 묶어 부른다)
  */
@@ -69,6 +77,28 @@ tracepoint:sched:sched_switch
 		if ((args->prev_state & 0xff) == 0) {
 			@qpre[$ptid] = $now;
 			@out_preempt[$pg] = count();
+			if ($pg == 1) {
+				// lettuce를 밀어내고 이 CPU에 올라가는 스레드를 그룹별로 센다(#207)
+				$who = 0;
+				if (args->next_pid == 0) { $who = 9; }
+				else if (strncmp(args->next_comm, "lettuce-", 8) == 0) { $who = 1; }
+				else if (strncmp(args->next_comm, "http-nio-", 9) == 0) { $who = 2; }
+				else if (strncmp(args->next_comm, "GC Thread#", 10) == 0 ||
+				         strncmp(args->next_comm, "G1 ", 3) == 0) { $who = 3; }
+				else if (strncmp(args->next_comm, "C2 CompilerThre", 15) == 0 ||
+				         strncmp(args->next_comm, "C1 CompilerThre", 15) == 0) { $who = 4; }
+				else if (strncmp(args->next_comm, "VM Thread", 9) == 0) { $who = 5; }
+				else if (strncmp(args->next_comm, "ksoftirqd/", 10) == 0 ||
+				         strncmp(args->next_comm, "kworker/", 8) == 0 ||
+				         strncmp(args->next_comm, "migration/", 10) == 0 ||
+				         strncmp(args->next_comm, "rcu_", 4) == 0) { $who = 6; }
+				else if (strncmp(args->next_comm, "bpftrace", 8) == 0) { $who = 7; }
+				else {
+					// 분류 밖 — 접두사 목록이 실제 박스와 맞는지 이 맵으로 확인한다
+					@preemptor_other_comm[args->next_comm] = count();
+				}
+				@preemptor[$who] = count();
+			}
 		} else {
 			@out_sleep[$pg] = count();
 		}
