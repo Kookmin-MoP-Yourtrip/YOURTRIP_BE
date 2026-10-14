@@ -2,9 +2,26 @@ data "aws_ami" "al2023" {
   most_recent = true
   owners      = ["amazon"]
 
+  # 커널을 6.1(CFS)로 고정한다 — loadtest(#208)와 같은 필터다(#209).
+  #
+  # 커널 계열을 빼고 "al2023-ami-2023.*-x86_64"로 두면 같은 릴리스의 kernel-6.1/6.12/6.18 AMI가
+  # 초 단위까지 같은 생성 시각으로 함께 걸린다. most_recent는 생성 시각만 비교하므로 동점을 가르지
+  # 못하고, 무엇이 뽑히는지는 API 응답 순서에 맡겨진다. 실제로 운영 커널이 apply마다 바뀌었다:
+  #   - 08-26 apply: 20260817.0-kernel-6.12 (EEVDF)
+  #   - 08-27 apply: 20260817.0-kernel-6.1  (CFS)  ← 같은 릴리스인데 동점 처리만으로 뒤집혔다
+  #   - 10-14 plan : 20261013.0-kernel-6.18 (EEVDF)
+  # 6.6 이상은 스케줄러가 CFS가 아니라 EEVDF라, 스레드 경합 실측(#88·#97·#207)과 그 위의 처방
+  # (#210 lettuce 우선순위)이 운영에 그대로 성립한다는 전제가 apply마다 흔들린다.
+  #
+  # AWS 기본값(SSM al2023-ami-kernel-default)을 따르지 않는 이유: 그 포인터는 2026-06부터 매년
+  # 최신 LTS 커널로 옮겨진다. 따라가면 "모르는 사이에 스케줄러가 바뀌는" 문제가 그대로 남는다.
+  #
+  # ⚠️ 6.1은 2027년 말까지 full support, 이후 2029년 중반까지 maintenance(CVSS 7.0+만 백포트)다
+  #    (AL2023 커널 수명주기 문서). 커널을 올릴 때는 이 필터를 바꾸는 것으로 끝내지 말고 loadtest를
+  #    같은 커널로 옮겨 위 실측을 다시 한다 — 근거: docs/tasks/tomcat-thread-sizing/lettuce-dispatch-latency.md
   filter {
     name   = "name"
-    values = ["al2023-ami-2023.*-x86_64"]
+    values = ["al2023-ami-2023.*-kernel-6.1-x86_64"]
   }
 
   filter {
@@ -17,9 +34,12 @@ data "aws_ami" "al2023" {
 # 교체가 떴다. ASG에서는 그 문제가 완화된다: AMI는 plan 시점에 해석돼 Launch Template 버전에
 # 박히고 ASG가 재해석하지 않으므로, 한 apply 안의 fleet은 항상 같은 이미지를 쓴다.
 #
-# 남는 문제는 "같은 커밋을 다른 날 apply하면 다른 이미지가 나온다"는 재현성이다. 그래서
-# 기본은 최신을 쓰되 var.app_ami_id로 핀할 수 있게 하고, 매 apply가 자신이 쓴 AMI를
-# output으로 알려주게 한다(outputs.tf의 app_ami_id).
+# 남는 문제는 "같은 커밋을 다른 날 apply하면 다른 이미지가 나온다"는 재현성이다. 고정은 두 층이다:
+#   - 커널 계열(스케줄러): 위 필터가 항상 6.1로 묶는다. 다른 날 apply해도 바뀌는 것은 6.1 안의
+#     패치 버전(예: 6.1.177 → 6.1.188)과 유저랜드 패키지뿐이다.
+#   - 이미지 자체: var.app_ami_id로 핀한다. 측정·장시간 데모처럼 패치 버전까지 묶어야 할 때 쓰고,
+#     매 apply가 자신이 쓴 AMI를 output으로 알려준다(outputs.tf의 app_ami_id).
+# ⚠️ var.app_ami_id는 필터를 거치지 않는다 — 다른 커널 계열의 AMI ID를 넣으면 고정이 풀린다.
 locals {
   app_ami_id = var.app_ami_id != "" ? var.app_ami_id : data.aws_ami.al2023.id
 

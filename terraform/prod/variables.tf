@@ -150,7 +150,7 @@ variable "app_instance_type" {
 }
 
 variable "app_ami_id" {
-  description = "비우면 최신 Amazon Linux 2023 AMI를 자동으로 고른다(기본). 측정이나 장시간 데모처럼 환경을 고정해야 할 때는 직전 apply의 app_ami_id 출력값을 여기 박아 재현성을 확보한다."
+  description = "비우면 커널 6.1 계열의 최신 Amazon Linux 2023 AMI를 자동으로 고른다(기본, asg.tf 필터 참고). 이 값은 그 필터를 거치지 않으므로 다른 커널 계열(6.12·6.18 등)의 AMI를 넣지 않는다. 측정이나 장시간 데모처럼 환경을 고정해야 할 때는 직전 apply의 app_ami_id 출력값을 여기 박아 재현성을 확보한다."
   type        = string
   default     = ""
 }
