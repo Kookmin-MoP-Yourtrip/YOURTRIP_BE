@@ -147,11 +147,17 @@ def main():
     for spec in a.pair:
         base_arm, treat_arm = spec.split(':')
         reps = sorted({int(r['rep']) for r in runs if r['arm'] in (base_arm, treat_arm)})
-        pairs = [(find(base_arm, k), find(treat_arm, k)) for k in reps]
-        pairs = [(b, t) for b, t in pairs if b and t]
+        # 회차 번호를 쌍과 함께 들고 다닌다 — 한쪽 arm이 빠진 회차를 거른 뒤 reps와 zip하면
+        # 열 머리와 nice 표기가 다른 회차에 붙는다
+        triples = [(k, find(base_arm, k), find(treat_arm, k)) for k in reps]
+        triples = [(k, b, t) for k, b, t in triples if b and t]
+        if not triples:
+            # arm 이름 오타·--level 불일치. 비교할 데이터가 없는데 "효과 없음(0/0쌍)"이 판정처럼 기록되지 않게 한다
+            sys.exit(f'{treat_arm} ÷ {base_arm} ({a.level}): 짝이 맞는 회차가 없다 — arm 이름과 --level을 확인할 것')
+        pairs = [(b, t) for _, b, t in triples]
         lines.append(f'## {treat_arm} ÷ {base_arm} ({a.level}, {len(pairs)}쌍)\n')
-        lines.append('| 지표 | ' + ' | '.join(f'r{k} 기준 → 처치' for k in reps) + ' | **평균 비** | 증가 쌍 |')
-        lines.append('|---|' + '---|' * len(reps) + '---|---|')
+        lines.append('| 지표 | ' + ' | '.join(f'r{k} 기준 → 처치' for k, _, _ in triples) + ' | **평균 비** | 증가 쌍 |')
+        lines.append('|---|' + '---|' * len(triples) + '---|---|')
         for key, name, primary in METRICS:
             cells, rs = [], []
             for b, t in pairs:
@@ -163,10 +169,15 @@ def main():
             up = f'{sum(r > 1 for r in rs)}/{len(rs)}' if rs else '—'
             label = f'**{name}**' if primary else name
             lines.append(f'| {label} | ' + ' | '.join(cells) + f' | {mean} | {up} |')
-        nices = [f"r{k} {b.get('nices', '?')} / {t.get('nices', '?')}" for k, (b, t) in zip(reps, pairs)]
+        nices = [f"r{k} {b.get('nices', '?')} / {t.get('nices', '?')}" for k, b, t in triples]
         lines.append(f"\nlettuce nice(창 끝, 기준 / 처치): {'; '.join(nices)}")
-        verdict, why = judge(pairs)
-        lines.append(f'\n**판정(4-3): {verdict}** — ' + '; '.join(why) + '\n')
+        if len(pairs) < MIN_AGREE:
+            # 표는 남기되(2회 배치의 탐색 비교에도 쓴다) 4-3 판정은 내지 않는다 — "3쌍 이상 같은 방향"을
+            # 원리상 충족할 수 없는 표본에 판정 문구를 붙이면 사전 등록 판정처럼 읽힌다
+            lines.append(f'\n**판정(4-3): 판정 불가** — 유효한 쌍 {len(pairs)}개, 최소 {MIN_AGREE}쌍 필요\n')
+        else:
+            verdict, why = judge(pairs)
+            lines.append(f'\n**판정(4-3): {verdict}** — ' + '; '.join(why) + '\n')
 
     text = '\n'.join(lines)
     print(text)
