@@ -7,6 +7,9 @@ resource "aws_instance" "k6" {
   monitoring                  = var.enable_detailed_monitoring
   associate_public_ip_address = true
 
+  # SSM 접속용(iam.tf의 k6_ec2 참고). 인스턴스 프로필 연결은 교체 없이 제자리에서 바뀐다.
+  iam_instance_profile = aws_iam_instance_profile.k6_ec2.name
+
   user_data = templatefile("${path.module}/templates/k6-user-data.sh.tpl", {
     app_repo_url = var.app_repo_url
     app_git_ref  = var.app_git_ref

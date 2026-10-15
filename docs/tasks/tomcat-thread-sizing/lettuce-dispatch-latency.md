@@ -286,6 +286,7 @@ lettuce가 CPU를 얻는 속도가 같다면 단일 이벤트루프의 **처리 
 
 - **추적 부하(G4)** — 창 안/밖 TPS −6.0 / −5.3 / −3.7 / +0.6%(평균 −3.6%, 3% 기준 FAIL 3건). #208(평균 −2.1%)보다 1~2%p 크다 — 인터럽트 계열 프로브(softirq·hardirq·hrtimer)가 네트워크가 바쁜 실제 앱에서 자주 발생하기 때문으로 보인다. 다만 TPS가 최대 27% 달랐던 두 배치(램프업 창 / 정상 상태 창)에서 선점자 구성이 ±0.5%p로 같았으므로, 추적 부하가 **누가 밀어내는가**를 바꾸지는 않았다.
 - 깨운 쪽 판별은 `sched_waking` 시점의 실행 컨텍스트에 기댄다. IPI 같은 다른 인터럽트 경로는 깊이에 넣지 않았다 — `indep` 게이트에서 "lettuce가 깨운 워커" 0.0%가 오귀속의 상한을 보여준다.
+- **처방 시 주의(#210에서 확인)** — 이 선점은 결함이 아니었다. lettuce에만 nice −10을 주자 선점은 사라졌지만 lettuce가 응답마다 깨어나 배정당 명령 수가 1.65 → 0.61로 쪼개졌고, 운영 설정(T32)의 TPS가 ×0.93, 요청당 CPU가 +15%가 됐다 — [lettuce-priority.md](lettuce-priority.md).
 - "마지막 wakee 일치"는 선점 원인의 강한 정황이지 증명은 아니다. 깨우기 → 전환 p99 20μs가 그것을 뒷받침한다.
 - VU 200 한 레벨, t3.small(2 vCPU, 커널 6.1.188 CFS)에서만 쟀다. EEVDF(6.6+)는 깨어남 선점 규칙이 달라 결과가 바뀔 수 있다. 운영 ASG도 6.1로 고정했으므로(#209) 이 결과는 운영 커널 계열에도 적용된다. EEVDF로 옮기는 시점에는 다시 재야 한다.
 
@@ -299,6 +300,7 @@ lettuce가 CPU를 얻는 속도가 같다면 단일 이벤트루프의 **처리 
 
 ## 참고 문서
 
+- [lettuce-priority.md](lettuce-priority.md) — 이 문서 6-8의 선점을 우선순위로 없앴을 때 서버 전체가 나빠졌다(#210)
 - [ec2-measurement.md](ec2-measurement.md) — 대기 비율이 움직이지 않았다는 원 관측
 - [cpu-cost-decomposition.md](cpu-cost-decomposition.md) — 같은 박스의 커널(6.1.177, CFS)과 전환 비용
 - [measurement-harness.md](measurement-harness.md) — pcount·자발/비자발 수집과 샘플러 fork 편향 제거

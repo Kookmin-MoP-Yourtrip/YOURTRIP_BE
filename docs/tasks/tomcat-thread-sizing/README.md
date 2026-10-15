@@ -98,6 +98,7 @@ Tomcat 기본값 200은 CPU와 무관한 범용 상수다(블로킹 I/O·JSP 시
 - [cpu-cost-decomposition.md](cpu-cost-decomposition.md) — 요청당 CPU 26% 감소를 전환 횟수와 캐시 지역성으로 분해(#97). 측정 전 예산 계산·사전 등록 예측·실측·한계
 - [measurement-harness.md](measurement-harness.md) — 그 결론을 낸 계측의 설계·구현·검증(#97). 하네스 변경, perf 실측, 캘리브레이션 벤치마크, Phase 0 게이트
 - [lettuce-dispatch-latency.md](lettuce-dispatch-latency.md) — 대기 비율이 그대로였는데도 lettuce가 CPU를 더 빨리·자주 얻게 됐는가 — **기각**(배정당 대기 ×0.95). Redis 지연 감소는 in-flight 명령 수 감소(리틀의 법칙)로 설명된다
+- [lettuce-priority.md](lettuce-priority.md) — lettuce 이벤트루프에만 nice −10을 줬을 때 서버 전체가 나아지는가(#210) — **운영 설정(T32)에서 악화**(TPS ×0.93, 요청당 CPU +15%). CFS의 선점이 응답을 모아 처리하게 하는 일괄 처리 장치였다
 - [../cache-effect-measurement/redis-io-bottleneck.md](../cache-effect-measurement/redis-io-bottleneck.md) — 이 작업의 근거가 된 병목 규명
 - [../../guide/ec2-rds-loadtest.md](../../guide/ec2-rds-loadtest.md) — 분리 환경 실행 절차·하네스 사용법
 

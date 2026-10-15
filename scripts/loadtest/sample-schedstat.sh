@@ -162,11 +162,18 @@ while IFS=$'\t' read -r tid comm r1 w1 c1 v1 n1; do
   case "$comm" in lettuce-epollEv*|lettuce-nioEven*) ;; *) continue ;; esac
   prev=${p0[$tid]:-}; [ -n "$prev" ] || continue
   read -r r0 w0 c0 v0 n0 <<< "$prev"
+  # 창이 끝난 시점의 nice(#210 게이트 N1·N2) — renice가 창 끝까지 유지됐는지, 예열 뒤 새로 생긴
+  # 이벤트루프가 워커의 nice 0을 물려받지 않았는지 본다. stat의 comm은 괄호 안이라 마지막 ')' 뒤부터
+  # 세며, nice(19번 필드)는 거기서 17번째다. 창 밖에서 읽으므로 측정 구간에 fork를 더하지 않는다.
+  # $(< f 2>/dev/null)는 쓰지 않는다 — 리다이렉션이 하나 더 붙으면 bash가 $(< f) 특수 형태로
+  # 보지 않아 조용히 빈 문자열이 된다(WSL 시험에서 nice=?로 드러났다).
+  read -r st < "/proc/$PID/task/$tid/stat" 2>/dev/null || st=""
+  st="${st##*) }"; ni=$(awk '{print $17}' <<< "$st")
   # 이벤트루프는 2개지만 공유 커넥션이면 1개만 일한다 — 그룹 평균이 노는 스레드에 희석되지
   # 않았는지 여기서 스레드별 배정당 값으로 확인한다.
   awk -v t="$tid" -v c="$comm" -v r="$((r1-r0))" -v w="$((w1-w0))" \
-      -v s="$((c1-c0))" -v v="$((v1-v0))" -v n="$((n1-n0))" -v wall="$wall_ms" 'BEGIN{
-    printf "  tid=%s %s run=%.0fms wait=%.0fms switches=%d (vol=%d nonvol=%d)", t, c, r/1e6, w/1e6, s, v, n
+      -v s="$((c1-c0))" -v v="$((v1-v0))" -v n="$((n1-n0))" -v wall="$wall_ms" -v ni="${ni:-?}" 'BEGIN{
+    printf "  tid=%s %s nice=%s run=%.0fms wait=%.0fms switches=%d (vol=%d nonvol=%d)", t, c, ni, r/1e6, w/1e6, s, v, n
     if (s>0) printf " wait/dispatch=%.1fus run/dispatch=%.1fus dispatch/s=%.0f", w/s/1e3, r/s/1e3, s/(wall/1e3)
     printf "\n" }'
 done <<< "$s1"
