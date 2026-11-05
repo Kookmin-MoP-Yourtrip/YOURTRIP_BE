@@ -10,7 +10,7 @@
 #   5. k6 EC2 에서 회차 실행(약 15분)
 #   6. 수집 종료 → 자료 회수 → ALB CloudWatch 지표 → 집계·판정
 #
-# 사용:  bash scripts/loadtest/bulkhead-round.sh <A|B|C|D|E|F|G|H|V> <분당 도착률> <반복 번호>
+# 사용:  bash scripts/loadtest/bulkhead-round.sh <A|B|C|D|E|F|G|H|P|V> <분당 도착률> <반복 번호>
 #   예:  bash scripts/loadtest/bulkhead-round.sh A 40 1      → results/ai-bulkhead/r40-A1/
 #   D 는 일수 가중 입장(#200)이다. 여행 일수를 섞으려면 DAYS_MIX 를 환경변수로 넘긴다(비우면 3일 고정):
 #        DAYS_MIX=1:20,2:20,3:20,4:20,5:20 bash scripts/loadtest/bulkhead-round.sh D 40 m1
@@ -20,10 +20,10 @@
 # 그것들은 회차가 아니라 측정 전체의 앞뒤에 한 번씩 하는 일이다(10-2·10-5절).
 set -euo pipefail
 
-ARM="${1:?A|B|C|D|E|F|G|H|V}"
+ARM="${1:?A|B|C|D|E|F|G|H|P|V}"
 RATE="${2:?분당 도착률}"
 REP="${3:?반복 번호}"
-case "$ARM" in A|B|C|D|E|F|G|H|V) ;; *) echo "arm 은 A~H·V 중 하나(C 는 비교 실험 #201, D 는 일수 가중 입장 #200, E·F·G·H·V 는 async-variant.md)" >&2; exit 2 ;; esac
+case "$ARM" in A|B|C|D|E|F|G|H|P|V) ;; *) echo "arm 은 A~H·P·V 중 하나(C 는 비교 실험 #201, D 는 일수 가중 입장 #200, E·F·G·H·P·V 는 async-variant.md)" >&2; exit 2 ;; esac
 # 본 도착의 여행 일수 분포(ai-bulkhead.js 의 DAYS_MIX). 같은 시드면 일수 순서도 같아 arm 끼리 그대로 비교된다.
 DAYS_MIX="${DAYS_MIX:-}"
 
@@ -58,6 +58,7 @@ case "$ARM" in
   B) KEY="$ARTIFACT_KEY_B" ;;
   C) KEY="${ARTIFACT_KEY_C:?config.env 에 ARTIFACT_KEY_C 가 없다(비교 실험 #201)}" ;;
   D) KEY="${ARTIFACT_KEY_D:?config.env 에 ARTIFACT_KEY_D 가 없다(일수 가중 입장 #200)}" ;;
+  P) KEY="${ARTIFACT_KEY_P:?config.env 에 ARTIFACT_KEY_P 가 없다(async-variant.md 3-4절)}" ;;
   E|F|G|H|V) KEY="${ARTIFACT_KEY_ASYNC:?config.env 에 ARTIFACT_KEY_ASYNC 가 없다(async-variant.md)}" ;;
 esac
 # E·F·G·V 는 JAR 이 하나고 arm 을 환경변수로 고른다. 값은 부팅 때 SSM env/ 에서 .env 로 떨어진다(async-variant.md 1절).
