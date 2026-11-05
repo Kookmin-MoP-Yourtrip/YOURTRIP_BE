@@ -69,7 +69,7 @@ set_arm_env() {
   aws ssm put-parameter --name "$prefix/AI_COURSE_ADMISSION_MAXREQUESTS" --value "$requests" --type String --overwrite >/dev/null
   aws ssm put-parameter --name "$prefix/SPRING_THREADS_VIRTUAL_ENABLED" --value "$virtual" --type String --overwrite >/dev/null
   if [ "$virtual" = true ]; then
-    aws ssm put-parameter --name "$prefix/JAVA_TOOL_OPTIONS" --value "-Djdk.tracePinnedThreads=short" --type String --overwrite >/dev/null
+    aws ssm put-parameter --name "$prefix/JAVA_TOOL_OPTIONS" --value="-Djdk.tracePinnedThreads=short" --type String --overwrite >/dev/null
   else
     aws ssm delete-parameter --name "$prefix/JAVA_TOOL_OPTIONS" >/dev/null 2>&1 || true
   fi
