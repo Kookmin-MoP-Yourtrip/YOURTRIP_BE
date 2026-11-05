@@ -211,6 +211,12 @@ app_scp "$SSH_USER@$INSTANCE_ID:$REMOTE_OUT.tar.gz" "$OUT/server.tar.gz"
 tar -xzf "$OUT/server.tar.gz" -C "$OUT"
 k6_scp "$SSH_USER@$K6_HOST:/tmp/$LABEL.k6.log" "$SSH_USER@$K6_HOST:/tmp/$LABEL.summary.json" "$OUT/"
 rm -f "$TOKEN_FILE"
+# 제한 없는 arm 은 사용자가 떠난 뒤에도 밀린 일을 계속 처리해 다음 인스턴스 교체까지 LLM·네이버를 쓴다.
+# 관측 창이 끝났으므로 앱을 내려 그 비용을 막는다. 교체 자체는 다음 회차가 instance refresh 로 한다.
+if [ "${STOP_APP_AFTER_ROUND:-0}" = 1 ]; then
+  app_ssh "sudo systemctl stop yourtrip-app.service" || log "앱 중지 실패 — 다음 교체까지 잔여 작업이 돈다"
+  log "관측 종료 — 앱 중지"
+fi
 
 # ALB 지표(1분 단위). 집계기가 아니라 사람이 보는 보조 자료다 — 헬스체크 판정(J5)의 근거.
 LB_DIM=$(aws elbv2 describe-target-groups --target-group-arns "$TG_ARN" \
