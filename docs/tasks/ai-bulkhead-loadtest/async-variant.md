@@ -1,6 +1,6 @@
 # 비교 실험 E·F·V·G — Tomcat 워커를 비동기나 가상 스레드로 풀면 AI 지연은 어떻게 되는가
 
-> **상태: 설계 (측정 전)**. 측정 전에 질문·예측·판정 기준을 고정하고, 결과는 [measurement.md](measurement.md)에 따로 남긴다. 주실험 설계는 [README.md](README.md), 앞선 비교 실험은 [abort-variant.md](abort-variant.md)다.
+> **상태: 측정 완료(2026-11-05, 분당 40건 5회차)**. 질문·예측·판정 기준은 측정 전에 고정했고, 결과는 [measurement.md 8절](measurement.md#8-비교-실험-efvgh--스레드를-tomcat에서-떼면-ai-지연은-풀리는가)에 있다. 판정 K1~K6이 모두 성립했다. 주실험 설계는 [README.md](README.md), 앞선 비교 실험은 [abort-variant.md](abort-variant.md)다.
 
 ## 0. 요약
 
