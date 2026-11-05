@@ -1213,7 +1213,8 @@ public interface MyCourseControllerSpec {
             응답 헤더 `Retry-After`(초) 뒤에 같은 요청을 다시 보내면 됩니다 (재시도 가능)
         """
     )
-    AICourseCreateResponse createAICourse(AICourseCreateRequest request);
+    java.util.concurrent.CompletableFuture<AICourseCreateResponse> createAICourse(
+        AICourseCreateRequest request);
 
 
 }

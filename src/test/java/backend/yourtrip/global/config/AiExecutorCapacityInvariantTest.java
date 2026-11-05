@@ -89,6 +89,29 @@ class AiExecutorCapacityInvariantTest {
             .isGreaterThanOrEqualTo(byUnits);
     }
 
+    @Test
+    @DisplayName("전용 요청 풀은 요청 수 상한만큼 스레드를 갖는다 — 입장한 요청이 풀 앞에서 기다리지 않는다")
+    void requestExecutorMatchesRequestCap() throws IOException {
+        int maxRequests = maxRequests(binderOf("application.yml"));
+        var executor = AsyncConfig.requestExecutorFor(maxRequests);
+        try {
+            assertThat(executor.getMaxPoolSize()).isEqualTo(maxRequests);
+            assertThat(executor.getCorePoolSize()).isEqualTo(maxRequests);
+        } finally {
+            executor.shutdown();
+        }
+    }
+
+    @Test
+    @DisplayName("비동기 응답 상한은 예산보다 길고 ALB·클라이언트 60초보다 짧다")
+    void asyncTimeoutSitsBetweenBudgetAndClient() throws IOException {
+        Binder binder = binderOf("application.yml");
+        long asyncTimeout = binder.bind("spring.mvc.async.request-timeout", Long.class).get();
+        long budget = binder.bind("ai.course.budget-ms", Long.class).get();
+
+        assertThat(asyncTimeout).isGreaterThan(budget).isLessThan(60_000L);
+    }
+
     private static int maxRequests(Binder binder) {
         return binder.bind("ai.course.admission.max-requests", Integer.class).get();
     }

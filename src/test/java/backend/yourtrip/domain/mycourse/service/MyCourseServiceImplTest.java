@@ -131,7 +131,7 @@ class MyCourseServiceImplTest {
         // 인자 순서는 MyCourseServiceImpl의 필드 선언 순서와 같아야 한다 — 위치 인자라
         // 자리가 밀리면 엉뚱한 목이 주입된 채 조용히 통과할 수 있다.
         myCourseService = new MyCourseServiceImpl(
-            userService, s3Service, cloudFrontService, aiCoursePipeline, aiCourseAdmission,
+            userService, s3Service, cloudFrontService, aiCoursePipeline, aiCourseAdmission, Runnable::run,
             travelCourseRepository, dayScheduleRepository, placeRepository,
             placeImageRepository, uploadCourseRepository,
             myCourseDetailReader, aiCoursePersister, eventPublisher
@@ -368,7 +368,7 @@ class MyCourseServiceImplTest {
         given(aiCoursePersister.save(any(), anyString(), any(), any())).willReturn(COURSE_ID);
 
         // when
-        AICourseCreateResponse response = myCourseService.createAICourse(request);
+        AICourseCreateResponse response = myCourseService.createAICourse(request).join();
 
         // then
         assertThat(response.myCourseId()).isEqualTo(COURSE_ID);
@@ -397,9 +397,9 @@ class MyCourseServiceImplTest {
             .willThrow(new BusinessException(AiCourseErrorCode.AI_GROUNDING_FAILED));
 
         // when & then
-        assertThatThrownBy(() -> myCourseService.createAICourse(request))
-            .isInstanceOf(BusinessException.class)
-            .extracting(e -> ((BusinessException) e).getErrorCode())
+        assertThatThrownBy(() -> myCourseService.createAICourse(request).join())
+            .hasCauseInstanceOf(BusinessException.class)
+            .extracting(e -> ((BusinessException) e.getCause()).getErrorCode())
             .isEqualTo(AiCourseErrorCode.AI_GROUNDING_FAILED);
 
         verify(aiCoursePersister, never()).save(any(), anyString(), any(), any());
@@ -415,12 +415,12 @@ class MyCourseServiceImplTest {
         given(userService.getCurrentUserId()).willReturn(OWNER_ID);
 
         // when & then — 다른 2일 요청이 총량을 모두 쥔 동안 들어온다
-        aiCourseAdmission.admit(TRIP_DAYS, lease -> {
+        aiCourseAdmission.admitAsync(TRIP_DAYS, lease -> {
             assertThatThrownBy(() -> myCourseService.createAICourse(request))
                 .isInstanceOfSatisfying(RetryLaterException.class, e ->
                     assertThat(e.getErrorCode()).isEqualTo(AiCourseErrorCode.AI_COURSE_BUSY));
             return null;
-        });
+        }, Runnable::run).join();
 
         verify(aiCoursePipeline, never()).generate(any(CourseBrief.class), any(LlmWorkLease.class));
         verify(aiCoursePersister, never()).save(any(), anyString(), any(), any());

@@ -19,6 +19,7 @@ import backend.yourtrip.domain.mycourse.entity.dayschedule.DaySchedule;
 import backend.yourtrip.domain.mycourse.entity.travelCourse.TravelCourse;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import org.springframework.web.multipart.MultipartFile;
 
 public interface MyCourseService {
@@ -64,7 +65,7 @@ public interface MyCourseService {
 
     List<DayScheduleResponse> getAllDaySchedulesByCourse(Long courseId);
 
-    AICourseCreateResponse createAICourse(AICourseCreateRequest request);
+    CompletableFuture<AICourseCreateResponse> createAICourse(AICourseCreateRequest request);
 
     TravelCourse createHiddenUploadCopy(Long myCourseId);
 }

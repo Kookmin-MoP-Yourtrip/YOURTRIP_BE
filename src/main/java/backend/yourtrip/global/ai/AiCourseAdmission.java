@@ -3,6 +3,9 @@ package backend.yourtrip.global.ai;
 import backend.yourtrip.global.ai.config.AiAdmissionProperties;
 import backend.yourtrip.global.exception.RetryLaterException;
 import backend.yourtrip.global.exception.errorCode.AiCourseErrorCode;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.function.Function;
 import org.springframework.stereotype.Component;
@@ -77,6 +80,28 @@ public class AiCourseAdmission {
      * @throws RetryLaterException {@code AI_COURSE_BUSY}(429). {@code work}는 실행되지 않았다
      */
     public <T> T admit(int days, Function<LlmWorkLease, T> work) {
+        return runAndRelease(acquire(days), work);
+    }
+
+    /**
+     * 입장 판정은 <b>호출한 스레드(Tomcat 워커)에서</b> 끝내고, 받아들인 요청만 {@code executor}로 넘긴다.
+     * 넘친 요청은 전용 풀을 건드리지 않고 그 자리에서 429 가 되므로, 풀의 스레드와 큐가 거절에 쓰이지 않는다.
+     * 자리는 작업이 풀에서 끝날 때 돌려준다.
+     *
+     * @throws RetryLaterException {@code AI_COURSE_BUSY}(429). 자리가 없거나 풀이 작업을 받지 못했다
+     */
+    public <T> CompletableFuture<T> admitAsync(int days, Function<LlmWorkLease, T> work,
+        Executor executor) {
+        LlmWorkLease lease = acquire(days);
+        try {
+            return CompletableFuture.supplyAsync(() -> runAndRelease(lease, work), executor);
+        } catch (RejectedExecutionException e) {
+            release(lease);
+            throw reject(days);
+        }
+    }
+
+    private LlmWorkLease acquire(int days) {
         int units = unitsFor(days);
         if (!requests.tryAcquire()) {
             throw reject(days);
@@ -86,13 +111,20 @@ public class AiCourseAdmission {
             throw reject(days);
         }
         metrics.admission(AiCourseMetrics.ADMISSION_ADMITTED, days);
-        LlmWorkLease lease = new LlmWorkLease(gate, units);
+        return new LlmWorkLease(gate, units);
+    }
+
+    private <T> T runAndRelease(LlmWorkLease lease, Function<LlmWorkLease, T> work) {
         try {
             return work.apply(lease);
         } finally {
-            lease.close();
-            requests.release();
+            release(lease);
         }
+    }
+
+    private void release(LlmWorkLease lease) {
+        lease.close();
+        requests.release();
     }
 
     private RetryLaterException reject(int days) {

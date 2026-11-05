@@ -6,6 +6,12 @@ spring:
   profiles:
     default: local
 
+  # AI 코스 생성의 비동기 응답 상한. 기본 30초면 예산(ai.course.budget-ms 35초)보다 먼저 503 이 난다.
+  # [불변식] 예산 + 후처리(0.3초 미만) < 이 값 < 클라이언트 OkHttp readTimeout 60초 = ALB idle_timeout 60초.
+  mvc:
+    async:
+      request-timeout: 55000
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}

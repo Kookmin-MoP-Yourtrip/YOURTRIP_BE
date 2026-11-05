@@ -3,6 +3,7 @@ package backend.yourtrip.global.config;
 import backend.yourtrip.domain.user.repository.UserRepository;
 import backend.yourtrip.global.jwt.JwtAuthenticationFilter;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
+import jakarta.servlet.DispatcherType;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -36,6 +37,11 @@ public class SecurityConfig {
             .sessionManagement(
                 session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                // 비동기 응답을 쓰는 재디스패치. 인증·인가는 첫 디스패치에서 끝났고 이 타입은 컨테이너만 만든다.
+                // JwtAuthenticationFilter(OncePerRequestFilter)가 재디스패치를 건너뛰어 컨텍스트가 비므로,
+                // 허용하지 않으면 저장까지 끝난 요청이 403 으로 나간다(AiCourseAsyncDispatchTest).
+                .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
+
                 // 정적 리소스 및 Swagger 허용
                 .requestMatchers(
                     "/", "/index.html", "/error",

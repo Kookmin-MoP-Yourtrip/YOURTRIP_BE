@@ -19,6 +19,7 @@ import backend.yourtrip.domain.mycourse.dto.response.PlaceStartTimeUpdateRespons
 import backend.yourtrip.domain.mycourse.dto.response.PlaceUpdateResponse;
 import backend.yourtrip.domain.mycourse.service.MyCourseService;
 import jakarta.validation.Valid;
+import java.util.concurrent.CompletableFuture;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -206,7 +207,7 @@ public class MyCourseController implements MyCourseControllerSpec {
     @Override
     @PostMapping("/ai")
     @ResponseStatus(HttpStatus.CREATED)
-    public AICourseCreateResponse createAICourse(
+    public CompletableFuture<AICourseCreateResponse> createAICourse(
         @Valid @RequestBody AICourseCreateRequest request) {
         return myCourseService.createAICourse(request);
     }

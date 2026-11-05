@@ -1,5 +1,6 @@
 package backend.yourtrip.global.config;
 
+import backend.yourtrip.global.ai.config.AiAdmissionProperties;
 import backend.yourtrip.global.ai.config.AiLlmProperties;
 import java.util.concurrent.ThreadPoolExecutor;
 import org.springframework.context.annotation.Bean;
@@ -15,6 +16,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  *
  * <ul>
  *   <li>{@code courseImageCleanupExecutor} — 커밋 이후의 S3 정리 후처리</li>
+ *   <li>{@code aiRequestExecutor} — AI 코스 생성 요청 전체. Tomcat 워커를 AI 대기에서 뗀다</li>
  *   <li>{@code aiAgentExecutor} — AI 코스 생성의 LLM 호출 (ROADMAP 5-1)</li>
  *   <li>{@code placeGroundingExecutor} — AI 코스 생성의 장소 API 호출 (ROADMAP 5-1)</li>
  * </ul>
@@ -40,6 +42,36 @@ public class AsyncConfig {
         // 무한정 쌓이는 것보다 자연스럽게 degrade하는 편이 안전하다.
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.setThreadNamePrefix("course-image-cleanup-");
+        executor.initialize();
+        return executor;
+    }
+
+    /**
+     * AI 코스 생성 <b>요청 전체</b>를 쥐는 풀. 요청이 LLM·장소 API를 기다리는 동안 Tomcat 워커를 쥐지 않게 한다.
+     *
+     * <p><b>왜 입장 제한이 있는데도 두는가.</b> 입장 제한이 AI 요청을 8건으로 묶어도 그 8건은 워커를 쥔다. 평소에는 문제가
+     * 없지만(실측 Tomcat 7/32) 후속 단계가 멈추거나 상한 설정이 어긋날 때의 이중 방어다. 처리량을 늘리는 장치가 아니다 —
+     * 처리량은 LLM 슬롯이 정한다. 근거: {@code docs/tasks/ai-bulkhead-loadtest/measurement.md} 8절
+     *
+     * <p>스레드는 요청 수 상한과 같다. 입장한 요청만 들어오므로 상한이 곧 동시 작업 수다. 큐는 거절 경로가 아니라,
+     * 자리를 돌려준 직후 아직 정리 중인 스레드와 새 요청이 잠깐 겹치는 틈을 받는 몫이라 같은 크기로 둔다. 거부 정책은
+     * 기본값(AbortPolicy)이다 — {@code CallerRunsPolicy}면 넘친 요청을 Tomcat 워커가 직접 돌려 이 풀의 목적이 사라진다.
+     *
+     * <p>종료 시 진행 중인 요청을 예산({@code ai.course.budget-ms} 35초)만큼 기다린다.
+     */
+    @Bean(name = "aiRequestExecutor")
+    public ThreadPoolTaskExecutor aiRequestExecutor(AiAdmissionProperties admissionProperties) {
+        return requestExecutorFor(admissionProperties.maxRequests());
+    }
+
+    static ThreadPoolTaskExecutor requestExecutorFor(int maxRequests) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(maxRequests);
+        executor.setMaxPoolSize(maxRequests);
+        executor.setQueueCapacity(maxRequests);
+        executor.setThreadNamePrefix("ai-request-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(40);
         executor.initialize();
         return executor;
     }
