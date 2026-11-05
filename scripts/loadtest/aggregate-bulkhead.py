@@ -65,6 +65,39 @@ BG_OK = 200
 KAKAO_QUOTA_RE = re.compile(r'Kakao search API error\(QUOTA_EXCEEDED\)')
 OPENAI_429_RE = re.compile(r'(?i)(openai|llm).*\b429\b|\b429\b.*(openai|llm)')
 # 비교 실험 C(#201, abort-variant.md 3절) — Curator 가 요청마다 남기는 day 결과 한 줄
+# 비교 실험 E·F·G(async-variant.md 4절) — 서버가 요청을 실제로 끝낸 시각. k6 는 60초에서 끊겨 그 뒤를 볼 수 없다.
+LIFECYCLE_RE = re.compile(
+    r'AI_REQUEST_LIFECYCLE arrivedAtMs=(\d+) queueMs=(\d+) serviceMs=(\d+) totalMs=(\d+) outcome=(\w+)')
+
+
+def request_lifecycle(lines, ai_start_epoch_ms, client_ok):
+    """본 도착 요청의 서버 쪽 소요. '응답을 못 받았는데 저장된 코스' = 서버 성공 − k6 201.
+
+    k6 와 앱의 시계는 다른 호스트지만 NTP 차이는 웜업(2분 간격이 아닌 분당 2건)과 본 도착을 가르는 데 충분히 작다.
+    """
+    rows = []
+    for line in lines:
+        m = LIFECYCLE_RE.search(line)
+        if m and int(m.group(1)) >= ai_start_epoch_ms:
+            rows.append((int(m.group(2)), int(m.group(3)), int(m.group(4)), m.group(5)))
+    if not rows:
+        return None
+    done = [r for r in rows if r[3] == 'success']
+    totals = sorted(r[2] for r in done)
+    outcomes = {}
+    for r in rows:
+        outcomes[r[3]] = outcomes.get(r[3], 0) + 1
+    return {
+        'finished': len(rows),
+        'outcomes': outcomes,
+        'successTotalP50Ms': totals[len(totals) // 2] if totals else None,
+        'successTotalMaxMs': totals[-1] if totals else None,
+        'successQueueMaxMs': max((r[0] for r in done), default=None),
+        'successServiceMaxMs': max((r[1] for r in done), default=None),
+        'savedButClientMissed': max(len(done) - client_ok, 0),
+    }
+
+
 CURATOR_DAYS_RE = re.compile(
     r'AI_CURATOR_DAYS days=(\d+) responded=(\d+) rejected=(\d+) failed=(\d+) unfinished=(\d+)')
 
@@ -181,6 +214,7 @@ def server_metrics(poll_path, t0_epoch, phases):
 
     ai = in_phase('aiStartMs', 'recoveryStartMs')
     is_ai_exec = lambda l: l.get('name') == 'aiAgentExecutor'  # noqa: E731
+    is_req_exec = lambda l: l.get('name') == 'aiRequestExecutor'  # noqa: E731
 
     def series(rows, name, pred=lambda l: True):
         return [(t, v) for t, v in ((t, metric_value(s, name, pred)) for t, s in rows) if v is not None]
@@ -189,6 +223,11 @@ def server_metrics(poll_path, t0_epoch, phases):
     max_threads = next((v for _, v in series(rel, 'tomcat_threads_config_max_threads')), None)
     queued = series(ai, 'executor_queued_tasks', is_ai_exec)
     active = series(ai, 'executor_active_threads', is_ai_exec)
+    # 비교 실험 F(async-variant.md) — 요청 전체를 쥐는 전용 풀. 이 풀이 없는 버전이면 비어 있다
+    req_queued = series(ai, 'executor_queued_tasks', is_req_exec)
+    req_active = series(ai, 'executor_active_threads', is_req_exec)
+    # 처리 중인 AI 요청 수 — V 에서는 Tomcat 워커가 상한이 아니라 이 값으로 동시 요청을 본다
+    in_flight = series(ai, 'ai_course_admission_requests_in_use', lambda l: True)
     cpu = series(ai, 'system_cpu_usage')
 
     # 1분 평균 CPU 최댓값(1초 샘플 60개 이동 평균)
@@ -237,6 +276,9 @@ def server_metrics(poll_path, t0_epoch, phases):
         'tomcatFirstSaturatedSec': round((saturated[0] - phases['aiStartMs']) / 1000, 1) if saturated else None,
         'aiExecutorQueuedMaxInAi': max((v for _, v in queued), default=None),
         'aiExecutorActiveMaxInAi': max((v for _, v in active), default=None),
+        'aiRequestQueuedMaxInAi': max((v for _, v in req_queued), default=None),
+        'aiRequestActiveMaxInAi': max((v for _, v in req_active), default=None),
+        'aiInFlightMaxInAi': max((v for _, v in in_flight), default=None),
         'internalDrainSec': drained_at,
         'cpu1mMaxInAi': round(cpu_1m, 3) if cpu_1m is not None else None,
         'longestScrapeGapSec': round(longest_gap, 1) if longest_gap is not None else None,
@@ -389,10 +431,23 @@ def main():
         kakao = sum(1 for l in journal_lines if KAKAO_QUOTA_RE.search(l))
         if kakao:
             invalid.append(f'카카오 한도 소진 로그 {kakao}건')
+        # 네이버 일별 한도(#200 r70-D 사고). 후보 공급이 fail-open 이라 응답은 나오지만 Curator 입력이 달라진다.
+        naver = sum(1 for l in journal_lines if '네이버 지역검색 실패(QUOTA_EXCEEDED)' in l)
+        if naver:
+            invalid.append(f'네이버 한도 소진 로그 {naver}건')
         openai = [l.strip() for l in journal_lines if OPENAI_429_RE.search(l)]
         if openai:
             flags.append(f'OpenAI 429 의심 로그 {len(openai)}줄 — 수동 확인 필요(첫 줄: {openai[0][:160]})')
     course_mix = curator_day_mix(journal_lines)
+    # 가상 스레드 피닝(-Djdk.tracePinnedThreads=short, V 만 켠다) — 건마다 스택을 남기며 '<== monitors' 가 붙는다
+    pinned_lines = [l.strip() for l in journal_lines if '<== monitors' in l]
+    if pinned_lines:
+        pinned_frames = {}
+        for l in pinned_lines:
+            frame = re.sub(r'^.*?(?=[\w.$]+\()', '', l)[:90]
+            pinned_frames[frame] = pinned_frames.get(frame, 0) + 1
+        top = sorted(pinned_frames.items(), key=lambda kv: -kv[1])[:5]
+        flags.append(f'피닝 추적 {len(pinned_lines)}건: {top}')
 
     # ── 배경 API ──
     base_rows = [r['ms'] for r in bg if phases['baselineStartMs'] <= r['rel'] < phases['aiStartMs']]
@@ -462,6 +517,10 @@ def main():
             'byDays': by_days,
         },
     }
+
+    lifecycle = request_lifecycle(journal_lines, t0 + phases['aiStartMs'], len([r for r in main_ai if r['status'] == 201]))
+    if lifecycle:
+        result['lifecycle'] = lifecycle
 
     if args.poll:
         sm = server_metrics(args.poll, t0 / 1000, phases)
@@ -577,6 +636,17 @@ def print_report(r):
         print(f"스레드 덤프 {d['dumps']}개 · CallerRuns 최대 {fmt(d['callerRunsMaxInAi'])}"
               f"(처음 {fmt(d['callerRunsFirstSec'], '초')}) · 앱 워커 RUNNABLE 비율 {fmt(d['appWorkerRunnableShareInAi'])}"
               f" · LLM 호출 소진 {fmt(d['llmDrainedSec'], '초')} · 관리 워커 최대 {fmt(d['mgmtWorkersMax'])}")
+    if 'lifecycle' in r:
+        lc = r['lifecycle']
+        print(f"서버 쪽 소요(본 도착, 관측 창 안에 끝난 요청 {lc['finished']}건 {lc['outcomes']}): 성공 전체 p50 "
+              f"{fmt(lc['successTotalP50Ms'], 'ms')} 최대 {fmt(lc['successTotalMaxMs'], 'ms')} · 큐 대기 최대 "
+              f"{fmt(lc['successQueueMaxMs'], 'ms')} · 처리 최대 {fmt(lc['successServiceMaxMs'], 'ms')} · "
+              f"응답을 못 받았는데 저장된 코스 {lc['savedButClientMissed']}건")
+    if (r.get('server') or {}).get('aiInFlightMaxInAi') is not None:
+        print(f"처리 중 AI 요청 최대 {fmt(r['server']['aiInFlightMaxInAi'])}")
+    if (r.get('server') or {}).get('aiRequestActiveMaxInAi') is not None:
+        s = r['server']
+        print(f"aiRequestExecutor 활성 최대 {fmt(s['aiRequestActiveMaxInAi'])} · 큐 최대 {fmt(s['aiRequestQueuedMaxInAi'])}")
     rej = (r.get('server') or {}).get('agentRejected') or {}
     mx = r.get('courseMix')
     if mx or any(rej.values()):

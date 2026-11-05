@@ -10,7 +10,7 @@
 #   5. k6 EC2 에서 회차 실행(약 15분)
 #   6. 수집 종료 → 자료 회수 → ALB CloudWatch 지표 → 집계·판정
 #
-# 사용:  bash scripts/loadtest/bulkhead-round.sh <A|B|C|D> <분당 도착률> <반복 번호>
+# 사용:  bash scripts/loadtest/bulkhead-round.sh <A|B|C|D|E|F|G|V> <분당 도착률> <반복 번호>
 #   예:  bash scripts/loadtest/bulkhead-round.sh A 40 1      → results/ai-bulkhead/r40-A1/
 #   D 는 일수 가중 입장(#200)이다. 여행 일수를 섞으려면 DAYS_MIX 를 환경변수로 넘긴다(비우면 3일 고정):
 #        DAYS_MIX=1:20,2:20,3:20,4:20,5:20 bash scripts/loadtest/bulkhead-round.sh D 40 m1
@@ -20,10 +20,10 @@
 # 그것들은 회차가 아니라 측정 전체의 앞뒤에 한 번씩 하는 일이다(10-2·10-5절).
 set -euo pipefail
 
-ARM="${1:?A|B|C|D}"
+ARM="${1:?A|B|C|D|E|F|G|V}"
 RATE="${2:?분당 도착률}"
 REP="${3:?반복 번호}"
-case "$ARM" in A|B|C|D) ;; *) echo "arm 은 A·B·C·D 중 하나(C 는 비교 실험 #201, D 는 일수 가중 입장 #200)" >&2; exit 2 ;; esac
+case "$ARM" in A|B|C|D|E|F|G|V) ;; *) echo "arm 은 A~G·V 중 하나(C 는 비교 실험 #201, D 는 일수 가중 입장 #200, E·F·G·V 는 async-variant.md)" >&2; exit 2 ;; esac
 # 본 도착의 여행 일수 분포(ai-bulkhead.js 의 DAYS_MIX). 같은 시드면 일수 순서도 같아 arm 끼리 그대로 비교된다.
 DAYS_MIX="${DAYS_MIX:-}"
 
@@ -58,7 +58,22 @@ case "$ARM" in
   B) KEY="$ARTIFACT_KEY_B" ;;
   C) KEY="${ARTIFACT_KEY_C:?config.env 에 ARTIFACT_KEY_C 가 없다(비교 실험 #201)}" ;;
   D) KEY="${ARTIFACT_KEY_D:?config.env 에 ARTIFACT_KEY_D 가 없다(일수 가중 입장 #200)}" ;;
+  E|F|G|V) KEY="${ARTIFACT_KEY_ASYNC:?config.env 에 ARTIFACT_KEY_ASYNC 가 없다(async-variant.md)}" ;;
 esac
+# E·F·G·V 는 JAR 이 하나고 arm 을 환경변수로 고른다. 값은 부팅 때 SSM env/ 에서 .env 로 떨어진다(async-variant.md 1절).
+# 앞 회차의 값이 남지 않도록 네 값을 매번 모두 덮어쓴다. 피닝 추적은 V 에서만 켠다.
+set_arm_env() {
+  local async="$1" units="$2" requests="$3" virtual="$4" prefix="${SSM_ARTIFACT_KEY_PARAM%/artifact_key}/env"
+  aws ssm put-parameter --name "$prefix/AI_COURSE_ASYNC_ENABLED" --value "$async" --type String --overwrite >/dev/null
+  aws ssm put-parameter --name "$prefix/AI_COURSE_ADMISSION_MAXWORKUNITS" --value "$units" --type String --overwrite >/dev/null
+  aws ssm put-parameter --name "$prefix/AI_COURSE_ADMISSION_MAXREQUESTS" --value "$requests" --type String --overwrite >/dev/null
+  aws ssm put-parameter --name "$prefix/SPRING_THREADS_VIRTUAL_ENABLED" --value "$virtual" --type String --overwrite >/dev/null
+  if [ "$virtual" = true ]; then
+    aws ssm put-parameter --name "$prefix/JAVA_TOOL_OPTIONS" --value "-Djdk.tracePinnedThreads=short" --type String --overwrite >/dev/null
+  else
+    aws ssm delete-parameter --name "$prefix/JAVA_TOOL_OPTIONS" >/dev/null 2>&1 || true
+  fi
+}
 KNOWN="$OUT/known_hosts"
 SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=30 -o ServerAliveInterval=30)
 # 앱 인스턴스는 공인 IP·보안그룹이 아니라 SSM 세션으로 SSH 를 터널링한다(호스트 자리에 인스턴스 ID).
@@ -107,6 +122,12 @@ TOKEN_FILE="$OUT/jwt.txt"
 chmod 600 "$TOKEN_FILE" 2>/dev/null || true
 
 # ── 2. 배포 ──────────────────────────────────────────────────────────────────
+case "$ARM" in
+  E) set_arm_env false 100000 100000 false ;;
+  F) set_arm_env true 100000 100000 false ;;
+  G) set_arm_env false 16 8 false ;;
+  V) set_arm_env false 100000 100000 true ;;
+esac
 log "artifact_key → $KEY, instance refresh 시작"
 aws ssm put-parameter --name "$SSM_ARTIFACT_KEY_PARAM" --value "$KEY" --type String --overwrite >/dev/null
 REFRESH_ID=$(aws autoscaling start-instance-refresh --auto-scaling-group-name "$ASG_NAME" \
@@ -177,6 +198,12 @@ set -e
 END_EPOCH=$(date +%s)
 k6_ssh "rm -f /tmp/$LABEL.jwt"
 log "k6 종료(exit $K6_EXIT)"
+
+# r70-F1 은 도착이 끝난 뒤 밀린 일이 모두 끝날 때까지 수집을 이어 간다(async-variant.md 2절). 기본은 기다리지 않는다.
+if [ "${DRAIN_WAIT_SEC:-0}" -gt 0 ]; then
+  log "수집을 유지한 채 ${DRAIN_WAIT_SEC}초 더 관측"
+  sleep "$DRAIN_WAIT_SEC"
+fi
 
 # ── 6. 회수 · 판정 ───────────────────────────────────────────────────────────
 app_ssh "sudo bash /tmp/bulkhead/bulkhead-collect.sh stop $REMOTE_OUT" | tee -a "$LOG"
