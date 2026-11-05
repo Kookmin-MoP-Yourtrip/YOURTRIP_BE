@@ -247,6 +247,10 @@ UNHEALTHY_MAX=$(python -c "import json,sys;d=json.load(open(sys.argv[1]));print(
 log "UnHealthyHostCount 최대 $UNHEALTHY_MAX (J5)"
 printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date '+%F %T')" "$LABEL" "$ARM" "$RATE" "$AGG_EXIT" "$UNHEALTHY_MAX" \
   >> "$REPO/results/ai-bulkhead/index.tsv"
+if [ "$AGG_EXIT" -eq 5 ]; then
+  log "회차 $LABEL 무효 — 외부 API 일별 한도 소진. 다시 재도 풀리지 않아 멈춘다"
+  exit 5
+fi
 if [ "$AGG_EXIT" -ne 0 ]; then
   log "회차 $LABEL 무효 — 같은 자리에서 다시 잰다(설계 문서 9-1)"
   exit 4

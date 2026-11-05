@@ -540,7 +540,9 @@ def main():
     if args.out_json:
         with open(args.out_json, 'w', encoding='utf-8') as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
-    sys.exit(4 if invalid else 0)
+    # 한도 소진은 다시 재도 풀리지 않는다 — 5 로 구분해 회차 계획이 재시도하지 않고 멈추게 한다
+    quota = any('한도 소진' in i for i in invalid)
+    sys.exit(5 if quota else 4 if invalid else 0)
 
 
 # 서버 예산(ai.course.budget-ms). 정상 완료는 예산 전에 끝나므로 201 인데 소요가 이 이상이면 마감으로 끊긴 요청이다.
