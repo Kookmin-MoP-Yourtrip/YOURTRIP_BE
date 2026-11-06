@@ -9,7 +9,9 @@ import backend.yourtrip.global.exception.RetryLaterException;
 import backend.yourtrip.global.exception.errorCode.AiCourseErrorCode;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -43,6 +45,61 @@ class AiCourseAdmissionTest {
     void unitsFor_IsOnePlusDays() {
         assertThat(AiCourseAdmission.unitsFor(1)).isEqualTo(2);
         assertThat(AiCourseAdmission.unitsFor(5)).isEqualTo(6);
+    }
+
+    @Test
+    @DisplayName("비동기 입장은 호출 스레드에서 판정해, 자리가 모자라면 풀에 넘기지 않고 그 자리에서 거절한다")
+    void admitAsync_WhenShort_RejectsOnCallerWithoutSubmitting() {
+        AiCourseAdmission admission = admissionOf(1);
+        AtomicBoolean submitted = new AtomicBoolean();
+
+        assertThatThrownBy(() -> admission.admitAsync(3, lease -> "코스", task -> submitted.set(true)))
+            .isInstanceOf(RetryLaterException.class);
+
+        assertThat(submitted).isFalse();
+    }
+
+    @Test
+    @DisplayName("비동기 입장의 자리는 풀의 작업이 끝날 때 돌아온다")
+    void admitAsync_ReleasesUnitsWhenWorkEnds() {
+        AiCourseAdmission admission = admissionOf(4, 1);
+        AtomicReference<Runnable> queued = new AtomicReference<>();
+
+        CompletableFuture<String> first = admission.admitAsync(3, lease -> "코스", queued::set);
+
+        assertThatThrownBy(() -> admission.admitAsync(3, lease -> "코스", Runnable::run))
+            .as("앞 요청이 풀에 머무는 동안에는 자리가 없다")
+            .isInstanceOf(RetryLaterException.class);
+
+        queued.get().run();
+
+        assertThat(first.join()).isEqualTo("코스");
+        assertThat(admission.admitAsync(3, lease -> "다음", Runnable::run).join()).isEqualTo("다음");
+    }
+
+    @Test
+    @DisplayName("풀의 작업이 예외로 끝나도 자리가 돌아온다")
+    void admitAsync_WorkThrows_ReleasesUnits() {
+        AiCourseAdmission admission = admissionOf(4, 1);
+
+        CompletableFuture<String> failed = admission.admitAsync(3, lease -> {
+            throw new IllegalStateException("실패");
+        }, Runnable::run);
+
+        assertThat(failed).isCompletedExceptionally();
+        assertThat(admission.admitAsync(3, lease -> "다음", Runnable::run).join()).isEqualTo("다음");
+    }
+
+    @Test
+    @DisplayName("풀이 작업을 받지 못하면 자리를 돌려주고 재시도 안내로 거절한다")
+    void admitAsync_PoolRejects_ReleasesUnitsAndRetryLater() {
+        AiCourseAdmission admission = admissionOf(4, 1);
+
+        assertThatThrownBy(() -> admission.admitAsync(3, lease -> "코스", task -> {
+            throw new RejectedExecutionException("가득 참");
+        })).isInstanceOf(RetryLaterException.class);
+
+        assertThat(admission.admitAsync(3, lease -> "다음", Runnable::run).join()).isEqualTo("다음");
     }
 
     @Test

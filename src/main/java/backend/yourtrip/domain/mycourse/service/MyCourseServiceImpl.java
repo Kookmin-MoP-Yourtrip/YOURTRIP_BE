@@ -51,6 +51,8 @@ import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -71,6 +73,7 @@ public class MyCourseServiceImpl implements MyCourseService {
     private final CloudFrontService cloudFrontService;
     private final AiCoursePipeline aiCoursePipeline;
     private final AiCourseAdmission aiCourseAdmission;
+    private final Executor aiRequestExecutor;
 
     private final TravelCourseRepository travelCourseRepository;
     private final DayScheduleRepository dayScheduleRepository;
@@ -521,9 +524,12 @@ public class MyCourseServiceImpl implements MyCourseService {
      * <p><b>파이프라인만 입장 제한({@link AiCourseAdmission})으로 감싼다</b>(#192). 자리가 없으면
      * 기다리지 않고 {@code AI_COURSE_BUSY}(429)로 거절한다. 저장은 LLM을 쓰지 않는 짧은 트랜잭션이라
      * 자리를 쥐지 않는다.
+     *
+     * <p><b>입장 판정과 현재 사용자 확보는 Tomcat 워커에서, 나머지는 {@code aiRequestExecutor}에서 돈다.</b>
+     * 넘친 요청은 전용 풀에 들어가지 않고 여기서 바로 429 가 된다. 워커는 제출 직후 반납되고 응답은 재디스패치로 나간다.
      */
     @Override
-    public AICourseCreateResponse createAICourse(AICourseCreateRequest request) {
+    public CompletableFuture<AICourseCreateResponse> createAICourse(AICourseCreateRequest request) {
         // SecurityContextHolder는 요청 스레드의 ThreadLocal이므로 여기서 먼저 확보해 둔다.
         // 파이프라인 하위 스테이지가 다른 스레드에서 돌아 거기서는 읽을 수 없다.
         Long userId = userService.getCurrentUserId();
@@ -533,13 +539,13 @@ public class MyCourseServiceImpl implements MyCourseService {
 
         //파이프라인 실행 (외부 I/O — 여기까지가 트랜잭션 밖이다)
         // 입장은 LLM 작업 자리 1 + days 개 단위다(#200). 자리는 에이전트가 올린 호출마다 묶여 호출이 끝날 때 돌아간다.
-        AiCourseDraft draft = aiCourseAdmission.admit(days, lease -> aiCoursePipeline.generate(
-            CourseBrief.of(request.location(), days, request.keywords()), lease));
-
-        //저장 (짧은 트랜잭션) — 리스트 순서가 곧 동선 순서이므로 변환기가 순서를 보존한다
-        Long courseId = aiCoursePersister.save(request, draft.title(),
-            AiCourseDraftMapper.toResolvedDays(draft), userId);
-
-        return new AICourseCreateResponse(courseId);
+        return aiCourseAdmission.admitAsync(days, lease -> aiCoursePipeline.generate(
+                CourseBrief.of(request.location(), days, request.keywords()), lease), aiRequestExecutor)
+            .thenApply(draft -> {
+                //저장 (짧은 트랜잭션) — 리스트 순서가 곧 동선 순서이므로 변환기가 순서를 보존한다
+                Long courseId = aiCoursePersister.save(request, draft.title(),
+                    AiCourseDraftMapper.toResolvedDays(draft), userId);
+                return new AICourseCreateResponse(courseId);
+            });
     }
 }
