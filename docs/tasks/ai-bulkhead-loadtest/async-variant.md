@@ -1,6 +1,6 @@
 # 비교 실험 E·F·V·G — Tomcat 워커를 비동기나 가상 스레드로 풀면 AI 지연은 어떻게 되는가
 
-> **상태: 측정 완료(2026-11-05, 분당 40건 5회차)**. 질문·예측·판정 기준은 측정 전에 고정했고, 결과는 [measurement.md 8절](measurement.md#8-비교-실험-efvgh--스레드를-tomcat에서-떼면-ai-지연은-풀리는가)에 있다. 판정 K1~K6이 모두 성립했다. 주실험 설계는 [README.md](README.md), 앞선 비교 실험은 [abort-variant.md](abort-variant.md)다.
+> **상태: 측정 완료(2026-11-05, 분당 40건 5회차)**. 질문·예측·판정 기준은 측정 전에 고정했고, 결과는 [measurement.md 8절](measurement.md#8-비교-실험-efvgh--스레드를-tomcat에서-떼면-ai-지연은-풀리는가)에 있다. 판정 K1~K7이 모두 성립했다(K7은 2026-11-06 재측정). 주실험 설계는 [README.md](README.md), 앞선 비교 실험은 [abort-variant.md](abort-variant.md)다.
 
 ## 0. 요약
 
@@ -132,7 +132,7 @@ H는 실험 조건의 비교값이라 운영 구현(`feat/ai-request-async-isola
 
 **판정(K7)**: 배경 **저하·장애 없음**, `UnHealthyHostCount` 0, Tomcat busy 최대 < 5, 201이 47~77건, 응답 코드는 201·429뿐.
 
-**상태**: 2026-11-05 측정은 네이버 일별 한도 소진으로 무효다([measurement.md 8-6](measurement.md)). 다른 날 다시 잰다.
+**상태**: 2026-11-05 측정은 네이버 일별 한도 소진으로 무효였고, 2026-11-06 재측정에서 **K7이 성립했다**([measurement.md 8-6·8-7](measurement.md)).
 
 **남은 범위**: 이 회차는 배포 중 진행 요청 처리(#190)를 재지 않는다. 일반 API 고부하나 후속 단계 멈춤도 재지 않아, 비동기가 **평소 성능**을 개선한다는 근거가 아니다.
 
