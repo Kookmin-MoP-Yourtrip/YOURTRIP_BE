@@ -61,19 +61,37 @@ case "$ARM" in
   P) KEY="${ARTIFACT_KEY_P:?config.env 에 ARTIFACT_KEY_P 가 없다(async-variant.md 3-4절)}" ;;
   E|F|G|H|V) KEY="${ARTIFACT_KEY_ASYNC:?config.env 에 ARTIFACT_KEY_ASYNC 가 없다(async-variant.md)}" ;;
 esac
-# E·F·G·V 는 JAR 이 하나고 arm 을 환경변수로 고른다. 값은 부팅 때 SSM env/ 에서 .env 로 떨어진다(async-variant.md 1절).
+# E·F·G·H·V 는 JAR 이 하나고 arm 을 환경변수로 고른다. 값은 부팅 때 SSM env/ 에서 .env 로 떨어진다(async-variant.md 1절).
 # 앞 회차의 값이 남지 않도록 네 값을 매번 모두 덮어쓴다. 피닝 추적은 V 에서만 켠다.
+# 이 키들은 운영에 원래 없는 측정 전용 키다. 그 밖의 arm(P 등)은 clear_arm_env 로 지워 운영 기본값으로 뜨게 한다.
+ARM_ENV_PREFIX="${SSM_ARTIFACT_KEY_PARAM%/artifact_key}/env"
+ARM_ENV_KEYS=(AI_COURSE_ASYNC_ENABLED AI_COURSE_ADMISSION_MAXWORKUNITS AI_COURSE_ADMISSION_MAXREQUESTS SPRING_THREADS_VIRTUAL_ENABLED)
+PIN_TRACE_OPT="-Djdk.tracePinnedThreads=short"
+# JAVA_TOOL_OPTIONS 는 운영이 쓸 수도 있는 키라, 이 스크립트가 넣은 피닝 추적 값일 때만 지운다.
+clear_pin_trace() {
+  local cur
+  cur=$(aws ssm get-parameter --name "$ARM_ENV_PREFIX/JAVA_TOOL_OPTIONS" --query Parameter.Value --output text 2>/dev/null || true)
+  [ "$cur" = "$PIN_TRACE_OPT" ] && aws ssm delete-parameter --name "$ARM_ENV_PREFIX/JAVA_TOOL_OPTIONS" >/dev/null
+  return 0
+}
 set_arm_env() {
-  local async="$1" units="$2" requests="$3" virtual="$4" prefix="${SSM_ARTIFACT_KEY_PARAM%/artifact_key}/env"
-  aws ssm put-parameter --name "$prefix/AI_COURSE_ASYNC_ENABLED" --value "$async" --type String --overwrite >/dev/null
-  aws ssm put-parameter --name "$prefix/AI_COURSE_ADMISSION_MAXWORKUNITS" --value "$units" --type String --overwrite >/dev/null
-  aws ssm put-parameter --name "$prefix/AI_COURSE_ADMISSION_MAXREQUESTS" --value "$requests" --type String --overwrite >/dev/null
-  aws ssm put-parameter --name "$prefix/SPRING_THREADS_VIRTUAL_ENABLED" --value "$virtual" --type String --overwrite >/dev/null
+  local async="$1" units="$2" requests="$3" virtual="$4"
+  aws ssm put-parameter --name "$ARM_ENV_PREFIX/AI_COURSE_ASYNC_ENABLED" --value "$async" --type String --overwrite >/dev/null
+  aws ssm put-parameter --name "$ARM_ENV_PREFIX/AI_COURSE_ADMISSION_MAXWORKUNITS" --value "$units" --type String --overwrite >/dev/null
+  aws ssm put-parameter --name "$ARM_ENV_PREFIX/AI_COURSE_ADMISSION_MAXREQUESTS" --value "$requests" --type String --overwrite >/dev/null
+  aws ssm put-parameter --name "$ARM_ENV_PREFIX/SPRING_THREADS_VIRTUAL_ENABLED" --value "$virtual" --type String --overwrite >/dev/null
   if [ "$virtual" = true ]; then
-    aws ssm put-parameter --name "$prefix/JAVA_TOOL_OPTIONS" --value="-Djdk.tracePinnedThreads=short" --type String --overwrite >/dev/null
+    aws ssm put-parameter --name "$ARM_ENV_PREFIX/JAVA_TOOL_OPTIONS" --value="$PIN_TRACE_OPT" --type String --overwrite >/dev/null
   else
-    aws ssm delete-parameter --name "$prefix/JAVA_TOOL_OPTIONS" >/dev/null 2>&1 || true
+    clear_pin_trace
   fi
+}
+clear_arm_env() {
+  local k
+  for k in "${ARM_ENV_KEYS[@]}"; do
+    aws ssm delete-parameter --name "$ARM_ENV_PREFIX/$k" >/dev/null 2>&1 || true
+  done
+  clear_pin_trace
 }
 KNOWN="$OUT/known_hosts"
 SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=30 -o ServerAliveInterval=30)
@@ -129,6 +147,7 @@ case "$ARM" in
   G) set_arm_env false 16 8 false ;;
   H) set_arm_env true 16 8 false ;;
   V) set_arm_env false 100000 100000 true ;;
+  *) clear_arm_env ;;
 esac
 log "artifact_key → $KEY, instance refresh 시작"
 aws ssm put-parameter --name "$SSM_ARTIFACT_KEY_PARAM" --value "$KEY" --type String --overwrite >/dev/null
