@@ -1,4 +1,5 @@
-# dev 머지 시 JAR을 빌드해 S3에 올리고, 운영 ASG가 떠 있으면 instance refresh로 굴린다(#120).
+# dev 머지 시 JAR을 빌드해 S3에 올리고 배포 대상 키(SSM)를 갱신한다. 운영 ASG가 떠 있으면
+# instance refresh로 굴린다(#120).
 #
 # ci.yml과 파일을 나눈 이유는 권한 경계다. ci.yml은 "secrets도 env도 하나 없다"가 명시적
 # 설계 자산이고(docs/guide/ci.md 3절), 여기에 OIDC용 id-token 권한을 넣으면 그 문장이
@@ -192,19 +193,6 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # 운영은 온디맨드라 대부분의 기간 ASG가 없다. 그건 정상 상태이므로 초록불로 끝낸다.
-      # 이때 SSM 값은 건드리지 않는다 — 다음 apply가 마지막으로 실제 배포된 SHA로 떠야 한다.
-      - name: 서버가 없으면 여기까지
-        if: steps.asg.outputs.exists == 'false'
-        run: |
-          {
-            echo "### 업로드만 완료했다"
-            echo ""
-            echo "- 아티팩트: ${{ steps.target.outputs.key }}"
-            echo "- 운영 ASG($ASG_NAME)가 없어 교체를 건너뛰었다. 온디맨드 모델에서 정상이다."
-            echo "- 서버를 올린 뒤 배포하려면 docs/guide/cd.md의 재배포 절차를 따른다."
-          } >> "$GITHUB_STEP_SUMMARY"
-
       # 사람이 이미 refresh를 돌리고 있으면 start가 InstanceRefreshInProgress로 실패한다.
       # 원인을 읽을 수 있게 먼저 확인한다.
       - name: 진행 중인 refresh 확인
@@ -218,8 +206,15 @@ jobs:
             exit 1
           fi
 
+      # 배포 대상 키는 ASG 유무와 무관하게 항상 갱신한다. 예전에는 ASG가 있을 때만 바꿔 "다음
+      # apply가 마지막으로 실제 배포된 버전으로 뜨게" 했는데, 온디맨드라 ASG가 없는 기간이 길어
+      # dev와 운영이 조용히 어긋났다 — 10월 머지들이 S3에만 쌓이고 키는 8월 SHA에 두 달 넘게
+      # 머물렀다. 이제 다음 apply는 dev 최신(CI를 통과한 빌드)으로 뜬다. 그 JAR이 깨져 있으면
+      # 4절의 롤백(이전 SHA 수동 실행)이 서버가 없을 때도 키를 되돌린다.
+      #
+      # 진행 중인 refresh 확인보다 뒤에 둔다. refresh 도중 키를 바꾸면 교체 중인 새 인스턴스가
+      # 부팅 시점에 따라 다른 JAR을 받는다.
       - name: 배포 대상 키 갱신
-        if: steps.asg.outputs.exists == 'true'
         id: pointer
         run: |
           PREV=$(aws ssm get-parameter --name "$SSM_ARTIFACT_KEY_PARAM" \
@@ -228,6 +223,19 @@ jobs:
           echo "이전 값: $PREV"
           aws ssm put-parameter --name "$SSM_ARTIFACT_KEY_PARAM" \
             --type String --value "${{ steps.target.outputs.key }}" --overwrite
+
+      # 운영은 온디맨드라 대부분의 기간 ASG가 없다. 그건 정상 상태이므로 초록불로 끝낸다.
+      - name: 서버가 없으면 여기까지
+        if: steps.asg.outputs.exists == 'false'
+        run: |
+          {
+            echo "### 업로드와 배포 대상 갱신만 완료했다"
+            echo ""
+            echo "- 아티팩트: ${{ steps.target.outputs.key }} (다음 terraform apply 때 이 JAR이 뜬다)"
+            echo "- 직전 배포 대상: ${{ steps.pointer.outputs.previous }}"
+            echo "- 운영 ASG($ASG_NAME)가 없어 교체를 건너뛰었다. 온디맨드 모델에서 정상이다."
+            echo "- 되돌리려면 이 워크플로를 dev 브랜치에서 수동 실행하고 직전 SHA를 넣는다(docs/guide/cd.md 4절)."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # preferences를 인라인 JSON으로 넘기면 따옴표 이스케이프가 지저분해진다. 파일로 넘기고,
       # 그 파일을 terraform도 함께 읽는다(terraform/prod/asg.tf의 local.refresh_prefs).
