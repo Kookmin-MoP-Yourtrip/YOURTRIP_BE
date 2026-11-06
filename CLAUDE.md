@@ -107,7 +107,7 @@ docker compose up -d redis
 
 ### CD
 
-`dev`에 머지하면 JAR이 빌드돼 S3에 올라가고, 운영 ASG가 떠 있으면 instance refresh로 무중단 교체된다([.github/workflows/deploy.yml](.github/workflows/deploy.yml)). 서버가 내려가 있는 평시에는 업로드까지만 하고 정상 종료한다.
+`dev`에 머지하면 JAR이 빌드돼 S3에 올라가고, 운영 ASG가 떠 있으면 instance refresh로 무중단 교체된다([.github/workflows/deploy.yml](.github/workflows/deploy.yml)). 서버가 내려가 있는 평시에는 업로드와 배포 대상 키 갱신까지만 하고 정상 종료한다 — 다음 `terraform apply`는 `dev` 최신 커밋으로 뜬다.
 
 - **배포할 JAR은 SSM 파라미터 `/yourtrip/prod/artifact_key`가 가리킨다.** `terraform.tfvars`가 아니다 — 지금 무엇이 배포돼 있는지는 `terraform -chdir=terraform/prod output -raw current_artifact_key`로 본다.
 - **Launch Template은 배포로 바뀌지 않는다.** 그래서 CD가 terraform state를 만질 필요가 없고 drift도 생기지 않는다.
