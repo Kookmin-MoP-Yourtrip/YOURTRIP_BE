@@ -116,6 +116,7 @@ for attempt in 1 2 3; do
   sleep 10
 done
 k6_ssh "sudo cp -r /tmp/k6-local/. /opt/app/scripts/k6/"
+k6_ssh "rm -f /tmp/$LABEL.k6.log /tmp/$LABEL.summary.json"
 k6_scp "$TOKEN_FILE" "$SSH_USER@$K6_HOST:/tmp/$LABEL.jwt"
 k6_ssh "chmod 600 /tmp/$LABEL.jwt; nohup vmstat 5 > /tmp/$LABEL.vmstat 2>&1 < /dev/null & echo \$! > /tmp/$LABEL.vmstat.pid"
 log "k6 실행(계단 8개 12분 + 회복 2분)"

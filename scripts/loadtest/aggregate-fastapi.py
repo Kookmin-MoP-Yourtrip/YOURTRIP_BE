@@ -29,14 +29,18 @@ K6_CPU_BUSY = 90
 
 
 def read_run(path):
+    # 마지막 FASTRUN 을 쓴다. --console-output 은 덧붙이기라, 같은 라벨로 다시 재면 이전 시도의 줄이 앞에 남는다(s-T1).
+    found = None
     with open(path, encoding='utf-8', errors='replace') as f:
         for line in f:
             i = line.find('FASTRUN ')
             if i >= 0:
                 # k6 console.error 는 msg="..." 로 감싸 따옴표를 이스케이프한다
                 raw = line[i + 8:].strip().replace('\\"', '"')
-                return json.loads(raw[:raw.rindex('}') + 1])
-    raise SystemExit('FASTRUN 줄이 없다')
+                found = json.loads(raw[:raw.rindex('}') + 1])
+    if found is None:
+        raise SystemExit('FASTRUN 줄이 없다')
+    return found
 
 
 def k6_steps(summary, run):
