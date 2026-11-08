@@ -217,6 +217,16 @@ app_ssh "curl -sf -o /dev/null http://localhost:8081/actuator/prometheus" \
   && [ "$LIVENESS" = '{"status":"UP","components":{"livenessState":{"status":"UP"}}}' ] \
   || { log "중단: 관리 포트(8081) 또는 헬스체크 경로(8080 /actuator)가 기대와 다르다: $LIVENESS (설계 문서 6-2)"; exit 3; }
 
+# V 는 피닝 추적 옵션이 JVM 에 실제로 실렸는지 기동 로그로 확인한다. r40-V 는 수집 로그에 기동 구간이 없어
+# 피닝 0건이 "없었다"인지 "추적이 꺼져 있었다"인지 가르지 못했다(measurement.md 8-4).
+if [ "$ARM" = V ]; then
+  PICKED=$(app_ssh "sudo journalctl -u yourtrip-app --no-pager | grep -m1 'Picked up JAVA_TOOL_OPTIONS'" || true)
+  case "$PICKED" in
+    *tracePinnedThreads*) log "피닝 추적 적용 확인: ${PICKED##*: }" ;;
+    *) log "중단: 피닝 추적 옵션이 JVM 에 실리지 않았다 — $PICKED"; exit 3 ;;
+  esac
+fi
+
 # ── 4. 캐시 삭제 · 수집 시작 ─────────────────────────────────────────────────
 app_ssh "mkdir -p /tmp/bulkhead"
 app_scp "$REPO/scripts/loadtest/bulkhead-collect.sh" "$REPO/scripts/loadtest/poll-metrics.sh" \
@@ -245,9 +255,16 @@ k6_ssh "rm -f /tmp/$LABEL.jwt"
 log "k6 종료(exit $K6_EXIT)"
 
 # r70-F1 은 도착이 끝난 뒤 밀린 일이 모두 끝날 때까지 수집을 이어 간다(async-variant.md 2절). 기본은 기다리지 않는다.
+# 상한까지 기다리되, 처리 중 AI 요청이 0 이 되면 일찍 끝낸다(r70-V, async-variant.md 3-6절).
 if [ "${DRAIN_WAIT_SEC:-0}" -gt 0 ]; then
-  log "수집을 유지한 채 ${DRAIN_WAIT_SEC}초 더 관측"
-  sleep "$DRAIN_WAIT_SEC"
+  log "수집을 유지한 채 최대 ${DRAIN_WAIT_SEC}초 더 관측(처리 중 AI 요청이 0 이 되면 종료)"
+  DRAIN_DEADLINE=$(( $(date +%s) + DRAIN_WAIT_SEC ))
+  while [ "$(date +%s)" -lt "$DRAIN_DEADLINE" ]; do
+    sleep 60
+    INFL=$(app_ssh "curl -sf http://localhost:8081/actuator/prometheus | awk '/^ai_course_admission_requests_in_use/{print \$2}'" || true)
+    log "  처리 중 AI 요청 ${INFL:-?}"
+    case "$INFL" in 0|0.0) log "잔여 작업 소진 — 관측 종료"; sleep 10; break ;; esac
+  done
 fi
 
 # ── 6. 회수 · 판정 ───────────────────────────────────────────────────────────

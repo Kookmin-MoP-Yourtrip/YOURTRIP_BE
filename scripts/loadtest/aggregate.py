@@ -26,8 +26,12 @@ LINE_RE = re.compile(r'^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{.*\})?\s+([-+0-9.eE]+|NaN)\
 LABEL_RE = re.compile(r'(\w+)="([^"]*)"')
 
 
-def parse_snapshots(path):
-    """[(ts, {(name, labels_tuple): value})]"""
+def parse_snapshots(path, skip_suffixes=()):
+    """[(ts, {(name, labels_tuple): value})]
+
+    skip_suffixes: 버리는 지표 이름 접미사(예: '_bucket'). 히스토그램 버킷이 줄 수의 대부분이라, 버킷을 쓰지 않는
+    집계기가 긴 관측(r70-V 는 약 70분)을 읽을 때 메모리를 몇 분의 1로 줄인다.
+    """
     snaps = []
     cur_ts, cur = None, None
     with open(path, encoding='utf-8', errors='replace') as f:
@@ -43,7 +47,7 @@ def parse_snapshots(path):
             if not m:
                 continue
             name, labels, val = m.group(1), m.group(2) or '', m.group(3)
-            if val == 'NaN':
+            if val == 'NaN' or (skip_suffixes and name.endswith(skip_suffixes)):
                 continue
             cur[(name, labels)] = float(val)
     if cur is not None:
