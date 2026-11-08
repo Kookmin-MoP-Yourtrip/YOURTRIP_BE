@@ -531,8 +531,10 @@ def main():
     rec_sec, rec_limit = recovery_time(rec_win, base, phases['recoveryStartMs'])
 
     per_api = {}
-    for api in ('popular', 'detail'):
+    for api in ('popular', 'detail', 'mine'):
         rows = [r for r in bg if r['api'] == api]
+        if not rows:
+            continue
         b = [r['ms'] for r in rows if phases['baselineStartMs'] <= r['rel'] < phases['aiStartMs']]
         j = [r['ms'] for r in rows if judge_start <= r['rel'] < phases['recoveryStartMs']]
         per_api[api] = {'baselineP99Ms': p99(b), 'judgeP99Ms': p99(j),

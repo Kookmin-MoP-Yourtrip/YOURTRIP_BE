@@ -63,60 +63,8 @@ case "$ARM" in
 esac
 # E·F·G·H·V 는 JAR 이 하나고 arm 을 환경변수로 고른다. 값은 부팅 때 SSM env/ 에서 .env 로 떨어진다(async-variant.md 1절).
 # 앞 회차의 값이 남지 않도록 네 값을 매번 모두 덮어쓴다. 피닝 추적은 V 에서만 켠다.
-# 이 키들은 운영에 원래 없는 측정 전용 키다. 그 밖의 arm(P 등)은 clear_arm_env 로 지워 운영 기본값으로 뜨게 한다.
-ARM_ENV_PREFIX="${SSM_ARTIFACT_KEY_PARAM%/artifact_key}/env"
-ARM_ENV_KEYS=(AI_COURSE_ASYNC_ENABLED AI_COURSE_ADMISSION_MAXWORKUNITS AI_COURSE_ADMISSION_MAXREQUESTS SPRING_THREADS_VIRTUAL_ENABLED)
-PIN_TRACE_OPT="-Djdk.tracePinnedThreads=short"
-# SSM 키를 지운다. 키가 없는 것은 정상이고, 그 밖의 실패(권한·네트워크)는 앞 회차 값이 남을 수 있으니 회차를 멈춘다.
-delete_ssm_key() {
-  local err
-  err=$(aws ssm delete-parameter --name "$1" 2>&1 >/dev/null) && return 0
-  grep -q ParameterNotFound <<< "$err" && return 0
-  echo "중단: SSM 키 $1 삭제 실패 — 앞 회차 값이 남을 수 있다: $err" >&2
-  exit 3
-}
-# JAVA_TOOL_OPTIONS 의 현재 값. 키가 없으면 빈 문자열이다. 조회가 다른 이유로 실패하면 0 이 아닌 값을 돌려준다 —
-# 빈 값으로 오판하면 운영 값을 덮어쓰거나 피닝 추적 값을 남긴다. $( ) 안에서 불리므로 호출자가 실패를 받아 멈춘다.
-current_tool_opts() {
-  local out
-  out=$(aws ssm get-parameter --name "$ARM_ENV_PREFIX/JAVA_TOOL_OPTIONS" --query Parameter.Value --output text 2>&1)     && { echo "$out"; return 0; }
-  grep -q ParameterNotFound <<< "$out" && return 0
-  echo "중단: SSM JAVA_TOOL_OPTIONS 조회 실패 — 값을 바꾸기 전에 멈춘다: $out" >&2
-  return 1
-}
-# JAVA_TOOL_OPTIONS 는 운영이 쓸 수도 있는 키라, 이 스크립트가 넣은 피닝 추적 값일 때만 지운다.
-clear_pin_trace() {
-  local cur
-  cur=$(current_tool_opts) || exit 3
-  [ "$cur" = "$PIN_TRACE_OPT" ] && delete_ssm_key "$ARM_ENV_PREFIX/JAVA_TOOL_OPTIONS"
-  return 0
-}
-set_arm_env() {
-  local async="$1" units="$2" requests="$3" virtual="$4" cur
-  # JAVA_TOOL_OPTIONS 상태를 먼저 확인한다 — 조회 실패나 운영 값이 있으면 SSM 을 하나도 바꾸지 않은 채 멈춘다.
-  # 운영 값을 덮어쓰면 뒤 회차에서 지울 때 원래 값을 되살릴 수 없다.
-  cur=$(current_tool_opts) || exit 3
-  if [ "$virtual" = true ] && [ -n "$cur" ] && [ "$cur" != "$PIN_TRACE_OPT" ]; then
-    echo "중단: SSM JAVA_TOOL_OPTIONS 에 운영 값이 있다 — 피닝 추적 값과 합칠지 먼저 정한다" >&2
-    exit 3
-  fi
-  aws ssm put-parameter --name "$ARM_ENV_PREFIX/AI_COURSE_ASYNC_ENABLED" --value "$async" --type String --overwrite >/dev/null
-  aws ssm put-parameter --name "$ARM_ENV_PREFIX/AI_COURSE_ADMISSION_MAXWORKUNITS" --value "$units" --type String --overwrite >/dev/null
-  aws ssm put-parameter --name "$ARM_ENV_PREFIX/AI_COURSE_ADMISSION_MAXREQUESTS" --value "$requests" --type String --overwrite >/dev/null
-  aws ssm put-parameter --name "$ARM_ENV_PREFIX/SPRING_THREADS_VIRTUAL_ENABLED" --value "$virtual" --type String --overwrite >/dev/null
-  if [ "$virtual" = true ]; then
-    aws ssm put-parameter --name "$ARM_ENV_PREFIX/JAVA_TOOL_OPTIONS" --value="$PIN_TRACE_OPT" --type String --overwrite >/dev/null
-  elif [ "$cur" = "$PIN_TRACE_OPT" ]; then
-    delete_ssm_key "$ARM_ENV_PREFIX/JAVA_TOOL_OPTIONS"
-  fi
-}
-clear_arm_env() {
-  local k
-  for k in "${ARM_ENV_KEYS[@]}"; do
-    delete_ssm_key "$ARM_ENV_PREFIX/$k"
-  done
-  clear_pin_trace
-}
+# shellcheck disable=SC1091
+. "$REPO/scripts/loadtest/ssm-arm-env.sh"
 KNOWN="$OUT/known_hosts"
 SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$KNOWN" -o ConnectTimeout=30 -o ServerAliveInterval=30)
 # 앱 인스턴스는 공인 IP·보안그룹이 아니라 SSM 세션으로 SSH 를 터널링한다(호스트 자리에 인스턴스 ID).
@@ -239,13 +187,19 @@ app_ssh "sudo mkdir -p /var/tmp/bulkhead && sudo bash /tmp/bulkhead/bulkhead-col
 # k6 EC2 의 저장소를 이 회차의 스크립트 버전으로 맞춘다. 부팅 때 한 번 clone 한 뒤로는 갱신되지 않아,
 # 측정 도중 스크립트를 고치면 k6 EC2 만 옛 버전으로 돌게 된다.
 k6_ssh "cd /opt/app && sudo git fetch -q --depth 1 origin '$K6_GIT_REF' && sudo git checkout -q FETCH_HEAD && sudo git log -1 --format='k6 스크립트 버전 %h'" | tee -a "$LOG"
+# push 하지 않은 k6 스크립트로 잴 때 쓴다. 어떤 내용으로 쟀는지는 결과와 함께 커밋해 남긴다.
+if [ "${K6_LOCAL_SCRIPTS:-0}" = 1 ]; then
+  k6_ssh "rm -rf /tmp/k6-local" && k6_scp -r "$REPO/scripts/k6" "$SSH_USER@$K6_HOST:/tmp/k6-local"
+  k6_ssh "sudo cp -r /tmp/k6-local/. /opt/app/scripts/k6/" && log "k6 스크립트를 로컬 사본으로 덮어썼다"
+fi
 log "k6 실행(약 12분)"
 k6_scp "$TOKEN_FILE" "$SSH_USER@$K6_HOST:/tmp/$LABEL.jwt"
 k6_ssh "chmod 600 /tmp/$LABEL.jwt"
 START_EPOCH=$(date +%s)
 set +e
-k6_ssh "cd /opt/app && k6 run -q -e BASE_URL='$BASE_URL' -e JWT=\"\$(cat /tmp/$LABEL.jwt)\" \
+k6_ssh "ulimit -n 200000 2>/dev/null; cd /opt/app && k6 run -q -e BASE_URL='$BASE_URL' -e JWT=\"\$(cat /tmp/$LABEL.jwt)\" \
   -e RATE_PER_MIN=$RATE -e SEED=$SEED -e LABEL=$LABEL -e DAYS_MIX='$DAYS_MIX' \
+  -e BG_POPULAR_RPS=${BG_POPULAR_RPS:-10} -e BG_DETAIL_RPS=${BG_DETAIL_RPS:-10} -e BG_MINE_RPS=${BG_MINE_RPS:-0} -e BG_TIMEOUT_SEC=${BG_TIMEOUT_SEC:-10} \
   -e DETAIL_ID_MIN=$DETAIL_ID_MIN -e DETAIL_ID_MAX=$DETAIL_ID_MAX \
   --summary-export=/tmp/$LABEL.summary.json scripts/k6/ai-bulkhead.js 2> /tmp/$LABEL.k6.log > /dev/null"
 K6_EXIT=$?
