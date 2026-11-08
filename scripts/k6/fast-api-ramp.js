@@ -27,7 +27,9 @@ const HOLD_SEC = parseInt(__ENV.HOLD_SEC || '90', 10);
 const SETTLE_SEC = parseInt(__ENV.SETTLE_SEC || '20', 10);
 const RECOVERY_RPS = parseInt(__ENV.RECOVERY_RPS || '50', 10);
 const RECOVERY_SEC = parseInt(__ENV.RECOVERY_SEC || '120', 10);
-const TIMEOUT_SEC = parseInt(__ENV.TIMEOUT_SEC || '5', 10);
+// VU 하나가 메모리 약 0.42MB 를 쓴다(실측). 5초면 VU 16,800개로 k6 EC2(8GB)가 초기화 중 OOM 으로 죽었다.
+// 2초여도 한계점 기준 p99 1초보다 충분히 길다.
+const TIMEOUT_SEC = parseInt(__ENV.TIMEOUT_SEC || '2', 10);
 const DETAIL_ID_MIN = parseInt(__ENV.DETAIL_ID_MIN || '1', 10);
 const DETAIL_ID_MAX = parseInt(__ENV.DETAIL_ID_MAX || '3000', 10);
 

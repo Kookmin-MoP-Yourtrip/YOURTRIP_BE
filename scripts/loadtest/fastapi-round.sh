@@ -58,6 +58,7 @@ TOKEN_FILE="$OUT/jwt.txt"
     LOADTEST_TOKEN_FILE="$(win "$TOKEN_FILE")" \
     ./gradlew benchmarkTest --tests '*LoadTestTokenIssuer*' --rerun -q ) >> "$LOG" 2>&1
 [ -s "$TOKEN_FILE" ] || { log "중단: 토큰 파일이 비었다"; exit 3; }
+trap 'rm -f "$TOKEN_FILE"' EXIT
 
 # 두 arm 은 스레드 모델만 다르다. 입장 제한·비동기 값은 AI 요청이 없어 결과에 영향이 없다.
 case "$ARM" in
@@ -108,22 +109,27 @@ REMOTE_OUT="/var/tmp/bulkhead/$LABEL"
 app_ssh "sudo mkdir -p /var/tmp/bulkhead && sudo bash /tmp/bulkhead/bulkhead-collect.sh start $REMOTE_OUT" | tee -a "$LOG"
 
 # k6 스크립트는 push 없이 로컬 사본을 쓴다
-k6_ssh "rm -rf /tmp/k6-local" && k6_scp -r "$REPO/scripts/k6" "$SSH_USER@$K6_HOST:/tmp/k6-local"
+# 빠르게 이어지는 SSH 직후 scp 가 'Connection closed' 로 끊긴 적이 있어(s-T1 첫 시도) 다시 시도한다
+for attempt in 1 2 3; do
+  k6_ssh "rm -rf /tmp/k6-local" && k6_scp -r "$REPO/scripts/k6" "$SSH_USER@$K6_HOST:/tmp/k6-local" && break
+  [ "$attempt" -lt 3 ] || { log "중단: k6 스크립트 복사 실패"; exit 3; }
+  sleep 10
+done
 k6_ssh "sudo cp -r /tmp/k6-local/. /opt/app/scripts/k6/"
 k6_scp "$TOKEN_FILE" "$SSH_USER@$K6_HOST:/tmp/$LABEL.jwt"
 k6_ssh "chmod 600 /tmp/$LABEL.jwt; nohup vmstat 5 > /tmp/$LABEL.vmstat 2>&1 < /dev/null & echo \$! > /tmp/$LABEL.vmstat.pid"
 log "k6 실행(계단 8개 12분 + 회복 2분)"
 START_EPOCH=$(date +%s)
 set +e
-k6_ssh "ulimit -n 200000 2>/dev/null; cd /opt/app && k6 run -q -e BASE_URL='$BASE_URL' -e JWT=\"\$(cat /tmp/$LABEL.jwt)\" \
+k6_ssh "ulimit -n 65535 2>/dev/null; cd /opt/app && k6 run -q --log-output=none --console-output=/tmp/$LABEL.k6.log -e BASE_URL='$BASE_URL' -e JWT=\"\$(cat /tmp/$LABEL.jwt)\" \
   -e LABEL=$LABEL -e DETAIL_ID_MIN=$DETAIL_ID_MIN -e DETAIL_ID_MAX=$DETAIL_ID_MAX -e STEPS='${STEPS:-200,400,700,1000,1400,1800,2300,2800}' \
-  --summary-export=/tmp/$LABEL.summary.json scripts/k6/fast-api-ramp.js 2> /tmp/$LABEL.k6.log > /dev/null"
+  --summary-export=/tmp/$LABEL.summary.json scripts/k6/fast-api-ramp.js 2> /tmp/$LABEL.k6.stderr > /dev/null"
 K6_EXIT=$?
 set -e
 END_EPOCH=$(date +%s)
 k6_ssh "kill \$(cat /tmp/$LABEL.vmstat.pid) 2>/dev/null; rm -f /tmp/$LABEL.jwt"
 log "k6 종료(exit $K6_EXIT)"
-[ "$K6_EXIT" -eq 0 ] || log "주의: k6 가 비정상 종료했다"
+[ "$K6_EXIT" -eq 0 ] || { log "중단: k6 가 비정상 종료했다 — $(k6_ssh "tail -2 /tmp/$LABEL.k6.stderr" | cut -c1-200)"; app_ssh "sudo bash /tmp/bulkhead/bulkhead-collect.sh stop $REMOTE_OUT" >/dev/null || true; exit 3; }
 
 app_ssh "sudo bash /tmp/bulkhead/bulkhead-collect.sh stop $REMOTE_OUT" | tee -a "$LOG"
 app_scp "$SSH_USER@$INSTANCE_ID:$REMOTE_OUT.tar.gz" "$OUT/server.tar.gz"
