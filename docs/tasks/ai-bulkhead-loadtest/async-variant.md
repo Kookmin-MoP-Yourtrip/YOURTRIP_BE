@@ -1,6 +1,6 @@
 # 비교 실험 E·F·V·G — Tomcat 워커를 비동기나 가상 스레드로 풀면 AI 지연은 어떻게 되는가
 
-> **상태: 측정 완료(2026-11-05, 분당 40건 5회차)**. 질문·예측·판정 기준은 측정 전에 고정했고, 결과는 [measurement.md 8절](measurement.md#8-비교-실험-efvgh--스레드를-tomcat에서-떼면-ai-지연은-풀리는가)에 있다. 판정 K1~K8이 모두 성립했다(K7·K8은 2026-11-06). r70-V(2026-11-08)는 K9 성립, K10 불성립이다([measurement.md 8-9](measurement.md)). 빠른 API 계단 회차 S는 K11·K12 성립이다(8-10절). K13(M 회차)은 아직 재지 않았다. 주실험 설계는 [README.md](README.md), 앞선 비교 실험은 [abort-variant.md](abort-variant.md)다.
+> **상태: 측정 완료(2026-11-05, 분당 40건 5회차)**. 질문·예측·판정 기준은 측정 전에 고정했고, 결과는 [measurement.md 8절](measurement.md#8-비교-실험-efvgh--스레드를-tomcat에서-떼면-ai-지연은-풀리는가)에 있다. 판정 K1~K8이 모두 성립했다(K7·K8은 2026-11-06). r70-V(2026-11-08)는 K9 성립, K10 불성립이다([measurement.md 8-9](measurement.md)). 빠른 API 계단 회차 S는 K11·K12 미판정이다(8-10절). V에 정의상 한계점이 없고, K12의 비교 계단이 k6 한계 표시나 지표 공백으로 빠졌다. K13(M 회차)은 아직 재지 않았다. 주실험 설계는 [README.md](README.md), 앞선 비교 실험은 [abort-variant.md](abort-variant.md)다.
 
 ## 0. 요약
 
