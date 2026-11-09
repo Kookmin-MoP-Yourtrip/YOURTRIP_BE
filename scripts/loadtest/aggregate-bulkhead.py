@@ -204,7 +204,8 @@ def metric_value(snap, name, pred=lambda l: True):
 
 
 def server_metrics(poll_path, t0_epoch, phases):
-    snaps = parse_snapshots(poll_path)
+    # 버킷은 쓰지 않는다. r70-V 는 관측이 약 70분이라 버킷까지 담으면 메모리가 수 GB 가 된다
+    snaps = parse_snapshots(poll_path, skip_suffixes=('_bucket',))
     # scrape-failed 스냅샷은 지표가 비어 있다. 실패 연속 시간은 '지표가 담긴 스냅샷 사이 간격'으로 잰다.
     good = [(ts, s) for ts, s in snaps if s]
     rel = [((ts - t0_epoch) * 1000, s) for ts, s in good]
@@ -240,7 +241,9 @@ def server_metrics(poll_path, t0_epoch, phases):
     gaps = [(b - a) / 1000 for a, b in zip(span, span[1:])]
     longest_gap = max(gaps, default=None)
 
-    saturated = [t for t, v in busy if max_threads is not None and v >= max_threads]
+    # 가상 스레드면 Tomcat 지표가 -1/-1 이다. 그대로 비교하면 -1 >= -1 이 모든 샘플을 포화로 센다(r40-V 착시).
+    tomcat_known = max_threads is not None and max_threads > 0
+    saturated = [t for t, v in busy if tomcat_known and v >= max_threads]
 
     # 내부 잔여 작업 소진: 회복 관측 시작 이후 aiAgentExecutor active + queued 가 3샘플 연속 0 이 된 시점
     rec = in_phase('recoveryStartMs', 'endMs')
@@ -267,12 +270,74 @@ def server_metrics(poll_path, t0_epoch, phases):
     rejected = {agent: delta('ai_agent_rejected_total', lambda l, a=agent: l.get('agent') == a)
                 for agent in ('planner', 'curator')}
 
+    # ── 자원 압박(r70-V, async-variant.md 3-6절) — 회차 전체(관측 연장 포함)에서 본다 ──
+    def series_all(name, pred=lambda l: True):
+        return series(rel, name, pred)
+
+    def peak(name, pred=lambda l: True):
+        return max((v for _, v in series_all(name, pred)), default=None)
+
+    def peak_each(name):
+        """*_max 게이지는 라벨별 최댓값이라 합치면 안 된다(합하면 planner 70초 + curator 60초 = 130초가 된다)."""
+        return max((v for _, s in rel for (n, _l), v in s.items() if n == name), default=None)
+
+    heap_old = peak('jvm_memory_used_bytes', lambda l: l.get('area') == 'heap' and 'Old' in l.get('id', ''))
+    heap_all = max((v for _, v in series_all('jvm_memory_used_bytes', lambda l: l.get('area') == 'heap')),
+                   default=None)
+    heap_max = next((v for _, v in series_all('jvm_memory_max_bytes',
+                                              lambda l: l.get('area') == 'heap' and 'Old' in l.get('id', ''))),
+                    None)
+    proc_cpu = [v for _, v in series_all('process_cpu_usage')]
+    proc_cpu_1m = (max(sum(proc_cpu[i:i + 60]) / 60 for i in range(len(proc_cpu) - 59))
+                   if len(proc_cpu) >= 60 else None)
+    mb = lambda v: round(v / 1048576) if v is not None else None  # noqa: E731
+
+    # 관측 연장(DRAIN_WAIT_SEC) — k6 가 끝난 뒤(endMs) 사용자가 떠난 요청을 서버가 계속 처리한 양
+    after = [(t, s) for t, s in rel if t >= phases['endMs']]
+
+    def delta_between(rows, name, pred):
+        vals = [metric_value(s, name, pred) for _, s in rows]
+        vals = [v for v in vals if v is not None]
+        return (vals[-1] - vals[0]) if len(vals) >= 2 else None
+
+    in_flight_all = series_all('ai_course_admission_requests_in_use')
+    drained_after = next((round((t - phases['endMs']) / 1000) for t, v in in_flight_all
+                          if t >= phases['endMs'] and v == 0), None)
+    tokens = {f'{a}.{k}': delta('ai_llm_tokens_sum', lambda l, a=a, k=k: l.get('agent') == a and l.get('type') == k)
+              for a in ('planner', 'curator') for k in ('input', 'cached', 'output')}
+
     return {
+        'resources': {
+            'heapOldMaxMb': mb(heap_old),
+            'heapUsedMaxMb': mb(heap_all),
+            'heapOldLimitMb': mb(heap_max),
+            'gcPauseSumSec': delta('jvm_gc_pause_seconds_sum', lambda l: True),
+            'gcPauseMaxSec': peak_each('jvm_gc_pause_seconds_max'),
+            'hikariActiveMax': peak('hikaricp_connections_active'),
+            'hikariPendingMax': peak('hikaricp_connections_pending'),
+            'hikariTimeoutDelta': delta('hikaricp_connections_timeout_total', lambda l: True),
+            'platformThreadsMax': peak('jvm_threads_live_threads'),
+            'processCpu1mMax': round(proc_cpu_1m, 3) if proc_cpu_1m is not None else None,
+            'aiInFlightMaxAll': max((v for _, v in in_flight_all), default=None),
+            'naverHttpDelta': delta('naver_local_throttle_wait_seconds_count', lambda l: True),
+            'naverThrottleWaitMaxSec': peak_each('naver_local_throttle_wait_seconds_max'),
+            'llmPermitWaitMaxSec': peak_each('ai_llm_permit_wait_seconds_max'),
+            'tokens': tokens,
+        },
+        'afterK6': {
+            'observedSec': round((after[-1][0] - after[0][0]) / 1000) if len(after) >= 2 else 0,
+            'inFlightAtK6End': metric_value(after[0][1], 'ai_course_admission_requests_in_use') if after else None,
+            'drainedAfterSec': drained_after,
+            'llmCalls': delta_between(after, 'ai_llm_call_seconds_count', lambda l: True),
+            'curatorDone': delta_between(after, 'ai_course_pipeline_duration_seconds_count',
+                                         lambda l: l.get('stage') == 'curator'),
+            'naverHttp': delta_between(after, 'naver_local_throttle_wait_seconds_count', lambda l: True),
+        },
         'agentRejected': rejected,
         'snapshots': len(good),
         'tomcatMaxThreads': max_threads,
         'tomcatBusyMaxInAi': max((v for _, v in busy), default=None),
-        'tomcatSaturatedSecondsInAi': len(saturated),
+        'tomcatSaturatedSecondsInAi': len(saturated) if tomcat_known else None,
         'tomcatFirstSaturatedSec': round((saturated[0] - phases['aiStartMs']) / 1000, 1) if saturated else None,
         'aiExecutorQueuedMaxInAi': max((v for _, v in queued), default=None),
         'aiExecutorActiveMaxInAi': max((v for _, v in active), default=None),
@@ -466,8 +531,10 @@ def main():
     rec_sec, rec_limit = recovery_time(rec_win, base, phases['recoveryStartMs'])
 
     per_api = {}
-    for api in ('popular', 'detail'):
+    for api in ('popular', 'detail', 'mine'):
         rows = [r for r in bg if r['api'] == api]
+        if not rows:
+            continue
         b = [r['ms'] for r in rows if phases['baselineStartMs'] <= r['rel'] < phases['aiStartMs']]
         j = [r['ms'] for r in rows if judge_start <= r['rel'] < phases['recoveryStartMs']]
         per_api[api] = {'baselineP99Ms': p99(b), 'judgeP99Ms': p99(j),
@@ -646,6 +713,23 @@ def print_report(r):
               f"응답을 못 받았는데 저장된 코스 {lc['savedButClientMissed']}건")
     if (r.get('server') or {}).get('aiInFlightMaxInAi') is not None:
         print(f"처리 중 AI 요청 최대 {fmt(r['server']['aiInFlightMaxInAi'])}")
+    res = (r.get('server') or {}).get('resources')
+    ms = lambda v: '-' if v is None else f'{v * 1000:.0f}ms'  # noqa: E731
+    if res:
+        print(f"자원: 힙 Old 최대 {fmt(res['heapOldMaxMb'], 'MB')}/{fmt(res['heapOldLimitMb'], 'MB')} · "
+              f"힙 전체 최대 {fmt(res['heapUsedMaxMb'], 'MB')} · GC 정지 합 {ms(res['gcPauseSumSec'])} "
+              f"최대 {ms(res['gcPauseMaxSec'])} · DB 풀 활성 최대 {fmt(res['hikariActiveMax'])} "
+              f"대기 최대 {fmt(res['hikariPendingMax'])} 타임아웃 {fmt(res['hikariTimeoutDelta'])} · "
+              f"플랫폼 스레드 최대 {fmt(res['platformThreadsMax'])} · 프로세스 CPU 1분 최대 "
+              f"{'-' if res['processCpu1mMax'] is None else format(res['processCpu1mMax'], '.0%')}")
+        print(f"      처리 중 AI 최대(전체) {fmt(res['aiInFlightMaxAll'])} · 네이버 HTTP {fmt(res['naverHttpDelta'])} "
+              f"(제한 대기 최대 {ms(res['naverThrottleWaitMaxSec'])}) · LLM 슬롯 대기 최대 "
+              f"{fmt(res['llmPermitWaitMaxSec'], '초')}")
+    aft = (r.get('server') or {}).get('afterK6')
+    if aft and aft['observedSec']:
+        print(f"k6 종료 뒤 {aft['observedSec']}초 관측: 처리 중 {fmt(aft['inFlightAtK6End'])}건 → "
+              f"0 까지 {fmt(aft['drainedAfterSec'], '초')} · LLM 호출 {fmt(aft['llmCalls'])} · "
+              f"Curator 완료 {fmt(aft['curatorDone'])} · 네이버 HTTP {fmt(aft['naverHttp'])}")
     if (r.get('server') or {}).get('aiRequestActiveMaxInAi') is not None:
         s = r['server']
         print(f"aiRequestExecutor 활성 최대 {fmt(s['aiRequestActiveMaxInAi'])} · 큐 최대 {fmt(s['aiRequestQueuedMaxInAi'])}")

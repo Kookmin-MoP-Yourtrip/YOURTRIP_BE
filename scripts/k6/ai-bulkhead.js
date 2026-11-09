@@ -46,6 +46,8 @@ const WARMUP_SEED = parseInt(__ENV.WARMUP_SEED || '1970', 10);
 
 const BG_POPULAR_RPS = parseInt(__ENV.BG_POPULAR_RPS || '10', 10);
 const BG_DETAIL_RPS = parseInt(__ENV.BG_DETAIL_RPS || '10', 10);
+// 인증 필터의 사용자 조회와 목록 조회로 DB 를 매번 타는 배경 API. 0 이면 시나리오를 만들지 않는다(기존 회차와 같다).
+const BG_MINE_RPS = parseInt(__ENV.BG_MINE_RPS || '0', 10);
 const BG_TIMEOUT_SEC = parseInt(__ENV.BG_TIMEOUT_SEC || '10', 10);
 // 운영 DB 에 실제로 있는 업로드 코스 ID 범위. 측정 전 점검(설계 문서 10-3)에서 확인한 값을 넘긴다.
 const DETAIL_ID_MIN = parseInt(__ENV.DETAIL_ID_MIN || '2', 10);
@@ -180,6 +182,9 @@ function buildScenarios() {
   });
   scenarios.popular = backgroundScenario('popular', BG_POPULAR_RPS);
   scenarios.detail = backgroundScenario('detail', BG_DETAIL_RPS);
+  if (BG_MINE_RPS > 0) {
+    scenarios.mine = backgroundScenario('mine', BG_MINE_RPS);
+  }
   return scenarios;
 }
 
@@ -193,6 +198,7 @@ export const options = {
     // dropped_iterations 에는 시나리오 tags(api)가 붙지 않고 scenario 태그만 붙는다.
     'dropped_iterations{scenario:popular}': ['count>=0'],
     'dropped_iterations{scenario:detail}': ['count>=0'],
+    ...(BG_MINE_RPS > 0 ? { 'dropped_iterations{scenario:mine}': ['count>=0'] } : {}),
   },
   summaryTrendStats: ['avg', 'min', 'med', 'p(95)', 'p(99)', 'max'],
 };
@@ -204,7 +210,7 @@ export function setup() {
     label: LABEL, ratePerMin: RATE_PER_MIN, seed: SEED, warmupSeed: WARMUP_SEED,
     warmupAiPerMin: WARMUP_AI_PER_MIN, phases: PHASES, daysMix: DAYS_MIX || `${DEFAULT_TRIP_DAYS}:1`,
     warmupArrivals: WARMUP_ARRIVALS.length, mainArrivals: MAIN_ARRIVALS.length,
-    bgPopularRps: BG_POPULAR_RPS, bgDetailRps: BG_DETAIL_RPS, bgTimeoutSec: BG_TIMEOUT_SEC,
+    bgPopularRps: BG_POPULAR_RPS, bgDetailRps: BG_DETAIL_RPS, bgMineRps: BG_MINE_RPS, bgTimeoutSec: BG_TIMEOUT_SEC,
     detailIdRange: [DETAIL_ID_MIN, DETAIL_ID_MAX], setupEpochMs: Date.now(),
   })}`);
 }
@@ -266,4 +272,14 @@ export function detail() {
     tags: { api: 'detail', name: 'detail' },
   });
   logBackground('detail', sentAtMs, res);
+}
+
+export function mine() {
+  const sentAtMs = Date.now();
+  const res = http.get(`${BASE_URL}/api/my-courses`, {
+    headers: { Authorization: `Bearer ${JWT}` },
+    timeout: `${BG_TIMEOUT_SEC}s`,
+    tags: { api: 'mine', name: 'mine' },
+  });
+  logBackground('mine', sentAtMs, res);
 }
