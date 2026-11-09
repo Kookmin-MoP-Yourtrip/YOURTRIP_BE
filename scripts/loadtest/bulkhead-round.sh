@@ -189,8 +189,11 @@ app_ssh "sudo mkdir -p /var/tmp/bulkhead && sudo bash /tmp/bulkhead/bulkhead-col
 k6_ssh "cd /opt/app && sudo git fetch -q --depth 1 origin '$K6_GIT_REF' && sudo git checkout -q FETCH_HEAD && sudo git log -1 --format='k6 스크립트 버전 %h'" | tee -a "$LOG"
 # push 하지 않은 k6 스크립트로 잴 때 쓴다. 어떤 내용으로 쟀는지는 결과와 함께 커밋해 남긴다.
 if [ "${K6_LOCAL_SCRIPTS:-0}" = 1 ]; then
-  k6_ssh "rm -rf /tmp/k6-local" && k6_scp -r "$REPO/scripts/k6" "$SSH_USER@$K6_HOST:/tmp/k6-local"
-  k6_ssh "sudo cp -r /tmp/k6-local/. /opt/app/scripts/k6/" && log "k6 스크립트를 로컬 사본으로 덮어썼다"
+  # && 로 묶으면 앞 명령이 실패해도 set -e 가 멈추지 않아, 옛 스크립트로 회차가 돈다. 문장을 나눈다.
+  k6_ssh "rm -rf /tmp/k6-local"
+  k6_scp -r "$REPO/scripts/k6" "$SSH_USER@$K6_HOST:/tmp/k6-local"
+  k6_ssh "sudo cp -r /tmp/k6-local/. /opt/app/scripts/k6/"
+  log "k6 스크립트를 로컬 사본으로 덮어썼다"
 fi
 log "k6 실행(약 12분)"
 k6_scp "$TOKEN_FILE" "$SSH_USER@$K6_HOST:/tmp/$LABEL.jwt"
