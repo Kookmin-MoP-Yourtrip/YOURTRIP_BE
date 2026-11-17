@@ -141,7 +141,8 @@ log "k6 종료(exit $K6_EXIT)"
 # 인스턴스 안에서 앱 포트로 직접 묻는다 — ALB 를 거치면 헬스체크·연결 재사용이 섞인다.
 # 경과 시간은 시도 횟수가 아니라 실제 시각으로 잰다 — SSH 터널과 curl 대기도 5분 안에 들어가야 한다.
 POST_DEADLINE=300
-POST_START=$(date +%s)
+# 기준은 k6 가 끝난 시각(END_EPOCH)이다 — k6 EC2 정리 작업이 늦어져도 그 시간까지 5분에 넣는다.
+POST_START=$END_EPOCH
 POST_OK=""
 CODE="(시도 없음)"
 while :; do
