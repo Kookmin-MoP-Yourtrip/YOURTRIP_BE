@@ -139,13 +139,23 @@ log "k6 종료(exit $K6_EXIT)"
 
 # 부하가 끝난 뒤 앱이 돌아오는지 본다(3-8절 K16). s-V1 은 이 시점에 API·관리 포트 모두 응답이 없었다.
 # 인스턴스 안에서 앱 포트로 직접 묻는다 — ALB 를 거치면 헬스체크·연결 재사용이 섞인다.
+# 경과 시간은 시도 횟수가 아니라 실제 시각으로 잰다 — SSH 터널과 curl 대기도 5분 안에 들어가야 한다.
+POST_DEADLINE=300
+POST_START=$(date +%s)
 POST_OK=""
-for i in $(seq 1 20); do
-  CODE=$(app_ssh "curl -s -m 5 -o /dev/null -w '%{http_code}' http://localhost:8080/api/upload-courses/$DETAIL_ID_MIN" || true)
-  [ "$CODE" = 200 ] && { POST_OK="$(( (i - 1) * 15 ))"; break; }
-  sleep 15
+CODE="(시도 없음)"
+while :; do
+  LEFT=$(( POST_DEADLINE - ($(date +%s) - POST_START) ))
+  [ "$LEFT" -gt 0 ] || break
+  TRY_TIMEOUT=$(( LEFT < 5 ? LEFT : 5 ))
+  CODE=$(app_ssh "curl -s -m $TRY_TIMEOUT -o /dev/null -w '%{http_code}' http://localhost:8080/api/upload-courses/$DETAIL_ID_MIN" || true)
+  ELAPSED=$(( $(date +%s) - POST_START ))
+  if [ "$CODE" = 200 ] && [ "$ELAPSED" -le "$POST_DEADLINE" ]; then POST_OK="$ELAPSED"; break; fi
+  LEFT=$(( POST_DEADLINE - ELAPSED ))
+  [ "$LEFT" -gt 0 ] || break
+  sleep $(( LEFT < 15 ? LEFT : 15 ))
 done
-if [ -n "$POST_OK" ]; then log "부하 종료 뒤 API 응답 정상 — 약 ${POST_OK}초 만에 200"; else log "부하 종료 뒤 5분 동안 API 가 200 을 돌려주지 않았다(마지막 $CODE)"; fi
+if [ -n "$POST_OK" ]; then log "부하 종료 뒤 API 응답 정상 — ${POST_OK}초 만에 200(실제 경과)"; else log "부하 종료 뒤 ${POST_DEADLINE}초 안에 API 가 200 을 돌려주지 않았다(마지막 $CODE)"; fi
 
 app_ssh "sudo bash /tmp/bulkhead/bulkhead-collect.sh stop $REMOTE_OUT" | tee -a "$LOG"
 app_scp "$SSH_USER@$INSTANCE_ID:$REMOTE_OUT.tar.gz" "$OUT/server.tar.gz"
