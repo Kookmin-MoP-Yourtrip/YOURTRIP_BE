@@ -3,7 +3,8 @@
 # 전제: SSM_ARTIFACT_KEY_PARAM 이 설정돼 있고 MSYS_NO_PATHCONV=1 이 켜져 있다.
 # 이 키들은 운영에 원래 없는 측정 전용 키다. 그 밖의 arm(P 등)은 clear_arm_env 로 지워 운영 기본값으로 뜨게 한다.
 ARM_ENV_PREFIX="${SSM_ARTIFACT_KEY_PARAM%/artifact_key}/env"
-ARM_ENV_KEYS=(AI_COURSE_ASYNC_ENABLED AI_COURSE_ADMISSION_MAXWORKUNITS AI_COURSE_ADMISSION_MAXREQUESTS SPRING_THREADS_VIRTUAL_ENABLED)
+ARM_ENV_KEYS=(AI_COURSE_ASYNC_ENABLED AI_COURSE_ADMISSION_MAXWORKUNITS AI_COURSE_ADMISSION_MAXREQUESTS SPRING_THREADS_VIRTUAL_ENABLED
+  SERVER_TOMCAT_THREADS_MAX)
 PIN_TRACE_OPT="-Djdk.tracePinnedThreads=short"
 # SSM 키를 지운다. 키가 없는 것은 정상이고, 그 밖의 실패(권한·네트워크)는 앞 회차 값이 남을 수 있으니 회차를 멈춘다.
 delete_ssm_key() {
@@ -29,8 +30,10 @@ clear_pin_trace() {
   [ "$cur" = "$PIN_TRACE_OPT" ] && delete_ssm_key "$ARM_ENV_PREFIX/JAVA_TOOL_OPTIONS"
   return 0
 }
+# 다섯 번째 인자는 Tomcat 워커 상한이다. 비우면 키를 지워 운영 프로필 값(prod 32)으로 뜬다 —
+# 앞 회차가 넣은 값이 다음 회차로 새지 않게 모든 호출에서 정리한다.
 set_arm_env() {
-  local async="$1" units="$2" requests="$3" virtual="$4" cur
+  local async="$1" units="$2" requests="$3" virtual="$4" threads_max="${5:-}" cur
   # JAVA_TOOL_OPTIONS 상태를 먼저 확인한다 — 조회 실패나 운영 값이 있으면 SSM 을 하나도 바꾸지 않은 채 멈춘다.
   # 운영 값을 덮어쓰면 뒤 회차에서 지울 때 원래 값을 되살릴 수 없다.
   cur=$(current_tool_opts) || exit 3
@@ -42,6 +45,11 @@ set_arm_env() {
   aws ssm put-parameter --name "$ARM_ENV_PREFIX/AI_COURSE_ADMISSION_MAXWORKUNITS" --value "$units" --type String --overwrite >/dev/null
   aws ssm put-parameter --name "$ARM_ENV_PREFIX/AI_COURSE_ADMISSION_MAXREQUESTS" --value "$requests" --type String --overwrite >/dev/null
   aws ssm put-parameter --name "$ARM_ENV_PREFIX/SPRING_THREADS_VIRTUAL_ENABLED" --value "$virtual" --type String --overwrite >/dev/null
+  if [ -n "$threads_max" ]; then
+    aws ssm put-parameter --name "$ARM_ENV_PREFIX/SERVER_TOMCAT_THREADS_MAX" --value "$threads_max" --type String --overwrite >/dev/null
+  else
+    delete_ssm_key "$ARM_ENV_PREFIX/SERVER_TOMCAT_THREADS_MAX"
+  fi
   if [ "$virtual" = true ]; then
     aws ssm put-parameter --name "$ARM_ENV_PREFIX/JAVA_TOOL_OPTIONS" --value="$PIN_TRACE_OPT" --type String --overwrite >/dev/null
   elif [ "$cur" = "$PIN_TRACE_OPT" ]; then

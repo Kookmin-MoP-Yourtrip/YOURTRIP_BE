@@ -3,14 +3,15 @@
 #
 # 설계: docs/tasks/ai-bulkhead-loadtest/async-variant.md 3-7절
 #   T = 플랫폼 스레드(Tomcat 워커 32), V = 가상 스레드. 같은 JAR 에 환경변수만 다르다. AI 요청은 보내지 않는다.
+#   W = 플랫폼 스레드(Tomcat 워커 200, Spring Boot 기본값) — 상한이 크면 무엇이 달라지는지 본다(3-8절).
 #
-# 사용:  bash scripts/loadtest/fastapi-round.sh <T|V> <반복 번호>   → results/ai-bulkhead/s-T1/
+# 사용:  bash scripts/loadtest/fastapi-round.sh <T|V|W> <반복 번호>   → results/ai-bulkhead/s-T1/
 # 설정:  results/ai-bulkhead/config.env. SSM 관리 포트 설정·헬스체크 경로·ASG 프로세스 중지는 측정 전체의 앞뒤에서 한다.
 set -euo pipefail
 
-ARM="${1:?T|V}"
+ARM="${1:?T|V|W}"
 REP="${2:?반복 번호}"
-case "$ARM" in T|V) ;; *) echo "arm 은 T 또는 V" >&2; exit 2 ;; esac
+case "$ARM" in T|V|W) ;; *) echo "arm 은 T, V, W 중 하나" >&2; exit 2 ;; esac
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck disable=SC1091
@@ -60,10 +61,12 @@ TOKEN_FILE="$OUT/jwt.txt"
 [ -s "$TOKEN_FILE" ] || { log "중단: 토큰 파일이 비었다"; exit 3; }
 trap 'rm -f "$TOKEN_FILE"' EXIT
 
-# 두 arm 은 스레드 모델만 다르다. 입장 제한·비동기 값은 AI 요청이 없어 결과에 영향이 없다.
+# 세 arm 은 스레드 모델·워커 수만 다르다. 입장 제한·비동기 값은 AI 요청이 없어 결과에 영향이 없다.
+# W 의 워커 수는 SSM 환경변수가 application-prod.yml 의 max: 32 를 덮어써 정한다(OS 환경변수가 우선한다).
 case "$ARM" in
   T) set_arm_env false 100000 100000 false ;;
   V) set_arm_env false 100000 100000 true ;;
+  W) set_arm_env false 100000 100000 false 200 ;;
 esac
 aws ssm put-parameter --name "$SSM_ARTIFACT_KEY_PARAM" --value "$KEY" --type String --overwrite >/dev/null
 REFRESH_ID=$(aws autoscaling start-instance-refresh --auto-scaling-group-name "$ASG_NAME" \
@@ -96,8 +99,10 @@ if [ "$ARM" = V ]; then
   MAXT=$(app_ssh "curl -s http://localhost:8081/actuator/prometheus | awk '/^tomcat_threads_config_max_threads/{print \$2; exit}'")
   [ "$MAXT" = "-1.0" ] || { log "중단: 가상 스레드가 켜지지 않았다(Tomcat 최대 $MAXT)"; exit 3; }
 else
-  MAXT=$(app_ssh "curl -s http://localhost:8081/actuator/prometheus | awk '/^tomcat_threads_config_max_threads/{print \$2; exit}'")
-  [ "$MAXT" = "32.0" ] || { log "중단: Tomcat 워커가 32 가 아니다($MAXT)"; exit 3; }
+  # 관리 포트(8081)의 Tomcat 도 같은 지표를 내므로 앱 커넥터(8080) 줄만 본다.
+  WANT=32.0; [ "$ARM" = W ] && WANT=200.0
+  MAXT=$(app_ssh "curl -s http://localhost:8081/actuator/prometheus | awk '/^tomcat_threads_config_max_threads/ && /8080/{print \$2; exit}'")
+  [ "$MAXT" = "$WANT" ] || { log "중단: Tomcat 워커가 $WANT 이 아니다($MAXT)"; exit 3; }
 fi
 log "Tomcat 최대 스레드 지표 $MAXT"
 
@@ -131,6 +136,27 @@ END_EPOCH=$(date +%s)
 k6_ssh "kill \$(cat /tmp/$LABEL.vmstat.pid) 2>/dev/null; rm -f /tmp/$LABEL.jwt"
 log "k6 종료(exit $K6_EXIT)"
 [ "$K6_EXIT" -eq 0 ] || { log "중단: k6 가 비정상 종료했다 — $(k6_ssh "tail -2 /tmp/$LABEL.k6.stderr" | cut -c1-200)"; app_ssh "sudo bash /tmp/bulkhead/bulkhead-collect.sh stop $REMOTE_OUT" >/dev/null || true; exit 3; }
+
+# 부하가 끝난 뒤 앱이 돌아오는지 본다(3-8절 K16). s-V1 은 이 시점에 API·관리 포트 모두 응답이 없었다.
+# 인스턴스 안에서 앱 포트로 직접 묻는다 — ALB 를 거치면 헬스체크·연결 재사용이 섞인다.
+# 경과 시간은 시도 횟수가 아니라 실제 시각으로 잰다 — SSH 터널과 curl 대기도 5분 안에 들어가야 한다.
+POST_DEADLINE=300
+# 기준은 k6 가 끝난 시각(END_EPOCH)이다 — k6 EC2 정리 작업이 늦어져도 그 시간까지 5분에 넣는다.
+POST_START=$END_EPOCH
+POST_OK=""
+CODE="(시도 없음)"
+while :; do
+  LEFT=$(( POST_DEADLINE - ($(date +%s) - POST_START) ))
+  [ "$LEFT" -gt 0 ] || break
+  TRY_TIMEOUT=$(( LEFT < 5 ? LEFT : 5 ))
+  CODE=$(app_ssh "curl -s -m $TRY_TIMEOUT -o /dev/null -w '%{http_code}' http://localhost:8080/api/upload-courses/$DETAIL_ID_MIN" || true)
+  ELAPSED=$(( $(date +%s) - POST_START ))
+  if [ "$CODE" = 200 ] && [ "$ELAPSED" -le "$POST_DEADLINE" ]; then POST_OK="$ELAPSED"; break; fi
+  LEFT=$(( POST_DEADLINE - ELAPSED ))
+  [ "$LEFT" -gt 0 ] || break
+  sleep $(( LEFT < 15 ? LEFT : 15 ))
+done
+if [ -n "$POST_OK" ]; then log "부하 종료 뒤 API 응답 정상 — ${POST_OK}초 만에 200(실제 경과)"; else log "부하 종료 뒤 ${POST_DEADLINE}초 안에 API 가 200 을 돌려주지 않았다(마지막 $CODE)"; fi
 
 app_ssh "sudo bash /tmp/bulkhead/bulkhead-collect.sh stop $REMOTE_OUT" | tee -a "$LOG"
 app_scp "$SSH_USER@$INSTANCE_ID:$REMOTE_OUT.tar.gz" "$OUT/server.tar.gz"
