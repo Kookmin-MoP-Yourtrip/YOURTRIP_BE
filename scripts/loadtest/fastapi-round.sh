@@ -167,7 +167,21 @@ END_EPOCH=$(date +%s)
 k6_ssh "kill \$(cat /tmp/$LABEL.vmstat.pid) 2>/dev/null; rm -f /tmp/$LABEL.jwt"
 log "k6 종료(exit $K6_EXIT)"
 lettuce_sched "$OUT/lettuce-sched-after.txt"
-python "$(win "$REPO/scripts/loadtest/lettuce-loop-gate.py")" "$(win "$OUT/lettuce-sched-before.txt")"   "$(win "$OUT/lettuce-sched-after.txt")" "${SHARED:-1}" | tee -a "$LOG" || true
+set +e
+python "$(win "$REPO/scripts/loadtest/lettuce-loop-gate.py")" "$(win "$OUT/lettuce-sched-before.txt")"   "$(win "$OUT/lettuce-sched-after.txt")" "${SHARED:-1}" | tee -a "$LOG"
+GATE_EXIT=${PIPESTATUS[0]}
+set -e
+# 게이트 결과를 회차 디렉터리에 남겨 집계가 무효로 처리하게 한다 — 로그에만 남기면 무효 회차가 정상 회차처럼 집계된다.
+# 공유 연결 1개(대조)는 기록만 하는 게이트라 무효 대상이 아니다.
+GATE_FILE="$OUT/loop-gate-invalid.txt"
+rm -f "$GATE_FILE"
+if [ "${SHARED:-1}" -gt 1 ]; then
+  case "$GATE_EXIT" in
+    0) ;;
+    2) echo "루프 분산 게이트 실패 — 공유 연결이 루프에 나뉘지 않았다(async-variant.md 3-9절)" > "$GATE_FILE" ;;
+    *) echo "루프 분산 게이트 판정 불가(exit $GATE_EXIT) — schedstat 을 읽지 못했다" > "$GATE_FILE" ;;
+  esac
+fi
 [ "$K6_EXIT" -eq 0 ] || { log "중단: k6 가 비정상 종료했다 — $(k6_ssh "tail -2 /tmp/$LABEL.k6.stderr" | cut -c1-200)"; app_ssh "sudo bash /tmp/bulkhead/bulkhead-collect.sh stop $REMOTE_OUT" >/dev/null || true; exit 3; }
 
 # 부하가 끝난 뒤 앱이 돌아오는지 본다(3-8절 K16). s-V1 은 이 시점에 API·관리 포트 모두 응답이 없었다.
@@ -216,7 +230,7 @@ set +e
 python "$(win "$REPO/scripts/loadtest/aggregate-fastapi.py")" \
   --k6-log "$(win "$OUT/$LABEL.k6.log")" --k6-summary "$(win "$OUT/$LABEL.summary.json")" \
   --poll "$(win "$OUT/$LABEL/metrics.prom")" --journal "$(win "$OUT/$LABEL/app.log")" \
-  --k6-vmstat "$(win "$OUT/$LABEL.vmstat")" --label "$LABEL" --out-json "$(win "$OUT/result.json")" | tee -a "$LOG"
+  --k6-vmstat "$(win "$OUT/$LABEL.vmstat")" --invalid-file "$(win "$GATE_FILE")" --label "$LABEL" --out-json "$(win "$OUT/result.json")" | tee -a "$LOG"
 AGG_EXIT=${PIPESTATUS[0]}
 set -e
 log "UnHealthyHostCount 최대 $(python -c "import json,sys;d=json.load(open(sys.argv[1]));print(max([p['Maximum'] for p in d['Datapoints']] or [0]))" "$(win "$OUT/cw-UnHealthyHostCount.json")")"

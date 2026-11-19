@@ -25,10 +25,20 @@ current_tool_opts() {
   echo "중단: SSM JAVA_TOOL_OPTIONS 조회 실패 — 값을 바꾸기 전에 멈춘다: $out" >&2
   return 1
 }
-# 이 스크립트가 넣는 JAVA_TOOL_OPTIONS 값인가 — 피닝 추적 하나 또는 I/O 스레드 수 하나뿐이다.
+# 측정 arm 이 실제로 쓰는 I/O 스레드 수만 측정 소유 값으로 본다(WS8). 숫자 전체를 허용하면 운영이 같은 옵션을 다른 값으로
+# 쓰고 있을 때 그 값을 측정 값으로 오판해 지우거나 덮어쓴다.
+IO_THREADS_ALLOWED=(8)
+is_allowed_io_threads() {
+  local v
+  for v in "${IO_THREADS_ALLOWED[@]}"; do [ "$1" = "$v" ] && return 0; done
+  return 1
+}
+# 이 스크립트가 넣는 JAVA_TOOL_OPTIONS 값인가 — 피닝 추적 하나 또는 허용 목록의 I/O 스레드 수 하나뿐이다.
 is_arm_tool_opts() {
+  local v
   [ "$1" = "$PIN_TRACE_OPT" ] && return 0
-  [[ "$1" =~ ^-Dio\.netty\.eventLoopThreads=[0-9]+$ ]]
+  for v in "${IO_THREADS_ALLOWED[@]}"; do [ "$1" = "$IO_THREADS_OPT_PREFIX$v" ] && return 0; done
+  return 1
 }
 # JAVA_TOOL_OPTIONS 는 운영이 쓸 수도 있는 키라, 이 스크립트가 넣은 값일 때만 지운다.
 clear_pin_trace() {
@@ -45,6 +55,7 @@ set_arm_env() {
   [ "$virtual" = true ] && want="$PIN_TRACE_OPT"
   if [ -n "$io_threads" ]; then
     [ -z "$want" ] || { echo "중단: 피닝 추적과 I/O 스레드 수를 한 회차에 함께 넣지 않는다" >&2; exit 3; }
+    is_allowed_io_threads "$io_threads" || { echo "중단: I/O 스레드 수 $io_threads 는 허용 목록(${IO_THREADS_ALLOWED[*]})에 없다" >&2; exit 3; }
     want="$IO_THREADS_OPT_PREFIX$io_threads"
   fi
   # JAVA_TOOL_OPTIONS 상태를 먼저 확인한다 — 조회 실패나 운영 값이 있으면 SSM 을 하나도 바꾸지 않은 채 멈춘다.

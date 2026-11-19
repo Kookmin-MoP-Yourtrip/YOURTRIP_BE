@@ -205,6 +205,8 @@ def main():
     ap.add_argument('--poll', required=True)
     ap.add_argument('--journal', required=True)
     ap.add_argument('--k6-vmstat')
+    # 회차 스크립트가 남긴 무효 사유 파일(선택). 파일이 있으면 그 내용을 무효 사유로 더한다 — 예: 루프 분산 게이트 실패
+    ap.add_argument('--invalid-file', action='append', default=[])
     ap.add_argument('--label', required=True)
     ap.add_argument('--out-json', required=True)
     args = ap.parse_args()
@@ -219,6 +221,12 @@ def main():
 
     invalid = []
     flags = []
+    for path in args.invalid_file:
+        if os.path.isfile(path):
+            with open(path, encoding='utf-8') as f:
+                reason = f.read().strip()
+            if reason:
+                invalid.append(reason)
     for r in rows:
         if r['other']:
             invalid.append(f"계단 {r['step']}: 2xx·5xx·타임아웃이 아닌 응답 {r['other']}건 — 토큰 만료 등 도구 문제")

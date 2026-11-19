@@ -35,6 +35,11 @@ def main():
     if not after:
         print('루프 게이트: schedstat 을 읽지 못했다 — 판정 불가')
         return 1
+    # 시작 샘플이 없으면 아래 차이 계산이 JVM 시작 이후 누적값이 된다 — k6 구간의 분산이 아니므로 판정하지 않는다.
+    # (시작 샘플은 있는데 그 뒤에 처음 생긴 루프는 아래에서 시작값 0 으로 센다)
+    if not before:
+        print('루프 게이트: k6 앞 schedstat 이 없다 — 구간 차이를 낼 수 없어 판정 불가')
+        return 1
     loops = []
     for tid, (comm, run, wait, count) in after.items():
         b = before.get(tid, (comm, 0, 0, 0))
