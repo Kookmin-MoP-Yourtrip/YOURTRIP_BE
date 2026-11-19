@@ -4,14 +4,19 @@
 # 설계: docs/tasks/ai-bulkhead-loadtest/async-variant.md 3-7절
 #   T = 플랫폼 스레드(Tomcat 워커 32), V = 가상 스레드. 같은 JAR 에 환경변수만 다르다. AI 요청은 보내지 않는다.
 #   W = 플랫폼 스레드(Tomcat 워커 200, Spring Boot 기본값) — 상한이 크면 무엇이 달라지는지 본다(3-8절).
+#   WS2·WS8 = 워커 200 + Redis 공유 연결 2·8개(WS8 은 Lettuce I/O 스레드도 8) — 루프 수의 효과를 본다(3-9절).
+#             라벨은 s-WS2·s-WS8 이고, 같은 구성을 다시 재면 s-WS2r2 처럼 반복 번호를 붙인다.
 #
-# 사용:  bash scripts/loadtest/fastapi-round.sh <T|V|W> <반복 번호>   → results/ai-bulkhead/s-T1/
+# 사용:  bash scripts/loadtest/fastapi-round.sh <T|V|W|WS2|WS8> <반복 번호>   → results/ai-bulkhead/s-T1/
 # 설정:  results/ai-bulkhead/config.env. SSM 관리 포트 설정·헬스체크 경로·ASG 프로세스 중지는 측정 전체의 앞뒤에서 한다.
 set -euo pipefail
 
-ARM="${1:?T|V|W}"
+ARM="${1:?T|V|W|WS2|WS8}"
 REP="${2:?반복 번호}"
-case "$ARM" in T|V|W) ;; *) echo "arm 은 T, V, W 중 하나" >&2; exit 2 ;; esac
+case "$ARM" in T|V|W|WS2|WS8) ;; *) echo "arm 은 T, V, W, WS2, WS8 중 하나" >&2; exit 2 ;; esac
+# WS 계열은 이름에 공유 연결 수가 들어 있어 반복 번호를 그대로 붙이면 헷갈린다(s-WS21).
+SHARED=""; IO_THREADS=""
+case "$ARM" in WS2) SHARED=2 ;; WS8) SHARED=8; IO_THREADS=8 ;; esac
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck disable=SC1091
@@ -21,6 +26,7 @@ export AWS_PROFILE AWS_REGION AWS_DEFAULT_REGION="$AWS_REGION" MSYS_NO_PATHCONV=
 win() { cygpath -m "$1"; }
 
 LABEL="s-$ARM$REP"
+if [ -n "$SHARED" ]; then LABEL="s-$ARM"; [ "$REP" = 1 ] || LABEL="s-${ARM}r$REP"; fi
 OUT="$REPO/results/ai-bulkhead/$LABEL"
 [ ! -e "$OUT" ] || { echo "이미 있다: $OUT" >&2; exit 2; }
 mkdir -p "$OUT"
@@ -67,6 +73,7 @@ case "$ARM" in
   T) set_arm_env false 100000 100000 false ;;
   V) set_arm_env false 100000 100000 true ;;
   W) set_arm_env false 100000 100000 false 200 ;;
+  WS2|WS8) set_arm_env false 100000 100000 false 200 "$SHARED" "$IO_THREADS" ;;
 esac
 aws ssm put-parameter --name "$SSM_ARTIFACT_KEY_PARAM" --value "$KEY" --type String --overwrite >/dev/null
 REFRESH_ID=$(aws autoscaling start-instance-refresh --auto-scaling-group-name "$ASG_NAME" \
@@ -100,11 +107,34 @@ if [ "$ARM" = V ]; then
   [ "$MAXT" = "-1.0" ] || { log "중단: 가상 스레드가 켜지지 않았다(Tomcat 최대 $MAXT)"; exit 3; }
 else
   # 관리 포트(8081)의 Tomcat 도 같은 지표를 내므로 앱 커넥터(8080) 줄만 본다.
-  WANT=32.0; [ "$ARM" = W ] && WANT=200.0
+  WANT=32.0; [ "$ARM" = T ] || WANT=200.0
   MAXT=$(app_ssh "curl -s http://localhost:8081/actuator/prometheus | awk '/^tomcat_threads_config_max_threads/ && /8080/{print \$2; exit}'")
   [ "$MAXT" = "$WANT" ] || { log "중단: Tomcat 워커가 $WANT 이 아니다($MAXT)"; exit 3; }
 fi
 log "Tomcat 최대 스레드 지표 $MAXT"
+
+# Redis 공유 연결 구성 확인(3-9절). 연결은 처음 쓰일 때 만들어지므로, 캐시를 건드리지 않는 헬스 엔드포인트로
+# Redis 연결을 한 번 끌어낸 뒤 앱 로그와 맺힌 연결 수를 본다. W 는 토글이 꺼져 있어야 한다.
+app_ssh "curl -s -o /dev/null http://localhost:8081/actuator/health" || true
+SHARED_LOG=$(app_ssh "sudo journalctl -u yourtrip-app --no-pager | grep -o 'Redis 공유 연결 [0-9]*개 생성' | tail -1" || true)
+REDIS_CONNS=$(app_ssh "ss -Htn state established '( dport = :6379 )' | wc -l" || echo "?")
+if [ -n "$SHARED" ]; then
+  [ "$SHARED_LOG" = "Redis 공유 연결 ${SHARED}개 생성" ] || { log "중단: 공유 연결 $SHARED 개가 만들어지지 않았다 — '$SHARED_LOG'"; exit 3; }
+  [ "$REDIS_CONNS" -ge "$SHARED" ] 2>/dev/null || { log "중단: Redis 연결이 $REDIS_CONNS 개뿐이다(기대 $SHARED 이상)"; exit 3; }
+  if [ -n "$IO_THREADS" ]; then
+    PICKED=$(app_ssh "sudo journalctl -u yourtrip-app --no-pager | grep -m1 'Picked up JAVA_TOOL_OPTIONS'" || true)
+    case "$PICKED" in *"eventLoopThreads=$IO_THREADS"*) log "I/O 스레드 수 적용 확인" ;; *) log "중단: I/O 스레드 옵션이 실리지 않았다 — $PICKED"; exit 3 ;; esac
+  fi
+else
+  [ -z "$SHARED_LOG" ] || { log "중단: 대조 arm 인데 공유 연결 토글이 켜져 있다 — $SHARED_LOG"; exit 3; }
+fi
+log "Redis 연결 ${REDIS_CONNS}개(공유 연결 설정 ${SHARED:-1})"
+
+# Lettuce 이벤트 루프 스레드별 실행 시간 — k6 앞뒤 차이로 루프 분산을 확인한다(3-9절 유효성 게이트).
+# comm 은 15자로 잘려 루프끼리 이름이 같으므로 tid 로 구분한다.
+lettuce_sched() {
+  app_ssh "PID=\$(systemctl show -p MainPID --value yourtrip-app); for t in /proc/\$PID/task/*; do c=\$(cat \$t/comm 2>/dev/null); case \"\$c\" in lettuce-epoll*|lettuce-nioEv*) echo \"\${t##*/} \$c \$(cat \$t/schedstat)\" ;; esac; done" > "$1" || true
+}
 
 app_ssh "mkdir -p /tmp/bulkhead"
 app_scp "$REPO/scripts/loadtest/bulkhead-collect.sh" "$REPO/scripts/loadtest/poll-metrics.sh" \
@@ -124,6 +154,7 @@ k6_ssh "sudo cp -r /tmp/k6-local/. /opt/app/scripts/k6/"
 k6_ssh "rm -f /tmp/$LABEL.k6.log /tmp/$LABEL.summary.json"
 k6_scp "$TOKEN_FILE" "$SSH_USER@$K6_HOST:/tmp/$LABEL.jwt"
 k6_ssh "chmod 600 /tmp/$LABEL.jwt; nohup vmstat 5 > /tmp/$LABEL.vmstat 2>&1 < /dev/null & echo \$! > /tmp/$LABEL.vmstat.pid"
+lettuce_sched "$OUT/lettuce-sched-before.txt"
 log "k6 실행(계단 8개 12분 + 회복 2분)"
 START_EPOCH=$(date +%s)
 set +e
@@ -135,6 +166,8 @@ set -e
 END_EPOCH=$(date +%s)
 k6_ssh "kill \$(cat /tmp/$LABEL.vmstat.pid) 2>/dev/null; rm -f /tmp/$LABEL.jwt"
 log "k6 종료(exit $K6_EXIT)"
+lettuce_sched "$OUT/lettuce-sched-after.txt"
+python "$(win "$REPO/scripts/loadtest/lettuce-loop-gate.py")" "$(win "$OUT/lettuce-sched-before.txt")"   "$(win "$OUT/lettuce-sched-after.txt")" "${SHARED:-1}" | tee -a "$LOG" || true
 [ "$K6_EXIT" -eq 0 ] || { log "중단: k6 가 비정상 종료했다 — $(k6_ssh "tail -2 /tmp/$LABEL.k6.stderr" | cut -c1-200)"; app_ssh "sudo bash /tmp/bulkhead/bulkhead-collect.sh stop $REMOTE_OUT" >/dev/null || true; exit 3; }
 
 # 부하가 끝난 뒤 앱이 돌아오는지 본다(3-8절 K16). s-V1 은 이 시점에 API·관리 포트 모두 응답이 없었다.
