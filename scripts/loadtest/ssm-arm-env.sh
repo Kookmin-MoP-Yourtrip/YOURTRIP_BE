@@ -6,6 +6,8 @@ ARM_ENV_PREFIX="${SSM_ARTIFACT_KEY_PARAM%/artifact_key}/env"
 ARM_ENV_KEYS=(AI_COURSE_ASYNC_ENABLED AI_COURSE_ADMISSION_MAXWORKUNITS AI_COURSE_ADMISSION_MAXREQUESTS SPRING_THREADS_VIRTUAL_ENABLED
   SERVER_TOMCAT_THREADS_MAX YOURTRIP_REDIS_SHAREDCONNECTIONS)
 PIN_TRACE_OPT="-Djdk.tracePinnedThreads=short"
+# NMT 요약 모드(async-variant.md 3-10절 B층). 네이티브 메모리를 영역별로 나눠 보기 위한 측정 전용 옵션이다.
+NMT_OPT="-XX:NativeMemoryTracking=summary"
 # Lettuce I/O 스레드 수(async-variant.md 3-9절). Lettuce 가 기본값을 정할 때 이 시스템 속성을 먼저 읽는다.
 IO_THREADS_OPT_PREFIX="-Dio.netty.eventLoopThreads="
 # SSM 키를 지운다. 키가 없는 것은 정상이고, 그 밖의 실패(권한·네트워크)는 앞 회차 값이 남을 수 있으니 회차를 멈춘다.
@@ -33,10 +35,11 @@ is_allowed_io_threads() {
   for v in "${IO_THREADS_ALLOWED[@]}"; do [ "$1" = "$v" ] && return 0; done
   return 1
 }
-# 이 스크립트가 넣는 JAVA_TOOL_OPTIONS 값인가 — 피닝 추적 하나 또는 허용 목록의 I/O 스레드 수 하나뿐이다.
+# 이 스크립트가 넣는 JAVA_TOOL_OPTIONS 값인가 — 피닝 추적, NMT, 허용 목록의 I/O 스레드 수 중 하나뿐이다.
 is_arm_tool_opts() {
   local v
   [ "$1" = "$PIN_TRACE_OPT" ] && return 0
+  [ "$1" = "$NMT_OPT" ] && return 0
   for v in "${IO_THREADS_ALLOWED[@]}"; do [ "$1" = "$IO_THREADS_OPT_PREFIX$v" ] && return 0; done
   return 1
 }
@@ -48,13 +51,21 @@ clear_pin_trace() {
   return 0
 }
 # 다섯 번째 인자는 Tomcat 워커 상한, 여섯 번째는 Redis 공유 연결 수, 일곱 번째는 Lettuce I/O 스레드 수다(3-9절).
+# 여덟 번째는 JAVA_TOOL_OPTIONS 방식이다(3-10절): 비우면 기존대로 가상 스레드일 때 피닝 추적을 넣고,
+# none 이면 아무것도 넣지 않으며, nmt 면 NMT 옵션만 넣는다. 메모리 비교 회차는 두 구성의 JVM 옵션을 같게 하려고 쓴다.
 # 비우면 키를 지워 운영 기본값으로 뜬다(워커는 prod 32, 공유 연결 1, I/O 스레드는 Lettuce 기본값) —
 # 앞 회차가 넣은 값이 다음 회차로 새지 않게 모든 호출에서 정리한다.
 set_arm_env() {
-  local async="$1" units="$2" requests="$3" virtual="$4" threads_max="${5:-}" shared="${6:-}" io_threads="${7:-}" cur want=""
+  local async="$1" units="$2" requests="$3" virtual="$4" threads_max="${5:-}" shared="${6:-}" io_threads="${7:-}" tool="${8:-}" cur want=""
   [ "$virtual" = true ] && want="$PIN_TRACE_OPT"
+  case "$tool" in
+    "") ;;
+    none) want="" ;;
+    nmt) want="$NMT_OPT" ;;
+    *) echo "중단: JAVA_TOOL_OPTIONS 방식 '$tool' 을 모른다(none|nmt)" >&2; exit 3 ;;
+  esac
   if [ -n "$io_threads" ]; then
-    [ -z "$want" ] || { echo "중단: 피닝 추적과 I/O 스레드 수를 한 회차에 함께 넣지 않는다" >&2; exit 3; }
+    [ -z "$want" ] || { echo "중단: 피닝 추적·NMT 와 I/O 스레드 수를 한 회차에 함께 넣지 않는다" >&2; exit 3; }
     is_allowed_io_threads "$io_threads" || { echo "중단: I/O 스레드 수 $io_threads 는 허용 목록(${IO_THREADS_ALLOWED[*]})에 없다" >&2; exit 3; }
     want="$IO_THREADS_OPT_PREFIX$io_threads"
   fi

@@ -6,9 +6,14 @@
 #     수집이 끊기지 않는다(전제가 깨지면 집계기가 '원인 분리 필요'로 표시한다)
 #   - 스레드 덤프: 10초마다. CallerRuns 의 1차 증거다(executor 게이지는 CallerRuns 를 못 잡은 선례가 있다)
 #   - 앱 로그: 회차 구간의 journal. 카카오 한도 소진·OpenAI 429 무효 판정용
+#   - 프로세스 메모리(async-variant.md 3-10절): 같은 디렉터리에 sample-host.sh 가 있으면 1초마다 RSS·RssAnon·
+#     MemAvailable 을 host.tsv 에 남긴다. JVM 밖에서 돌아 앱이 응답하지 않아도 끊기지 않는다. 오버헤드가 없어 늘 켠다
+#   - NMT 스냅샷: 세 번째 인자가 nmt 면 30초마다 jcmd VM.native_memory summary 를 nmt/<epoch>.txt 로 남긴다.
+#     JVM 이 -XX:NativeMemoryTracking=summary 로 떠 있어야 한다(측정 회차 B층 전용)
+#   - 커널 OOM: stop 때 회차 구간의 커널 로그에서 OOM killer 기록을 kernel-oom.txt 로 남긴다
 #
 # 사용 (root — 앱 JVM 이 root 로 돈다):
-#   sudo bash bulkhead-collect.sh start <out-dir>
+#   sudo bash bulkhead-collect.sh start <out-dir> [nmt]
 #   sudo bash bulkhead-collect.sh stop  <out-dir>      → <out-dir>.tar.gz
 #
 # 스레드 덤프 수단: 운영 인스턴스에는 java-21-amazon-corretto-headless 만 깔려 jcmd 가 없을 수 있다.
@@ -18,9 +23,11 @@ set -euo pipefail
 
 CMD="${1:?start|stop}"
 OUT="${2:?out-dir}"
+MODE="${3:-}"
 UNIT=yourtrip-app.service
 POLL_INTERVAL=1
 DUMP_INTERVAL=10
+NMT_INTERVAL=30
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 app_pid() {
@@ -62,6 +69,16 @@ start() {
   # 스레드 덤프 10초마다 — 이 스크립트의 내부 하위 명령으로 돌린다.
   setsid nohup bash "$0" _dumploop "$OUT" "$pid" "$jcmd" < /dev/null > "$OUT/dump.log" 2>&1 &
   echo $! > "$OUT/dump.pid"
+  if [ -f "$HERE/sample-host.sh" ]; then
+    setsid nohup bash "$HERE/sample-host.sh" "$OUT/host.tsv" 0 "${UNIT%.service}" < /dev/null > "$OUT/host.log" 2>&1 &
+    echo $! > "$OUT/host.pid"
+  fi
+  if [ "${MODE:-}" = nmt ]; then
+    [ -n "$jcmd" ] || { echo "NMT 스냅샷에는 jcmd 가 필요하다" >&2; exit 1; }
+    mkdir -p "$OUT/nmt"
+    setsid nohup bash "$0" _nmtloop "$OUT" "$pid" "$jcmd" < /dev/null > "$OUT/nmt.log" 2>&1 &
+    echo $! > "$OUT/nmt.pid"
+  fi
 
   echo "수집 시작: $OUT (덤프 수단: $(cat "$OUT/dump-mode"))"
 }
@@ -83,7 +100,7 @@ extract_sigquit_dumps() {
 
 stop() {
   [ -d "$OUT" ] || { echo "없다: $OUT" >&2; exit 1; }
-  for p in poll dump; do
+  for p in poll dump host nmt; do
     if [ -f "$OUT/$p.pid" ]; then
       kill "$(cat "$OUT/$p.pid")" 2>/dev/null || true
       rm -f "$OUT/$p.pid"
@@ -95,6 +112,8 @@ stop() {
     extract_sigquit_dumps "$since"
   fi
   journalctl -u "$UNIT" --since "@$since" -o cat --no-pager > "$OUT/app.log"
+  # 커널 OOM killer 기록 — 박스 메모리가 먼저 바닥났는지 가린다(3-10절 K23). 없으면 빈 파일이다.
+  journalctl -k --since "@$since" --no-pager 2>/dev/null | grep -iE 'out of memory|oom-kill|killed process' > "$OUT/kernel-oom.txt" || true
   tar -czf "$OUT.tar.gz" -C "$(dirname "$OUT")" "$(basename "$OUT")"
   echo "수집 종료: $OUT.tar.gz ($(du -h "$OUT.tar.gz" | cut -f1)), 덤프 $(ls "$OUT/dumps" | wc -l)개"
 }
@@ -113,9 +132,36 @@ dump_loop() {
   done
 }
 
+# NMT 요약 스냅샷. JVM 이 멈춰 응답하지 않으면 jcmd 가 매달리므로 시간 제한을 둔다.
+nmt_loop() {
+  local pid="$1" jcmd="$2" ts
+  while true; do
+    ts=$(date +%s.%N)
+    timeout 20 "$jcmd" "$pid" VM.native_memory summary > "$OUT/nmt/$ts.txt" 2>&1 || true
+    sleep "$NMT_INTERVAL"
+  done
+}
+
+# 회차 시작 직후 수집이 실제로 도는지 한 줄로 알린다 — 회차 스크립트가 이 출력으로 계속 여부를 정한다.
+#   rss_anon_kb : host.tsv 의 마지막 RssAnon 값(없으면 빈 값)
+#   nmt_committed_kb : 가장 이른 NMT 스냅샷의 Total committed(NMT 회차가 아니면 빈 값)
+check() {
+  local rss="" nmt="" first
+  if [ -f "$OUT/host.tsv" ]; then
+    rss=$(awk -F'\t' 'NR==1{for(i=1;i<=NF;i++) if($i=="jvm_rss_anon_kb") c=i; next} c && $c!=""{v=$c} END{print v}' "$OUT/host.tsv")
+  fi
+  if [ -d "$OUT/nmt" ]; then
+    first=$(ls "$OUT/nmt" | sort | head -1)
+    [ -z "$first" ] || nmt=$(sed -n 's/^Total: .*committed=\([0-9]*\)KB.*/\1/p' "$OUT/nmt/$first" | head -1)
+  fi
+  echo "rss_anon_kb=$rss nmt_committed_kb=$nmt"
+}
+
 case "$CMD" in
   _dumploop) dump_loop "$3" "${4:-}" ;;
+  _nmtloop) nmt_loop "$3" "${4:-}" ;;
   start) start ;;
   stop) stop ;;
-  *) echo "start|stop" >&2; exit 2 ;;
+  check) check ;;
+  *) echo "start|stop|check" >&2; exit 2 ;;
 esac
