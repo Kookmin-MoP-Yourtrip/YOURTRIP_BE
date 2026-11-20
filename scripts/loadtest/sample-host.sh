@@ -24,6 +24,10 @@
 #                 논힙 committed + direct buffer)를 뺀 잔여가 곧 힙 밖에 실제로 쓰는 양이고,
 #                 그것이 -Xmx를 t3.small(2GB) 기준으로 재산정하는 근거가 된다.
 #   jvm_vsz_b   : 가상 메모리 크기. RSS와 나란히 두면 '예약했지만 안 만진' 양이 보인다.
+#   jvm_hwm_kb  : /proc/<pid>/status의 VmHWM(프로세스 시작 이후 RSS 최고 수위).
+#   jvm_rss_anon_kb / jvm_rss_file_kb : 같은 파일의 RssAnon·RssFile. RSS를 익명 메모리(힙·스택·malloc)와
+#                 파일 페이지(JAR·공유 라이브러리 매핑)로 나눈다. 스레드 모델끼리 메모리를 비교할 때는 파일 페이지를
+#                 뺀 RssAnon이 정확하다(async-variant.md 3-10절). status는 셸 내장 read로 읽어 fork를 늘리지 않는다.
 #   mem_*_kb    : /proc/meminfo의 MemTotal/MemFree/MemAvailable. 힙을 키웠을 때 박스에
 #                 남는 여유가 얼마인지가 -Xmx 상한을 정하는 안전 조건이라 함께 잰다.
 #                 MemAvailable이 바닥나면 페이지 캐시가 밀려 I/O가 느려지고 결국 OOM이다.
@@ -55,7 +59,7 @@ PID=$(resolve_pid)
 # 초당 fork가 하나 늘어난다(샘플러에 fork를 더하지 않는다는 이 파일의 원칙).
 PAGE_KB=$(( $(getconf PAGESIZE) / 1024 ))
 
-echo -e "ts\tload1\tload5\trunnable_total\tprocs_running\tcpu_user\tcpu_nice\tcpu_system\tcpu_idle\tcpu_iowait\tcpu_irq\tcpu_softirq\tcpu_steal\tctxt\tprocs_blocked\tpid\tjvm_utime\tjvm_stime\tjvm_minflt\tjvm_majflt\tjvm_nthreads\tjvm_vsz_b\tjvm_rss_kb\tmem_total_kb\tmem_free_kb\tmem_avail_kb" > "$OUT"
+echo -e "ts\tload1\tload5\trunnable_total\tprocs_running\tcpu_user\tcpu_nice\tcpu_system\tcpu_idle\tcpu_iowait\tcpu_irq\tcpu_softirq\tcpu_steal\tctxt\tprocs_blocked\tpid\tjvm_utime\tjvm_stime\tjvm_minflt\tjvm_majflt\tjvm_nthreads\tjvm_vsz_b\tjvm_rss_kb\tmem_total_kb\tmem_free_kb\tmem_avail_kb\tjvm_hwm_kb\tjvm_rss_anon_kb\tjvm_rss_file_kb" > "$OUT"
 start=$(date +%s)
 while true; do
   ts=$(date +%s.%N)
@@ -74,7 +78,7 @@ while true; do
   { read -r _ mt _; read -r _ mf _; read -r _ ma _; } < /proc/meminfo
 
   [ -d "/proc/$PID" ] || PID=$(resolve_pid)
-  ut=""; st=""; mn=""; mj=""; nt=""; rs=""; vz=""
+  ut=""; st=""; mn=""; mj=""; nt=""; rs=""; vz=""; hw=""; ra=""; rf=""
   if [ "$PID" != "0" ] && [ -r "/proc/$PID/stat" ]; then
     # comm(2번 필드)은 괄호로 감싸이고 공백을 포함할 수 있어 $14 같은 위치 참조가 어긋난다.
     # 마지막 ') ' 이후로 잘라내면 남은 첫 필드가 state(원래 3번)이므로, 원래 N번 필드는 N-2번이다.
@@ -83,8 +87,14 @@ while true; do
     # shellcheck disable=SC2086
     set -- $rest
     mn=$8; mj=${10}; ut=${12}; st=${13}; nt=${18}; vz=${21}; rs=$(( ${22} * PAGE_KB ))
+    # status의 값은 이미 kB 단위다("RssAnon:   123456 kB").
+    if [ -r "/proc/$PID/status" ]; then
+      while read -r k v _; do
+        case "$k" in VmHWM:) hw=$v ;; RssAnon:) ra=$v ;; RssFile:) rf=$v ;; esac
+      done < "/proc/$PID/status"
+    fi
   fi
-  echo -e "$ts\t$l1\t$l5\t$rt\t$pr\t$stat\t$PID\t$ut\t$st\t$mn\t$mj\t$nt\t$vz\t$rs\t$mt\t$mf\t$ma" >> "$OUT"
+  echo -e "$ts\t$l1\t$l5\t$rt\t$pr\t$stat\t$PID\t$ut\t$st\t$mn\t$mj\t$nt\t$vz\t$rs\t$mt\t$mf\t$ma\t$hw\t$ra\t$rf" >> "$OUT"
   if [ "$DURATION" -gt 0 ] && [ $(( $(date +%s) - start )) -ge "$DURATION" ]; then break; fi
   sleep 1
 done
