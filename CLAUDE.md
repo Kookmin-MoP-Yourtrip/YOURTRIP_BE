@@ -45,6 +45,7 @@ YOURTRIP_BE/
         ├── config/           # SecurityConfig, SwaggerConfig, WebConfig, AsyncConfig, RedisConfig, RedisCacheErrorHandler
         ├── converter/        # OctetStreamReadMsgConverter
         ├── exception/        # BusinessException, GlobalExceptionHandler, errorCode/*
+        ├── health/           # liveness 진행 여부 판정 — 과부하와 고장 구분 (docs/tasks/health-check-progress)
         ├── jwt/              # JwtAuthenticationFilter, JwtTokenProvider
         ├── kakao/            # 카카오 지도/장소 검색 클라이언트 (KakaoLocalClient, AI 코스 생성 시 장소 보정용)
         ├── mail/             # 이메일 인증 발송 (MailService, MailLog)
