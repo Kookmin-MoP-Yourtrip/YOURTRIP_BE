@@ -52,7 +52,7 @@ services:
       # 받은 수를 mail.send{sent}와 맞춰 볼 수 없다.
       - MP_MAX_MESSAGES=20000
 
-  # 앱과 Mailpit 사이의 TCP 프록시. 앱은 이 프록시(1026)로 보내고, 회차 도중에 런타임 API(8474)로
+  # 앱과 Mailpit 사이의 TCP 프록시. 앱은 이 프록시(호스트 2526)로 보내고, 회차 도중에 런타임 API(8474)로
   # 지연·무응답을 넣고 뺀다 — 앱을 재기동하지 않고 "SMTP가 돌아온 뒤"를 볼 수 있다.
   toxiproxy:
     image: ghcr.io/shopify/toxiproxy:2.13.0
@@ -61,7 +61,9 @@ services:
     command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
     ports:
       - "8474:8474"   # 독성 조작 API (scripts/loadtest/mail-toxic.sh)
-      - "1026:1026"   # 앱이 보내는 SMTP 포트
+      # 호스트 쪽은 2526이다. 1024~1100대는 다른 프로그램이 잡기 쉽다(개발 PC에서 mysqld가 1026을 잡아
+      # 포트 바인딩이 조용히 실패한 적이 있다). 컨테이너 안 리슨 포트(1026)는 toxiproxy.json과 맞춘다.
+      - "2526:1026"   # 앱이 보내는 SMTP 포트
     volumes:
       - ./scripts/loadtest/toxiproxy.json:/config/toxiproxy.json:ro
     depends_on:
