@@ -2,6 +2,9 @@ package backend.yourtrip.global.mail.service;
 
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.MailErrorCode;
+import backend.yourtrip.global.mail.MailMetrics;
+import backend.yourtrip.global.mail.MailMetrics.AttemptOutcome;
+import backend.yourtrip.global.mail.MailMetrics.MailOutcome;
 import backend.yourtrip.global.mail.entity.MailLog;
 import backend.yourtrip.global.mail.repository.MailLogRepository;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +20,7 @@ public class MailService {
 
     private final JavaMailSender mailSender;
     private final MailLogRepository mailLogRepository;
+    private final MailMetrics mailMetrics;
 
     private static final int MAX_RETRY = 3;
 
@@ -48,9 +52,10 @@ public class MailService {
             message.setSubject(subject);
             message.setText(text);
             message.setFrom("너의 여행은 <th2194@gmail.com>");
-            mailSender.send(message);
+            sendTimed(message);
 
             logBuilder.status("SUCCESS");
+            mailMetrics.mail(MailOutcome.SENT);
             System.out.println("[메일 전송 성공] " + to);
 
         } catch (MailSendException e) {
@@ -61,15 +66,30 @@ public class MailService {
                 System.out.println("[재시도 진행] " + (attempt + 1) + "회차");
                 sendMailWithLogging(to, subject, text, attempt + 1);
             } else {
+                mailMetrics.mail(MailOutcome.GAVE_UP);
                 throw new BusinessException(MailErrorCode.MAIL_SEND_FAILED);
             }
 
         } catch (Exception e) {
             logBuilder.status("FAILED").errorMessage(e.getMessage());
+            mailMetrics.mail(MailOutcome.GAVE_UP);
             throw new BusinessException(MailErrorCode.MAIL_SEND_FAILED);
 
         } finally {
             mailLogRepository.save(logBuilder.build());
+        }
+    }
+
+    // SMTP 시도 한 번의 구간만 잰다 — 메시지 조립과 MailLog 저장은 넣지 않는다.
+    // 예외 종류와 무관하게 던져졌으면 실패로 센다(재시도 여부 판단은 호출부의 몫이다).
+    private void sendTimed(SimpleMailMessage message) {
+        long start = System.nanoTime();
+        try {
+            mailSender.send(message);
+            mailMetrics.attempt(AttemptOutcome.SUCCESS, System.nanoTime() - start);
+        } catch (RuntimeException e) {
+            mailMetrics.attempt(AttemptOutcome.FAILURE, System.nanoTime() - start);
+            throw e;
         }
     }
 
