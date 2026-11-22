@@ -145,13 +145,14 @@ docker compose up -d redis
 
 ## worktree 작업 규칙
 
-이 저장소는 `git worktree`로 브랜치를 분리해 작업한다. 실행에 필요한 파일 일부(`.env`, terraform state·`tfvars`·키 등)가 `.gitignore` 대상이라 **git이 아니라 [.worktreeinclude](.worktreeinclude) 목록 + `post-checkout` 훅의 복사로만 공유된다.**
+이 저장소는 `git worktree`로 브랜치를 분리해 작업한다. 실행에 필요한 파일 일부(`.env`, terraform `tfvars`·키 등)가 `.gitignore` 대상이라 **git이 아니라 [.worktreeinclude](.worktreeinclude) 목록 + `post-checkout` 훅의 복사로만 공유된다.**
 
 > 이 파일(`CLAUDE.md`)과 `.claude/rules/*`는 **git 추적으로 전환됐다**(`5cf515a`·`9cfc606`). 이제 커밋으로 공유되므로 아래의 수동 복사 대상이 아니다 — 대신 **머지되기 전까지는 다른 worktree에 반영되지 않는다.**
 
 훅은 **메인 저장소 → 새 worktree 단방향**이고 **기존 파일을 덮어쓰지 않는다.** 따라서:
 
-- worktree에서 gitignore된 파일(`.env`, `terraform.tfstate`, `terraform.tfvars` 등)을 새로 만들거나 수정했으면 **메인 저장소 사본도 함께 갱신한다.** 그러지 않으면 그 변경은 이 worktree에만 남는다.
+- worktree에서 gitignore된 파일(`.env`, `terraform.tfvars`, SSH 키 등)을 새로 만들거나 수정했으면 **메인 저장소 사본도 함께 갱신한다.** 그러지 않으면 그 변경은 이 worktree에만 남는다.
+- **terraform state는 이 규칙의 대상이 아니다.** S3 원격 backend에 하나만 있어 worktree 사이에 사본이 없다(아래 "인프라(terraform) 변경 규칙"). 대신 새 worktree에서는 쓸 모듈마다 `terraform init`을 한 번 돌린다.
 - 작업 중 새로 생긴 gitignore 파일이 다른 worktree에도 필요하면 `.worktreeinclude`에 등록한다(이 파일은 git 추적 대상이라 커밋된다).
 
 판단 기준·함정·비교 방법은 [docs/guide/worktree.md](docs/guide/worktree.md)에 정리돼 있다.

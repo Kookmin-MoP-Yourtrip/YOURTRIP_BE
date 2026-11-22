@@ -12,7 +12,9 @@
 | IAM 역할·인스턴스 프로파일 | SSM + (아티팩트 읽기 · 시크릿 읽기). CloudWatch Agent 권한은 #121에서 제거됐다 |
 | RDS PostgreSQL | db.t3.micro, 단일 AZ, 암호화 켬 |
 | ElastiCache Redis | cache.t3.micro, **App과 같은 AZ 고정** |
-| ALB·Launch Template·ASG·DNS 레코드 | *(다음 단계에서 추가된다)* |
+| ALB·리스너 2개·타깃 그룹·차단 규칙 | HTTPS 종료, 80 → 443 리다이렉트, `/actuator` 외부 차단 — [alb.tf](alb.tf) |
+| Launch Template·ASG·확장 정책 | 단일 AZ, desired 1 / max 2, instance refresh, 요청 수 기반 Target Tracking — [asg.tf](asg.tf) |
+| DNS 레코드 | apex alias → ALB, `enable_dns_record`로 켠다 — [dns.tf](dns.tf) |
 
 ## 시크릿은 어디에 있는가
 
@@ -183,11 +185,13 @@ aws elasticache describe-cache-clusters --query "CacheClusters[].{ID:CacheCluste
 `available`이면 리소스는 멀쩡하므로 taint만 해제한다.
 
 ```bash
-cp terraform.tfstate terraform.tfstate.pre-untaint-bak
+terraform state pull > state-pre-untaint.json   # 되돌릴 기준점. 이 파일에는 시크릿이 평문으로 있으니 끝나면 지운다
 terraform untaint aws_db_instance.this
 terraform untaint aws_elasticache_cluster.this
 terraform plan -out=tfplan        # destroy가 0인지 반드시 확인
 ```
+
+> **`cp terraform.tfstate …`로 백업하지 않는다.** state는 S3 원격 backend에 있어(#157) 로컬에 `terraform.tfstate`가 없다 — `cp`는 파일이 없다며 실패하고, 그 실패를 놓치면 백업 없이 untaint를 진행하게 된다. `state pull`이 원격 state를 받아 오는 정식 경로다. state 버킷은 버저닝이 켜져 있어(`prod-permanent/s3_tfstate.tf`) 백업을 빠뜨렸어도 S3 콘솔에서 이전 버전으로 되돌릴 수 있지만, 사고 대응 중에 기대할 안전망은 아니다.
 
 실제로 `creating` 상태로 멈춰 있거나 `failed`라면 그때는 taint가 맞으므로 그대로 재생성한다.
 
@@ -236,4 +240,4 @@ data 소스라 state에서 빼도 실제 파라미터에는 아무 영향이 없
 - **`enable_dev_direct_access`를 켜두지 않는다.** 개발자 IP에서 ALB를 우회해 8080으로 붙을 수 있게 되는데, 그 경로로는 `/actuator` 차단 리스너 규칙을 지나치므로 "차단이 걸려 있다"는 착각을 만든다. 디버깅이 끝나면 끈다.
 - **ALB 시간 값은 AI 코스 생성 예산과 묶여 있다.** `alb_idle_timeout`(60초)은 서버 예산(35초) + 후처리보다 길고 FE OkHttp `readTimeout`(60초)과 같아야 한다 — 짧아지면 서버가 코스를 저장했는데 사용자는 오류를 받아 다시 누르고, 코스가 중복 생성된다. `target_group_deregistration_delay`(30초)는 예산 + 후처리보다 길어야 배포 중 AI 요청이 잘리지 않는데, **지금은 35.3초 > 30초로 깨져 있다**([#190](https://github.com/Kookmin-MoP-Yourtrip/YOURTRIP_BE/issues/190)). 값을 바꾸기 전에 [로드맵의 시간 제한 불변식](../../docs/tasks/llm-performance/README.md#시간-제한-불변식-6단계-현재-값-기준-정본)을 본다.
 - **인프라 변경은 반드시 terraform을 거친다.** state가 S3 원격 backend로 갔어도(#157) 이 규칙은 그대로다 — 콘솔·CLI로 형상을 바꾸면 어디에 있든 state에 기록되지 않아 drift가 된다. 실제 사고 사례와 복구 절차는 [../loadtest/README.md](../loadtest/README.md)의 "인프라 변경은 반드시 terraform을 거친다" 절에 있다. 인스턴스 start/stop처럼 **실행 상태만 바꾸는 조작**은 CLI로 해도 된다.
-- `terraform.tfstate`·`terraform.tfvars`·SSH 키페어는 `.gitignore` 대상이며, worktree에서 작업했다면 [CLAUDE.md](../../CLAUDE.md)의 worktree 규칙에 따라 메인 워킹트리 사본도 갱신해야 한다.
+- `terraform.tfvars`·SSH 키페어는 `.gitignore` 대상이며, worktree에서 바꿨다면 [CLAUDE.md](../../CLAUDE.md)의 worktree 규칙에 따라 메인 워킹트리 사본도 갱신해야 한다. **state는 이 대상이 아니다** — S3 원격 backend에 하나만 있으므로(#157) 복사할 사본이 없고, 새 worktree에서는 `terraform init`만 하면 된다.
