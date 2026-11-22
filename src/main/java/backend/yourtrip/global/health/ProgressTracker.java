@@ -36,8 +36,16 @@ public class ProgressTracker {
         this.lastCompletedAt = new AtomicLong(nanoClock.getAsLong());
     }
 
+    /**
+     * 더 최신일 때만 기록한다. 시각을 읽고 저장하는 사이에 다른 워커가 더 늦은 시각을 저장할 수 있어, 그냥 {@code set}하면
+     * 늦게 도착한 옛 시각이 최신 완료를 덮어쓴다 — 그러면 임계값 안의 완료를 놓쳐 직접 확인이 실패할 때 DOWN이 된다.
+     *
+     * <p>순서는 차이의 부호로 비교한다. {@link System#nanoTime()}은 기준점이 임의라 값 자체가 음수일 수 있고 넘칠 수도
+     * 있어 {@code Math::max}로는 틀린다. 차이는 292년 안에서는 부호가 순서를 정확히 나타낸다.
+     */
     void markCompleted() {
-        lastCompletedAt.set(nanoClock.getAsLong());
+        long now = nanoClock.getAsLong();
+        lastCompletedAt.accumulateAndGet(now, (prev, next) -> next - prev > 0 ? next : prev);
     }
 
     /** 마지막 완료 시각의 원시값. 직접 확인 전후로 비교해 "그사이 완료가 있었는가"를 판단하는 데만 쓴다. */
@@ -46,6 +54,11 @@ public class ProgressTracker {
     }
 
     Duration sinceLastCompletion() {
-        return Duration.ofNanos(nanoClock.getAsLong() - lastCompletedAt.get());
+        return since(lastCompletedAt.get());
+    }
+
+    /** 주어진 시각(이 객체의 시계 기준)부터 지금까지. 판정이 한 번 읽은 기준값으로 경과를 재게 하려고 따로 둔다. */
+    Duration since(long nanoTime) {
+        return Duration.ofNanos(nanoClock.getAsLong() - nanoTime);
     }
 }

@@ -47,13 +47,15 @@ public class RequestProgressHealthIndicator implements HealthIndicator {
 
     @Override
     public Health health() {
-        Duration since = tracker.sinceLastCompletion();
+        // 기준값을 한 번만 읽고, 최근 완료 검사와 "직접 확인 중에 완료가 있었는가" 비교에 같은 값을 쓴다. 검사 뒤에 다시
+        // 읽으면 그 사이의 완료가 기준값에 흡수돼, 방금 완료가 있었는데도 직접 확인이 실패하면 DOWN이 된다.
+        long before = tracker.lastCompletedAt();
+        Duration since = tracker.since(before);
         if (since.compareTo(stallThreshold) <= 0) {
             return Health.up().withDetail("check", "recent-completion")
                 .withDetail("msSinceLastCompletion", since.toMillis()).build();
         }
 
-        long before = tracker.lastCompletedAt();
         if (probe.ping()) {
             return Health.up().withDetail("check", "probe-ok")
                 .withDetail("msSinceLastCompletion", since.toMillis()).build();
