@@ -128,7 +128,14 @@ start_background() {
   log "배경 k6 시작(초당 20건)"
 }
 
-if [ "$SCN" != S1 ]; then
+if [ "$SCN" = S7 ]; then
+  # S7 은 "한가한 서버에 긴 요청 하나"다. 배경 트래픽이 있으면 그 요청들이 계속 끝나 완료 기록이 끊기지 않으므로,
+  # 판정이 recent-completion 으로 끝나 이 시나리오가 확인하려는 8080 직접 확인 경로를 한 번도 타지 않는다
+  # (첫 h-C2-S7 이 그랬다 — h-C2-S7.with-background 로 보관). 그래서 S7 만 배경 트래픽 없이 돌린다.
+  # 임계값(10초)이 지나도록 기다려 완료 기록을 끊은 뒤 주입한다.
+  log "S7 — 배경 트래픽 없이, 완료 기록이 끊기도록 30초 대기"
+  sleep 30
+elif [ "$SCN" != S1 ]; then
   start_background
   log "기준선 2분"
   sleep 120
@@ -240,6 +247,12 @@ while [ "$(date +%s)" -lt "$WATCH_END" ]; do
     if [ "$id" != "$INSTANCE_ID" ] && [ "$(target_state "$id")" = healthy ]; then NEW_ID="$id"; fi
   done
   if [ -n "$NEW_ID" ]; then REPLACED=yes; mark "new-healthy $NEW_ID"; break; fi
+  if [ "$SCN" = S7 ]; then
+    # 배경 트래픽이 없어 8080 의 완료는 직접 확인(/internal/ping)뿐이다. 그래서 이 구간의 UP 은 recent-completion 이든
+    # probe-ok 든 모두 직접 확인 경로에서 나온 것이다 — 워커 1개가 묶인 동안 그 경로가 계속 통하는지 시계열로 남긴다.
+    printf '%s\t%s\n' "$(date +%s)" "$(app_ssh "curl -s -m 5 -w ' %{http_code}' http://localhost:8081/actuator/health/liveness" 2>/dev/null \
+      | grep -o '\"check\":\"[a-z-]*\"\|msSinceLastCompletion\":[0-9]*\| [0-9][0-9][0-9]$' | tr '\n' ' ')" >> "$OUT/liveness-series.tsv"
+  fi
   sleep 10
 done
 [ -n "$REPLACED" ] || REPLACED=no

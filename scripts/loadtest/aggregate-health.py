@@ -117,12 +117,16 @@ def termination_of(activities_path, instance_id, t0):
     return None
 
 
-def cw_max(path, stat):
+def cw_max(path, stat, t0):
+    """주입한 분부터의 최댓값. 수집 창은 주입 5분 전부터라, 그대로 최댓값을 내면 회차 직전의 사건이 섞인다 —
+    h-C2-S1 에서 인스턴스 첫 기동 때의 unhealthy(12:59~13:00, 주입 13:03:37)가 '회차 중 1'로 잡혔다."""
     if not os.path.exists(path):
         return None
     with open(path, encoding='utf-8') as f:
         points = json.load(f).get('Datapoints', [])
-    return max((p[stat] for p in points), default=0)
+    start = t0 - t0 % 60
+    return max((p[stat] for p in points
+                if datetime.fromisoformat(p['Timestamp'].replace('Z', '+00:00')).timestamp() >= start), default=0)
 
 
 def liveness_t25(path):
@@ -153,6 +157,9 @@ def oom_restart(path):
 
 
 def main():
+    # Windows 의 Python 은 표준 출력이 cp949 라 요약 줄의 '—' 같은 문자에서 UnicodeEncodeError 로 죽는다(h-C2-S1 에서
+    # 실제로 겪었다). result.json 은 그 전에 써지지만 회차 로그에 판정 줄이 빠진다.
+    sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
     ap.add_argument('--dir', required=True)
     ap.add_argument('--label', required=True)
@@ -207,8 +214,8 @@ def main():
         'sec_to_new_healthy': rel(new_healthy),
         'liveness_t25': liveness_t25(os.path.join(d, 'liveness-t25.txt')),
         'oom': oom,
-        'cw_unhealthy_host_max': cw_max(os.path.join(d, 'cw-UnHealthyHostCount.json'), 'Maximum'),
-        'cw_elb_5xx_sum_max_per_min': cw_max(os.path.join(d, 'cw-HTTPCode_ELB_5XX_Count.json'), 'Sum'),
+        'cw_unhealthy_host_max': cw_max(os.path.join(d, 'cw-UnHealthyHostCount.json'), 'Maximum', t0),
+        'cw_elb_5xx_sum_max_per_min': cw_max(os.path.join(d, 'cw-HTTPCode_ELB_5XX_Count.json'), 'Sum', t0),
         'background': background_summary(read_background(os.path.join(d, 'bg.csv')), t0, end),
         'marks': [{'sec': e - t0, 'name': n} for e, n in marks],
     }
