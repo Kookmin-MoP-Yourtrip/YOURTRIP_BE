@@ -54,6 +54,12 @@ public class SecurityConfig {
                     "/actuator/**"
                 ).permitAll()
 
+                // 헬스체크의 8080 직접 확인(global/health). 인증을 요구하면 401로 끝나 "워커가 응답했다"는
+                // 사실은 같지만 HttpMainPortProbe가 2xx만 성공으로 보므로 멀쩡한 서버가 DOWN이 된다.
+                // 외부 노출은 ALB 리스너 규칙이 /internal을 차단해 막는다. 와일드카드로 열지 않는 이유는
+                // 나중에 생길 /internal 하위 경로가 의도치 않게 인증 없이 열리는 것을 막기 위해서다.
+                .requestMatchers(HttpMethod.GET, "/internal/ping").permitAll()
+
                 .requestMatchers(
                     "/api/users/email/send",
                     "/api/users/email/verify",
