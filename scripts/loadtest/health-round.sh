@@ -65,10 +65,17 @@ app_ssh() { app_ssh_to "$INSTANCE_ID" "$@"; }
 k6_ssh() { ssh "${SSH_OPTS[@]}" -i "$REPO/$K6_SSH_KEY" "$SSH_USER@$K6_HOST" "$@"; }
 k6_scp() { scp -q "${SSH_OPTS[@]}" -i "$REPO/$K6_SSH_KEY" "$@"; }
 # 관리 포트 결함 장치. actuator 쓰기 동작은 본문이 비어 있어도 JSON Content-Type 이 필요하다(없으면 415).
+# -f 로 HTTP 4xx·5xx 를 실패로 돌려준다. -s 만 쓰면 415·500 에도 종료 코드가 0 이라, 해제 요청이 거부돼도 성공으로 보인다.
 fault() {
   local body="${2:-}"
   [ -n "$body" ] || body='{}'
-  app_ssh "curl -s -m 5 -X POST -H 'Content-Type: application/json' -d '$body' http://localhost:8081/actuator/fault/$1"
+  app_ssh "curl -sf -m 5 -X POST -H 'Content-Type: application/json' -d '$body' http://localhost:8081/actuator/fault/$1"
+}
+# 해제 요청이 받아들여졌다는 것과 결함이 실제로 걷혔다는 것은 다르다. 상태를 다시 읽어 깨끗한지 본다.
+fault_clean() {
+  local st
+  st=$(fault status) || return 1
+  grep -q '"hangWaiting":0' <<< "$st" && grep -q '"leakRetainedMb":0' <<< "$st"
 }
 inservice_ids() {
   aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
@@ -141,8 +148,8 @@ emergency_recover() {
   case "$SCN" in
     S2|S4) app_ssh "sudo systemctl restart yourtrip-app" || needs_manual "앱 재시작 명령이 실패했다" ;;
     S5)    app_ssh "sudo kill -CONT \$(systemctl show -p MainPID --value yourtrip-app)" || needs_manual "SIGCONT 전송이 실패했다" ;;
-    S6)    fault stop-leak > /dev/null || needs_manual "누수 정지 요청이 실패했다" ;;
-    S7)    fault release-hang > /dev/null || needs_manual "묶인 연결 해제 요청이 실패했다" ;;
+    S6)    { fault stop-leak > /dev/null && fault_clean; } || needs_manual "누수 정지 요청이 실패했거나 누수가 남아 있다" ;;
+    S7)    { fault release-hang > /dev/null && fault_clean; } || needs_manual "연결 해제 요청이 실패했거나 묶인 연결이 남아 있다" ;;
   esac
 }
 cleanup() {
