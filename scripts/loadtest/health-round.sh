@@ -118,15 +118,31 @@ TG_LOG="$OUT/tg.log"
   done ) &
 TG_POLL_PID=$!
 BG_PID=""
+# 비상 복구가 끝내 결함을 걷지 못하면 사람이 봐야 한다는 사실을 로그에 묻지 않고 파일로 남긴다.
+needs_manual() {
+  log "비상 복구 실패: $1 — $INSTANCE_ID 에 $SCN 결함이 남아 있을 수 있어 수동 확인이 필요하다"
+  echo "$(date '+%F %T') $INSTANCE_ID $SCN: $1" >> "$OUT/NEEDS-MANUAL-RECOVERY.txt"
+}
 emergency_recover() {
   # 원래 인스턴스가 아직 서비스 중일 때만 손댄다. 이미 교체됐으면 걷을 결함이 없다.
-  grep -qw "$INSTANCE_ID" <<< "$(inservice_ids 2>/dev/null)" || { log "비상 복구: $INSTANCE_ID 는 이미 서비스 밖이다"; return 0; }
+  # 조회 실패와 서비스 이탈을 구분한다 — 조회가 실패해 목록이 비어도 "서비스 밖"으로 읽으면, 아직 InService 인 인스턴스에
+  # 결함을 남긴 채 지나간다. 그래서 조회 자체의 성공 여부를 보고, 끝내 실패하면 수동 확인으로 넘긴다.
+  local ids="" ok="" i
+  for i in 1 2 3; do
+    if ids=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
+        --query "AutoScalingGroups[0].Instances[?LifecycleState=='InService'].InstanceId" --output text 2>/dev/null); then
+      ok=yes; break
+    fi
+    sleep 5
+  done
+  [ -n "$ok" ] || { needs_manual "ASG 상태를 3번 모두 조회하지 못했다"; return 0; }
+  grep -qw "$INSTANCE_ID" <<< "$ids" || { log "비상 복구: $INSTANCE_ID 는 이미 서비스 밖이다"; return 0; }
   log "비상 복구: 정상 복구 전에 끝나 $SCN 결함을 걷는다"
   case "$SCN" in
-    S2|S4) app_ssh "sudo systemctl restart yourtrip-app" || true ;;
-    S5)    app_ssh "sudo kill -CONT \$(systemctl show -p MainPID --value yourtrip-app)" || true ;;
-    S6)    fault stop-leak > /dev/null || true ;;
-    S7)    fault release-hang > /dev/null || true ;;
+    S2|S4) app_ssh "sudo systemctl restart yourtrip-app" || needs_manual "앱 재시작 명령이 실패했다" ;;
+    S5)    app_ssh "sudo kill -CONT \$(systemctl show -p MainPID --value yourtrip-app)" || needs_manual "SIGCONT 전송이 실패했다" ;;
+    S6)    fault stop-leak > /dev/null || needs_manual "누수 정지 요청이 실패했다" ;;
+    S7)    fault release-hang > /dev/null || needs_manual "묶인 연결 해제 요청이 실패했다" ;;
   esac
 }
 cleanup() {
