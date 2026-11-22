@@ -97,9 +97,11 @@ terraform output -raw cloudfront_key_pair_id
 Terraform state는 S3 원격 backend에 있다(#157, `yourtrip-tfstate-520426835144`의 `root/`).
 아래는 그와 별개로 이 모듈이 발급하는 IAM 자격증명에 따라오는 트레이드오프다:
 
-- `aws_iam_access_key.app`이 **새로 발급되는 순간** 그 secret access key가 로컬
-  `terraform.tfstate`에 평문으로 저장된다. `terraform.tfstate*`는 `.gitignore`로 git 추적에서
-  제외되지만, 로컬 디스크에는 평문으로 남는다는 점을 인지하고 있어야 한다.
+- `aws_iam_access_key.app`이 **새로 발급되는 순간** 그 secret access key가 state에 평문으로
+  저장된다. state는 S3 원격 backend에 있어 git에도 로컬 디스크에도 남지 않고 저장 시 SSE-S3로
+  암호화되지만, 그것은 저장 매체의 암호화일 뿐 **state를 읽을 수 있는 사람은 그 값을 그대로 본다**
+  (`terraform state pull`, 버킷의 이전 버전 포함). 버저닝이 켜져 있어 키를 재발급해도 옛 값이 이전
+  버전 state에 남는다는 점도 인지하고 있어야 한다.
 - **다만 현재 state에는 그 값이 없다** — `secret`·`encrypted_secret`·`iam_user_secret_access_key`
   output이 모두 비어 있고, 남아 있는 것은 access key ID(`AKIA…`)뿐이다. 키 리소스가 어느 시점에
   import된 것으로 보이며, AWS API는 **생성 시점 이후로 secret을 돌려주지 않아** 한 번 잃으면

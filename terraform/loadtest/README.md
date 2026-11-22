@@ -272,7 +272,7 @@ aws ec2 describe-instances --filters \
   "Name=tag:Project,Values=yourtrip" "Name=tag:Component,Values=loadtest" \
   --query "Reservations[].Instances[].{Id:InstanceId,Type:InstanceType,State:State.Name}" --output table
 
-cp terraform.tfstate terraform.tfstate.pre-import-bak  # 백업 먼저
+terraform state pull > state-pre-import.json         # 백업 먼저(원격 state를 받는다. 시크릿이 평문이라 끝나면 지운다)
 
 # tfvars를 실제 값에 맞춘 뒤(예: app_instance_type = "t3.small") 진행
 terraform state rm aws_instance.app                    # 사라진 리소스를 state에서 제거
@@ -289,9 +289,11 @@ terraform plan                                         # destroy가 0인지 확�
 
 `user_data`처럼 인스턴스를 재생성해야만 맞출 수 있는 diff는, 목적이 "destroy가 실제 리소스를 지우게 하는 것"이라면 굳이 맞추지 않아도 된다. `apply`하지 않는 한 무해하다.
 
-### 상태·설정 파일은 gitignore 대상이다
+### 설정 파일은 gitignore 대상이다 — state는 아니다
 
-`terraform.tfstate(.backup)`과 `terraform.tfvars`는 `.gitignore` 대상이라 커밋으로 공유되지 않는다. worktree에서 이 파일들이 바뀌었으면(import·apply 후) **메인 워킹트리 사본도 갱신해야 한다.** 절차는 [docs/guide/worktree.md](../../docs/guide/worktree.md) 참고.
+`terraform.tfvars`와 SSH 키(`yourtrip-loadtest-ssh*`)는 `.gitignore` 대상이라 커밋으로 공유되지 않는다. worktree에서 이 파일들이 바뀌었으면 **메인 워킹트리 사본도 갱신해야 한다.** 절차는 [docs/guide/worktree.md](../../docs/guide/worktree.md) 참고.
+
+state(`terraform.tfstate`)는 이 대상이 아니다. S3 원격 backend(`yourtrip-tfstate-520426835144`의 `loadtest/`)로 옮겨져(#157) worktree 사이에 사본이 없다 — import·apply 뒤에 따로 맞출 것이 없고, 새 worktree에서는 `terraform init`만 하면 된다. 이 디렉터리에 남은 `*.tfstate.*` 파일은 옮기기 전의 백업·잔재라 읽지 않는다.
 
 ## 알아둬야 할 것
 
