@@ -20,7 +20,7 @@ A의 메일 요청은 `@Transactional` 때문에 **SMTP를 기다리는 내내 �
 
 - 동시 점유는 `L = λ × D`(초당 도착 수 × SMTP 지연)다. 커넥션은 10개뿐이므로 `L > 10`이면 커넥션이 바닥난다. `D = 5초`면 경계는 초당 2건이다.
 - 커넥션을 기다리는 요청도 최대 30초(Hikari `connectionTimeout` 기본값) 동안 워커를 쥔다. 그래서 커넥션 부족이 워커 부족(32)으로 번져, DB를 쓰지 않는 API까지 멈춘다고 본다(**H-cascade**). 대안 가설은 DB를 쓰는 API만 피해를 본다는 **H-pool**이다.
-- SMTP가 응답하지 않으면 타임아웃이 없어 `D = ∞`다. 도착률과 상관없이 `10 / λ`초 뒤에는 커넥션이 바닥나고, 이미 걸린 연결은 깨어나지 않아 회복하지 못한다.
+- SMTP가 응답하지 않으면 타임아웃이 없어 `D = ∞`다. 도착률과 상관없이 `10 / λ`초 뒤에는 커넥션이 바닥나고, SMTP가 멈춰 있는 동안에는 메일 도착이 끝나도 회복하지 못한다. ~~이미 걸린 연결은 깨어나지 않아 SMTP가 돌아와도 회복하지 못한다~~ → 측정 장치에 대한 잘못된 가정이었다(6-1절 정정).
 
 운영 값 확인: Tomcat 워커 32(`application-prod.yml`). Hikari는 어떤 프로필과 terraform에도 설정이 없어 기본값(10개, 30초)이다.
 
@@ -29,14 +29,14 @@ A의 메일 요청은 `@Transactional` 때문에 **SMTP를 기다리는 내내 �
 ### 2-1. 구성
 
 ```
-k6 ─▶ 앱(:8080) ──SMTP──▶ Toxiproxy(:1026) ──▶ Mailpit(:1025)
+k6 ─▶ 앱(:8080) ──SMTP──▶ Toxiproxy(:2526) ──▶ Mailpit(:1025)
       지표(:8081)          지연·무응답 주입         메일 수신
 ```
 
 - **로컬에서 재는 이유**: 재는 대상이 CPU가 아니라 "풀 크기 × 점유 시간"이 만드는 대기열이다. 풀 크기만 운영과 맞추면 경계는 같은 자리에 나온다.
 - **Toxiproxy**: 앱을 재기동하지 않고 회차 도중에 장애를 넣고 뺄 수 있다. "SMTP가 돌아온 뒤 회복하는가"를 재려면 이 기능이 필요하다.
   - `latency`: SMTP 응답마다 지연을 붙인다. 시도 지연이 5초가 되는 값은 사전 점검에서 실측으로 맞춘다.
-  - `timeout=0`: 연결은 받아 주지만 서버 데이터를 버리고 닫지도 않는다. 인사말조차 오지 않는 반쯤 열린 연결이다.
+  - `timeout=0`: 연결은 받아 주지만 서버 데이터를 앱에 전달하지 않고 닫지도 않는다. 인사말조차 오지 않는 연결이다. **데이터는 버려지지 않고 붙잡혀 있다가, 독성을 빼면 흘러간다**(6-1절). 그래서 이 장치가 흉내 내는 것은 "SMTP가 멈췄다가 다시 살아나는 장애"다.
 - Mailpit과 Toxiproxy는 `docker-compose.yml`의 `mail-loadtest` 프로필로만 뜬다.
 
 ### 2-2. 앱 실행 설정
@@ -45,7 +45,7 @@ k6 ─▶ 앱(:8080) ──SMTP──▶ Toxiproxy(:1026) ──▶ Mailpit(:102
 |---|---|---|
 | `server.tomcat.threads.max` | 32 | 운영과 맞춘다(local 기본값은 200) |
 | Hikari | 기본값 (10개, 30초) | 운영과 같다 |
-| 메일 호스트·포트 | `localhost:1026` | 가짜 서버로 보낸다 |
+| 메일 호스트·포트 | `localhost:2526` | 가짜 서버로 보낸다 |
 | `MAIL_EMAIL`·`MAIL_PASSWORD` | 더미값 | 호스트 덮어쓰기가 빠져도 Gmail이 인증을 거부해 실제 메일이 나가지 않는다 |
 | `MANAGEMENT_SERVER_PORT` | 8081 | 워커가 고갈돼도 지표 수집이 끊기지 않는다 |
 | SQL·DEBUG 로그 | WARN | 운영과 로깅 비용을 맞춘다 |
@@ -71,14 +71,14 @@ k6 ─▶ 앱(:8080) ──SMTP──▶ Toxiproxy(:1026) ──▶ Mailpit(:102
 |---|---|---|---|---|---|---|
 | **A-L1** | 개선 전 | 지연 5초 | 초당 1건 (분당 60) | 정상 | 정상 | `L = 5 < 10` — 경계 아래 대조군 |
 | **A-L3** | 개선 전 | 지연 5초 | 초당 2.4건 (분당 144) | **장애** | **장애** | `L = 12 > 10`. 커넥션 고갈 → 워커 32 고갈 |
-| **A-H** | 개선 전 | 무응답 | 초당 0.2건 (분당 12) | **장애** | **장애** | 약 **50초(±10초)** 뒤 붕괴. 도착이 끝나도, 독성을 빼도 회복 없음 |
+| **A-H** | 개선 전 | 무응답 | 초당 0.2건 (분당 12) | **장애** | **장애** | 약 **50초(±10초)** 뒤 붕괴. 독성이 걸려 있는 동안에는 도착이 끝나도 회복 없음. 독성 해제 후는 관찰만 한다(6-1절) |
 | **B-L3** | 개선 후 | 지연 5초 | 초당 2.4건 | 정상 | 정상 | 메일은 풀에 제출만 하고 응답한다 |
 | **B-H** | 개선 후 | 무응답 | 초당 0.2건 | 정상 | 정상 | 무응답은 메일 풀 안에 갇힌다. 독성을 빼면 메일도 회복한다 |
 
 **세부 예측**
 
 - **A-L3**: `mail.send.attempt`(SMTP 구간만 잰다)는 여전히 약 5초다. 반면 메일 응답 시간은 커넥션 대기만큼 길어지고 500이 섞인다. 두 값의 차이가 앱 내부 대기열이다. 메일 도착이 끝나면 60초 안에 회복한다.
-- **A-H**: `mail.send.attempt`가 회차 내내 0건이다. 시도가 하나도 끝나지 않기 때문이다. 즉 **지금 지표로는 이 장애를 볼 수 없다.** 앱을 재기동해야만 회복한다.
+- **A-H**: `mail.send.attempt`가 회차 내내 0건이다. 시도가 하나도 끝나지 않기 때문이다. 즉 **지금 지표로는 이 장애를 볼 수 없다.** SMTP가 멈춰 있는 동안에는 앱을 재기동해야만 회복한다.
 - **B (두 회차 공통)**:
   - 메일 응답은 200과 503 모두 p99가 100ms 미만이다. 503에는 `Retry-After`가 붙는다.
   - `tomcat_threads_busy`는 기준선 수준(최대 +3)에 머문다.
@@ -104,7 +104,7 @@ k6 ─▶ 앱(:8080) ──SMTP──▶ Toxiproxy(:1026) ──▶ Mailpit(:102
 |---|---|---|
 | M1 | A의 경계는 커넥션 수(10)다 | A-L1 정상, A-L3 `mine` 장애, 그때 `hikaricp_connections_active` = 10·`pending` > 0 |
 | M2 | 커넥션 고갈이 워커 고갈로 번진다 | A-L3 `popular`도 장애, `tomcat_threads_busy` = 32, 스레드 덤프의 워커 과반이 `HikariPool.getConnection` 대기. `popular`이 정상이면 H-pool |
-| M3 | 무응답 SMTP는 회복 없는 장애를 만든다 | A-H 장애, 붕괴 40~60초, 도착 종료 후·독성 해제 후 모두 회복 없음 |
+| M3 | 무응답 SMTP는 회복 없는 장애를 만든다 | A-H 장애, 붕괴 40~60초, 독성이 걸려 있는 회복 관찰 구간(120초)에 회복 없음. ~~독성 해제 후 회복 없음~~은 판정에서 뺀다(6-1절) |
 | M4 | 개선 후 피해가 메일 안에 갇힌다 | B-L3·B-H 두 탐침 모두 저하 없음 |
 | M5 | 넘친 메일은 즉시 거절된다 | B의 503 p99 < 100ms, `Retry-After` 있음 |
 
@@ -140,6 +140,22 @@ CPU 1분 평균이 0.8을 넘으면 회차를 버리지는 않고 "CPU 교란"�
 | G3 | 지연 보정 | `mail.send.attempt` p50이 4.5~5.5초가 되는 `latency` 값을 찾아 이 문서에 적는다 |
 | G4 | 무응답이 유지된다 | 무응답 주입 후 메일 1통이 120초 동안 끝나지 않는다. Mailpit이 연결을 끊어 버리면 아무것도 보내지 않는 TCP 서버로 업스트림을 바꾼다 |
 
+점검 결과(2026-11-22, 개선 전 JAR `6db0a9e`). 모두 통과했다.
+
+| # | 결과 |
+|---|---|
+| G1 | 앱이 `localhost:2526`으로 접속, Mailpit 수신 0 → 1. 발신 계정은 더미값 |
+| G2 | `popular` 200요청 동안 커넥션 대여 0회, `mine` 50요청에 100회(인증 필터 + 목록 조회). 8080 `/actuator/prometheus`는 404 |
+| G3 | **`latency` = 500ms 로 고정.** 메일 5통 HTTP 응답 5.04~5.25초, SMTP 시도 평균 약 4.96초. "응답 약 10개 × 500ms" 계산과 맞는다 |
+| G4 | 클라이언트는 10초에 끊었지만 서버 스레드는 120초 내내 SMTP 응답 대기, 커넥션 1개 점유 유지, `mail.send.attempt` 증가 0 |
+
+### 6-1. 사전 점검 중 고친 것
+
+- **무응답 해제 후의 예측 정정.** 30초짜리 도구 점검 회차(판정에 쓰지 않는다)에서 독성을 빼자, 걸려 있던 메일이 다시 진행돼 Mailpit이 29통을 받았다. Toxiproxy의 `timeout` 독성은 데이터를 버리지 않고 붙잡아 둔다는 뜻이다. "독성을 빼도 회복하지 않는다"는 예측은 시스템이 아니라 측정 장치 동작을 잘못 안 데서 나왔으므로 판정에서 뺀다(M3). 결과를 본 뒤의 정정이라 새 예측을 세우지 않고, 해제 후의 회복 모습은 관찰로만 기록한다. 패킷이 실제로 사라지는 장애에서 해제 후 회복하지 못하는지는 이 실험으로 말할 수 없다
+- **SMTP 프록시 호스트 포트 1026 → 2526.** 개발 PC의 `mysqld`가 1026을 이미 쓰고 있어 Docker 포트 바인딩이 조용히 실패했다(앱은 `Connection refused`). 측정값에는 영향이 없는 절차 변경이다
+- **측정 중에는 `DB_DDL_AUTO=update`로 띄운다.** `.env` 값이 `create`라 회차마다 재기동하면 개발 DB 테이블이 지워진다. 테이블 구조는 같고 데이터만 보존된다
+- **회차 자동화 스크립트 `mail-round.sh` 추가.** 재기동 → 로그인 → Mailpit 비우기 → 독성 → 수집 → k6 → 정리 → 집계를 한 번에 돌려, 회차마다 순서와 시점이 달라지지 않게 한다. 앱은 Gradle이 아니라 개선 전 JAR을 따로 보관해 `java -jar`로 띄운다
+
 ## 7. 실행
 
 | 도구 | 경로 |
@@ -147,7 +163,8 @@ CPU 1분 평균이 0.8을 넘으면 회차를 버리지는 않고 "CPU 교란"�
 | Mailpit + Toxiproxy | `docker-compose.yml` `mail-loadtest` 프로필, `scripts/loadtest/toxiproxy.json` |
 | 독성 조작 | `scripts/loadtest/mail-toxic.sh` (`latency <ms>` · `hang` · `clear` · `status`) |
 | 부하 | `scripts/k6/mail-bulkhead.js` |
-| 집계·판정 | `scripts/loadtest/aggregate-mail.py` (첫 회차 전 작성) |
+| 집계·판정 | `scripts/loadtest/aggregate-mail.py` |
+| 회차 실행 | `scripts/loadtest/mail-round.sh <회차> <jar> <분당> <latency\|hang> <출력>` |
 
 순서는 **A-L1 → A-L3 → A-H**(지금), **B-L3 → B-H**(6단계 후)다. 회차마다 앱을 재기동하고, Mailpit을 비우고, 독성을 뺀 상태에서 시작한다.
 
@@ -157,7 +174,7 @@ curl -s -X DELETE http://localhost:8025/api/v1/messages
 scripts/loadtest/mail-toxic.sh latency <G3 보정값>        # 무응답 회차는 hang
 
 MAIL_EMAIL=loadtest@example.com MAIL_PASSWORD=dummy MANAGEMENT_SERVER_PORT=8081 \
-./gradlew bootRun --args='--spring.mail.host=localhost --spring.mail.port=1026
+./gradlew bootRun --args='--spring.mail.host=localhost --spring.mail.port=2526
   --server.tomcat.threads.max=32
   --logging.level.org.hibernate.SQL=WARN --logging.level.org.hibernate.orm.jdbc.bind=WARN
   --logging.level.backend.yourtrip=INFO'
