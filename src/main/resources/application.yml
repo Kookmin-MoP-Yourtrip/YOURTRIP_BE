@@ -330,7 +330,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, metrics, prometheus
+        # fault는 측정 전용 결함 주입 장치(global/fault)다. 목록에 늘 두지만 fault-injection.enabled=true일
+        # 때만 빈이 생기므로, 꺼진 운영에서는 노출할 엔드포인트 자체가 없다. 목록을 측정 때만 바꾸게 하면
+        # 원복 누락으로 측정 설정이 운영에 남는 경로가 하나 더 생긴다.
+        include: health, metrics, prometheus, fault
   endpoint:
     health:
       show-details: always

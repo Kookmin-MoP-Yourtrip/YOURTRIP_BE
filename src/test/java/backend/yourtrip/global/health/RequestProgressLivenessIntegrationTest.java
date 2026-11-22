@@ -16,6 +16,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import backend.yourtrip.global.fault.FaultInjectionEndpoint;
+import backend.yourtrip.global.fault.Tarpit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +28,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalManagementPort;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.Ordered;
@@ -74,6 +77,9 @@ class RequestProgressLivenessIntegrationTest {
 
     @Autowired
     HealthContributorRegistry contributors;
+
+    @Autowired
+    ApplicationContext applicationContext;
 
     private final HttpClient client = HttpClient.newBuilder()
         .version(HttpClient.Version.HTTP_1_1)
@@ -156,6 +162,17 @@ class RequestProgressLivenessIntegrationTest {
 
         assertThat(metrics.statusCode()).isEqualTo(200);
         assertThat(tracker.lastCompletedAt()).isEqualTo(before);
+    }
+
+    @Test
+    @DisplayName("결함 주입 장치는 기본으로 꺼져 있다 — 빈도 없고, 경로는 인증 면제 없이 거부된다")
+    void faultInjectionIsOffByDefault() throws Exception {
+        assertThat(applicationContext.getBeansOfType(Tarpit.class)).isEmpty();
+        assertThat(applicationContext.getBeansOfType(FaultInjectionEndpoint.class)).isEmpty();
+        // 이 앱은 인증 진입점을 따로 두지 않아 익명 요청이 403이다. 404가 아니라는 점이 중요하다 —
+        // 핸들러 유무와 무관하게 공통 체인의 인증 요구가 먼저 막는다는 뜻이다.
+        assertThat(get(mainPort, "/internal/fault/hang").statusCode()).isEqualTo(403);
+        assertThat(get(managementPort, "/actuator/fault/status").statusCode()).isEqualTo(404);
     }
 
     @Test
