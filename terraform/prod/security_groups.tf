@@ -85,6 +85,23 @@ resource "aws_security_group_rule" "app_ingress_api_from_alb" {
   description              = "ALB to app"
 }
 
+# ALB 헬스체크만 관리 포트로 들어온다(#216). ALB 리스너는 8081로 트래픽을 보내지 않으므로 이
+# 규칙으로 열리는 것은 헬스체크 경로뿐이다. 이 규칙이 없으면 헬스체크가 전부 타임아웃돼 모든
+# 인스턴스가 unhealthy가 되고, health_check_type = ELB인 ASG가 교체를 반복한다.
+#
+# app SG의 description("8080 from ALB only ...")은 고치지 않는다. AWS에서 SG description은 바꿀 수
+# 없는 속성이라, 고치면 terraform이 SG를 교체(destroy → create)하려 들고 그 SG를 쓰는 인스턴스와
+# 규칙이 함께 흔들린다. 실제 허용 범위는 이 규칙들이 정본이다.
+resource "aws_security_group_rule" "app_ingress_management_from_alb" {
+  type                     = "ingress"
+  security_group_id        = aws_security_group.app.id
+  from_port                = var.management_port
+  to_port                  = var.management_port
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.alb.id
+  description              = "ALB health check to management port"
+}
+
 # 디버깅용 우회로. 기본은 만들지 않는다(count = 0) — 이 규칙이 살아 있으면 개발자 IP에서는
 # /actuator 차단 리스너 규칙을 그냥 지나칠 수 있어, 차단이 걸려 있다는 착각을 만든다.
 resource "aws_security_group_rule" "app_ingress_api_from_dev" {
