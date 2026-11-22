@@ -198,9 +198,12 @@ def main():
     # 관측하지 않은 것을 "교체가 없었다"의 증거로 쓰지 않는다. 교체 판정에 쓰는 두 자료(타깃 헬스 기록, ASG 활동 기록)가
     # 없으면 keep 으로 떨어지지 않게 판정 불가로 끝낸다. S1 은 계단 부하가 실제로 돌았다는 요약도 있어야 한다.
     tg = read_tg(os.path.join(d, 'tg.log'))
+    orig = args.instance_before
     missing = []
-    if not any(ts >= t0 for ts, _ in tg):
-        missing.append('tg.log(주입 뒤 타깃 헬스 기록)')
+    # 타임스탬프만 있는 행은 관측이 아니다 — 회차 스크립트의 AWS 조회가 실패하면 시각만 남는다. 주입 뒤에 원래 인스턴스의
+    # 상태가 실제로 찍힌 행이 있어야 "교체가 없었다"를 말할 수 있다.
+    if not any(ts >= t0 and orig in targets for ts, targets in tg):
+        missing.append('tg.log(주입 뒤 원래 인스턴스의 타깃 헬스 기록)')
     if not os.path.exists(os.path.join(d, 'asg-activities.json')):
         missing.append('asg-activities.json')
     if args.scenario == 'S1' and not os.path.exists(os.path.join(d, 'ramp-summary.json')):
@@ -208,7 +211,6 @@ def main():
     if missing:
         print(f'판정 불가: 자료가 없다 — {", ".join(missing)}')
         sys.exit(3)
-    orig = args.instance_before
     first_unhealthy = next((ts for ts, t in tg if ts >= t0 and t.get(orig, ('',))[0] == 'unhealthy'), None)
     unhealthy_reason = next((t[orig][1] for ts, t in tg if ts >= t0 and t.get(orig, ('',))[0] == 'unhealthy'), None)
     new_healthy = next((ts for ts, t in tg if ts >= t0
@@ -222,9 +224,11 @@ def main():
         sys.exit(3)
     if replaced:
         actual = 'replace'
-    elif oom and oom['recovered']:
+    elif oom and oom['recovered'] and first_mark(marks, 'recovered') is not None:
+        # 새 프로세스가 떴다는 것만으로는 부족하다. 회차 스크립트가 8080 이 실제로 응답하는 것까지 확인했을 때만
+        # recovered 를 남긴다 — 그 확인이 없으면 서비스는 돌아오지 않은 것이다.
         actual = 'restart'
-    elif oom and oom['recovered'] is False:
+    elif oom and oom['recovered'] is not None:
         # OOM 뒤 JVM 이 다시 뜨지 않았다. 교체도 재시작도 아닌 "죽은 채 남음"이다.
         actual = 'down'
     else:

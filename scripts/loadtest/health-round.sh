@@ -295,7 +295,8 @@ if [ "$REPLACED" = no ]; then
   case "$SCN" in
     S2|S4)
       mark recover-restart
-      app_ssh "sudo systemctl restart yourtrip-app" || true ;;
+      # 실패해도 여기서 멈추지 않는다 — 복구 여부는 아래에서 8080 이 실제로 응답하는지로 판정한다.
+      app_ssh "sudo systemctl restart yourtrip-app" || log "주의: 재시작 명령이 실패했다" ;;
     S5)
       # 예측(교체)이 틀린 경우다. SIGSTOP 은 재시작으로 풀리지 않는다 — systemd 의 stop 도 멈춘 프로세스에는
       # SIGTERM 이 전달되지 않아 타임아웃까지 기다린다. 먼저 깨운다.
@@ -305,15 +306,28 @@ if [ "$REPLACED" = no ]; then
       log "해제 $(fault release-hang)" ;;
   esac
 fi
-# 교체가 일어났다면 새 인스턴스, 아니면 원래 인스턴스가 healthy 로 서고 InService 가 1대가 될 때까지 기다린다.
+# 교체가 일어났다면 새 인스턴스, 아니면 원래 인스턴스가 서비스할 수 있게 될 때까지 기다린다.
+# 타깃 healthy 만으로는 복구의 증거가 아니다 — C1 은 8080 이 죽어 있어도 관리 포트가 healthy 를 낸다. 그래서 InService
+# 1대가 healthy 이고, 그 인스턴스의 8080 이 직접 확인 경로(/internal/ping)에 204 로 답할 때만 복구로 본다.
 RECOVER_END=$(( $(date +%s) + 600 ))
+RECOVER_OK=""
 while :; do
   read -r -a NOW_IDS <<< "$(inservice_ids)"
-  if [ "${#NOW_IDS[@]}" -eq 1 ] && [ "$(target_state "${NOW_IDS[0]}")" = healthy ]; then break; fi
-  [ "$(date +%s)" -lt "$RECOVER_END" ] || { log "주의: 10분 안에 healthy 1대로 돌아오지 않았다 — 다음 회차 전에 확인"; break; }
+  if [ "${#NOW_IDS[@]}" -eq 1 ] && [ "$(target_state "${NOW_IDS[0]}")" = healthy ]; then
+    CODE=$(app_ssh_to "${NOW_IDS[0]}" "curl -s -o /dev/null -m 5 -w '%{http_code}' http://localhost:8080/internal/ping" 2>/dev/null || true)
+    if [ "$CODE" = 204 ]; then RECOVER_OK=yes; break; fi
+  fi
+  [ "$(date +%s)" -lt "$RECOVER_END" ] || break
   sleep 10
 done
-mark recovered
+if [ -n "$RECOVER_OK" ]; then
+  mark recovered
+else
+  # recovered 를 표시하지 않는다 — 그래야 끝에서 비상 복구가 돌고, 집계기도 S6 를 재시작으로 인정하지 않는다.
+  # 관측한 판정 자료는 그대로 모으되 회차는 exit 3 으로 끝낸다.
+  mark recover-timeout
+  log "주의: 10분 안에 8080 이 응답하는 인스턴스 1대로 돌아오지 않았다 — 회차 끝에 비상 복구를 시도하고 exit 3"
+fi
 echo "${NOW_IDS[*]:-}" > "$OUT/instance-after.txt"
 # 복구 뒤 1분 더 배경 트래픽을 받아 "다시 성공하기 시작한 시각"을 잡는다.
 [ "$SCN" = S1 ] || sleep 60
@@ -342,4 +356,6 @@ done
 python "$(win "$REPO/scripts/loadtest/aggregate-health.py")" --dir "$(win "$OUT")" --label "$LABEL" \
   --config "$CFG" --scenario "$SCN" --truth "$TRUTH" --predict "$PREDICT" \
   --instance-before "$INSTANCE_ID" --replaced "$REPLACED" | tee -a "$LOG"
+# 복구를 확인하지 못한 회차는 판정 불가로 끝낸다. 종료하면서 cleanup 이 비상 복구를 시도한다(RECOVERED=0).
+[ -n "$RECOVER_OK" ] || { log "회차 $LABEL — 복구 미확인으로 판정 불가(exit 3)"; exit 3; }
 log "회차 $LABEL 완료"
