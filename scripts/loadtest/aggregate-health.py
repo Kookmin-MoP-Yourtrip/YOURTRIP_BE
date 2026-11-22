@@ -148,11 +148,27 @@ def oom_restart(path):
         return None
     text = open(path, encoding='utf-8', errors='replace').read()
     pids = re.search(r'pid_before=(\S+) pid_after=(\S+)', text)
+    before, after = (pids.group(1), pids.group(2)) if pids else (None, None)
+    started = 'Started YourtripApplication' in text
+    # PID 가 달라졌다는 것만으로 재시작을 인정하지 않는다. systemctl 은 프로세스가 없으면 MainPID 를 0 으로, 조회가 실패하면
+    # 회차 스크립트가 '?' 를 남긴다 — 둘 다 "기존과 다르다"가 되어 JVM 이 죽은 채 남아도 재시작으로 판정될 수 있다.
+    #   recovered True  : 두 PID 가 유효한 양수이고 서로 다르며, 새 프로세스의 기동 완료 로그가 있다
+    #   recovered False : 새 PID 가 0(프로세스 없음)이거나, 기동 완료 로그가 없다 — 복구되지 않았다
+    #   recovered None  : PID 를 읽지 못했다 — 판정 불가
+    if not (before and before.isdigit() and after) or not (after.isdigit() or after == '0'):
+        recovered = None
+    elif after == '0' or int(before) <= 0 or after == before:
+        recovered = False
+    else:
+        recovered = started
     return {
         'oom_logged': 'OutOfMemoryError' in text,
         'process_exited': 'Main process exited' in text,
         'restart_scheduled': 'Scheduled restart' in text,
-        'pid_changed': bool(pids and pids.group(1) != pids.group(2)),
+        'started_logged': started,
+        'pid_before': before,
+        'pid_after': after,
+        'recovered': recovered,
     }
 
 
@@ -179,7 +195,19 @@ def main():
         print('판정 불가: marks.tsv 에 inject/end 가 없다')
         sys.exit(3)
 
+    # 관측하지 않은 것을 "교체가 없었다"의 증거로 쓰지 않는다. 교체 판정에 쓰는 두 자료(타깃 헬스 기록, ASG 활동 기록)가
+    # 없으면 keep 으로 떨어지지 않게 판정 불가로 끝낸다. S1 은 계단 부하가 실제로 돌았다는 요약도 있어야 한다.
     tg = read_tg(os.path.join(d, 'tg.log'))
+    missing = []
+    if not any(ts >= t0 for ts, _ in tg):
+        missing.append('tg.log(주입 뒤 타깃 헬스 기록)')
+    if not os.path.exists(os.path.join(d, 'asg-activities.json')):
+        missing.append('asg-activities.json')
+    if args.scenario == 'S1' and not os.path.exists(os.path.join(d, 'ramp-summary.json')):
+        missing.append('ramp-summary.json(계단 부하 요약)')
+    if missing:
+        print(f'판정 불가: 자료가 없다 — {", ".join(missing)}')
+        sys.exit(3)
     orig = args.instance_before
     first_unhealthy = next((ts for ts, t in tg if ts >= t0 and t.get(orig, ('',))[0] == 'unhealthy'), None)
     unhealthy_reason = next((t[orig][1] for ts, t in tg if ts >= t0 and t.get(orig, ('',))[0] == 'unhealthy'), None)
@@ -189,10 +217,16 @@ def main():
 
     replaced = args.replaced == 'yes' or termination is not None
     oom = oom_restart(os.path.join(d, 'oom-journal.txt')) if args.scenario == 'S6' else None
+    if args.scenario == 'S6' and not replaced and (oom is None or oom['recovered'] is None):
+        print(f'판정 불가: S6 의 재시작 여부를 확인할 자료가 없다 — {oom}')
+        sys.exit(3)
     if replaced:
         actual = 'replace'
-    elif oom and oom['pid_changed']:
+    elif oom and oom['recovered']:
         actual = 'restart'
+    elif oom and oom['recovered'] is False:
+        # OOM 뒤 JVM 이 다시 뜨지 않았다. 교체도 재시작도 아닌 "죽은 채 남음"이다.
+        actual = 'down'
     else:
         actual = 'keep'
 

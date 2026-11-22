@@ -44,7 +44,14 @@ mkdir -p "$OUT"
 LOG="$OUT/round.log"
 MARKS="$OUT/marks.tsv"
 log() { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; }
-mark() { printf '%s\t%s\n' "$(date +%s)" "$1" >> "$MARKS"; log "표시: $1"; }
+mark() {
+  printf '%s\t%s\n' "$(date +%s)" "$1" >> "$MARKS"; log "표시: $1"
+  case "$1" in inject) INJECTED=1 ;; recovered) RECOVERED=1 ;; esac
+}
+# 결함을 넣은 뒤 정상 복구 전에 끝나면(Ctrl-C, 중간의 exit 3) cleanup 이 결함을 걷는다. 특히 C1 은 관리 포트가 계속
+# healthy 라 묶인 워커가 저절로 풀리지 않는다 — 운영 인프라에 고장 난 서버를 남기게 된다.
+INJECTED=0
+RECOVERED=0
 
 # 정답(fault-scenarios.md 3절)과 예측(4절). 집계기가 이 둘로 판정한다.
 case "$SCN" in S2|S4|S5) TRUTH=replace ;; S6) TRUTH=restart ;; *) TRUTH=keep ;; esac
@@ -111,7 +118,19 @@ TG_LOG="$OUT/tg.log"
   done ) &
 TG_POLL_PID=$!
 BG_PID=""
+emergency_recover() {
+  # 원래 인스턴스가 아직 서비스 중일 때만 손댄다. 이미 교체됐으면 걷을 결함이 없다.
+  grep -qw "$INSTANCE_ID" <<< "$(inservice_ids 2>/dev/null)" || { log "비상 복구: $INSTANCE_ID 는 이미 서비스 밖이다"; return 0; }
+  log "비상 복구: 정상 복구 전에 끝나 $SCN 결함을 걷는다"
+  case "$SCN" in
+    S2|S4) app_ssh "sudo systemctl restart yourtrip-app" || true ;;
+    S5)    app_ssh "sudo kill -CONT \$(systemctl show -p MainPID --value yourtrip-app)" || true ;;
+    S6)    fault stop-leak > /dev/null || true ;;
+    S7)    fault release-hang > /dev/null || true ;;
+  esac
+}
 cleanup() {
+  if [ "$INJECTED" = 1 ] && [ "$RECOVERED" = 0 ]; then emergency_recover; fi
   kill "$TG_POLL_PID" 2>/dev/null || true
   [ -z "$BG_PID" ] || kill "$BG_PID" 2>/dev/null || true
   rm -f "$OUT/jwt.txt"
@@ -177,8 +196,12 @@ run_s1() {
     --summary-export=/tmp/$LABEL.summary.json fast-api-ramp.js > /tmp/$LABEL.k6.stdout 2>&1"
   local k6_exit=$?
   set -e
-  k6_ssh "rm -f /tmp/$LABEL.jwt"
-  k6_scp "$SSH_USER@$K6_HOST:/tmp/$LABEL.summary.json" "$OUT/ramp-summary.json" || true
+  k6_ssh "rm -f /tmp/$LABEL.jwt" || true
+  # 부하가 실제로 돌았다는 증거가 없으면 판정하지 않는다. 그러지 않으면 SSH 가 k6 실행 전에 끊긴 회차가 "과부하에서도
+  # 교체 없음"으로 기록된다. 요청 실패는 측정 대상이라 k6 는 그래도 정상 종료(0)한다 — 0 이 아니면 실행 자체가 잘못됐다.
+  [ "$k6_exit" -eq 0 ] || { log "중단: 계단 부하가 정상 종료하지 않았다(exit $k6_exit) — 판정 불가"; exit 3; }
+  k6_scp "$SSH_USER@$K6_HOST:/tmp/$LABEL.summary.json" "$OUT/ramp-summary.json" \
+    || { log "중단: 계단 부하 요약을 받지 못했다 — 판정 불가"; exit 3; }
   mark ramp-end
   log "계단 부하 종료(exit $k6_exit)"
 }
