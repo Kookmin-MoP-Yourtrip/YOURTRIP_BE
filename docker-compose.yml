@@ -31,3 +31,38 @@ services:
       - ./scripts/grafana/provisioning:/etc/grafana/provisioning
     depends_on:
       - prometheus
+
+  # ── 메일 발송 측정 전용 (#221) ─────────────────────────────────────────────
+  # profiles로 묶어 평소 `docker compose up -d`에는 뜨지 않는다.
+  #   docker compose --profile mail-loadtest up -d mailpit toxiproxy
+  # 설계: docs/tasks/mail-async/measurement-design.md 2-1절
+
+  # 가짜 SMTP 서버. 아무 인증이나 받아 주므로 앱의 auth=true 설정을 바꾸지 않고 같은 프로토콜
+  # 경로(AUTH 포함)를 탄다. STARTTLS를 광고하지 않아 JavaMail은 평문으로 진행한다.
+  mailpit:
+    image: axllent/mailpit:v1.34.0
+    container_name: yourtrip-mailpit
+    profiles: ["mail-loadtest"]
+    ports:
+      - "8025:8025"   # 웹 UI + 받은 메일 수 조회 API
+    environment:
+      - MP_SMTP_AUTH_ACCEPT_ANY=true
+      - MP_SMTP_AUTH_ALLOW_INSECURE=true
+      # 회차 하나에 최대 2,100통(분당 420 × 5분)이 들어온다. 기본 상한(500)이면 오래된 메일이 지워져
+      # 받은 수를 mail.send{sent}와 맞춰 볼 수 없다.
+      - MP_MAX_MESSAGES=20000
+
+  # 앱과 Mailpit 사이의 TCP 프록시. 앱은 이 프록시(1026)로 보내고, 회차 도중에 런타임 API(8474)로
+  # 지연·무응답을 넣고 뺀다 — 앱을 재기동하지 않고 "SMTP가 돌아온 뒤"를 볼 수 있다.
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.13.0
+    container_name: yourtrip-toxiproxy
+    profiles: ["mail-loadtest"]
+    command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    ports:
+      - "8474:8474"   # 독성 조작 API (scripts/loadtest/mail-toxic.sh)
+      - "1026:1026"   # 앱이 보내는 SMTP 포트
+    volumes:
+      - ./scripts/loadtest/toxiproxy.json:/config/toxiproxy.json:ro
+    depends_on:
+      - mailpit
