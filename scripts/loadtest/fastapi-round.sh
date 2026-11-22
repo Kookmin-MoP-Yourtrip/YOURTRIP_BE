@@ -6,14 +6,21 @@
 #   W = 플랫폼 스레드(Tomcat 워커 200, Spring Boot 기본값) — 상한이 크면 무엇이 달라지는지 본다(3-8절).
 #   WS2·WS8 = 워커 200 + Redis 공유 연결 2·8개(WS8 은 Lettuce I/O 스레드도 8) — 루프 수의 효과를 본다(3-9절).
 #             라벨은 s-WS2·s-WS8 이고, 같은 구성을 다시 재면 s-WS2r2 처럼 반복 번호를 붙인다.
+#   MT·MV = 메모리 비교 회차(3-10절). T·V 와 같되 JAVA_TOOL_OPTIONS 를 두 구성 모두 비운다(V 의 피닝 추적을 끈다).
+#   MTN·MVN = 같은 구성에 NMT 를 켜고 30초마다 영역별 네이티브 메모리를 남긴다. 라벨은 m-T1·m-V1·m-Tn1·m-Vn1 이다.
+#   RSS(host.tsv)는 오버헤드가 없어 모든 arm 에서 수집한다.
 #
-# 사용:  bash scripts/loadtest/fastapi-round.sh <T|V|W|WS2|WS8> <반복 번호>   → results/ai-bulkhead/s-T1/
+# 사용:  bash scripts/loadtest/fastapi-round.sh <T|V|W|WS2|WS8|MT|MV|MTN|MVN> <반복 번호>   → results/ai-bulkhead/s-T1/
 # 설정:  results/ai-bulkhead/config.env. SSM 관리 포트 설정·헬스체크 경로·ASG 프로세스 중지는 측정 전체의 앞뒤에서 한다.
 set -euo pipefail
 
-ARM="${1:?T|V|W|WS2|WS8}"
+ARM="${1:?T|V|W|WS2|WS8|MT|MV|MTN|MVN}"
 REP="${2:?반복 번호}"
-case "$ARM" in T|V|W|WS2|WS8) ;; *) echo "arm 은 T, V, W, WS2, WS8 중 하나" >&2; exit 2 ;; esac
+case "$ARM" in T|V|W|WS2|WS8|MT|MV|MTN|MVN) ;; *) echo "arm 은 T, V, W, WS2, WS8, MT, MV, MTN, MVN 중 하나" >&2; exit 2 ;; esac
+# 스레드 모델과 NMT 여부(3-10절)
+VIRTUAL=false; NMT=""
+case "$ARM" in V|MV|MVN) VIRTUAL=true ;; esac
+case "$ARM" in MTN|MVN) NMT=nmt ;; esac
 # WS 계열은 이름에 공유 연결 수가 들어 있어 반복 번호를 그대로 붙이면 헷갈린다(s-WS21).
 SHARED=""; IO_THREADS=""
 case "$ARM" in WS2) SHARED=2 ;; WS8) SHARED=8; IO_THREADS=8 ;; esac
@@ -27,6 +34,7 @@ win() { cygpath -m "$1"; }
 
 LABEL="s-$ARM$REP"
 if [ -n "$SHARED" ]; then LABEL="s-$ARM"; [ "$REP" = 1 ] || LABEL="s-${ARM}r$REP"; fi
+case "$ARM" in MT) LABEL="m-T$REP" ;; MV) LABEL="m-V$REP" ;; MTN) LABEL="m-Tn$REP" ;; MVN) LABEL="m-Vn$REP" ;; esac
 OUT="$REPO/results/ai-bulkhead/$LABEL"
 [ ! -e "$OUT" ] || { echo "이미 있다: $OUT" >&2; exit 2; }
 mkdir -p "$OUT"
@@ -74,6 +82,8 @@ case "$ARM" in
   V) set_arm_env false 100000 100000 true ;;
   W) set_arm_env false 100000 100000 false 200 ;;
   WS2|WS8) set_arm_env false 100000 100000 false 200 "$SHARED" "$IO_THREADS" ;;
+  MT|MV) set_arm_env false 100000 100000 "$VIRTUAL" "" "" "" none ;;
+  MTN|MVN) set_arm_env false 100000 100000 "$VIRTUAL" "" "" "" nmt ;;
 esac
 aws ssm put-parameter --name "$SSM_ARTIFACT_KEY_PARAM" --value "$KEY" --type String --overwrite >/dev/null
 REFRESH_ID=$(aws autoscaling start-instance-refresh --auto-scaling-group-name "$ASG_NAME" \
@@ -100,14 +110,19 @@ log "교체 완료 — $INSTANCE_ID"
 DEPLOYED=$(app_ssh "sudo grep -h 'downloaded artifact:' /var/log/cloud-init-output.log | tail -1")
 case "$DEPLOYED" in *"$KEY"*) log "배포 확인: $DEPLOYED" ;; *) log "중단: 의도한 JAR 이 아니다 — $DEPLOYED"; exit 3 ;; esac
 app_ssh "curl -sf -o /dev/null http://localhost:8081/actuator/prometheus" || { log "중단: 관리 포트 8081 이 없다"; exit 3; }
-if [ "$ARM" = V ]; then
-  PICKED=$(app_ssh "sudo journalctl -u yourtrip-app --no-pager | grep -m1 'Picked up JAVA_TOOL_OPTIONS'" || true)
-  case "$PICKED" in *tracePinnedThreads*) log "피닝 추적 적용 확인" ;; *) log "중단: 피닝 추적이 실리지 않았다 — $PICKED"; exit 3 ;; esac
+# JAVA_TOOL_OPTIONS 확인 — 메모리 회차는 두 구성의 JVM 옵션이 같아야 비교가 공정하다(3-10절).
+PICKED=$(app_ssh "sudo journalctl -u yourtrip-app --no-pager | grep -m1 'Picked up JAVA_TOOL_OPTIONS'" || true)
+case "$ARM" in
+  V) case "$PICKED" in *tracePinnedThreads*) log "피닝 추적 적용 확인" ;; *) log "중단: 피닝 추적이 실리지 않았다 — $PICKED"; exit 3 ;; esac ;;
+  MT|MV) [ -z "$PICKED" ] || { log "중단: 메모리 A층 회차인데 JAVA_TOOL_OPTIONS 가 실렸다 — $PICKED"; exit 3; }; log "JAVA_TOOL_OPTIONS 없음 확인" ;;
+  MTN|MVN) case "$PICKED" in *"NativeMemoryTracking=summary"*) log "NMT 적용 확인" ;; *) log "중단: NMT 옵션이 실리지 않았다 — $PICKED"; exit 3 ;; esac ;;
+esac
+if [ "$VIRTUAL" = true ]; then
   MAXT=$(app_ssh "curl -s http://localhost:8081/actuator/prometheus | awk '/^tomcat_threads_config_max_threads/{print \$2; exit}'")
   [ "$MAXT" = "-1.0" ] || { log "중단: 가상 스레드가 켜지지 않았다(Tomcat 최대 $MAXT)"; exit 3; }
 else
   # 관리 포트(8081)의 Tomcat 도 같은 지표를 내므로 앱 커넥터(8080) 줄만 본다.
-  WANT=32.0; [ "$ARM" = T ] || WANT=200.0
+  WANT=200.0; case "$ARM" in T|MT|MTN) WANT=32.0 ;; esac
   MAXT=$(app_ssh "curl -s http://localhost:8081/actuator/prometheus | awk '/^tomcat_threads_config_max_threads/ && /8080/{print \$2; exit}'")
   [ "$MAXT" = "$WANT" ] || { log "중단: Tomcat 워커가 $WANT 이 아니다($MAXT)"; exit 3; }
 fi
@@ -138,10 +153,21 @@ lettuce_sched() {
 
 app_ssh "mkdir -p /tmp/bulkhead"
 app_scp "$REPO/scripts/loadtest/bulkhead-collect.sh" "$REPO/scripts/loadtest/poll-metrics.sh" \
-  "$REPO/scripts/loadtest/bulkhead-cache-evict.py" "$SSH_USER@$INSTANCE_ID:/tmp/bulkhead/"
+  "$REPO/scripts/loadtest/sample-host.sh" "$REPO/scripts/loadtest/bulkhead-cache-evict.py" "$SSH_USER@$INSTANCE_ID:/tmp/bulkhead/"
 app_ssh "sudo python3 /tmp/bulkhead/bulkhead-cache-evict.py" | tee -a "$LOG"
 REMOTE_OUT="/var/tmp/bulkhead/$LABEL"
-app_ssh "sudo mkdir -p /var/tmp/bulkhead && sudo bash /tmp/bulkhead/bulkhead-collect.sh start $REMOTE_OUT" | tee -a "$LOG"
+app_ssh "sudo mkdir -p /var/tmp/bulkhead && sudo bash /tmp/bulkhead/bulkhead-collect.sh start $REMOTE_OUT $NMT" | tee -a "$LOG"
+# RSS 샘플러가 RssAnon 을 실제로 남기는지, NMT 회차면 스냅샷이 찍히는지 확인한다 — 메모리 회차의 주 지표다(3-10절).
+sleep 5
+MEM_CHECK=$(app_ssh "sudo bash /tmp/bulkhead/bulkhead-collect.sh check $REMOTE_OUT" || true)
+log "수집 확인 — $MEM_CHECK"
+case "$ARM" in
+  MT|MV|MTN|MVN)
+    case "$MEM_CHECK" in *"rss_anon_kb="[0-9]*) ;; *) log "중단: RSS 샘플러가 RssAnon 을 남기지 않는다"; app_ssh "sudo bash /tmp/bulkhead/bulkhead-collect.sh stop $REMOTE_OUT" >/dev/null || true; exit 3 ;; esac ;;
+esac
+if [ -n "$NMT" ]; then
+  case "$MEM_CHECK" in *"nmt_committed_kb="[0-9]*) ;; *) log "중단: NMT 스냅샷이 없다"; app_ssh "sudo bash /tmp/bulkhead/bulkhead-collect.sh stop $REMOTE_OUT" >/dev/null || true; exit 3 ;; esac
+fi
 
 # k6 스크립트는 push 없이 로컬 사본을 쓴다
 # 빠르게 이어지는 SSH 직후 scp 가 'Connection closed' 로 끊긴 적이 있어(s-T1 첫 시도) 다시 시도한다
@@ -230,7 +256,9 @@ set +e
 python "$(win "$REPO/scripts/loadtest/aggregate-fastapi.py")" \
   --k6-log "$(win "$OUT/$LABEL.k6.log")" --k6-summary "$(win "$OUT/$LABEL.summary.json")" \
   --poll "$(win "$OUT/$LABEL/metrics.prom")" --journal "$(win "$OUT/$LABEL/app.log")" \
-  --k6-vmstat "$(win "$OUT/$LABEL.vmstat")" --invalid-file "$(win "$GATE_FILE")" --label "$LABEL" --out-json "$(win "$OUT/result.json")" | tee -a "$LOG"
+  --k6-vmstat "$(win "$OUT/$LABEL.vmstat")" --invalid-file "$(win "$GATE_FILE")" \
+  --host "$(win "$OUT/$LABEL/host.tsv")" --nmt-dir "$(win "$OUT/$LABEL/nmt")" --kernel-oom "$(win "$OUT/$LABEL/kernel-oom.txt")" \
+  --label "$LABEL" --out-json "$(win "$OUT/result.json")" | tee -a "$LOG"
 AGG_EXIT=${PIPESTATUS[0]}
 set -e
 log "UnHealthyHostCount 최대 $(python -c "import json,sys;d=json.load(open(sys.argv[1]));print(max([p['Maximum'] for p in d['Datapoints']] or [0]))" "$(win "$OUT/cw-UnHealthyHostCount.json")")"
