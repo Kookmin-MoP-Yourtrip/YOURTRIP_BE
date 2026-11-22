@@ -38,7 +38,7 @@ import org.springframework.test.context.ActiveProfiles;
  * 줄여 "워커가 전부 묶인" 상태를 요청 2개로 만든다. 임계값·타임아웃도 수백 ms로 줄여 테스트가 늘어지지 않게 한다.
  * 운영 인프라 측정에서는 이 로직이 아니라 포트·보안그룹·ALB·ASG 연결과 실제 소요 시간만 확인하면 된다.
  *
- * <p>워커를 묶는 장치는 테스트 전용 필터다. 컨트롤러로 만들면 보안 필터가 인증 없는 요청을 401로 돌려보내 워커가
+ * <p>워커를 묶는 장치는 테스트 전용 필터다. 컨트롤러로 만들면 보안 필터가 인증 없는 요청을 403으로 돌려보내 워커가
  * 묶이지 않는다. {@link RequestProgressFilter} 바로 안쪽에 두므로, 묶인 동안에는 완료 기록이 갱신되지 않는다 — 운영의
  * "워커가 멈춘" 상태와 바깥에서 보이는 모습이 같다.
  */
@@ -159,7 +159,7 @@ class RequestProgressLivenessIntegrationTest {
     }
 
     @Test
-    @DisplayName("직접 확인 경로는 인증 없이 2xx — 401이면 멀쩡한 서버가 DOWN이 된다")
+    @DisplayName("직접 확인 경로는 인증 없이 2xx — 403이면 멀쩡한 서버가 DOWN이 된다")
     void pingIsPermitted() throws Exception {
         assertThat(get(mainPort, HttpMainPortProbe.PING_PATH).statusCode()).isEqualTo(204);
     }
