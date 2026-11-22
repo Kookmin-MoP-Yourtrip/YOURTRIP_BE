@@ -31,6 +31,18 @@ class MemoryLeakTest {
     }
 
     @Test
+    @DisplayName("멈춘 뒤에는 이전 작업자가 더 붙잡지 않는다")
+    void nothingRetainedAfterStop() throws Exception {
+        leak.start(500);
+        Thread.sleep(50);
+
+        leak.stop();
+        Thread.sleep(50);
+
+        assertThat(leak.retainedMegabytes()).isZero();
+    }
+
+    @Test
     @DisplayName("이미 돌고 있으면 두 번째 시작은 무시한다 — 누수 스레드가 겹쳐 속도가 배가되지 않는다")
     void secondStartIsIgnored() {
         assertThat(leak.start(1)).isTrue();

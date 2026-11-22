@@ -43,8 +43,14 @@ public class MemoryLeak {
 
     private void leak(long intervalMillis) {
         try {
-            while (!Thread.currentThread().isInterrupted()) {
+            while (true) {
                 synchronized (this) {
+                    // 소유권을 잠금 안에서 확인한다. 인터럽트 검사만 잠금 밖에 두면, 검사와 잠금 사이에 stop()이 끝난 뒤
+                    // 이 스레드가 1MB를 더 붙잡아 stop() 이후에도 누수가 남는다. stop()·start()가 worker를 바꾼 뒤라면
+                    // 이 스레드는 더 이상 주인이 아니므로 추가하지 않고 끝난다.
+                    if (worker != Thread.currentThread()) {
+                        return;
+                    }
                     retained.add(new byte[CHUNK_BYTES]);
                 }
                 Thread.sleep(intervalMillis);
