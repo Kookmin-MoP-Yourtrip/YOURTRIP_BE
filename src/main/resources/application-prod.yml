@@ -38,19 +38,25 @@ server:
     max-keep-alive-requests: -1
 
 management:
-  endpoint:
-    health:
-      # /actuator/health/liveness·/readiness를 노출한다. ALB 타깃 그룹의 헬스체크가 liveness를
-      # 쓰기 때문이다.
-      #
-      # /actuator/health를 쓰면 안 되는 이유: 그 경로는 DB·Redis가 내려가면 503을 반환하는데,
-      # ASG의 health_check_type이 ELB라 503인 인스턴스를 죽이고 다시 띄우기를 반복한다.
-      # RDS 순간 장애 하나가 인스턴스 교체 폭풍으로 번진다.
-      #
-      # 대가: DB가 죽어도 ALB가 트래픽을 계속 보내 500이 나간다. 인스턴스가 1대일 때는 어차피
-      # 뺄 곳이 없으므로 수용한다. 상시 다중 인스턴스가 되면 readiness로 옮길 여지가 있다.
-      probes:
-        enabled: true
+  server:
+    # actuator를 앱 포트(8080)와 다른 커넥터·스레드 풀로 분리한다(#198, #216).
+    #
+    # 같은 포트에 두면 ALB 헬스체크와 Alloy 지표 수집이 사용자 요청과 같은 워커 줄에 선다.
+    # 빠른 API 고부하 측정(docs/tasks/ai-bulkhead-loadtest/measurement.md 8-10·8-11절)에서
+    # 서버는 일하고 있었는데(5xx 0건, 부하 해제 후 2분 내 회복) 헬스체크가 줄에 밀려 5초를
+    # 넘겼고, 워커 32·200·가상 스레드 네 회차 모두 unhealthy가 됐다. ASG가 health_check_type
+    # = ELB라 운영이었다면 과부하만으로 인스턴스가 교체됐다.
+    #
+    # 포트를 나누면 "8080만 멈춘" 고장을 관리 포트가 못 보게 되는데, 그 빈칸은 liveness 그룹의
+    # requestProgress가 메운다(application.yml의 management 블록, global/health 패키지).
+    #
+    # prod에만 두는 이유: 로컬 Prometheus(prometheus.yml)는 8080에서 수집하고, 로컬에서
+    # 8081은 부하테스트의 다른 arm이 쓰는 자리다. 환경별로 다른 설정은 프로필 파일에 둔다.
+    # 8081은 부하테스트에서 같은 목적으로 쓰던 번호라 스크립트·문서와 어긋나지 않는다.
+    #
+    # 외부 노출은 terraform/prod가 막는다 — 보안그룹이 ALB에서 오는 8081만 받고, ALB 리스너는
+    # 8081로 트래픽을 보내지 않는다(헬스체크만 이 포트로 온다).
+    port: 8081
 
 logging:
   level:

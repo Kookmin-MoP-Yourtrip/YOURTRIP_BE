@@ -330,7 +330,43 @@ management:
   endpoints:
     web:
       exposure:
-        include: health, metrics, prometheus
+        # fault는 측정 전용 결함 주입 장치(global/fault)다. 목록에 늘 두지만 fault-injection.enabled=true일
+        # 때만 빈이 생기므로, 꺼진 운영에서는 노출할 엔드포인트 자체가 없다. 목록을 측정 때만 바꾸게 하면
+        # 원복 누락으로 측정 설정이 운영에 남는 경로가 하나 더 생긴다.
+        include: health, metrics, prometheus, fault
   endpoint:
     health:
       show-details: always
+      # /actuator/health/liveness·/readiness를 노출한다. ALB 타깃 그룹의 헬스체크가 liveness를
+      # 쓰기 때문이다. 종전에는 prod에만 켰지만, liveness 그룹에 판정 로직(requestProgress)이
+      # 들어가면서 로컬·테스트에서도 같은 엔드포인트로 그 판정을 확인할 수 있어야 해 공통으로
+      # 옮겼다. 환경에 따라 달라지는 설정이 아니다.
+      #
+      # /actuator/health를 쓰면 안 되는 이유: 그 경로는 DB·Redis가 내려가면 503을 반환하는데,
+      # ASG의 health_check_type이 ELB라 503인 인스턴스를 죽이고 다시 띄우기를 반복한다.
+      # RDS 순간 장애 하나가 인스턴스 교체 폭풍으로 번진다.
+      #
+      # 대가: DB가 죽어도 ALB가 트래픽을 계속 보내 500이 나간다. 인스턴스가 1대일 때는 어차피
+      # 뺄 곳이 없으므로 수용한다. 상시 다중 인스턴스가 되면 readiness로 옮길 여지가 있다.
+      probes:
+        enabled: true
+      group:
+        liveness:
+          # livenessState만으로는 "응답이 오면 항상 200"이다 — 앱 코드가 BROKEN을 발행하지 않는 한
+          # 바뀌지 않는다. requestProgress가 "8080에서 일이 끝나고 있는가"를 더한다. 의존성(DB·Redis)은
+          # 일부러 넣지 않는다 — 재시작해도 고쳐지지 않는 고장으로 인스턴스를 교체하게 된다.
+          # 판정 규칙과 근거: docs/tasks/health-check-progress/README.md
+          include: livenessState, requestProgress
+
+# 진행 여부 판정(#216). global/health/HealthProgressProperties 가 바인딩한다.
+health:
+  progress:
+    # 8080에서 마지막으로 워커가 요청을 마친 뒤 이 시간이 지나면, 판정 근거가 없다고 보고 8080을
+    # 직접 확인한다. 이 값 자체로 DOWN이 되지는 않는다 — 직접 확인이 실패해야 DOWN이다. 그래서
+    # 긴 정상 요청보다 길 필요가 없고, "얼마나 자주 직접 확인할지"만 정한다.
+    # 과부하에서는 완료가 계속 생기므로 직접 확인을 하지 않는다(줄에 밀릴 일이 없다).
+    # 10s는 시작값이다. s-T 계단 부하에서 완료 간격의 최대값을 재서 확정한다(설계 문서 D3).
+    stall-threshold: 10s
+    # 직접 확인(127.0.0.1:8080/internal/ping)의 연결·응답 상한. ALB 헬스체크 타임아웃(5초)보다
+    # 충분히 짧아야 확인이 실패했을 때 503을 제시간에 돌려줄 수 있다.
+    probe-timeout: 2s

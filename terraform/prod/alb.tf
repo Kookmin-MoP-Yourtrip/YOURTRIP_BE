@@ -34,7 +34,11 @@ resource "aws_lb_target_group" "app" {
     # /actuator/health가 아니라 liveness다 — 이유는 variables.tf의 health_check_path 설명 참고.
     # 이 경로는 ALB 내부에서 타깃으로 직접 가므로, 아래 /actuator 차단 리스너 규칙의 영향을
     # 받지 않는다. 그 공존이 실제로 성립하는지는 판정 기준 P4로 확인한다.
-    path                = var.health_check_path
+    path = var.health_check_path
+    # 트래픽 포트(8080)가 아니라 관리 포트로 검사한다(#216). 8080으로 검사하면 헬스체크가 사용자
+    # 요청과 같은 워커 줄에 서서, 과부하 때 일하는 서버가 unhealthy로 교체된다. 관리 포트만 보면
+    # "8080만 멈춘" 고장을 놓치는데, 그 빈칸은 liveness 그룹의 requestProgress가 메운다.
+    port                = var.management_port
     protocol            = "HTTP"
     matcher             = "200"
     interval            = 30
@@ -95,15 +99,24 @@ resource "aws_lb_listener" "https" {
 # 문서이기 때문이다(CLAUDE.md). 이 규칙이 Swagger를 건드리지 않는지는 판정 기준 P3으로 확인한다.
 #
 # 한계: 리스너 규칙은 ALB를 지나는 트래픽에만 적용된다. enable_dev_direct_access를 켜서
-# 8080으로 직접 붙으면 이 차단을 지나친다. 더 근본적인 방법은 actuator를 별도 관리 포트로
-# 분리하는 것이고, 후속 이슈로 분리해 뒀다.
+# 8080으로 직접 붙으면 이 차단을 지나친다.
+#
+# actuator는 이제 관리 포트(8081)로 분리돼 8080에는 /actuator가 없다(#198). 그래도 이 차단을
+# 지우지 않는다 — prod 프로필이 빠진 채 뜨면(local로 뜨면) actuator가 다시 8080에 붙는다.
+# 프로필 누락은 앱이 정상처럼 보이면서 조용히 일어나는 사고라(docs/guide/profile.md), 그때도
+# 외부 노출만은 막혀 있어야 한다.
+#
+# /internal도 같은 규칙에서 막는다. 헬스체크의 8080 직접 확인(/internal/ping)과 측정 전용 결함
+# 주입 장치(/internal/fault/**)가 쓰는 경로이고, 둘 다 인스턴스 안에서만 부른다. 결함 주입 장치는
+# 측정 때만 켜지지만, 켜진 동안 인터넷에서 워커를 묶을 수 있게 되면 그 자체가 장애 경로다.
+# 규칙 하나의 조건 값은 최대 5개라 넷까지는 한 규칙에 둔다.
 resource "aws_lb_listener_rule" "block_actuator" {
   listener_arn = aws_lb_listener.https.arn
   priority     = 1
 
   condition {
     path_pattern {
-      values = ["/actuator", "/actuator/*"]
+      values = ["/actuator", "/actuator/*", "/internal", "/internal/*"]
     }
   }
 

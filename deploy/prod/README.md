@@ -17,14 +17,14 @@
 | [jvm-opts.env](jvm-opts.env) | **JVM 옵션의 정본.** 값과 산정 근거가 함께 있다. systemd `EnvironmentFile`로 읽힌다 |
 | [yourtrip-app.service](yourtrip-app.service) | systemd 유닛. 부하테스트에서 검증된 구조를 옮긴 것이다 |
 | [instance-refresh-preferences.json](instance-refresh-preferences.json) | **인스턴스 교체 조건의 정본.** terraform과 CD 워크플로가 **같은 파일을 읽는다** — 아래 참고 |
-| [config.alloy](config.alloy) | **Grafana Alloy 설정의 정본.** 앱 지표(`localhost:8080/actuator/prometheus`)·호스트 지표·journald 로그를 Grafana Cloud로 보낸다. user-data가 `/etc/alloy/config.alloy`로 주입한다 |
+| [config.alloy](config.alloy) | **Grafana Alloy 설정의 정본.** 앱 지표(`localhost:8081/actuator/prometheus` — actuator는 prod에서 관리 포트 8081에 있다)·호스트 지표·journald 로그를 Grafana Cloud로 보낸다. user-data가 `/etc/alloy/config.alloy`로 주입한다 |
 
 **JVM 옵션을 별도 파일로 나눈 이유**는 `/opt/app/.env`가 DB 비밀번호·API 키를 담고 있어 git 밖에 있어야 하기 때문이다. JVM 옵션은 비밀이 아니라 **근거를 남겨야 하는 설정**이므로 반대로 저장소가 들고 있어야 한다. systemd는 `EnvironmentFile=`을 여러 줄 쓸 수 있어 둘을 나란히 읽을 수 있다.
 
 ## 현재 값
 
 ```
-JVM_OPTS=-Xmx768m -Xss512k
+JVM_OPTS=-Xmx768m -Xss512k -XX:+ExitOnOutOfMemoryError
 ```
 
 `-Xmx768m`은 **t3.small(vCPU 2 / 2GB) 기준 실측값**이다. 산정 근거는 `jvm-opts.env`의 주석과 [docs/tasks/jvm-heap-sizing/](../../docs/tasks/jvm-heap-sizing/README.md)에 있다.
@@ -69,12 +69,12 @@ sudo systemctl daemon-reload && sudo systemctl restart yourtrip-app
 tr '\0' ' ' < /proc/$(systemctl show -p MainPID --value yourtrip-app)/cmdline; echo
 ```
 
-`/usr/bin/java -Xmx768m -Xss512k -jar /opt/app/app.jar`가 나와야 한다.
+`/usr/bin/java -Xmx768m -Xss512k -XX:+ExitOnOutOfMemoryError -jar /opt/app/app.jar`가 나와야 한다. 마지막 옵션은 첫 OOM에서 JVM을 종료해 systemd가 다시 띄우게 한다(근거는 `jvm-opts.env` 주석).
 
 **(2) JVM이 그 값을 반영했는가**
 
 ```bash
-curl -sf http://localhost:8080/actuator/prometheus | awk '/^jvm_memory_max_bytes\{/ && /area="heap"/ { v=$NF+0; if (v>0) s+=v } END { printf "%.0f\n", s }'
+curl -sf http://localhost:8081/actuator/prometheus | awk '/^jvm_memory_max_bytes\{/ && /area="heap"/ { v=$NF+0; if (v>0) s+=v } END { printf "%.0f\n", s }'
 ```
 
 `805306368`(= 768MB)이 나와야 한다. G1은 Eden/Survivor의 max를 `-1`로 내보내고 Old Gen에만 실제 상한을 싣기 때문에 **양수만 더한다** — 이 항등식(양수 풀 max의 합 = `Runtime.maxMemory()`)은 `LoadtestMetricsExposureTest`가 잠그고 있다.

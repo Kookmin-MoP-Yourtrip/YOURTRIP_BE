@@ -248,7 +248,7 @@ SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
 `-Xmx`·`-Xss`는 **`java` 프로세스의 명령줄 인자**라 `application-prod.yml`에 담을 수 없다. JVM이 이미 그 값으로 뜬 뒤에야 Spring이 yml을 읽기 때문이다. 그래서 별도의 자리를 둔다 — [deploy/prod/](../../deploy/prod/README.md)가 그곳이고, 값과 산정 근거가 함께 버전관리된다.
 
 ```
-JVM_OPTS=-Xmx768m -Xss512k
+JVM_OPTS=-Xmx768m -Xss512k -XX:+ExitOnOutOfMemoryError
 ```
 
 systemd 유닛이 `EnvironmentFile=/opt/app/jvm-opts.env`로 읽고 `ExecStart`에서 `$JVM_OPTS`로 전개한다. 비밀값이 든 `/opt/app/.env`와 파일을 나눈 이유는 그쪽이 git 밖에 있어야 하고, JVM 옵션은 반대로 근거와 함께 저장소가 들고 있어야 하기 때문이다.

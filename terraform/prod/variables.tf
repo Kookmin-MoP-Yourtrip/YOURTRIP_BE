@@ -139,6 +139,12 @@ variable "health_check_path" {
   default     = "/actuator/health/liveness"
 }
 
+variable "management_port" {
+  description = "앱의 관리 포트(actuator). application-prod.yml의 management.server.port와 같아야 한다 — 다르면 헬스체크가 아무것도 듣지 않는 포트로 가서 모든 인스턴스가 unhealthy가 되고 ASG가 교체를 반복한다. 헬스체크를 앱 포트(8080)에서 떼어 낸 이유는 과부하 때 헬스체크가 사용자 요청과 같은 워커 줄에 서서 일하는 서버가 unhealthy로 교체되기 때문이다(#216, docs/tasks/health-check-progress)."
+  type        = number
+  default     = 8081
+}
+
 # ============================================================
 # EC2 / ASG
 # ============================================================
