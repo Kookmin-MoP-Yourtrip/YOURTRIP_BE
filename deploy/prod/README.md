@@ -24,7 +24,7 @@
 ## 현재 값
 
 ```
-JVM_OPTS=-Xmx768m -Xss512k
+JVM_OPTS=-Xmx768m -Xss512k -XX:+ExitOnOutOfMemoryError
 ```
 
 `-Xmx768m`은 **t3.small(vCPU 2 / 2GB) 기준 실측값**이다. 산정 근거는 `jvm-opts.env`의 주석과 [docs/tasks/jvm-heap-sizing/](../../docs/tasks/jvm-heap-sizing/README.md)에 있다.
@@ -69,7 +69,7 @@ sudo systemctl daemon-reload && sudo systemctl restart yourtrip-app
 tr '\0' ' ' < /proc/$(systemctl show -p MainPID --value yourtrip-app)/cmdline; echo
 ```
 
-`/usr/bin/java -Xmx768m -Xss512k -jar /opt/app/app.jar`가 나와야 한다.
+`/usr/bin/java -Xmx768m -Xss512k -XX:+ExitOnOutOfMemoryError -jar /opt/app/app.jar`가 나와야 한다. 마지막 옵션은 첫 OOM에서 JVM을 종료해 systemd가 다시 띄우게 한다(근거는 `jvm-opts.env` 주석).
 
 **(2) JVM이 그 값을 반영했는가**
 
