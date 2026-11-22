@@ -25,7 +25,7 @@
 | **C1 대안 B** | 8081 `/actuator/health/liveness` | `livenessState` | 관리 포트만 분리한 설계 | 한다 |
 | **C2 채택안** | 8081 `/actuator/health/liveness` | `livenessState, requestProgress` | 이번 구현 | 한다 |
 
-**같은 JAR을 쓰는 것이 이 설계의 핵심이다.** 버전이 다르면 결과 차이가 헬스체크 때문인지 다른 코드 변경 때문인지 가를 수 없다. C1과 C2는 타깃 그룹 헬스체크 포트(8081)까지 같고, **환경변수 하나만 다르다.** 그래서 구성을 바꿀 때 terraform을 건드리지 않고 SSM 값 변경과 앱 재기동만 한다.
+**같은 JAR을 쓰는 것이 이 설계의 핵심이다.** 버전이 다르면 결과 차이가 헬스체크 때문인지 다른 코드 변경 때문인지 가를 수 없다. C1과 C2는 타깃 그룹 헬스체크 포트(8081)까지 같고, **환경변수 하나만 다르다.** 그래서 구성을 바꿀 때 terraform은 건드리지 않는다. SSM 값을 바꾼 뒤 **instance refresh로 새 인스턴스를 띄운다** — `/opt/app/.env`는 user-data가 부팅 때만 SSM에서 받아 쓰므로, 앱 재기동만으로는 새 값이 반영되지 않는다(`scripts/loadtest/health-config.sh`).
 
 | 구성 | `MANAGEMENT_ENDPOINT_HEALTH_GROUP_LIVENESS_INCLUDE` |
 |---|---|
