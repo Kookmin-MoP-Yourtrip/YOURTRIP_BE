@@ -212,7 +212,9 @@ case "$SCN" in
     mark inject
     # 워커(32)보다 많이 보낸다 — 남은 요청은 accept 큐에서 기다리고, 워커가 하나라도 풀리면 바로 다시 묶인다.
     app_ssh "for i in \$(seq 1 40); do nohup curl -s -m 7200 -o /dev/null http://localhost:8080/internal/fault/hang >/dev/null 2>&1 & done"
-    wait_hang 32 || { log "주의: 20초 안에 워커 32개가 묶이지 않았다 — $(fault status)"; }
+    # 일부만 묶이면 이 시나리오가 아니다(남은 워커가 직접 확인을 처리해 판정이 달라진다). 계속하지 않고 판정 불가로
+    # 끝낸다 — cleanup 의 비상 복구가 묶인 워커를 푼다.
+    wait_hang 32 || { log "중단: 20초 안에 워커 32개가 묶이지 않았다 — $(fault status) — 판정 불가"; exit 3; }
     log "주입 상태 $(fault status)" ;;
   S4)
     mark inject
@@ -309,13 +311,18 @@ fi
 # 교체가 일어났다면 새 인스턴스, 아니면 원래 인스턴스가 서비스할 수 있게 될 때까지 기다린다.
 # 타깃 healthy 만으로는 복구의 증거가 아니다 — C1 은 8080 이 죽어 있어도 관리 포트가 healthy 를 낸다. 그래서 InService
 # 1대가 healthy 이고, 그 인스턴스의 8080 이 직접 확인 경로(/internal/ping)에 204 로 답할 때만 복구로 본다.
+# ping 성공만으로는 결함이 걷혔다는 증거도 아니다 — 워커 일부만 묶여 있어도, 누수가 계속 돌고 있어도 204 가 난다.
+# 그래서 결함 장치의 상태가 깨끗한지(묶인 연결 0, 붙잡은 메모리 0)까지 확인한다.
 RECOVER_END=$(( $(date +%s) + 600 ))
 RECOVER_OK=""
 while :; do
   read -r -a NOW_IDS <<< "$(inservice_ids)"
   if [ "${#NOW_IDS[@]}" -eq 1 ] && [ "$(target_state "${NOW_IDS[0]}")" = healthy ]; then
-    CODE=$(app_ssh_to "${NOW_IDS[0]}" "curl -s -o /dev/null -m 5 -w '%{http_code}' http://localhost:8080/internal/ping" 2>/dev/null || true)
-    if [ "$CODE" = 204 ]; then RECOVER_OK=yes; break; fi
+    CHECK=$(app_ssh_to "${NOW_IDS[0]}" "curl -s -o /dev/null -m 5 -w 'ping=%{http_code} ' http://localhost:8080/internal/ping; \
+      curl -s -m 5 -X POST -H 'Content-Type: application/json' -d '{}' http://localhost:8081/actuator/fault/status" 2>/dev/null || true)
+    if grep -q 'ping=204' <<< "$CHECK" && grep -q '"hangWaiting":0' <<< "$CHECK" && grep -q '"leakRetainedMb":0' <<< "$CHECK"; then
+      RECOVER_OK=yes; break
+    fi
   fi
   [ "$(date +%s)" -lt "$RECOVER_END" ] || break
   sleep 10
