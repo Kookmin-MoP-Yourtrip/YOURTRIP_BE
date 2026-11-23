@@ -53,7 +53,9 @@ public class MailMetrics {
         /** 보내지 못하고 끝났다 — 재시도를 모두 썼거나, 재시도 대상이 아닌 실패였다. */
         GAVE_UP,
         /** 메일 전용 풀이 가득 차 받지 않았다(503). SMTP를 한 번도 시도하지 않는다. */
-        REJECTED;
+        REJECTED,
+        /** 재시도 직전에 인증번호가 재발송으로 바뀌었거나 만료돼 보내지 않고 버렸다. */
+        STALE;
 
         String tag() {
             return name().toLowerCase(Locale.ROOT);

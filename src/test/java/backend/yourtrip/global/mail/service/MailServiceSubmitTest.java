@@ -11,9 +11,12 @@ import static org.mockito.Mockito.verify;
 import backend.yourtrip.global.exception.RetryLaterException;
 import backend.yourtrip.global.exception.errorCode.MailErrorCode;
 import backend.yourtrip.global.mail.MailMetrics;
+import backend.yourtrip.global.mail.MailRetryBackoff;
 import backend.yourtrip.global.mail.repository.MailLogRepository;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
@@ -59,7 +62,8 @@ class MailServiceSubmitTest {
         executor.initialize();
 
         registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
-        mailService = new MailService(mailSender, mock(MailLogRepository.class), new MailMetrics(registry), executor);
+        mailService = new MailService(mailSender, mock(MailLogRepository.class), new MailMetrics(registry), executor,
+            email -> Optional.of("111111"), new MailRetryBackoff(List.of(0L, 0L, 0L)));
     }
 
     @AfterEach

@@ -1,5 +1,6 @@
 package backend.yourtrip.domain.user.store;
 
+import backend.yourtrip.global.mail.VerificationCodeSource;
 import java.util.Optional;
 
 /**
@@ -9,13 +10,19 @@ import java.util.Optional;
  * 만료는 저장소의 TTL이 책임지므로, 호출부는 만료시각을 직접 관리하지 않는다:
  * 만료된 항목은 조회 시 빈 Optional / false로 나타난다.
  */
-public interface EmailVerificationStore {
+public interface EmailVerificationStore extends VerificationCodeSource {
 
     /** 인증코드를 저장한다. 같은 이메일로 재발급하면 기존 코드를 덮어쓴다. TTL 5분. */
     void saveCode(String email, String code);
 
     /** 유효한(만료되지 않은) 인증코드를 조회한다. 없거나 만료됐으면 빈 Optional. */
     Optional<String> findCode(String email);
+
+    /** 메일 재시도 직전의 낡은 코드 확인용(#221). 저장소의 현재 코드가 곧 유효한 코드다. */
+    @Override
+    default Optional<String> currentCode(String email) {
+        return findCode(email);
+    }
 
     /** 이메일을 인증 완료 상태로 표시한다. TTL 30분 — 이 시간 안에 가입/재설정을 마쳐야 한다. */
     void markVerified(String email);

@@ -8,9 +8,12 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import backend.yourtrip.global.mail.MailMetrics;
+import backend.yourtrip.global.mail.MailRetryBackoff;
 import backend.yourtrip.global.mail.repository.MailLogRepository;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
+import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,8 +28,8 @@ import org.springframework.mail.javamail.JavaMailSender;
  * <p>현재 재시도는 재귀 호출이라, 결말을 세는 자리를 잘못 잡으면 재귀 깊이만큼 중복 집계된다.
  * 그래서 "메일 한 통 = {@code mail.send} 정확히 1"을 시나리오마다 단언한다.
  *
- * <p>이 테스트는 지금 동작(재시도 대상 분류 없음, 즉시 재시도)을 <b>있는 그대로</b> 기록한다.
- * 기준선 측정용 지표라 동작을 바꾸지 않기 때문이다. 재시도 정책을 바꾸는 단계에서 이 기대값도 함께 바뀐다.
+ * <p>재시도 분류·백오프·낡은 코드 폐기의 동작은 {@code MailServiceRetryTest}가 맡는다. 여기서는 백오프를 0으로,
+ * 저장된 코드를 늘 같은 값으로 두고 지표 집계만 본다.
  *
  * <p>발송은 {@code mailExecutor}에서 돌지만, 여기서는 동기 실행기({@code Runnable::run})를 넣어 지표만 본다.
  * 그래서 포기한 메일도 호출자에게 예외가 오지 않는다 — 발송 결과는 응답이 아니라 지표로만 보이기 때문이다.
@@ -45,7 +48,8 @@ class MailServiceMetricsTest {
         mailSender = mock(JavaMailSender.class);
         registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         mailService = new MailService(mailSender, mock(MailLogRepository.class),
-            new MailMetrics(registry), Runnable::run);
+            new MailMetrics(registry), Runnable::run, email -> Optional.of("123456"),
+            new MailRetryBackoff(List.of(0L, 0L, 0L)));
     }
 
     @Test
@@ -89,7 +93,7 @@ class MailServiceMetricsTest {
     }
 
     @Test
-    @DisplayName("MailSendException이 아닌 실패(인증 오류)는 현재 재시도하지 않는다 — 시도 실패 1, 메일 gave_up 1")
+    @DisplayName("MailSendException이 아닌 실패(인증 오류)는 재시도하지 않는다 — 시도 실패 1, 메일 gave_up 1")
     void nonSendFailureIsNotRetried() {
         doThrow(new MailAuthenticationException("인증 실패"))
             .when(mailSender).send(any(SimpleMailMessage.class));
@@ -110,6 +114,7 @@ class MailServiceMetricsTest {
             .contains("mail_send_total{outcome=\"sent\"} 0.0")
             .contains("mail_send_total{outcome=\"gave_up\"} 0.0")
             .contains("mail_send_total{outcome=\"rejected\"} 0.0")
+            .contains("mail_send_total{outcome=\"stale\"} 0.0")
             .contains("mail_send_attempt_seconds_count{outcome=\"success\"} 0")
             .contains("mail_send_attempt_seconds_count{outcome=\"failure\"} 0")
             // p95를 서버 쪽에서 계산하려면 누적 버킷이 있어야 한다

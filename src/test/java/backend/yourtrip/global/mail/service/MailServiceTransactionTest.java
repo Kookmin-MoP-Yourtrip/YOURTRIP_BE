@@ -37,7 +37,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * <p>실제 프록시와 H2를 거쳐야 트랜잭션·커넥션·롤백을 볼 수 있어 컨텍스트를 띄운다. SMTP만 목으로 바꾼다.
  * 발송 풀({@code mailExecutor})도 실제 빈이라, 발송이 요청 스레드가 아니라 메일 스레드에서 도는지까지 본다.
  */
-@SpringBootTest
+// 재시도 간격을 0으로 — 실패 시나리오마다 운영 간격(합 7초)을 기다리지 않게 한다. 간격 자체는 MailServiceRetryTest가 본다.
+@SpringBootTest(properties = "mail.retry.backoff-ms=0,0,0")
 @ActiveProfiles("test")
 @DisplayName("MailService — 트랜잭션 밖 발송 (#221)")
 class MailServiceTransactionTest {
@@ -87,7 +88,7 @@ class MailServiceTransactionTest {
     }
 
     @Test
-    @DisplayName("재시도를 모두 실패해도 시도마다의 실패 로그 4건이 롤백되지 않고 남는다")
+    @DisplayName("재시도를 모두 실패해도 시도마다의 실패 로그 4건이 롤백되지 않고 남는다 — 마지막 행은 GAVE_UP")
     void failedAttemptLogsSurviveFinalFailure() throws InterruptedException {
         doThrow(new MailSendException("일시 장애")).when(mailSender).send(any(SimpleMailMessage.class));
 
@@ -100,7 +101,7 @@ class MailServiceTransactionTest {
                 tuple("FAILED", 0),
                 tuple("FAILED", 1),
                 tuple("FAILED", 2),
-                tuple("FAILED", 3));
+                tuple("GAVE_UP", 3));
     }
 
     @Test

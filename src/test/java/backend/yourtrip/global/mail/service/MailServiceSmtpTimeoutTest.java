@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import backend.yourtrip.global.mail.MailMetrics;
+import backend.yourtrip.global.mail.MailRetryBackoff;
 import backend.yourtrip.global.mail.repository.MailLogRepository;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
 import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
@@ -12,6 +13,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
@@ -68,7 +70,9 @@ class MailServiceSmtpTimeoutTest {
 
         registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         // 동기 실행기 — 발송 시간을 호출 구간에서 재려고 메일 스레드 대신 테스트 스레드에서 돌린다.
-        mailService = new MailService(sender, mock(MailLogRepository.class), new MailMetrics(registry), Runnable::run);
+        // 백오프는 0 — 여기서는 시도마다 타임아웃으로 끝나는지만 보고, 대기 간격은 MailServiceRetryTest가 본다.
+        mailService = new MailService(sender, mock(MailLogRepository.class), new MailMetrics(registry), Runnable::run,
+            email -> Optional.of("123456"), new MailRetryBackoff(List.of(0L, 0L, 0L)));
     }
 
     @AfterEach
@@ -87,7 +91,7 @@ class MailServiceSmtpTimeoutTest {
         mailService.sendVerificationMail("user@example.com", "123456");
 
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-        // 현재 재시도는 대기 없이 4번이라 약 4 × 300ms. 타임아웃이 없으면 이 테스트는 끝나지 않는다.
+        // 백오프 0으로 4번이라 약 4 × 300ms. 타임아웃이 없으면 이 테스트는 끝나지 않는다.
         assertThat(elapsedMs).isLessThan(5_000);
         assertThat(accepted).hasSize(4);
 
