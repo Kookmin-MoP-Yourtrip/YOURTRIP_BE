@@ -252,6 +252,10 @@ def main():
         empty = sum(1 for _, rs in jw if not rs)
         if empty:
             invalid.append(f'{kind} 판정 창의 빈 10초 창 {empty}개 (판정 불가)')
+        # 무효 조건에만 올리고 판정은 그대로 계산하면 표에 "정상"이 찍혀 그 줄만 읽는 사람을 속인다.
+        if not base or empty:
+            print(f"| {kind} | {'—' if not base else f'{base_p99}ms'} | **판정 불가** | — | — | — | — | — |")
+            continue
         j = judge_probe(base_p99, jw)
         after = windows_of(rs, t0, mail_end, bg_end)
         rec = recovery_sec(base_p99, after, mail_end / 1000)
