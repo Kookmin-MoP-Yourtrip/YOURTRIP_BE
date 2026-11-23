@@ -85,6 +85,8 @@ class MailServiceTransactionTest {
         assertThat(threadNames).singleElement().asString().startsWith("mail-");
         assertThat(txActive).containsExactly(false);
         assertThat(activeConnections).containsExactly(0);
+        // SUCCESS 행은 send() 반환 뒤에 저장된다. 기다리지 않으면 다음 테스트의 deleteAll() 뒤에 끼어들 수 있다.
+        assertThat(awaitLogs(1)).extracting(MailLog::getStatus).containsExactly("SUCCESS");
     }
 
     @Test

@@ -20,6 +20,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.Timeout.ThreadMode;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 
 /**
@@ -83,7 +85,10 @@ class MailServiceSmtpTimeoutTest {
         }
     }
 
+    // 타임아웃 설정이 빠지는 회귀에서는 발송이 반환하지 않는다 — 그 회귀를 잡으려면 호출 자체에 시간 제한이 있어야 한다.
+    // 소켓 읽기는 인터럽트로 깨지 않으므로 별도 스레드에서 돌리고, 시간이 지나면 실패 처리 뒤 tearDown이 소켓을 닫는다.
     @Test
+    @Timeout(value = 10, threadMode = ThreadMode.SEPARATE_THREAD)
     @DisplayName("응답 없는 서버에 보내면 시도마다 읽기 타임아웃으로 실패하고, 실패 4·gave_up 1이 지표에 남는다")
     void silentServerFailsWithinTimeoutAndIsObservable() {
         long start = System.nanoTime();
