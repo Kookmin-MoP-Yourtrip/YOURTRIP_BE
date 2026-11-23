@@ -201,14 +201,20 @@ docker compose --profile mail-loadtest up -d mailpit toxiproxy
 curl -s -X DELETE http://localhost:8025/api/v1/messages
 scripts/loadtest/mail-toxic.sh latency <G3 보정값>        # 무응답 회차는 hang
 
-MAIL_EMAIL=loadtest@example.com MAIL_PASSWORD=dummy MANAGEMENT_SERVER_PORT=8081 \
+# DB_DDL_AUTO=update — .env 값이 create라 재기동마다 개발 DB 테이블이 지워진다(6-1절)
+DB_DDL_AUTO=update MAIL_EMAIL=loadtest@example.com MAIL_PASSWORD=dummy MANAGEMENT_SERVER_PORT=8081 \
 ./gradlew bootRun --args='--spring.mail.host=localhost --spring.mail.port=2526
   --server.tomcat.threads.max=32
   --logging.level.org.hibernate.SQL=WARN --logging.level.org.hibernate.orm.jdbc.bind=WARN
   --logging.level.backend.yourtrip=INFO'
 
 scripts/loadtest/poll-metrics.sh http://localhost:8081 <회차>.metrics.txt 1 &
-while true; do jcmd <pid> Thread.print >> <회차>.threads.txt; sleep 10; done &
+# mail-threads.py는 덤프마다 "# ts=" 줄로 시각을 읽는다
+while true; do
+  echo "# ts=$(date +%s.%N)"
+  jcmd <pid> Thread.print
+  sleep 10
+done >> <회차>.threads.txt &
 
 k6 run -e JWT="$TOKEN" -e LABEL=<회차> -e MAIL_PER_MIN=<분당> \
   --log-output=file=<회차>.k6.log scripts/k6/mail-bulkhead.js     # 무응답 회차는 -e CLEAR_AFTER=1

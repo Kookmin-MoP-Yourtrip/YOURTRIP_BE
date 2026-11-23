@@ -154,6 +154,8 @@
 
 원본(`*.k6.log`, `*.metrics.txt`, `*.threads.txt`)은 용량 때문에 커밋하지 않았다.
 
+> **주의 — `mail-round.sh`는 로컬 상태를 지운다.** 회차마다 8080 포트를 쓰는 프로세스를 **강제 종료**하고 Mailpit의 받은 메일을 **전부 삭제**하며, Toxiproxy의 독성을 모두 뺀다. 다른 로컬 서버가 8080을 쓰고 있거나 Mailpit의 메일이 필요하면 먼저 정리한다.
+
 ```bash
 scripts/loadtest/mail-round.sh A-L1 <개선 전 jar> 60  latency <출력>
 scripts/loadtest/mail-round.sh A-L3 <개선 전 jar> 144 latency <출력>
