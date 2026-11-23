@@ -7,6 +7,9 @@
 #       → Mailpit 수신 수 기록 → 앱 종료 → 집계
 # 회차마다 앱을 새로 띄운다. 무응답 회차는 재기동 없이는 회복하지 않는다고 예측했기 때문이다(설계 7절).
 #
+# [주의] 로컬 상태를 바꾼다 — 8080 포트를 쓰는 프로세스를 강제 종료하고, Mailpit 받은 메일을 전부 지우고,
+#        Toxiproxy 독성을 모두 뺀다. 다른 로컬 서버가 8080을 쓰고 있다면 먼저 내린다.
+#
 # 사용:  mail-round.sh <회차> <jar> <분당 메일> <latency|hang> <출력 디렉터리>
 #   필요한 환경변수: LOADTEST_EMAIL, LOADTEST_PASSWORD (측정용 계정 — 커밋하지 않는다)
 #                   JAVA_HOME_21 (기본 C:/Program Files/Java/jdk-21)
@@ -35,6 +38,18 @@ stop_app() {
   local pid; pid="$(app_pid)"
   [ -n "$pid" ] && powershell -NoProfile -Command "Stop-Process -Id $pid -Force" || true
 }
+
+# 앱·수집기·독성은 오류로 끝나도(로그인 실패, k6 이상 종료 등) 남지 않아야 한다. 앱을 띄우기 전에 등록하고,
+# 정상 종료도 같은 함수로 정리한다 — 이미 정리한 자원을 다시 정리해도 문제없다.
+POLL=""
+DUMP=""
+cleanup() {
+  [ -n "$POLL" ] && kill "$POLL" 2>/dev/null || true
+  [ -n "$DUMP" ] && kill "$DUMP" 2>/dev/null || true
+  "$ROOT/scripts/loadtest/mail-toxic.sh" clear > /dev/null 2>&1 || true
+  stop_app
+}
+trap cleanup EXIT
 
 # ── 1. 앱 재기동 (설계 2-2절의 덮어쓰기) ─────────────────────────────────────
 stop_app
@@ -80,7 +95,6 @@ POLL=$!
   done
 ) > "$P.threads.txt" &
 DUMP=$!
-trap 'kill $POLL $DUMP 2>/dev/null || true' EXIT
 
 # ── 5. 부하 ─────────────────────────────────────────────────────────────────
 k6 run -q -e JWT="$JWT" -e LABEL="$LABEL" -e MAIL_PER_MIN="$MAIL_PER_MIN" -e CLEAR_AFTER="$CLEAR_AFTER" \
@@ -88,10 +102,8 @@ k6 run -q -e JWT="$JWT" -e LABEL="$LABEL" -e MAIL_PER_MIN="$MAIL_PER_MIN" -e CLE
   "$ROOT/scripts/k6/mail-bulkhead.js" > "$P.k6.stdout" 2>&1 || echo "[$LABEL] k6 종료 코드 $? (임계값 없음 — 로그로 판단)"
 
 # ── 6. 정리 ─────────────────────────────────────────────────────────────────
-kill $POLL $DUMP 2>/dev/null || true
 curl -sf 'localhost:8025/api/v1/messages?limit=1' | grep -o '"total":[0-9]*' > "$P.mailpit.txt" || true
-"$ROOT/scripts/loadtest/mail-toxic.sh" clear > /dev/null
-stop_app
+cleanup
 
 python -I -X utf8 "$ROOT/scripts/loadtest/aggregate-mail.py" "$P.k6.log" --metrics "$P.metrics.txt" \
   --summary "$P.summary.json" > "$P.result.md"

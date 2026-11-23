@@ -155,8 +155,11 @@ def series(snap, name, contains=''):
 
 def metrics_summary(snaps, t0_sec, from_sec, to_sec):
     win = [s for s in snaps if from_sec <= s['ts'] - t0_sec < to_sec]
+    # 수집 공백은 구간 양 끝까지 포함해 잰다 — 구간 안 스냅샷 사이만 보면 앞뒤가 통째로 빈 경우를 놓친다.
+    edges = [from_sec] + [s['ts'] - t0_sec for s in win] + [to_sec]
+    gap = max(b - a for a, b in zip(edges, edges[1:]))
     if len(win) < 2:
-        return None
+        return {'insufficient': True, 'scrape_gap_max_sec': gap}
     first, last = win[0], win[-1]
 
     def mx(name, contains=''):
@@ -178,7 +181,6 @@ def metrics_summary(snaps, t0_sec, from_sec, to_sec):
             if buckets[le] >= total / 2:
                 attempt_p50 = le
                 break
-    gaps = [b['ts'] - a['ts'] for a, b in zip(win, win[1:])]
     # 무효 조건은 순간값이 아니라 1분 평균이다(설계 4-3절) — 1초 스냅샷 60개의 이동 평균 최댓값.
     cpu = [series(s, 'system_cpu_usage') for s in win]
     k = min(60, len(cpu))
@@ -194,7 +196,7 @@ def metrics_summary(snaps, t0_sec, from_sec, to_sec):
         'mail_sent': delta('mail_send_total', 'sent'),
         'mail_gave_up': delta('mail_send_total', 'gave_up'),
         'cpu_system_1m_max': cpu_1m,
-        'scrape_gap_max_sec': max(gaps) if gaps else None,
+        'scrape_gap_max_sec': gap,
     }
 
 
@@ -234,12 +236,22 @@ def main():
     print('\n## 탐침 판정 (판정 창 = 메일 구간 마지막 180초)\n')
     print('| 탐침 | 기준선 p99 | 판정 | 판정 창 p99 | 최악 10초 p99 | 1분 에러율 최대 | 회복(도착 종료 기준) | 회복(독성 해제 기준) |')
     print('|---|---|---|---|---|---|---|---|')
-    clear_sec = (toxic['t'] - t0) / 1000 if toxic else None
+    # 무응답 회차의 독성 해제는 실제로 성공했을 때만 해제 시각으로 쓴다. 실패·누락은 회차 조건 위반이다.
+    clear_ok = toxic is not None and toxic.get('s') in (200, 204)
+    if run['clearAfter'] and not clear_ok:
+        invalid.append('독성 해제 실패' if toxic else '독성 해제 기록(TOXIC) 없음')
+    clear_sec = (toxic['t'] - t0) / 1000 if clear_ok else None
     for kind in PROBES:
         rs = by_kind[kind]
         base = [r['ms'] for r in rs if warm <= r['t'] - t0 < base_end]
         base_p99 = percentile(base, 99) or 0
+        # 표본이 없는 창은 p99가 0으로 계산돼 "정상"으로 읽힌다 — k6가 중간에 멈춘 회차를 정상으로 판정하지 않게 막는다.
+        if not base:
+            invalid.append(f'{kind} 기준선 표본 없음')
         jw = windows_of(rs, t0, judge_start, mail_end)
+        empty = sum(1 for _, rs in jw if not rs)
+        if empty:
+            invalid.append(f'{kind} 판정 창의 빈 10초 창 {empty}개 (판정 불가)')
         j = judge_probe(base_p99, jw)
         after = windows_of(rs, t0, mail_end, bg_end)
         rec = recovery_sec(base_p99, after, mail_end / 1000)
@@ -278,8 +290,10 @@ def main():
                  ('판정 창', judge_start / 1000, mail_end / 1000), ('회복 관찰', mail_end / 1000, bg_end / 1000)]
         for name, f, t in spans:
             m = metrics_summary(snaps, t0s, f, t)
-            if m is None:
-                print(f'| {name} | 스냅샷 없음 |||||||||| ')
+            if m.get('insufficient'):
+                print(f'| {name} | 스냅샷 2개 미만 |||||||||| ')
+                if name in ('메일 전체', '판정 창'):
+                    invalid.append(f"{name} 지표 스냅샷 2개 미만 (수집 공백 {m['scrape_gap_max_sec']:.1f}초)")
                 continue
             p50 = '—' if m['attempt_p50_le_sec'] is None else f"≤{m['attempt_p50_le_sec']:.2f}s"
             print(f"| {name} | {m['tomcat_busy_max']:.0f} | {m['hikari_active_max']:.0f} | {m['hikari_pending_max']:.0f} | "
