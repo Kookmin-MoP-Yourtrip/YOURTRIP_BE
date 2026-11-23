@@ -156,6 +156,18 @@
 
 > **주의 — `mail-round.sh`는 로컬 상태를 지운다.** 회차마다 8080 포트를 쓰는 프로세스를 **강제 종료**하고 Mailpit의 받은 메일을 **전부 삭제**하며, Toxiproxy의 독성을 모두 뺀다. 다른 로컬 서버가 8080을 쓰고 있거나 Mailpit의 메일이 필요하면 먼저 정리한다.
 
+**실행 환경.** 측정은 Windows 개발 PC에서 했다.
+
+- **셸**: Git Bash. 스크립트가 앱 종료·포트 조회에 `powershell`을 부른다(리눅스에서는 `stop_app`·`app_pid`를 `fuser`·`kill`로 바꿔야 한다)
+- **Java 21**: `java -jar`로 앱을 띄운다. PATH의 첫 `java`가 다른 버전일 수 있어 `JAVA_HOME_21`(기본 `C:/Program Files/Java/jdk-21`)을 직접 쓴다. 덤프에 같은 JDK의 `jcmd`를 쓴다
+- **k6, Docker**: Mailpit·Toxiproxy는 `docker compose --profile mail-loadtest up -d mailpit toxiproxy`로 띄운다
+- **로컬 PostgreSQL·Redis**: `.env`의 접속 정보 그대로. 스크립트가 `DB_DDL_AUTO=update`로 덮어써 테이블은 지우지 않는다
+- **측정용 계정**: `mine` 탐침의 JWT를 회차마다 다시 받으려고 로그인 정보를 환경변수로 넘긴다. 가입은 앱을 위 설정으로 띄운 뒤 `/api/users/email/send` → Mailpit(`http://localhost:8025`)에서 번호 확인 → `/email/verify` → `/password` → `/profile` 순서로 한 번 하면 된다. 계정 정보는 커밋하지 않는다
+
+```bash
+export LOADTEST_EMAIL=<측정용 계정 이메일> LOADTEST_PASSWORD=<비밀번호>
+```
+
 ```bash
 scripts/loadtest/mail-round.sh A-L1 <개선 전 jar> 60  latency <출력>
 scripts/loadtest/mail-round.sh A-L3 <개선 전 jar> 144 latency <출력>
