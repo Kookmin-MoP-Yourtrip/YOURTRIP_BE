@@ -63,6 +63,7 @@ class MailServiceSubmitTest {
 
         registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         mailService = new MailService(mailSender, mock(MailLogRepository.class), new MailMetrics(registry), executor,
+            // 저장소는 늘 같은 번호를 돌려준다 — 여기서는 제출·거절만 보고 낡은 번호 폐기는 MailServiceRetryTest가 본다.
             email -> Optional.of("111111"), new MailRetryBackoff(List.of(0L, 0L, 0L)));
     }
 
@@ -87,10 +88,10 @@ class MailServiceSubmitTest {
     @DisplayName("풀(스레드 1 + 큐 1)이 차면 세 번째 요청은 기다리지 않고 MAIL_BUSY·Retry-After 30초로 거절되고 rejected로 센다")
     void rejectsImmediatelyWhenPoolIsFull() {
         mailService.sendVerificationMail("a@example.com", "111111");  // 스레드에서 SMTP 대기
-        mailService.sendVerificationMail("b@example.com", "222222");  // 큐 1칸
+        mailService.sendVerificationMail("b@example.com", "111111");  // 큐 1칸
 
         long start = System.nanoTime();
-        assertThatThrownBy(() -> mailService.sendVerificationMail("c@example.com", "333333"))
+        assertThatThrownBy(() -> mailService.sendVerificationMail("c@example.com", "111111"))
             .isInstanceOfSatisfying(RetryLaterException.class, e -> {
                 assertThat(e.getErrorCode()).isEqualTo(MailErrorCode.MAIL_BUSY);
                 assertThat(e.getRetryAfterSeconds()).isEqualTo(MailService.RETRY_AFTER_SECONDS);
@@ -104,8 +105,8 @@ class MailServiceSubmitTest {
     @DisplayName("거절된 메일은 SMTP를 시도하지 않고, 받아 둔 메일은 SMTP가 풀리면 모두 발송된다")
     void acceptedMailsAreDeliveredAfterSmtpRecovers() throws InterruptedException {
         mailService.sendVerificationMail("a@example.com", "111111");
-        mailService.sendVerificationMail("b@example.com", "222222");
-        assertThatThrownBy(() -> mailService.sendVerificationMail("c@example.com", "333333"))
+        mailService.sendVerificationMail("b@example.com", "111111");
+        assertThatThrownBy(() -> mailService.sendVerificationMail("c@example.com", "111111"))
             .isInstanceOf(RetryLaterException.class);
 
         smtpRelease.countDown();

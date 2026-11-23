@@ -49,6 +49,7 @@ import org.springframework.stereotype.Service;
  * 시도 → 실패 → 재시도할 실패인가? (인증 오류·5xx 영구 실패면 즉시 포기)
  *      → 백오프 대기(1·2·4초) → 저장된 인증번호가 아직 이 메일의 번호인가? (재발송·만료면 폐기)
  *      → 다음 시도 … → 상한에 닿으면 포기
+ * 번호 확인은 첫 시도 전에도 한다 — 큐에서 기다리는 동안 만료될 수 있다.
  * </pre>
  *
  * <p>MailLog는 시도마다 한 행이다. {@code retryCount}는 이름과 달리 <b>몇 번째 시도인가(0부터)</b>이고, 그 의미는
@@ -155,10 +156,12 @@ public class MailService {
                     Thread.currentThread().interrupt();
                     return MailOutcome.GAVE_UP;
                 }
-                if (isStale(mail)) {
-                    save(mail, attempt, "STALE", null);
-                    return MailOutcome.STALE;
-                }
+            }
+            // 첫 시도 전에도 확인한다. 메일은 큐에서 기다렸다가 첫 시도를 하는데, SMTP가 응답하지 않으면 한 통이
+            // 스레드를 약 47초(타임아웃 10초 × 4 + 백오프 7초) 쥐어 큐 뒤쪽의 대기가 5분 만료를 넘을 수 있다.
+            if (isStale(mail)) {
+                save(mail, attempt, "STALE", null);
+                return MailOutcome.STALE;
             }
 
             try {

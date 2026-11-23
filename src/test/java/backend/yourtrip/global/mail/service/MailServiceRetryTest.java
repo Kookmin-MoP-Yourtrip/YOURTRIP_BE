@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -155,9 +156,11 @@ class MailServiceRetryTest {
     @Test
     @DisplayName("백오프 중 사용자가 재발송해 번호가 바뀌면 옛 메일은 보내지 않고 STALE로 버린다")
     void resendDuringBackoffDropsOldMail() {
-        doThrow(transientFailure()).when(mailSender).send(any(SimpleMailMessage.class));
         // 첫 시도가 실패한 직후(백오프 중) 재발송이 일어나 저장된 번호가 새 값이 된다.
-        storedCode.set(Optional.of("999999"));
+        doAnswer(invocation -> {
+            storedCode.set(Optional.of("999999"));
+            throw transientFailure();
+        }).when(mailSender).send(any(SimpleMailMessage.class));
 
         mailService.sendVerificationMail(TO, CODE);
 
@@ -171,8 +174,10 @@ class MailServiceRetryTest {
     @Test
     @DisplayName("백오프 중 번호가 만료(5분)되면 보내 봐야 쓸 수 없으므로 STALE로 버린다")
     void expiredCodeDropsMail() {
-        doThrow(transientFailure()).when(mailSender).send(any(SimpleMailMessage.class));
-        storedCode.set(Optional.empty());
+        doAnswer(invocation -> {
+            storedCode.set(Optional.empty());
+            throw transientFailure();
+        }).when(mailSender).send(any(SimpleMailMessage.class));
 
         mailService.sendVerificationMail(TO, CODE);
 
@@ -194,14 +199,17 @@ class MailServiceRetryTest {
     }
 
     @Test
-    @DisplayName("첫 시도 전에는 번호를 확인하지 않는다 — 방금 저장한 번호라 확인할 이유가 없다")
-    void firstAttemptSkipsStaleCheck() {
+    @DisplayName("큐에서 기다리는 동안 번호가 만료되면 첫 시도도 하지 않고 STALE로 버린다")
+    void expiredWhileQueuedIsDroppedBeforeFirstAttempt() {
+        // SMTP가 응답하지 않으면 한 통이 스레드를 약 47초 쥐어, 큐 뒤쪽 메일은 첫 시도 전에 5분이 지날 수 있다.
         storedCode.set(Optional.empty());
 
         mailService.sendVerificationMail(TO, CODE);
 
-        verify(mailSender, times(1)).send(any(SimpleMailMessage.class));
-        assertThat(mails("sent")).isEqualTo(1);
+        verify(mailSender, times(0)).send(any(SimpleMailMessage.class));
+        assertThat(savedLogs()).extracting(MailLog::getStatus, MailLog::getRetryCount)
+            .containsExactly(tuple("STALE", 0));
+        assertThat(mails("stale")).isEqualTo(1);
     }
 
     // 연결 거부·타임아웃처럼 SMTP 응답 코드가 없는 실패 — JavaMailSenderImpl이 연결 실패를 이렇게 감싼다.
