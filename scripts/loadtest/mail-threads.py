@@ -6,6 +6,8 @@ mail-round.sh 가 10초마다 남긴 <회차>.threads.txt 를 읽어, 덤프마�
   유휴    작업 대기열(TaskQueue.take·poll)
   기타    그 밖 — 실행 중이거나 다른 대기
 
+개선 후(#221 5단계)에는 SMTP 대기가 메일 전용 풀(mail-N)로 옮겨 가므로, 그 스레드의 SMTP 대기도 따로 센다.
+
 시각은 회차 시작(MAILRUN.runStartMs) 기준이며, 메일 도착 시작을 0초로 맞춰 출력한다.
 
 사용:  python mail-threads.py <회차>.threads.txt <회차>.k6.log
@@ -15,7 +17,7 @@ import re
 import sys
 
 # server.address 를 지정하면 이름에 주소가 들어간다 — http-nio-0.0.0.0-8080-exec-N
-WORKER_RE = re.compile(r'^"(http-nio-(?:[^"]*-)?8080-exec-\d+)"')
+WORKER_RE = re.compile(r'^"(http-nio-(?:[^"]*-)?8080-exec-\d+|mail-\d+)"')
 
 
 def classify(stack):
@@ -64,13 +66,15 @@ def main():
                 run = json.loads(m.group(1).replace('\\"', '"'))
                 break
     mail_start = run['runStartMs'] / 1000 + run['warmupSec'] + run['baselineSec']
-    print('| 초 (메일 도착 기준) | 워커 수 | 커넥션 대기 | SMTP 대기 | 유휴 | 기타 |')
-    print('|---|---|---|---|---|---|')
+    print('| 초 (메일 도착 기준) | 워커 수 | 커넥션 대기 | SMTP 대기 | 유휴 | 기타 | mail 스레드 SMTP 대기 |')
+    print('|---|---|---|---|---|---|---|')
     for ts, w in dumps(threads):
         c = {k: 0 for k in ('커넥션', 'SMTP', '유휴', '기타')}
-        for v in w.values():
+        workers = {k: v for k, v in w.items() if k.startswith('http-nio')}
+        for v in workers.values():
             c[v] += 1
-        print(f"| {ts - mail_start:.0f} | {len(w)} | {c['커넥션']} | {c['SMTP']} | {c['유휴']} | {c['기타']} |")
+        mail_smtp = sum(1 for k, v in w.items() if k.startswith('mail-') and v == 'SMTP')
+        print(f"| {ts - mail_start:.0f} | {len(workers)} | {c['커넥션']} | {c['SMTP']} | {c['유휴']} | {c['기타']} | {mail_smtp} |")
 
 
 if __name__ == '__main__':

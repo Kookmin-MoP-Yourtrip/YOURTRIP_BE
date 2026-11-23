@@ -14,7 +14,8 @@
 //
 // 요청마다 한 줄씩 남긴다(집계는 aggregate-mail.py). --log-output=file=<회차>.k6.log 로 받는다.
 //   MAILRUN {설정}                 회차 시작 시 한 번
-//   REQ {"k":종류,"t":보낸시각ms,"ms":지연,"s":상태,"e":에러코드}   k = popular | mine | mail
+//   REQ {"k":종류,"t":보낸시각ms,"ms":지연,"s":상태,"e":에러코드[,"ra":Retry-After]}   k = popular | mine | mail
+//       ra 는 503 응답에만 붙는다(개선 후 판정 M5 — 거절에 재시도 간격 힌트가 실리는지).
 //   TOXIC {"t":시각ms,"s":상태}    독성 해제 시점
 //
 // 사용:
@@ -107,9 +108,11 @@ export function setup() {
 
 function record(kind, sentAtMs, res) {
   // 타임아웃·연결 실패는 status 0 으로 오고, error_code 로 구분한다(1050 = 요청 타임아웃).
-  console.log('REQ ' + JSON.stringify({
-    k: kind, t: sentAtMs, ms: Math.round(res.timings.duration), s: res.status, e: res.error_code || 0,
-  }));
+  const line = { k: kind, t: sentAtMs, ms: Math.round(res.timings.duration), s: res.status, e: res.error_code || 0 };
+  if (res.status === 503) {
+    line.ra = res.headers['Retry-After'] || '';
+  }
+  console.log('REQ ' + JSON.stringify(line));
 }
 
 export function popular() {

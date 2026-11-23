@@ -262,7 +262,11 @@ def main():
         print(f"- 200 응답 p50 {percentile(ok, 50)}ms · p99 {percentile(ok, 99)}ms")
     busy = [r['ms'] for r in mail if r['s'] == 503]
     if busy:
-        print(f"- 503 응답 p50 {percentile(busy, 50)}ms · p99 {percentile(busy, 99)}ms")
+        no_ra = sum(1 for r in mail if r['s'] == 503 and not r.get('ra'))
+        print(f"- 503 응답 p50 {percentile(busy, 50)}ms · p99 {percentile(busy, 99)}ms · Retry-After 없는 503 {no_ra}건")
+    jm = [r for r in mail if judge_start <= r['t'] - t0 < mail_end]
+    if jm:
+        print(f"- 판정 창 503 비율 {sum(1 for r in jm if r['s'] == 503) / len(jm):.1%} ({len(jm)}건 중)")
 
     if a.metrics:
         snaps = load_metrics(a.metrics)
