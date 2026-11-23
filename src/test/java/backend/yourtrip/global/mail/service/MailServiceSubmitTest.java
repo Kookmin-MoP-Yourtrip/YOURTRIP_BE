@@ -117,6 +117,68 @@ class MailServiceSubmitTest {
         assertThat(registry.get(MailMetrics.MAIL).tag("outcome", "sent").counter().count()).isEqualTo(2);
     }
 
+    @Test
+    @DisplayName("자리 수는 풀 설정(스레드 + 큐)에서 정해지고, 다 차면 예약 단계에서 MAIL_BUSY로 거절한다")
+    void reserveRejectsWhenPoolCapacityIsTaken() {
+        assertThat(MailService.capacityOf(executor)).isEqualTo(2);
+
+        MailReservation first = mailService.reserve();
+        MailReservation second = mailService.reserve();
+
+        assertThatThrownBy(() -> mailService.reserve())
+            .isInstanceOfSatisfying(RetryLaterException.class,
+                e -> assertThat(e.getErrorCode()).isEqualTo(MailErrorCode.MAIL_BUSY));
+        assertThat(registry.get(MailMetrics.MAIL).tag("outcome", "rejected").counter().count()).isEqualTo(1);
+
+        first.close();
+        second.close();
+    }
+
+    @Test
+    @DisplayName("보내지 않고 닫은 예약은 자리를 돌려준다 — 두 번 닫아도 한 번만 돌려준다")
+    void unusedReservationReturnsItsSlotOnce() {
+        MailReservation first = mailService.reserve();
+        MailReservation second = mailService.reserve();
+        first.close();
+        first.close();  // 두 번째 close는 아무것도 하지 않아야 한다 — 두 번 돌려주면 상한이 늘어난다
+
+        MailReservation third = mailService.reserve();  // 돌려받은 한 자리
+        assertThatThrownBy(() -> mailService.reserve()).isInstanceOf(RetryLaterException.class);
+
+        second.close();
+        third.close();
+    }
+
+    @Test
+    @DisplayName("예약 하나로는 메일 한 통만 보낸다")
+    void reservationSendsOnlyOnce() {
+        try (MailReservation reservation = mailService.reserve()) {
+            reservation.sendVerificationMail("a@example.com", "111111");
+            assertThatThrownBy(() -> reservation.sendVerificationMail("a@example.com", "111111"))
+                .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Test
+    @DisplayName("보낸 메일의 자리는 발송 작업이 끝나야 돌아온다")
+    void sentReservationReturnsSlotWhenDeliveryFinishes() throws InterruptedException {
+        try (MailReservation a = mailService.reserve()) {
+            a.sendVerificationMail("a@example.com", "111111");
+        }
+        try (MailReservation b = mailService.reserve()) {
+            b.sendVerificationMail("b@example.com", "111111");
+        }
+        // 두 통 모두 SMTP에서 멈춰 있어 자리가 없다 — close()는 이미 보낸 예약의 자리를 돌려주지 않는다.
+        assertThatThrownBy(() -> mailService.reserve()).isInstanceOf(RetryLaterException.class);
+
+        smtpRelease.countDown();
+        executor.getThreadPoolExecutor().shutdown();
+        assertThat(executor.getThreadPoolExecutor().awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+
+        // 발송이 끝나 두 자리가 돌아왔다.
+        mailService.reserve().close();
+    }
+
     private static long elapsedMs(long startNanos) {
         return (System.nanoTime() - startNanos) / 1_000_000;
     }

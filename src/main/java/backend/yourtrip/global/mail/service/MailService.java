@@ -11,6 +11,7 @@ import backend.yourtrip.global.mail.entity.MailLog;
 import backend.yourtrip.global.mail.repository.MailLogRepository;
 import java.util.Optional;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Semaphore;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.angus.mail.smtp.SMTPAddressFailedException;
 import org.eclipse.angus.mail.smtp.SMTPSendFailedException;
@@ -19,6 +20,7 @@ import org.springframework.core.task.TaskRejectedException;
 import org.springframework.mail.MailSendException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Service;
 
 /**
@@ -33,13 +35,14 @@ import org.springframework.stereotype.Service;
  * </ul>
  * 메일 발송은 롤백할 수 없으므로 트랜잭션이 보호하는 것도 없다. 다시 붙이지 말 것.
  *
- * <p><b>발송은 {@code mailExecutor}에서 한다</b> (이슈 #221, 설계 README 3-1절). 공개 메서드는 풀에 제출만 하고 바로
- * 돌아오므로, 호출한 Tomcat 워커는 SMTP를 기다리지 않는다. 그래서 성공 응답의 의미는 "발송 완료"가 아니라
+ * <p><b>발송은 {@code mailExecutor}에서 한다</b> (이슈 #221, 설계 README 3-1절). 호출자는 {@link #reserve()}로 풀의
+ * 자리를 잡고, 그 예약으로 제출만 하고 바로 돌아오므로 Tomcat 워커는 SMTP를 기다리지 않는다. 그래서 성공 응답의 의미는 "발송 완료"가 아니라
  * <b>"발송 접수"</b>다. 발송 실패는 응답으로 돌아가지 않고 {@code mail.send}·{@code mail.send.attempt} 지표와
  * MailLog로만 보인다.
  * <ul>
- *   <li>풀이 가득 차면 제출이 거절되고, 호출한 워커에서 바로 503({@link MailErrorCode#MAIL_BUSY}) + {@code Retry-After}를
- *       던진다. 거절 판정을 워커에서 하는 구조는 {@code AiCourseAdmission}과 같다</li>
+ *   <li>풀이 가득 차면 <b>예약 단계에서</b> 거절하고, 호출한 워커에서 바로 503({@link MailErrorCode#MAIL_BUSY}) +
+ *       {@code Retry-After}를 던진다. 제출이 아니라 예약에서 거절하는 이유는 {@link MailReservation} 참고 — 호출자가
+ *       번호를 저장하기 전에 거절해야 이미 접수된 이전 메일이 버려지지 않는다. 구조는 {@code AiCourseAdmission}과 같다</li>
  *   <li>{@code @Async}를 쓰지 않는 이유: 거절 처리가 프록시 뒤에 숨어 코드에 드러나지 않고, 같은 클래스 안 호출에는
  *       적용되지 않으며, 단위 테스트에서 동기 실행으로 바꾸기 번거롭다. 생성자로 받은 {@link Executor}에 직접 제출한다</li>
  * </ul>
@@ -66,6 +69,8 @@ public class MailService {
     private final Executor mailExecutor;
     private final VerificationCodeSource codeSource;
     private final MailRetryBackoff backoff;
+    // 풀에 들어와 있는 메일(실행 중 + 큐) 수의 상한. 풀 용량과 같게 두므로, 예약을 얻은 제출은 풀에서 거절되지 않는다.
+    private final Semaphore admission;
 
     public MailService(JavaMailSender mailSender, MailLogRepository mailLogRepository, MailMetrics mailMetrics,
         @Qualifier("mailExecutor") Executor mailExecutor, VerificationCodeSource codeSource,
@@ -76,6 +81,16 @@ public class MailService {
         this.mailExecutor = mailExecutor;
         this.codeSource = codeSource;
         this.backoff = backoff;
+        this.admission = new Semaphore(capacityOf(mailExecutor));
+    }
+
+    // 풀 용량을 풀 설정에서 읽는다 — 같은 숫자를 두 곳에 두면 한쪽만 바뀌는 일이 생긴다.
+    // 동기 실행기(테스트의 Runnable::run 등)는 넘칠 일이 없어 상한을 두지 않는다.
+    static int capacityOf(Executor executor) {
+        if (executor instanceof ThreadPoolTaskExecutor pool) {
+            return pool.getMaxPoolSize() + pool.getQueueCapacity();
+        }
+        return Integer.MAX_VALUE;
     }
 
     // MailLog.errorMessage 컬럼 길이. SMTP 예외 메시지는 원인 예외를 이어 붙여 이보다 길어지기 쉽다
@@ -86,7 +101,71 @@ public class MailService {
     // SMTP가 느린 날에는 그보다 길다 — 너무 짧으면 거절된 사용자들이 한꺼번에 다시 몰린다.
     static final int RETRY_AFTER_SECONDS = 30;
 
-    public void sendVerificationMail(String to, String code) {
+    /**
+     * 메일 풀에 자리 하나를 잡는다. 가득 찼으면 바로 503({@link MailErrorCode#MAIL_BUSY})을 던진다.
+     * 호출자는 이 예약을 얻은 <b>뒤에</b> 인증번호를 저장하고 발송한다 — 사용법은 {@link MailReservation}.
+     */
+    public MailReservation reserve() {
+        if (!admission.tryAcquire()) {
+            mailMetrics.mail(MailOutcome.REJECTED);
+            throw new RetryLaterException(MailErrorCode.MAIL_BUSY, RETRY_AFTER_SECONDS);
+        }
+        return new Reservation();
+    }
+
+    // 이미 번호를 저장한 뒤라 자리 순서가 상관없는 호출(같은 패키지의 테스트)을 위한 단축 경로.
+    void sendVerificationMail(String to, String code) {
+        try (MailReservation reservation = reserve()) {
+            reservation.sendVerificationMail(to, code);
+        }
+    }
+
+    private final class Reservation implements MailReservation {
+
+        // 요청 스레드 하나만 쓴다 — 동기화할 필요가 없다.
+        private boolean consumed;
+
+        @Override
+        public void sendVerificationMail(String to, String code) {
+            submit(verificationMail(to, code));
+        }
+
+        @Override
+        public void sendPasswordResetMail(String to, String code) {
+            submit(passwordResetMail(to, code));
+        }
+
+        // 자리는 발송 작업이 끝날 때 반납한다. 풀이 거절하는 경우는 종료 중뿐이다(용량 = 허가 수).
+        private void submit(Mail mail) {
+            if (consumed) {
+                throw new IllegalStateException("예약 하나로 메일 한 통만 보낸다");
+            }
+            consumed = true;
+            try {
+                mailExecutor.execute(() -> {
+                    try {
+                        deliver(mail);
+                    } finally {
+                        admission.release();
+                    }
+                });
+            } catch (TaskRejectedException e) {
+                admission.release();
+                mailMetrics.mail(MailOutcome.REJECTED);
+                throw new RetryLaterException(MailErrorCode.MAIL_BUSY, RETRY_AFTER_SECONDS);
+            }
+        }
+
+        @Override
+        public void close() {
+            if (!consumed) {
+                consumed = true;
+                admission.release();
+            }
+        }
+    }
+
+    private static Mail verificationMail(String to, String code) {
         String subject = "[너의 여행은] 이메일 인증번호 안내";
         String body = """
                 안녕하세요!
@@ -98,13 +177,13 @@ public class MailService {
                 감사합니다 :)
                 """.formatted(code);
 
-        submit(new Mail(to, subject, body, code));
+        return new Mail(to, subject, body, code);
     }
 
     // ===============================
-    //  비밀번호 찾기 메일 전송 메서드
+    //  비밀번호 찾기 메일
     // ===============================
-    public void sendPasswordResetMail(String to, String code) {
+    private static Mail passwordResetMail(String to, String code) {
         String subject = "[너의 여행은] 비밀번호 재설정 인증번호 안내";
         String body = """
                 안녕하세요!
@@ -116,20 +195,10 @@ public class MailService {
                 요청하지 않은 경우 메일을 무시해주세요.
                 """.formatted(code);
 
-        submit(new Mail(to, subject, body, code));
+        return new Mail(to, subject, body, code);
     }
 
     private record Mail(String to, String subject, String body, String code) {
-    }
-
-    // 제출만 하고 돌아온다. 거절은 호출한 Tomcat 워커에서 즉시 503으로 끝난다 — 대기도, SMTP 시도도 없다.
-    private void submit(Mail mail) {
-        try {
-            mailExecutor.execute(() -> deliver(mail));
-        } catch (TaskRejectedException e) {
-            mailMetrics.mail(MailOutcome.REJECTED);
-            throw new RetryLaterException(MailErrorCode.MAIL_BUSY, RETRY_AFTER_SECONDS);
-        }
     }
 
     // 메일 스레드에서 돈다. 여기서 던진 예외는 받을 사람이 없으므로 로그로 남기고 끝낸다. 수신자 주소는 로그에 쓰지 않는다.

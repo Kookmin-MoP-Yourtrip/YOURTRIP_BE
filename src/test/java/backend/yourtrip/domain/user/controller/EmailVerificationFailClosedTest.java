@@ -1,12 +1,15 @@
 package backend.yourtrip.domain.user.controller;
 
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import backend.yourtrip.global.mail.service.MailReservation;
 import backend.yourtrip.global.mail.service.MailService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,13 +43,18 @@ class EmailVerificationFailClosedTest {
     @Test
     @DisplayName("Redis 장애 시 인증번호 발송은 503 VERIFICATION_SERVICE_UNAVAILABLE로 거부되고 메일은 발송되지 않는다")
     void sendVerificationCode_redisDown_returns503AndNoMail() throws Exception {
+        MailReservation reservation = mock(MailReservation.class);
+        given(mailService.reserve()).willReturn(reservation);
+
         mockMvc.perform(post("/api/users/email/send")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"email\": \"fail-closed@example.com\"}"))
             .andExpect(status().isServiceUnavailable())
             .andExpect(jsonPath("$.code").value("VERIFICATION_SERVICE_UNAVAILABLE"));
 
-        verify(mailService, never()).sendVerificationMail(anyString(), anyString());
+        verify(reservation, never()).sendVerificationMail(anyString(), anyString());
+        // 잡아 둔 메일 풀 자리는 돌려준다
+        verify(reservation).close();
     }
 
     @Test
