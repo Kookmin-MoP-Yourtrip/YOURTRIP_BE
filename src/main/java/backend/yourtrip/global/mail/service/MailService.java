@@ -69,7 +69,7 @@ public class MailService {
     private final Executor mailExecutor;
     private final VerificationCodeSource codeSource;
     private final MailRetryBackoff backoff;
-    // 풀에 들어와 있는 메일(실행 중 + 큐) 수의 상한. 풀 용량과 같게 두므로, 예약을 얻은 제출은 풀에서 거절되지 않는다.
+    // 풀에 들어와 있는 메일(실행 중 + 큐) 수의 상한 = 큐 용량. 예약을 얻은 제출이 풀에서 거절되지 않게 하는 값이다.
     private final Semaphore admission;
 
     public MailService(JavaMailSender mailSender, MailLogRepository mailLogRepository, MailMetrics mailMetrics,
@@ -84,11 +84,16 @@ public class MailService {
         this.admission = new Semaphore(capacityOf(mailExecutor));
     }
 
-    // 풀 용량을 풀 설정에서 읽는다 — 같은 숫자를 두 곳에 두면 한쪽만 바뀌는 일이 생긴다.
+    // 자리 수를 풀 설정에서 읽는다 — 같은 숫자를 두 곳에 두면 한쪽만 바뀌는 일이 생긴다.
+    //
+    // "스레드 + 큐"가 아니라 "큐"인 이유(PR #224 리뷰): 작업은 본문 끝에서 자리를 반납하는데, 그 순간 워커는 아직 큐에서
+    // 다음 작업을 꺼내지 않아 큐가 가득 찬 그대로다. 자리 수가 스레드 + 큐면 이 틈에 성공한 예약의 제출이 큐 포화로
+    // 거절되고, 호출자는 이미 인증번호를 덮어쓴 뒤다. 자리 수가 큐 용량이면 큐에 든 메일은 모두 자리를 쥔 메일이라
+    // 큐 용량을 넘을 수 없다 — 대가로 풀이 한 번에 받는 메일이 큐 용량(50)으로 줄어든다(스레드 4개는 이 안에서 돈다).
     // 동기 실행기(테스트의 Runnable::run 등)는 넘칠 일이 없어 상한을 두지 않는다.
     static int capacityOf(Executor executor) {
         if (executor instanceof ThreadPoolTaskExecutor pool) {
-            return pool.getMaxPoolSize() + pool.getQueueCapacity();
+            return pool.getQueueCapacity();
         }
         return Integer.MAX_VALUE;
     }
@@ -135,7 +140,7 @@ public class MailService {
             submit(passwordResetMail(to, code));
         }
 
-        // 자리는 발송 작업이 끝날 때 반납한다. 풀이 거절하는 경우는 종료 중뿐이다(용량 = 허가 수).
+        // 자리는 발송 작업이 끝날 때 반납한다. 자리 수 = 큐 용량이라 풀이 거절하는 경우는 종료 중뿐이다.
         private void submit(Mail mail) {
             if (consumed) {
                 throw new IllegalStateException("예약 하나로 메일 한 통만 보낸다");

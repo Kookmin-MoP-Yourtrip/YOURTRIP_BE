@@ -34,7 +34,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * <p>개선 전에는 요청 스레드(Tomcat 워커)가 SMTP 응답을 직접 기다렸다. SMTP가 느려지자 워커 32개가 전부 묶여
  * 메일과 무관한 API까지 멈췄다(docs/tasks/mail-async/measurement.md). 여기서는 SMTP를 "풀어 줄 때까지 멈춤"으로
  * 두고, 그동안 호출이 즉시 돌아오는지 본다. 풀은 운영과 같은 종류({@link ThreadPoolTaskExecutor}, 기본
- * {@code AbortPolicy})를 스레드 1 · 큐 1로 작게 만들어 포화를 재현한다.
+ * {@code AbortPolicy})를 스레드 1 · 큐 2로 작게 만들어 포화를 재현한다. 자리 수는 큐 용량(2)이라, 실행 중 1통 + 큐 대기 1통이 차면 다 찬다.
  */
 @DisplayName("MailService — 풀 제출과 즉시 거절 (#221)")
 class MailServiceSubmitTest {
@@ -57,7 +57,7 @@ class MailServiceSubmitTest {
         executor = new ThreadPoolTaskExecutor();
         executor.setCorePoolSize(1);
         executor.setMaxPoolSize(1);
-        executor.setQueueCapacity(1);
+        executor.setQueueCapacity(2);
         executor.setThreadNamePrefix("mail-test-");
         executor.initialize();
 
@@ -85,10 +85,10 @@ class MailServiceSubmitTest {
     }
 
     @Test
-    @DisplayName("풀(스레드 1 + 큐 1)이 차면 세 번째 요청은 기다리지 않고 MAIL_BUSY·Retry-After 30초로 거절되고 rejected로 센다")
+    @DisplayName("풀(자리 2 = 실행 중 1 + 큐 대기 1)이 차면 세 번째 요청은 기다리지 않고 MAIL_BUSY·Retry-After 30초로 거절되고 rejected로 센다")
     void rejectsImmediatelyWhenPoolIsFull() {
         mailService.sendVerificationMail("a@example.com", "111111");  // 스레드에서 SMTP 대기
-        mailService.sendVerificationMail("b@example.com", "111111");  // 큐 1칸
+        mailService.sendVerificationMail("b@example.com", "111111");  // 큐 대기
 
         long start = System.nanoTime();
         assertThatThrownBy(() -> mailService.sendVerificationMail("c@example.com", "111111"))
@@ -118,7 +118,7 @@ class MailServiceSubmitTest {
     }
 
     @Test
-    @DisplayName("자리 수는 풀 설정(스레드 + 큐)에서 정해지고, 다 차면 예약 단계에서 MAIL_BUSY로 거절한다")
+    @DisplayName("자리 수는 풀의 큐 용량에서 정해지고, 다 차면 예약 단계에서 MAIL_BUSY로 거절한다")
     void reserveRejectsWhenPoolCapacityIsTaken() {
         assertThat(MailService.capacityOf(executor)).isEqualTo(2);
 
