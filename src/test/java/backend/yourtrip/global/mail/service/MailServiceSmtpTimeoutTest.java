@@ -1,10 +1,8 @@
 package backend.yourtrip.global.mail.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
-import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.mail.MailMetrics;
 import backend.yourtrip.global.mail.repository.MailLogRepository;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
@@ -69,7 +67,8 @@ class MailServiceSmtpTimeoutTest {
         sender.setJavaMailProperties(props);
 
         registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
-        mailService = new MailService(sender, mock(MailLogRepository.class), new MailMetrics(registry));
+        // 동기 실행기 — 발송 시간을 호출 구간에서 재려고 메일 스레드 대신 테스트 스레드에서 돌린다.
+        mailService = new MailService(sender, mock(MailLogRepository.class), new MailMetrics(registry), Runnable::run);
     }
 
     @AfterEach
@@ -85,8 +84,7 @@ class MailServiceSmtpTimeoutTest {
     void silentServerFailsWithinTimeoutAndIsObservable() {
         long start = System.nanoTime();
 
-        assertThatThrownBy(() -> mailService.sendVerificationMail("user@example.com", "123456"))
-            .isInstanceOf(BusinessException.class);
+        mailService.sendVerificationMail("user@example.com", "123456");
 
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         // 현재 재시도는 대기 없이 4번이라 약 4 × 300ms. 타임아웃이 없으면 이 테스트는 끝나지 않는다.

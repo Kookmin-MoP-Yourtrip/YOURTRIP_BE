@@ -1,19 +1,19 @@
 package backend.yourtrip.global.mail.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 
-import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.mail.entity.MailLog;
 import backend.yourtrip.global.mail.repository.MailLogRepository;
 import com.zaxxer.hikari.HikariDataSource;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -35,6 +35,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * 롤백해, 앞서 저장한 실패 로그까지 지웠다.
  *
  * <p>실제 프록시와 H2를 거쳐야 트랜잭션·커넥션·롤백을 볼 수 있어 컨텍스트를 띄운다. SMTP만 목으로 바꾼다.
+ * 발송 풀({@code mailExecutor})도 실제 빈이라, 발송이 요청 스레드가 아니라 메일 스레드에서 도는지까지 본다.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -62,32 +63,38 @@ class MailServiceTransactionTest {
     }
 
     @Test
-    @DisplayName("SMTP를 기다리는 동안 트랜잭션이 없고 DB 커넥션을 하나도 쥐지 않는다")
-    void sendsWithoutHoldingConnection() {
-        List<Boolean> txActive = new ArrayList<>();
-        List<Integer> activeConnections = new ArrayList<>();
+    @DisplayName("발송은 mail- 스레드에서 돌고, SMTP를 기다리는 동안 트랜잭션이 없고 DB 커넥션을 하나도 쥐지 않는다")
+    void sendsOnMailThreadWithoutHoldingConnection() throws InterruptedException {
+        List<String> threadNames = new CopyOnWriteArrayList<>();
+        List<Boolean> txActive = new CopyOnWriteArrayList<>();
+        List<Integer> activeConnections = new CopyOnWriteArrayList<>();
+        CountDownLatch sent = new CountDownLatch(1);
         doAnswer(invocation -> {
             // mailSender.send() 안 = SMTP 왕복 중. 이 순간의 상태를 기록한다.
+            threadNames.add(Thread.currentThread().getName());
             txActive.add(TransactionSynchronizationManager.isActualTransactionActive());
             activeConnections.add(hikari().getHikariPoolMXBean().getActiveConnections());
+            sent.countDown();
             return null;
         }).when(mailSender).send(any(SimpleMailMessage.class));
 
         mailService.sendVerificationMail(TO, "123456");
 
+        assertThat(sent.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(threadNames).singleElement().asString().startsWith("mail-");
         assertThat(txActive).containsExactly(false);
         assertThat(activeConnections).containsExactly(0);
     }
 
     @Test
     @DisplayName("재시도를 모두 실패해도 시도마다의 실패 로그 4건이 롤백되지 않고 남는다")
-    void failedAttemptLogsSurviveFinalFailure() {
+    void failedAttemptLogsSurviveFinalFailure() throws InterruptedException {
         doThrow(new MailSendException("일시 장애")).when(mailSender).send(any(SimpleMailMessage.class));
 
-        assertThatThrownBy(() -> mailService.sendVerificationMail(TO, "123456"))
-            .isInstanceOf(BusinessException.class);
+        // 포기는 메일 스레드 안에서 끝난다 — 호출자에게 예외가 오지 않는다.
+        mailService.sendVerificationMail(TO, "123456");
 
-        assertThat(mailLogRepository.findAll())
+        assertThat(awaitLogs(4))
             .extracting(MailLog::getStatus, MailLog::getRetryCount)
             .containsExactlyInAnyOrder(
                 tuple("FAILED", 0),
@@ -98,19 +105,30 @@ class MailServiceTransactionTest {
 
     @Test
     @DisplayName("컬럼(255자)보다 긴 SMTP 오류 메시지도 잘라서 저장한다 — 로그 저장 실패가 원래 실패를 덮지 않는다")
-    void longErrorMessageIsTruncated() {
+    void longErrorMessageIsTruncated() throws InterruptedException {
         // 실제 메시지 예: "Mail server connection failed. Failed messages: ...MailConnectException: ... nested exception is: ..."
         String longMessage = "Mail server connection failed. " + "x".repeat(400);
         doThrow(new MailSendException(longMessage)).when(mailSender).send(any(SimpleMailMessage.class));
 
-        assertThatThrownBy(() -> mailService.sendVerificationMail(TO, "123456"))
-            .isInstanceOf(BusinessException.class);
+        mailService.sendVerificationMail(TO, "123456");
 
-        assertThat(mailLogRepository.findAll())
-            .hasSize(4)
+        assertThat(awaitLogs(4))
             .allSatisfy(log -> assertThat(log.getErrorMessage())
                 .hasSizeLessThanOrEqualTo(255)
                 .startsWith("Mail server connection failed."));
+    }
+
+    // 발송이 메일 스레드에서 끝나므로 MailLog가 다 쌓일 때까지 기다린다. 기대보다 많이 쌓이는 회귀도 잡도록
+    // 개수에 닿으면 잠깐 더 기다렸다가 다시 센다.
+    private List<MailLog> awaitLogs(int expected) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (mailLogRepository.count() < expected && System.nanoTime() < deadline) {
+            Thread.sleep(20);
+        }
+        Thread.sleep(100);
+        List<MailLog> logs = mailLogRepository.findAll();
+        assertThat(logs).hasSize(expected);
+        return logs;
     }
 
     private HikariDataSource hikari() {

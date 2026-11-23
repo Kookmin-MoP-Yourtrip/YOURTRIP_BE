@@ -1,14 +1,12 @@
 package backend.yourtrip.global.mail.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.mail.MailMetrics;
 import backend.yourtrip.global.mail.repository.MailLogRepository;
 import io.micrometer.prometheusmetrics.PrometheusConfig;
@@ -29,6 +27,9 @@ import org.springframework.mail.javamail.JavaMailSender;
  *
  * <p>이 테스트는 지금 동작(재시도 대상 분류 없음, 즉시 재시도)을 <b>있는 그대로</b> 기록한다.
  * 기준선 측정용 지표라 동작을 바꾸지 않기 때문이다. 재시도 정책을 바꾸는 단계에서 이 기대값도 함께 바뀐다.
+ *
+ * <p>발송은 {@code mailExecutor}에서 돌지만, 여기서는 동기 실행기({@code Runnable::run})를 넣어 지표만 본다.
+ * 그래서 포기한 메일도 호출자에게 예외가 오지 않는다 — 발송 결과는 응답이 아니라 지표로만 보이기 때문이다.
  */
 @DisplayName("MailService — 발송 지표 (#221)")
 class MailServiceMetricsTest {
@@ -44,7 +45,7 @@ class MailServiceMetricsTest {
         mailSender = mock(JavaMailSender.class);
         registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
         mailService = new MailService(mailSender, mock(MailLogRepository.class),
-            new MailMetrics(registry));
+            new MailMetrics(registry), Runnable::run);
     }
 
     @Test
@@ -79,8 +80,7 @@ class MailServiceMetricsTest {
     void givesUpAfterAllRetries() {
         doThrow(new MailSendException("장애")).when(mailSender).send(any(SimpleMailMessage.class));
 
-        assertThatThrownBy(() -> mailService.sendVerificationMail(TO, "123456"))
-            .isInstanceOf(BusinessException.class);
+        mailService.sendVerificationMail(TO, "123456");
 
         assertThat(attempts("failure")).isEqualTo(4);
         assertThat(attempts("success")).isZero();
@@ -94,8 +94,7 @@ class MailServiceMetricsTest {
         doThrow(new MailAuthenticationException("인증 실패"))
             .when(mailSender).send(any(SimpleMailMessage.class));
 
-        assertThatThrownBy(() -> mailService.sendVerificationMail(TO, "123456"))
-            .isInstanceOf(BusinessException.class);
+        mailService.sendVerificationMail(TO, "123456");
 
         verify(mailSender, times(1)).send(any(SimpleMailMessage.class));
         assertThat(attempts("failure")).isEqualTo(1);
@@ -110,6 +109,7 @@ class MailServiceMetricsTest {
         assertThat(scrape)
             .contains("mail_send_total{outcome=\"sent\"} 0.0")
             .contains("mail_send_total{outcome=\"gave_up\"} 0.0")
+            .contains("mail_send_total{outcome=\"rejected\"} 0.0")
             .contains("mail_send_attempt_seconds_count{outcome=\"success\"} 0")
             .contains("mail_send_attempt_seconds_count{outcome=\"failure\"} 0")
             // p95를 서버 쪽에서 계산하려면 누적 버킷이 있어야 한다

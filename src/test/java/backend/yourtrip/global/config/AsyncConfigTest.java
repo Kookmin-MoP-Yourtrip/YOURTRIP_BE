@@ -60,6 +60,41 @@ class AsyncConfigTest {
         }
     }
 
+    @Nested
+    @DisplayName("mailExecutor — SMTP 지연이 Tomcat 워커로 새지 않아야 한다 (#221)")
+    class MailExecutor {
+
+        @Test
+        @DisplayName("스레드 4(core = max), 큐 50, 종료 시 큐를 비운다")
+        void sizing() {
+            ThreadPoolTaskExecutor executor = new AsyncConfig().mailExecutor();
+            try {
+                assertThat(executor.getCorePoolSize()).isEqualTo(4);
+                assertThat(executor.getMaxPoolSize()).isEqualTo(executor.getCorePoolSize());
+                assertThat(executor.getQueueCapacity()).isEqualTo(50);
+                assertThat(executor.getThreadNamePrefix()).isEqualTo("mail-");
+            } finally {
+                executor.shutdown();
+            }
+        }
+
+        /**
+         * {@code CallerRunsPolicy}로 바뀌면 넘친 메일을 호출한 Tomcat 워커가 직접 SMTP로 보낸다. 그러면 개선 전처럼
+         * SMTP 지연이 워커를 묶는다 — 예외 없이 조용히 격리가 사라지므로 거부 정책을 직접 잠근다.
+         */
+        @Test
+        @DisplayName("넘치면 호출 스레드가 떠안지 않고 거절한다(AbortPolicy)")
+        void abortsInsteadOfCallerRuns() {
+            ThreadPoolTaskExecutor executor = new AsyncConfig().mailExecutor();
+            try {
+                assertThat(executor.getThreadPoolExecutor().getRejectedExecutionHandler())
+                    .isInstanceOf(ThreadPoolExecutor.AbortPolicy.class);
+            } finally {
+                executor.shutdown();
+            }
+        }
+    }
+
     private static void await(CountDownLatch latch) {
         try {
             latch.await(5, TimeUnit.SECONDS);

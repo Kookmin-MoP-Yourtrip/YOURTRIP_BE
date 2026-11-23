@@ -1,13 +1,17 @@
 package backend.yourtrip.global.mail.service;
 
 import backend.yourtrip.global.exception.BusinessException;
+import backend.yourtrip.global.exception.RetryLaterException;
 import backend.yourtrip.global.exception.errorCode.MailErrorCode;
 import backend.yourtrip.global.mail.MailMetrics;
 import backend.yourtrip.global.mail.MailMetrics.AttemptOutcome;
 import backend.yourtrip.global.mail.MailMetrics.MailOutcome;
 import backend.yourtrip.global.mail.entity.MailLog;
 import backend.yourtrip.global.mail.repository.MailLogRepository;
-import lombok.RequiredArgsConstructor;
+import java.util.concurrent.Executor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.mail.MailSendException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -24,20 +28,44 @@ import org.springframework.stereotype.Service;
  *   <li>최종 실패의 예외가 롤백을 일으켜, 앞서 저장한 시도별 실패 로그까지 지운다</li>
  * </ul>
  * 메일 발송은 롤백할 수 없으므로 트랜잭션이 보호하는 것도 없다. 다시 붙이지 말 것.
+ *
+ * <p><b>발송은 {@code mailExecutor}에서 한다</b> (이슈 #221, 설계 README 3-1절). 공개 메서드는 풀에 제출만 하고 바로
+ * 돌아오므로, 호출한 Tomcat 워커는 SMTP를 기다리지 않는다. 그래서 성공 응답의 의미는 "발송 완료"가 아니라
+ * <b>"발송 접수"</b>다. 발송 실패는 응답으로 돌아가지 않고 {@code mail.send}·{@code mail.send.attempt} 지표와
+ * MailLog로만 보인다.
+ * <ul>
+ *   <li>풀이 가득 차면 제출이 거절되고, 호출한 워커에서 바로 503({@link MailErrorCode#MAIL_BUSY}) + {@code Retry-After}를
+ *       던진다. 거절 판정을 워커에서 하는 구조는 {@code AiCourseAdmission}과 같다</li>
+ *   <li>{@code @Async}를 쓰지 않는 이유: 거절 처리가 프록시 뒤에 숨어 코드에 드러나지 않고, 같은 클래스 안 호출에는
+ *       적용되지 않으며, 단위 테스트에서 동기 실행으로 바꾸기 번거롭다. 생성자로 받은 {@link Executor}에 직접 제출한다</li>
+ * </ul>
  */
+@Slf4j
 @Service
-@RequiredArgsConstructor
 public class MailService {
 
     private final JavaMailSender mailSender;
     private final MailLogRepository mailLogRepository;
     private final MailMetrics mailMetrics;
+    private final Executor mailExecutor;
+
+    public MailService(JavaMailSender mailSender, MailLogRepository mailLogRepository, MailMetrics mailMetrics,
+        @Qualifier("mailExecutor") Executor mailExecutor) {
+        this.mailSender = mailSender;
+        this.mailLogRepository = mailLogRepository;
+        this.mailMetrics = mailMetrics;
+        this.mailExecutor = mailExecutor;
+    }
 
     private static final int MAX_RETRY = 3;
 
     // MailLog.errorMessage 컬럼 길이. SMTP 예외 메시지는 원인 예외를 이어 붙여 이보다 길어지기 쉽다
     // ("Mail server connection failed. Failed messages: ... nested exception is: ...").
     private static final int ERROR_MESSAGE_MAX = 255;
+
+    // 풀이 가득 찼을 때 클라이언트에게 주는 재시도 간격의 힌트. 큐 50칸이 정상 속도(초당 4통)로 비는 데 약 12초,
+    // SMTP가 느린 날에는 그보다 길다 — 너무 짧으면 거절된 사용자들이 한꺼번에 다시 몰린다.
+    static final int RETRY_AFTER_SECONDS = 30;
 
     public void sendVerificationMail(String to, String code) {
         String subject = "[너의 여행은] 이메일 인증번호 안내";
@@ -51,7 +79,30 @@ public class MailService {
                 감사합니다 :)
                 """.formatted(code);
 
-        sendMailWithLogging(to, subject, body, 0);
+        submit(to, subject, body);
+    }
+
+    // 제출만 하고 돌아온다. 거절은 호출한 Tomcat 워커에서 즉시 503으로 끝난다 — 대기도, SMTP 시도도 없다.
+    private void submit(String to, String subject, String text) {
+        try {
+            mailExecutor.execute(() -> deliver(to, subject, text));
+        } catch (TaskRejectedException e) {
+            mailMetrics.mail(MailOutcome.REJECTED);
+            throw new RetryLaterException(MailErrorCode.MAIL_BUSY, RETRY_AFTER_SECONDS);
+        }
+    }
+
+    // 메일 스레드에서 돈다. 여기서 던진 예외는 받을 사람이 없으므로 로그로 남기고 끝낸다.
+    // 발송 포기는 sendMailWithLogging이 이미 지표(gave_up)와 MailLog에 남겼다. 수신자 주소는 로그에 쓰지 않는다.
+    private void deliver(String to, String subject, String text) {
+        try {
+            sendMailWithLogging(to, subject, text, 0);
+        } catch (BusinessException e) {
+            log.warn("인증 메일 발송을 포기했다 — mail.send{outcome=gave_up}·MailLog 참고");
+        } catch (RuntimeException e) {
+            // MailLog 저장 실패(DB 장애) 등 발송 경로 밖의 예외. 삼키면 아무 흔적도 남지 않는다.
+            log.error("인증 메일 발송 작업이 예외로 끝났다", e);
+        }
     }
 
     private void sendMailWithLogging(String to, String subject, String text, int attempt) {
@@ -131,6 +182,6 @@ public class MailService {
                 요청하지 않은 경우 메일을 무시해주세요.
                 """.formatted(code);
 
-        sendMailWithLogging(to, subject, body, 0);
+        submit(to, subject, body);
     }
 }

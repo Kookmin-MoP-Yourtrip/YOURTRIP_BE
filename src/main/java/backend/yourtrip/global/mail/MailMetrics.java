@@ -51,7 +51,9 @@ public class MailMetrics {
         /** SMTP 서버가 메일을 접수했다. 도착을 뜻하지는 않는다(스팸·바운스는 알 수 없다). */
         SENT,
         /** 보내지 못하고 끝났다 — 재시도를 모두 썼거나, 재시도 대상이 아닌 실패였다. */
-        GAVE_UP;
+        GAVE_UP,
+        /** 메일 전용 풀이 가득 차 받지 않았다(503). SMTP를 한 번도 시도하지 않는다. */
+        REJECTED;
 
         String tag() {
             return name().toLowerCase(Locale.ROOT);
