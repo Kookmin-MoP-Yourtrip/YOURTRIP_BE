@@ -212,6 +212,50 @@ class MailServiceRetryTest {
         assertThat(mails("stale")).isEqualTo(1);
     }
 
+    @Test
+    @DisplayName("SMTP 성공 뒤 MailLog 저장이 실패해도 다시 보내지 않고 sent로 센다")
+    void logSaveFailureAfterSmtpSuccessIsStillSent() {
+        doThrow(new IllegalStateException("DB 장애")).when(mailLogRepository).save(any(MailLog.class));
+
+        mailService.sendVerificationMail(TO, CODE);
+
+        verify(mailSender, times(1)).send(any(SimpleMailMessage.class));
+        assertThat(mails("sent")).isEqualTo(1);
+        assertThat(mails("error")).isZero();
+    }
+
+    @Test
+    @DisplayName("실패 로그 저장이 실패해도 재시도 흐름은 그대로 가고 결말 하나로 센다")
+    void logSaveFailureDoesNotBreakRetry() {
+        doThrow(new IllegalStateException("DB 장애")).when(mailLogRepository).save(any(MailLog.class));
+        doThrow(transientFailure()).doNothing().when(mailSender).send(any(SimpleMailMessage.class));
+
+        mailService.sendVerificationMail(TO, CODE);
+
+        verify(mailSender, times(2)).send(any(SimpleMailMessage.class));
+        assertThat(mails("sent")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("발송 작업이 예상 못 한 예외로 끝나면 error로 센다 — 접수한 메일이 결말 없이 사라지지 않는다")
+    void unexpectedTaskFailureIsCountedAsError() {
+        // send() 안의 예외는 "재시도하지 않는 실패"로 처리되므로, 발송 흐름 밖(백오프)에서 터지는 버그를 흉내 낸다.
+        MailRetryBackoff broken = new MailRetryBackoff(List.of(1000L, 2000L, 4000L)) {
+            @Override
+            protected void sleep(Duration delay) {
+                throw new IllegalStateException("예상 못 한 버그");
+            }
+        };
+        MailService service = new MailService(mailSender, mailLogRepository, new MailMetrics(registry), Runnable::run,
+            email -> Optional.of(CODE), broken);
+        doThrow(transientFailure()).when(mailSender).send(any(SimpleMailMessage.class));
+
+        service.sendVerificationMail(TO, CODE);
+
+        assertThat(mails("error")).isEqualTo(1);
+        assertThat(mails("gave_up") + mails("sent") + mails("stale")).isZero();
+    }
+
     // 연결 거부·타임아웃처럼 SMTP 응답 코드가 없는 실패 — JavaMailSenderImpl이 연결 실패를 이렇게 감싼다.
     private static MailSendException transientFailure() {
         return new MailSendException("Mail server connection failed");

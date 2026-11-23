@@ -141,7 +141,9 @@ public class MailService {
                 log.warn("인증 메일 발송을 포기했다 — mail.send{outcome=gave_up}·MailLog 참고");
             }
         } catch (RuntimeException e) {
-            // MailLog 저장 실패(DB 장애) 등 발송 경로 밖의 예외. 삼키면 아무 흔적도 남지 않는다.
+            // 발송 경로가 예상하지 못한 예외(버그). 접수 응답은 이미 나갔으므로 지표가 유일한 흔적이다 —
+            // 받은 메일은 반드시 결말 하나로 센다. MailLog 저장 실패는 save()가 삼키므로 여기 오지 않는다.
+            mailMetrics.mail(MailOutcome.ERROR);
             log.error("인증 메일 발송 작업이 예외로 끝났다", e);
         }
     }
@@ -223,14 +225,20 @@ public class MailService {
         }
     }
 
+    // MailLog는 발송의 기록이지 발송 자체가 아니다. 저장이 실패해도(DB 장애) 발송 흐름과 결말 집계는 그대로 간다 —
+    // 예외를 올리면 SMTP 성공 뒤의 저장 실패가 메일을 결말 없이 끝내거나, 재시도 판단을 잘못 이끈다.
     private void save(Mail mail, int attempt, String status, String errorMessage) {
-        mailLogRepository.save(MailLog.builder()
-            .recipient(mail.to())
-            .subject(mail.subject())
-            .retryCount(attempt)
-            .status(status)
-            .errorMessage(truncate(errorMessage))
-            .build());
+        try {
+            mailLogRepository.save(MailLog.builder()
+                .recipient(mail.to())
+                .subject(mail.subject())
+                .retryCount(attempt)
+                .status(status)
+                .errorMessage(truncate(errorMessage))
+                .build());
+        } catch (RuntimeException e) {
+            log.error("MailLog 저장에 실패했다 — status={}, attempt={}", status, attempt, e);
+        }
     }
 
     // 자르지 않으면 save()가 DataIntegrityViolationException으로 실패해, 그 예외가 원래의 발송 실패를

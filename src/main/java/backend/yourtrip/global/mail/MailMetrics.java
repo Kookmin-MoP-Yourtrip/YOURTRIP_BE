@@ -55,7 +55,9 @@ public class MailMetrics {
         /** 메일 전용 풀이 가득 차 받지 않았다(503). SMTP를 한 번도 시도하지 않는다. */
         REJECTED,
         /** 재시도 직전에 인증번호가 재발송으로 바뀌었거나 만료돼 보내지 않고 버렸다. */
-        STALE;
+        STALE,
+        /** 발송 작업이 예상하지 못한 예외로 끝났다(버그). 접수한 메일이 결말 없이 사라지지 않게 센다. */
+        ERROR;
 
         String tag() {
             return name().toLowerCase(Locale.ROOT);

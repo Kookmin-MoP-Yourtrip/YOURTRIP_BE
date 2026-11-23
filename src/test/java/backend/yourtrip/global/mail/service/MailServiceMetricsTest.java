@@ -115,6 +115,7 @@ class MailServiceMetricsTest {
             .contains("mail_send_total{outcome=\"gave_up\"} 0.0")
             .contains("mail_send_total{outcome=\"rejected\"} 0.0")
             .contains("mail_send_total{outcome=\"stale\"} 0.0")
+            .contains("mail_send_total{outcome=\"error\"} 0.0")
             .contains("mail_send_attempt_seconds_count{outcome=\"success\"} 0")
             .contains("mail_send_attempt_seconds_count{outcome=\"failure\"} 0")
             // p95를 서버 쪽에서 계산하려면 누적 버킷이 있어야 한다
