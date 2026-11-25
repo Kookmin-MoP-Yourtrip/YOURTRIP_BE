@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -21,6 +22,9 @@ import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.exception.BusinessException;
 import backend.yourtrip.global.exception.errorCode.UserErrorCode;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
+import backend.yourtrip.global.exception.RetryLaterException;
+import backend.yourtrip.global.exception.errorCode.MailErrorCode;
+import backend.yourtrip.global.mail.service.MailReservation;
 import backend.yourtrip.global.mail.service.MailService;
 import backend.yourtrip.global.s3.service.S3Service;
 import backend.yourtrip.global.security.CustomUserDetails;
@@ -158,22 +162,27 @@ class UserServiceImplTest {
             .hasFieldOrPropertyWithValue("errorCode", UserErrorCode.EMAIL_ALREADY_EXIST);
 
         verify(emailVerificationStore, never()).saveCode(anyString(), anyString());
-        verify(mailService, never()).sendVerificationMail(anyString(), anyString());
+        verify(mailService, never()).reserve();
     }
 
     @Test
-    @DisplayName("sendVerificationCode() - 코드를 저장소에 저장한 뒤, 같은 코드를 메일로 발송한다")
+    @DisplayName("sendVerificationCode() - 메일 풀 자리를 잡은 뒤 코드를 저장하고, 같은 코드를 그 자리로 발송한다")
     void sendVerificationCode_savesCodeThenSendsSameCode() {
         String email = "new@example.com";
         given(userRepository.findByEmail(email)).willReturn(Optional.empty());
+        MailReservation reservation = mock(MailReservation.class);
+        given(mailService.reserve()).willReturn(reservation);
 
         userService.sendVerificationCode(email);
 
-        // 저장 실패 시 고아 메일이 나가면 안 되므로 "저장 → 발송" 순서 자체를 검증한다
+        // "자리 예약 → 저장 → 발송" 순서 자체를 검증한다.
+        //  - 예약이 저장보다 먼저: 거절(503)되면 번호를 바꾸지 않아 이미 접수된 이전 메일이 버려지지 않는다(#221)
+        //  - 저장이 발송보다 먼저: 저장 실패 시 검증할 수 없는 고아 메일이 나가지 않는다
         ArgumentCaptor<String> savedCode = ArgumentCaptor.forClass(String.class);
-        InOrder inOrder = inOrder(emailVerificationStore, mailService);
+        InOrder inOrder = inOrder(mailService, emailVerificationStore, reservation);
+        inOrder.verify(mailService).reserve();
         inOrder.verify(emailVerificationStore).saveCode(eq(email), savedCode.capture());
-        inOrder.verify(mailService).sendVerificationMail(email, savedCode.getValue());
+        inOrder.verify(reservation).sendVerificationMail(email, savedCode.getValue());
 
         assertThat(savedCode.getValue()).matches("\\d{6}");
     }
@@ -186,11 +195,46 @@ class UserServiceImplTest {
         willThrow(new BusinessException(UserErrorCode.VERIFICATION_SERVICE_UNAVAILABLE))
             .given(emailVerificationStore).saveCode(eq(email), anyString());
 
+        MailReservation reservation = mock(MailReservation.class);
+        given(mailService.reserve()).willReturn(reservation);
+
         assertThatThrownBy(() -> userService.sendVerificationCode(email))
             .isInstanceOf(BusinessException.class)
             .hasFieldOrPropertyWithValue("errorCode", UserErrorCode.VERIFICATION_SERVICE_UNAVAILABLE);
 
-        verify(mailService, never()).sendVerificationMail(anyString(), anyString());
+        verify(reservation, never()).sendVerificationMail(anyString(), anyString());
+        // 잡아 둔 메일 풀 자리를 돌려줘야 한다 — 안 돌려주면 Redis 장애가 길어질수록 풀이 빈 채로 503만 낸다.
+        verify(reservation).close();
+    }
+
+    @Test
+    @DisplayName("sendVerificationCode() - 메일 풀이 가득 차 거절되면 코드를 저장하지 않는다 — 이미 접수된 이전 메일이 유효하게 남는다")
+    void sendVerificationCode_poolFull_keepsPreviousCode() {
+        // 이전 요청의 메일이 큐에서 기다리는 중에 재발송한 상황. 새 코드를 먼저 저장하면 이전 메일은 "번호가
+        // 바뀌었다"며 버려지고, 새 메일은 거절돼 사용자가 유효한 메일을 하나도 받지 못한다(#221, PR #224 리뷰).
+        String email = "new@example.com";
+        given(userRepository.findByEmail(email)).willReturn(Optional.empty());
+        given(mailService.reserve()).willThrow(new RetryLaterException(MailErrorCode.MAIL_BUSY, 30));
+
+        assertThatThrownBy(() -> userService.sendVerificationCode(email))
+            .isInstanceOf(RetryLaterException.class)
+            .hasFieldOrPropertyWithValue("errorCode", MailErrorCode.MAIL_BUSY);
+
+        verify(emailVerificationStore, never()).saveCode(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("findPasswordSendEmail() - 메일 풀이 가득 차 거절되면 코드를 저장하지 않는다")
+    void findPasswordSendEmail_poolFull_keepsPreviousCode() {
+        String email = "existing@example.com";
+        given(userRepository.findByEmail(email))
+            .willReturn(Optional.of(User.builder().email(email).build()));
+        given(mailService.reserve()).willThrow(new RetryLaterException(MailErrorCode.MAIL_BUSY, 30));
+
+        assertThatThrownBy(() -> userService.findPasswordSendEmail(email))
+            .isInstanceOf(RetryLaterException.class);
+
+        verify(emailVerificationStore, never()).saveCode(anyString(), anyString());
     }
 
     @Test

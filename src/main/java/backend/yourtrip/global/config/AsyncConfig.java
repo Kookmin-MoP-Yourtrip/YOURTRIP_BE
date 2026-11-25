@@ -19,6 +19,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  *   <li>{@code aiRequestExecutor} — AI 코스 생성 요청 전체. Tomcat 워커를 AI 대기에서 뗀다</li>
  *   <li>{@code aiAgentExecutor} — AI 코스 생성의 LLM 호출 (ROADMAP 5-1)</li>
  *   <li>{@code placeGroundingExecutor} — AI 코스 생성의 장소 API 호출 (ROADMAP 5-1)</li>
+ *   <li>{@code mailExecutor} — 인증 메일 SMTP 발송. Tomcat 워커를 SMTP 대기에서 뗀다 (#221)</li>
  * </ul>
  */
 @Configuration
@@ -129,6 +130,40 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * 인증 메일 <b>SMTP 발송 전용</b> 풀 (#221). 요청 스레드는 제출만 하고 바로 응답한다.
+     *
+     * <p><b>왜 필요한가.</b> 개선 전에는 Tomcat 워커가 SMTP 응답을 기다렸다. SMTP가 5초씩 느려진 상태에서 분당
+     * 144통이 들어오자 워커 32개가 전부 SMTP·커넥션 대기로 묶여 메일과 무관한 API까지 멈췄다.
+     * 근거: {@code docs/tasks/mail-async/measurement.md}
+     *
+     * <ul>
+     *   <li><b>스레드 4 (core = max)</b> — 정상 발송이 1초 안팎이면 초당 4통이라 가입 트래픽보다 한참 크다. core와 max를
+     *       나누지 않는다: {@code ThreadPoolExecutor}는 큐가 다 차야 core를 넘기므로 max가 사실상 쓰이지 않는다(#177)</li>
+     *   <li><b>큐 50</b> — 줄 선 메일의 최대 대기가 정상 약 12초(50 × 1초 ÷ 4), SMTP 5초 지연에도 약 62초로 인증번호
+     *       유효시간 5분 안에 든다. 무한 큐면 SMTP 장애가 소리 없이 쌓이기만 한다</li>
+     *   <li><b>{@code AbortPolicy}</b> (기본값) — 넘치면 {@code MailService}가 503으로 돌려보낸다. {@code CallerRunsPolicy}면
+     *       넘친 메일을 Tomcat 워커가 직접 보내 이 풀의 목적이 사라진다</li>
+     *   <li><b>종료 시 30초까지 큐를 비운다</b> — 배포 중 접수된 메일의 유실을 막는다. 웹 요청 정리(기본 30초)와 합쳐도
+     *       운영 systemd의 종료 한도(기본 90초) 안이다. 그 안에 못 끝낸 메일은 유실된다(설계 README 2-2절 ⓐ)</li>
+     * </ul>
+     */
+    @Bean(name = "mailExecutor")
+    public ThreadPoolTaskExecutor mailExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(MAIL_THREADS);
+        executor.setMaxPoolSize(MAIL_THREADS);
+        executor.setQueueCapacity(MAIL_QUEUE_CAPACITY);
+        executor.setThreadNamePrefix("mail-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(30);
+        executor.initialize();
+        return executor;
+    }
+
+    static final int MAIL_THREADS = 4;
+    static final int MAIL_QUEUE_CAPACITY = 50;
 
     /**
      * AI 코스 생성의 <b>장소 API 호출 전용</b> 풀 — 카카오·네이버·TourAPI가 <b>공유</b>한다.

@@ -13,6 +13,7 @@ import backend.yourtrip.global.exception.errorCode.S3ErrorCode;
 import backend.yourtrip.global.exception.errorCode.UserErrorCode;
 import backend.yourtrip.global.cloudfront.service.CloudFrontService;
 import backend.yourtrip.global.jwt.JwtTokenProvider;
+import backend.yourtrip.global.mail.service.MailReservation;
 import backend.yourtrip.global.mail.service.MailService;
 import backend.yourtrip.global.s3.service.S3Service;
 import backend.yourtrip.global.security.CustomUserDetails;
@@ -49,11 +50,15 @@ public class UserServiceImpl implements UserService {
         }
 
         String code = String.format("%06d", new Random().nextInt(1_000_000));
-        // 저장 성공 후에만 발송한다 — 저장 실패(503) 시 메일이 나가면
-        // 검증이 영원히 불가능한 코드가 사용자에게 전달되는 고아 메일이 된다.
-        emailVerificationStore.saveCode(email, code);
-
-        mailService.sendVerificationMail(email, code);
+        // 순서가 중요하다 (#221).
+        // ① 메일 풀 자리부터 잡는다 — 가득 차면 여기서 503. 번호를 먼저 바꾸면, 큐에서 기다리던 이전 메일이
+        //    "번호가 바뀌었다"며 버려져 사용자가 유효한 메일을 하나도 받지 못한다.
+        // ② 저장 성공 후에만 발송한다 — 저장 실패(503) 시 메일이 나가면 검증이 영원히 불가능한 코드가 사용자에게
+        //    전달되는 고아 메일이 된다. 저장이 실패하면 try-with-resources가 잡아 둔 자리를 돌려준다.
+        try (MailReservation mail = mailService.reserve()) {
+            emailVerificationStore.saveCode(email, code);
+            mail.sendVerificationMail(email, code);
+        }
 
         System.out.println("[인증번호 전송 완료] " + email);
     }
@@ -231,10 +236,11 @@ public class UserServiceImpl implements UserService {
             .orElseThrow(() -> new BusinessException(UserErrorCode.EMAIL_NOT_FOUND));
 
         String code = String.format("%06d", new Random().nextInt(1_000_000));
-        // sendVerificationCode와 동일하게 저장 성공 후에만 발송한다.
-        emailVerificationStore.saveCode(email, code);
-
-        mailService.sendVerificationMail(email, code);
+        // sendVerificationCode와 같은 순서 — 자리 예약 → 저장 → 발송.
+        try (MailReservation mail = mailService.reserve()) {
+            emailVerificationStore.saveCode(email, code);
+            mail.sendVerificationMail(email, code);
+        }
     }
 
     @Override

@@ -1,12 +1,15 @@
 package backend.yourtrip.domain.user.controller;
 
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import backend.yourtrip.domain.user.store.EmailVerificationStore;
+import backend.yourtrip.global.mail.service.MailReservation;
 import backend.yourtrip.global.mail.service.MailService;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -53,9 +56,14 @@ class EmailVerificationFlowTest {
     @MockitoBean
     private MailService mailService;
 
+    // 메일 풀 자리 예약 — 발송된 코드는 이 예약으로 넘어온다.
+    private MailReservation reservation;
+
     @BeforeEach
     void resetStore() {
         emailVerificationStore.reset();
+        reservation = mock(MailReservation.class);
+        given(mailService.reserve()).willReturn(reservation);
     }
 
     @Test
@@ -68,7 +76,7 @@ class EmailVerificationFlowTest {
             .andExpect(status().isOk());
 
         ArgumentCaptor<String> codeCaptor = ArgumentCaptor.forClass(String.class);
-        verify(mailService).sendVerificationMail(eq(EMAIL), codeCaptor.capture());
+        verify(reservation).sendVerificationMail(eq(EMAIL), codeCaptor.capture());
         String code = codeCaptor.getValue();
 
         // 2. 틀린 코드 — 400 + INVALID_VERIFICATION_CODE
@@ -101,7 +109,7 @@ class EmailVerificationFlowTest {
             .andExpect(status().isOk());
 
         ArgumentCaptor<String> codeCaptor = ArgumentCaptor.forClass(String.class);
-        verify(mailService).sendVerificationMail(eq(EMAIL), codeCaptor.capture());
+        verify(reservation).sendVerificationMail(eq(EMAIL), codeCaptor.capture());
 
         // TTL 만료 시뮬레이션 — Redis에서 키가 사라진 상태와 동일
         emailVerificationStore.expireCode(EMAIL);
